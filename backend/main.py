@@ -5,6 +5,7 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 from routes_patients import router as patients_router
+from routes_visits import router as visits_router
 
 load_dotenv('.env.local')
 
@@ -47,6 +48,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
 
 # Include routers
 app.include_router(patients_router)
+app.include_router(visits_router)
 
 if __name__ == "__main__":
     import uvicorn
