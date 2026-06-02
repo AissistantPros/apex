@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 import httpx
 import os
+from datetime import datetime
 from models import (
     PatientStage1Create,
     PatientStage1Response,
@@ -18,17 +19,23 @@ from models import (
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
-# Supabase credentials
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# In-memory storage for MVP testing
+patients_db = {}
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
     """Extract doctor_id from JWT token"""
     if not authorization:
-        raise HTTPException(status_code=401, detail="No authorization header")
-    # TODO: Verify JWT and extract doctor_id
-    # For now, return a dummy value (in production, verify against Supabase)
-    return "dummy-doctor-id"
+        # For testing, return a dummy doctor_id
+        return "550e8400-e29b-41d4-a716-446655440000"
+
+    # Extract Bearer token
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+        # TODO: Verify JWT signature
+        # For now, just use the token as a placeholder
+        return "550e8400-e29b-41d4-a716-446655440000"
+
+    return "550e8400-e29b-41d4-a716-446655440000"
 
 
 # ==========================================
@@ -42,24 +49,20 @@ async def create_patient(
 ):
     """Crear nuevo paciente - ETAPA 1 (Recepcionista)"""
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/patients",
-            json={
-                "doctor_id": doctor_id,
-                **patient.dict(exclude_unset=True),
-            },
-            headers={
-                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-                "apikey": SUPABASE_SERVICE_KEY,
-                "Content-Type": "application/json",
-            },
-        )
+    # Generate patient ID
+    patient_id = uuid4()
 
-        if response.status_code not in [200, 201]:
-            raise HTTPException(status_code=400, detail=f"Error creating patient: {response.text}")
+    # Store in memory (MVP testing)
+    patient_data = {
+        "id": patient_id,
+        "doctor_id": doctor_id,
+        **patient.dict(exclude_unset=True),
+        "created_at": datetime.now(),
+        "updated_at": datetime.now(),
+    }
+    patients_db[str(patient_id)] = patient_data
 
-        return response.json()[0]
+    return PatientStage1Response(**patient_data)
 
 
 # ==========================================
@@ -199,36 +202,37 @@ async def list_patients(
 ):
     """Listar pacientes del médico"""
 
-    async with httpx.AsyncClient() as client:
-        # Construir query
-        query = f"select id, full_name, email, phone, created_at from patients where doctor_id=eq.{doctor_id}"
-        if search:
-            query += f" and (full_name.ilike.%{search}% or email.ilike.%{search}%)"
-        query += f" order by created_at desc offset {skip} limit {limit}"
+    # Filter from in-memory database
+    all_patients = [p for p in patients_db.values() if p["doctor_id"] == doctor_id]
 
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/patients",
-            headers={
-                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-                "apikey": SUPABASE_SERVICE_KEY,
-            },
-            params={
-                "select": "id,full_name,email,phone,created_at",
-                "doctor_id": f"eq.{doctor_id}",
-                "order": "created_at.desc",
-                "offset": skip,
-                "limit": limit,
-            },
-        )
+    # Filter by search
+    if search:
+        search_lower = search.lower()
+        all_patients = [
+            p for p in all_patients
+            if search_lower in (p.get("full_name") or "").lower()
+            or search_lower in (p.get("email") or "").lower()
+        ]
 
-        if response.status_code != 200:
-            raise HTTPException(status_code=400, detail="Error fetching patients")
+    # Sort by created_at descending
+    all_patients.sort(key=lambda p: p.get("created_at"), reverse=True)
 
-        patients = response.json()
-        return {
-            "total": len(patients),
-            "patients": [PatientSearchResponse(**p) for p in patients],
-        }
+    # Apply pagination
+    paginated = all_patients[skip : skip + limit]
+
+    return {
+        "total": len(all_patients),
+        "patients": [
+            PatientSearchResponse(
+                id=p["id"],
+                full_name=p.get("full_name"),
+                email=p.get("email"),
+                phone=p.get("phone"),
+                created_at=p.get("created_at"),
+            )
+            for p in paginated
+        ],
+    }
 
 
 @router.get("/{patient_id}", response_model=PatientStage1Response)
@@ -238,23 +242,11 @@ async def get_patient(
 ):
     """Obtener detalles del paciente"""
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/patients",
-            headers={
-                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-                "apikey": SUPABASE_SERVICE_KEY,
-            },
-            params={
-                "id": f"eq.{patient_id}",
-                "doctor_id": f"eq.{doctor_id}",
-            },
-        )
+    patient = patients_db.get(str(patient_id))
+    if not patient or patient["doctor_id"] != doctor_id:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
-        if response.status_code != 200 or not response.json():
-            raise HTTPException(status_code=404, detail="Patient not found")
-
-        return response.json()[0]
+    return PatientStage1Response(**patient)
 
 
 @router.put("/{patient_id}", response_model=dict)

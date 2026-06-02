@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import date, datetime
 from uuid import UUID
@@ -14,11 +14,11 @@ class PatientStage1Create(BaseModel):
     sex: Optional[str] = None  # 'M', 'F'
     occupation: Optional[str] = None
     photo_url: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
-    emergency_contact_email: Optional[EmailStr] = None
+    emergency_contact_email: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     source_of_contact: Optional[str] = None
     referred_by: Optional[str] = None
@@ -130,8 +130,8 @@ class PatientSearchResponse(BaseModel):
     """Response para búsqueda de pacientes"""
     id: UUID
     full_name: str
-    email: Optional[str]
-    phone: Optional[str]
+    email: Optional[str] = None
+    phone: Optional[str] = None
     created_at: datetime
 
 
