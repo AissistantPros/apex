@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
+import { patientsAPI } from '@/app/lib/api';
 import type { User } from '@supabase/supabase-js';
 
 export default function NewPatientPage() {
@@ -59,10 +60,34 @@ export default function NewPatientPage() {
 
   const handleSave = async () => {
     setLoading(true);
-    // TODO: Enviar datos a backend
-    console.log('Guardando paciente:', formData);
-    setLoading(false);
-    // router.push(`/dashboard/patient/${patientId}`);
+    try {
+      // Enviar datos al backend
+      const response = await patientsAPI.create({
+        full_name: formData.fullName,
+        birth_date: formData.birthDate,
+        sex: formData.sex,
+        occupation: formData.occupation,
+        email: formData.email,
+        phone: formData.phone,
+        emergency_contact_name: formData.emergencyName,
+        emergency_contact_phone: formData.emergencyPhone,
+        emergency_contact_email: formData.emergencyEmail,
+        source_of_contact: 'other',
+        reviewed_social_media: false,
+        reviewed_website: false,
+        reviewed_google_maps: false,
+      });
+
+      const patientId = response.data.id;
+      console.log('Paciente creado:', patientId);
+
+      // Redirigir a la ficha del paciente
+      router.push(`/dashboard/patient/${patientId}`);
+    } catch (error: any) {
+      console.error('Error al guardar paciente:', error);
+      alert('Error al guardar el paciente: ' + (error.response?.data?.detail || error.message));
+      setLoading(false);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center h-screen">Cargando...</div>;
