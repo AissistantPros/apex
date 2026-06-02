@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX — Nuevo Paciente</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070a0e;--bg2:#0c1118;--bg3:#111820;--bg4:#161f28;
+  --b1:#1e2d3d;--b2:#2a3f54;--b3:#3a5570;
+  --acc:#00e5a0;--acc2:#0ea5e9;--acc3:#f97316;--acc4:#a78bfa;
+  --tx:#dde6ef;--tx2:#7a95aa;--tx3:#3d5870;
+  --card:#0d1520;--card2:#101c28;
+  --hdr-bg:rgba(7,10,14,.97);
+  --grid-color:rgba(0,229,160,.016);
+  --r:10px;
+}
+html[data-theme="light"]{
+  --bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#d2dbe8;
+  --b1:#c2cfe0;--b2:#9bb0c8;--b3:#6b8caa;
+  --acc:#00b87a;--acc2:#0278c0;--acc3:#e06400;--acc4:#7c5cbf;
+  --tx:#0c1f2e;--tx2:#3d5870;--tx3:#8aa5bd;
+  --card:#ffffff;--card2:#f5f8fc;
+  --hdr-bg:rgba(255,255,255,.97);
+  --grid-color:rgba(0,150,100,.025);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;
+  transition:background .3s,color .25s;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(var(--grid-color) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid-color) 1px,transparent 1px);
+  background-size:48px 48px;}
+*{transition:background-color .3s,border-color .3s,color .25s;}
+
+/* ── HEADER ── */
+header{position:fixed;top:0;left:0;right:0;height:58px;z-index:200;
+  background:var(--hdr-bg);border-bottom:1px solid var(--b1);
+  backdrop-filter:blur(24px);display:flex;align-items:center;padding:0 24px;gap:10px;}
+.h-back{display:flex;align-items:center;gap:7px;padding:6px 12px;
+  background:var(--bg3);border:1px solid var(--b1);border-radius:7px;
+  cursor:pointer;font-size:15px;font-weight:600;color:var(--tx2);
+  text-decoration:none;transition:all .15s;}
+.h-back:hover{border-color:var(--b2);color:var(--tx);}
+.h-logo{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--acc);
+  letter-spacing:1px;display:flex;align-items:center;gap:7px;}
+.h-plan{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:3px;
+  color:var(--acc2);background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);
+  padding:2px 7px;border-radius:3px;}
+.h-sp{flex:1;}
+.h-ic{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;
+  transition:all .15s;}
+.h-ic:hover{border-color:var(--b2);}
+.h-div{width:1px;height:22px;background:var(--b1);}
+.h-doc{display:flex;align-items:center;gap:9px;cursor:pointer;
+  padding:4px 8px;border-radius:8px;transition:background .15s;}
+.h-doc:hover{background:var(--bg3);}
+.h-av{width:34px;height:34px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;color:#000;border:2px solid rgba(0,229,160,.3);}
+.h-di .h-name{font-size:15px;font-weight:600;text-align:right;}
+.h-di .h-role{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);text-align:right;}
+
+/* ── LAYOUT ── */
+.page{position:fixed;inset:0;top:58px;bottom:72px;overflow-y:auto;overflow-x:hidden;
+  display:flex;justify-content:center;z-index:1;}
+.page::-webkit-scrollbar{width:3px;}
+.page::-webkit-scrollbar-thumb{background:var(--b2);}
+.inner{width:100%;max-width:760px;padding:32px 24px;}
+
+/* ── PROGRESS ── */
+.progress-wrap{margin-bottom:32px;}
+.prog-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.prog-step-label{font-family:'JetBrains Mono',monospace;font-size:11px;
+  letter-spacing:3px;color:var(--acc2);}
+.prog-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);}
+.prog-title{font-family:'Lora',serif;font-size:26px;font-weight:500;margin-bottom:4px;}
+.prog-title em{color:var(--acc);font-style:normal;}
+.prog-sub{font-size:15px;color:var(--tx2);margin-bottom:14px;}
+.prog-dots{display:flex;gap:5px;}
+.prog-dot{flex:1;height:3px;border-radius:2px;background:var(--b1);
+  transition:background .3s;}
+.prog-dot.done{background:var(--acc2);}
+.prog-dot.active{background:var(--acc);}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--b1);border-radius:var(--r);
+  margin-bottom:14px;overflow:hidden;}
+.card-head{display:flex;align-items:center;gap:12px;padding:14px 18px;
+  border-bottom:1px solid var(--b1);background:var(--card2);}
+.card-icon{width:34px;height:34px;border-radius:8px;background:var(--bg3);
+  border:1px solid var(--b1);display:flex;align-items:center;justify-content:center;font-size:16px;}
+.card-title{font-size:15px;font-weight:700;flex:1;}
+.card-opt{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);
+  background:var(--bg3);border:1px solid var(--b1);padding:2px 8px;border-radius:3px;}
+.card-body{padding:20px;}
+
+/* ── FORM ELEMENTS ── */
+.grid{display:grid;gap:12px;margin-bottom:0;}
+.g2{grid-template-columns:1fr 1fr;}
+.g3{grid-template-columns:1fr 1fr 1fr;}
+.g4{grid-template-columns:1fr 1fr 1fr 1fr;}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fl{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.5px;color:var(--tx2);}
+.fl span{color:var(--err);margin-left:2px;font-size:11px;line-height:1;}
+input,select,textarea{width:100%;padding:10px 13px;background:var(--bg3);
+  border:1px solid var(--b1);border-radius:7px;color:var(--tx);
+  font-family:'Syne',sans-serif;font-size:15px;outline:none;
+  transition:border-color .2s,box-shadow .2s;appearance:none;}
+input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(0,229,160,.08);}
+input::placeholder,textarea::placeholder{color:var(--tx3);}
+select option{background:var(--bg3);color:var(--tx);}
+textarea{resize:vertical;line-height:1.6;min-height:70px;}
+.age-display{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--acc);
+  padding:9px 12px;background:var(--bg3);border:1px solid var(--b1);border-radius:7px;
+  min-width:70px;text-align:center;}
+
+/* Toggle group */
+.tgl-group{display:flex;gap:6px;flex-wrap:wrap;}
+.tgl{padding:8px 16px;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;
+  cursor:pointer;font-size:15px;font-weight:600;color:var(--tx2);
+  transition:all .15s;user-select:none;white-space:nowrap;}
+.tgl:hover{border-color:var(--b2);}
+.tgl.on{background:rgba(0,229,160,.12);border-color:var(--acc);color:var(--acc);}
+.tgl.on-blue{background:rgba(14,165,233,.1);border-color:var(--acc2);color:var(--acc2);}
+
+/* Checkbox items */
+.cg{display:grid;gap:6px;}
+.cg2{grid-template-columns:1fr 1fr;}
+.cg3{grid-template-columns:1fr 1fr 1fr;}
+.ci{display:flex;align-items:center;gap:10px;padding:10px 13px;
+  background:var(--bg3);border:1px solid var(--b1);border-radius:6px;
+  cursor:pointer;font-size:15px;transition:all .15s;user-select:none;}
+.ci:hover{border-color:var(--b2);}
+.ci.sel{border-color:var(--acc);background:rgba(0,229,160,.07);color:var(--acc);}
+.ci input[type=checkbox]{width:13px;height:13px;accent-color:var(--acc);cursor:pointer;flex-shrink:0;}
+.ci-txt{line-height:1.3;}
+
+/* Divider */
+.fdiv{height:1px;background:var(--b1);margin:16px 0;}
+.fdiv-lbl{text-align:center;position:relative;margin:16px 0;}
+.fdiv-lbl::before{content:'';position:absolute;top:50%;left:0;right:0;height:1px;background:var(--b1);}
+.fdiv-lbl span{position:relative;background:var(--card);padding:0 10px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);letter-spacing:2px;}
+
+/* Slider */
+.slider-row{display:flex;align-items:center;gap:12px;}
+input[type=range]{flex:1;height:3px;accent-color:var(--acc);cursor:pointer;padding:0;}
+.sv{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;
+  color:var(--acc);min-width:28px;text-align:center;}
+.sl-labels{display:flex;justify-content:space-between;
+  font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);margin-top:3px;}
+
+/* Heredofamiliar table */
+.hf-table{width:100%;border-collapse:separate;border-spacing:0;}
+.hf-table th{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.5px;
+  color:var(--tx2);padding:8px 10px;background:var(--bg3);text-align:center;
+  border:1px solid var(--b1);}
+.hf-table th:first-child{text-align:left;min-width:140px;}
+.hf-table td{padding:7px 10px;border:1px solid var(--b1);text-align:center;
+  background:var(--card);font-size:15px;}
+.hf-table td:first-child{text-align:left;font-size:15px;color:var(--tx2);
+  font-family:'JetBrains Mono',monospace;background:var(--card2);}
+.hf-table tr:hover td{background:var(--bg4);}
+.hf-table tr:hover td:first-child{background:var(--bg4);}
+.hf-cb{width:15px;height:15px;accent-color:var(--acc);cursor:pointer;}
+.hf-table th:first-child,.hf-table td:first-child{border-radius:0;}
+
+/* Medication list */
+.med-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+.med-item{display:grid;grid-template-columns:2fr 1.2fr 1.5fr 1fr auto;gap:8px;
+  align-items:start;padding:12px;background:var(--bg3);border:1px solid var(--b1);
+  border-radius:8px;position:relative;}
+.med-item .med-n{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.5px;
+  color:var(--tx3);margin-bottom:4px;}
+.med-rm{width:28px;height:28px;border:none;border-radius:6px;background:rgba(244,63,94,.1);
+  color:#f43f5e;cursor:pointer;font-size:15px;display:flex;align-items:center;
+  justify-content:center;align-self:center;transition:all .15s;flex-shrink:0;}
+.med-rm:hover{background:rgba(244,63,94,.2);}
+.add-med-btn{display:flex;align-items:center;gap:7px;padding:9px 14px;
+  background:transparent;border:1px dashed var(--b2);border-radius:8px;
+  cursor:pointer;font-size:15px;color:var(--tx2);transition:all .15s;width:100%;}
+.add-med-btn:hover{border-color:var(--acc);color:var(--acc);}
+
+/* Conditional block */
+.cond-block{display:none;}
+.cond-block.show{display:block;}
+
+/* Info box */
+.info-box{background:rgba(14,165,233,.06);border:1px solid rgba(14,165,233,.18);
+  border-radius:8px;padding:11px 14px;font-size:15px;color:var(--acc2);
+  line-height:1.6;margin-bottom:14px;}
+.warn-box{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.18);
+  border-radius:8px;padding:11px 14px;font-size:15px;color:#f59e0b;
+  line-height:1.6;margin-bottom:14px;}
+
+/* ── COMPLETION SCREEN ── */
+#s-done{display:none;}
+#s-done.show{display:block;animation:fadeUp .5s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+.done-card{background:var(--card);border:1px solid var(--b1);border-radius:14px;
+  padding:40px 32px;text-align:center;}
+.done-icon{font-size:52px;margin-bottom:16px;}
+.done-title{font-family:'Lora',serif;font-size:28px;margin-bottom:6px;}
+.done-id{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--acc);
+  background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);
+  padding:8px 20px;border-radius:6px;display:inline-block;margin:12px 0 20px;}
+.done-meta{font-size:15px;color:var(--tx2);margin-bottom:28px;line-height:1.7;}
+.done-actions{display:flex;gap:12px;justify-content:center;}
+
+/* ── BOTTOM BAR ── */
+.bbar{position:fixed;bottom:0;left:0;right:0;height:72px;z-index:200;
+  background:var(--hdr-bg);border-top:1px solid var(--b1);
+  backdrop-filter:blur(20px);display:flex;align-items:center;
+  justify-content:space-between;padding:0 28px;}
+.bbar-info{font-size:15px;color:var(--tx2);}
+.bbar-info strong{color:var(--tx);}
+.bbar-btns{display:flex;gap:8px;}
+.btn{padding:9px 22px;border-radius:8px;border:none;cursor:pointer;
+  font-family:'Syne',sans-serif;font-size:15px;font-weight:700;
+  transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--acc);color:#000;}
+.btn-primary:hover{background:#00ffb0;transform:translateY(-1px);}
+.btn-secondary{background:transparent;color:var(--tx2);border:1px solid var(--b2);}
+.btn-secondary:hover{border-color:var(--acc);color:var(--acc);}
+.btn-ghost{background:transparent;color:var(--acc2);border:1px solid rgba(14,165,233,.3);}
+.btn-ghost:hover{background:rgba(14,165,233,.07);}
+.btn:disabled{opacity:.4;pointer-events:none;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <a class="h-back" href="apex-home.html">← Inicio</a>
+  <div class="h-logo">APEX <span class="h-plan">PRO</span></div>
+  <div class="h-sp"></div>
+  <div class="h-ic" id="theme-btn" onclick="toggleTheme()" title="Cambiar tema">☀️</div>
+  <div class="h-div"></div>
+  <div class="h-doc">
+    <div class="h-di">
+      <div class="h-name">Dr. Alejandro Juárez</div>
+      <div class="h-role">Medicina Funcional · Pro</div>
+    </div>
+    <div class="h-av">AJ</div>
+  </div>
+</header>
+
+<!-- PAGE -->
+<div class="page">
+<div class="inner">
+
+  <!-- PROGRESS -->
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="prog-top">
+      <div class="prog-step-label" id="prog-label">BLOQUE 1 DE 7</div>
+      <div class="prog-count" id="prog-count">1 / 7</div>
+    </div>
+    <div class="prog-title" id="prog-title">Identificación y <em>Contacto</em></div>
+    <div class="prog-sub" id="prog-sub">Datos personales, quién es y cómo llegar con él</div>
+    <div class="prog-dots" id="prog-dots"></div>
+  </div>
+
+  <!-- STEPS CONTAINER -->
+  <div id="steps-container"></div>
+
+  <!-- DONE SCREEN -->
+  <div id="s-done">
+    <div class="done-card">
+      <div class="done-icon">✅</div>
+      <div class="done-title">Paciente registrado</div>
+      <div class="done-id" id="done-id">—</div>
+      <div class="done-meta" id="done-meta">—</div>
+      <div class="done-actions">
+        <a class="btn btn-secondary" href="apex-home.html">← Volver al inicio</a>
+        <button class="btn btn-primary" onclick="irPrimeraVisita()">Iniciar primera visita →</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div class="bbar" id="bbar">
+  <div class="bbar-info" id="bbar-info">Completa los campos obligatorios para continuar</div>
+  <div class="bbar-btns">
+    <button class="btn btn-secondary" id="btn-prev" onclick="prevStep()">← Anterior</button>
+    <button class="btn btn-primary" id="btn-next" onclick="nextStep()">Siguiente →</button>
+  </div>
+</div>
+
+<script>
+// ─── Theme ───
+let darkMode = localStorage.getItem('apex-theme') !== 'light';
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  document.getElementById('theme-btn').textContent = darkMode ? '☀️' : '🌙';
+}
+function toggleTheme(){
+  darkMode = !darkMode;
+  localStorage.setItem('apex-theme', darkMode ? 'dark' : 'light');
+  applyTheme();
+}
+applyTheme();
+
+// ─── State ───
+let currentStep = 0;
+let formData = {};
+let medCount = 0;
+
+const steps = [
+  {
+    label: 'BLOQUE 1 DE 7',
+    title: 'Identificación y <em>Contacto</em>',
+    sub: 'Datos personales, quién es y cómo llegar con él',
+    render: renderStep1
+  },
+  {
+    label: 'BLOQUE 2 DE 7',
+    title: '¿Cómo <em>llegó</em>?',
+    sub: 'Fuente de referencia y contacto con el marketing de tu clínica',
+    render: renderStep2
+  },
+  {
+    label: 'BLOQUE 3 DE 7',
+    title: 'Antecedentes <em>Heredofamiliares</em>',
+    sub: 'Enfermedades en familiares de primer y segundo grado',
+    render: renderStep3
+  },
+  {
+    label: 'BLOQUE 4 DE 7',
+    title: 'Antecedentes Personales <em>Patológicos</em>',
+    sub: 'Enfermedades, cirugías, hospitalizaciones, alergias',
+    render: renderStep4
+  },
+  {
+    label: 'BLOQUE 5 DE 7',
+    title: 'Antecedentes Personales <em>No Patológicos</em>',
+    sub: 'Tabaco, alcohol, otras sustancias y nivel de estrés',
+    render: renderStep5
+  },
+  {
+    label: 'BLOQUE 6 DE 7',
+    title: 'Historia <em>Reproductiva</em>',
+    sub: 'Información específica según sexo biológico',
+    render: renderStep6
+  },
+  {
+    label: 'BLOQUE 7 DE 7',
+    title: 'Medicamentos <em>Actuales</em>',
+    sub: 'Los que realmente toma — no los que debería estar tomando',
+    render: renderStep7
+  }
+];
+
+// ─── Navigation ───
+function renderProgress(){
+  document.getElementById('prog-label').textContent = steps[currentStep].label;
+  document.getElementById('prog-title').innerHTML = steps[currentStep].title;
+  document.getElementById('prog-sub').textContent = steps[currentStep].sub;
+  document.getElementById('prog-count').textContent = `${currentStep + 1} / ${steps.length}`;
+  const dots = document.getElementById('prog-dots');
+  dots.innerHTML = steps.map((_,i) => `<div class="prog-dot ${i < currentStep ? 'done' : i === currentStep ? 'active' : ''}"></div>`).join('');
+  document.getElementById('btn-prev').disabled = currentStep === 0;
+  document.getElementById('btn-next').textContent = currentStep === steps.length - 1 ? 'Registrar Paciente →' : 'Siguiente →';
+}
+
+function renderStep(){
+  saveCurrentData();
+  const container = document.getElementById('steps-container');
+  container.innerHTML = '';
+  container.style.animation = 'none';
+  container.offsetHeight;
+  container.style.animation = 'fadeUp .3s ease';
+  steps[currentStep].render(container);
+  renderProgress();
+  restoreData();
+  updateBbarInfo();
+  document.querySelector('.page').scrollTop = 0;
+}
+
+function nextStep(){
+  saveCurrentData();
+  if(currentStep < steps.length - 1){
+    currentStep++;
+    renderStep();
+  } else {
+    finishRegistration();
+  }
+}
+
+function prevStep(){
+  saveCurrentData();
+  if(currentStep > 0){
+    currentStep--;
+    renderStep();
+  }
+}
+
+function updateBbarInfo(){
+  const infos = [
+    'Nombre completo y correo son obligatorios',
+    'Puedes continuar sin completar esta sección',
+    'Marca las enfermedades de cada familiar',
+    'Puedes continuar sin completar esta sección',
+    'Completa al menos tabaco y alcohol',
+    'Completa la información que corresponda',
+    'Agrega los medicamentos que está tomando actualmente'
+  ];
+  document.getElementById('bbar-info').innerHTML = infos[currentStep];
+}
+
+// ─── Save / Restore ───
+function saveCurrentData(){
+  const inputs = document.querySelectorAll('#steps-container input, #steps-container select, #steps-container textarea');
+  inputs.forEach(el => {
+    if(el.type === 'checkbox') formData[el.id] = el.checked;
+    else if(el.type === 'radio') { if(el.checked) formData[el.name] = el.value; }
+    else formData[el.id] = el.value;
+  });
+}
+
+function restoreData(){
+  const inputs = document.querySelectorAll('#steps-container input, #steps-container select, #steps-container textarea');
+  inputs.forEach(el => {
+    if(formData[el.id] !== undefined){
+      if(el.type === 'checkbox'){
+        el.checked = formData[el.id];
+        el.closest('.ci')?.classList.toggle('sel', !!formData[el.id]);
+      } else if(el.type === 'radio'){
+        el.checked = (formData[el.name] === el.value);
+      } else {
+        el.value = formData[el.id];
+      }
+    }
+  });
+  // Restore toggles — clear first, then set
+  document.querySelectorAll('.tgl[data-key]').forEach(t => {
+    t.classList.remove('on');
+    if(formData[t.dataset.key] === t.dataset.val) t.classList.add('on');
+  });
+  // Trigger conditionals
+  if(formData['tabaco_status']) showTabacoFields(formData['tabaco_status']);
+  if(formData['alcohol_status']) showAlcoholFields(formData['alcohol_status']);
+  updateRecField();
+  calcAge();
+}
+
+// ─── STEP RENDERERS ───
+
+function renderStep1(c){
+  c.innerHTML = `
+  <div class="card">
+    <div class="card-head"><div class="card-icon">👤</div><div class="card-title">Datos personales</div></div>
+    <div class="card-body">
+      <div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:20px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0">
+          <div id="foto-preview" style="width:96px;height:96px;border-radius:50%;
+            background:linear-gradient(135deg,var(--bg3),var(--bg4));
+            border:2px dashed var(--b2);display:flex;align-items:center;
+            justify-content:center;font-size:32px;overflow:hidden;cursor:pointer;
+            transition:border-color .2s;position:relative;"
+            onclick="document.getElementById('foto-input').click()"
+            onmouseover="this.style.borderColor='var(--acc)'"
+            onmouseout="this.style.borderColor='var(--b2)'">
+            <span id="foto-icon">📷</span>
+            <img id="foto-img" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0"/>
+          </div>
+          <input type="file" id="foto-input" accept="image/*" style="display:none" onchange="previewFoto(this)">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);text-align:center">
+            FOTO<br>PACIENTE
+          </span>
+        </div>
+        <div style="flex:1">
+          <div class="grid g2" style="margin-bottom:12px">
+            <div class="fg"><label class="fl">NOMBRE(S) <span>*</span></label><input id="nombre" placeholder="Alejandro"/></div>
+            <div class="fg"><label class="fl">APELLIDOS <span>*</span></label><input id="apellidos" placeholder="Martínez López"/></div>
+          </div>
+      <div class="grid g4" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">FECHA DE NACIMIENTO <span>*</span></label><input id="fecha_nac" type="date" onchange="calcAge()"/></div>
+        <div class="fg"><label class="fl">EDAD</label><div class="age-display" id="age-display">—</div></div>
+        <div class="fg"><label class="fl">SEXO BIOLÓGICO <span>*</span></label>
+          <select id="sexo" onchange="updateSexoDependencies()">
+            <option value="">Seleccionar</option>
+            <option value="M">Masculino</option>
+            <option value="F">Femenino</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">GÉNERO <span style="color:var(--tx3);font-size:15px">(opcional)</span></label>
+          <input id="genero" placeholder="Libre"/></div>
+      </div>
+      <div class="grid g2" style="margin-bottom:0">
+        <div class="fg"><label class="fl">OCUPACIÓN</label><input id="ocupacion" placeholder="Médico, Ingeniero..."/></div>
+        <div class="fg"><label class="fl">ESCOLARIDAD</label>
+          <select id="escolaridad">
+            <option value="">Seleccionar</option>
+            <option>Primaria</option><option>Secundaria</option><option>Preparatoria</option>
+            <option>Licenciatura</option><option>Posgrado</option><option>Doctorado</option>
+          </select>
+        </div>
+      </div>
+        </div><!-- /flex datos -->
+      </div><!-- /flex foto+datos -->
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">📱</div><div class="card-title">Contacto</div></div>
+    <div class="card-body">
+      <div class="grid g3" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">CORREO ELECTRÓNICO <span>*</span></label><input id="email" type="email" placeholder="correo@ejemplo.com"/></div>
+        <div class="fg"><label class="fl">CELULAR</label><input id="celular" placeholder="+52 55 1234 5678"/></div>
+        <div class="fg"><label class="fl">CIUDAD / ESTADO</label><input id="ciudad" placeholder="Ciudad de México"/></div>
+      </div>
+      <div class="fdiv-lbl"><span>CONTACTO DE EMERGENCIA</span></div>
+      <div class="grid g3">
+        <div class="fg"><label class="fl">NOMBRE</label><input id="emerg_nombre" placeholder="Nombre completo"/></div>
+        <div class="fg"><label class="fl">RELACIÓN</label><input id="emerg_rel" placeholder="Esposa, hijo, madre..."/></div>
+        <div class="fg"><label class="fl">CELULAR</label><input id="emerg_cel" placeholder="+52 55 9876 5432"/></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function previewFoto(input){
+  const img = document.getElementById('foto-img');
+  const icon = document.getElementById('foto-icon');
+  if(!img || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    img.src = e.target.result;
+    img.style.display = 'block';
+    if(icon) icon.style.display = 'none';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function calcAge(){
+  const dob = document.getElementById('fecha_nac');
+  const disp = document.getElementById('age-display');
+  if(!dob || !dob.value){ if(disp) disp.textContent = '—'; return; }
+  const age = Math.floor((new Date() - new Date(dob.value)) / (365.25 * 24 * 3600 * 1000));
+  if(disp) disp.textContent = age > 0 && age < 120 ? age + ' años' : '—';
+}
+
+function updateSexoDependencies(){
+  formData['sexo'] = document.getElementById('sexo')?.value;
+}
+
+function renderStep2(c){
+  c.innerHTML = `
+  <div class="card">
+    <div class="card-head"><div class="card-icon">📍</div><div class="card-title">¿Cómo nos conoció?</div></div>
+    <div class="card-body">
+      <label class="fl" style="margin-bottom:10px;display:block">FUENTE DE LLEGADA — selecciona todas las que apliquen</label>
+      <div class="cg cg2" style="margin-bottom:20px">
+        ${[
+          {id:0, label:'👥 Recomendación de paciente'},
+          {id:1, label:'🩺 Recomendación de médico'},
+          {id:2, label:'📱 Redes sociales'},
+          {id:3, label:'🔍 Búsqueda en internet'},
+          {id:4, label:'🌐 Página web'},
+          {id:5, label:'📍 Google Maps'},
+          {id:6, label:'📢 Publicidad pagada'},
+          {id:7, label:'Otro'}
+        ].map(o =>
+          `<label class="ci">
+             <input type="checkbox" id="llegada_${o.id}" name="llegada_fuente" value="${o.label.replace(/^[^\s]+\s/,'')}"
+               onchange="this.closest('.ci').classList.toggle('sel',this.checked); updateRecField()">
+             <span class="ci-txt">${o.label}</span>
+           </label>`).join('')}
+      </div>
+
+      <div id="rec-block" style="display:none">
+        <div style="background:rgba(0,229,160,.07);border:1px solid rgba(0,229,160,.2);
+          border-radius:10px;padding:18px;margin-bottom:20px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;
+            color:var(--acc);margin-bottom:14px">DATOS DE QUIEN RECOMENDÓ</div>
+          <div class="grid g2" style="margin-bottom:12px">
+            <div class="fg">
+              <label class="fl">NOMBRE COMPLETO DE QUIEN RECOMENDÓ <span>*</span></label>
+              <input id="rec_nombre" placeholder="Nombre de la persona o médico que lo recomendó"/>
+            </div>
+            <div class="fg">
+              <label class="fl">¿ES PACIENTE O MÉDICO?</label>
+              <div class="tgl-group" style="margin-top:4px">
+                <div class="tgl" data-key="rec_tipo" data-val="paciente" onclick="selectTglGroup(this,'rec_tipo','rec-tipo-tgls')" id="rec-tipo-tgls-p">Paciente tuyo</div>
+                <div class="tgl" data-key="rec_tipo" data-val="medico" onclick="selectTglGroup(this,'rec_tipo','rec-tipo-tgls')">Médico / colega</div>
+                <div class="tgl" data-key="rec_tipo" data-val="familiar" onclick="selectTglGroup(this,'rec_tipo','rec-tipo-tgls')">Familiar o amigo</div>
+              </div>
+            </div>
+          </div>
+          <div class="fg">
+            <label class="fl">ESPECIALIDAD O RELACIÓN (opcional)</label>
+            <input id="rec_rel" placeholder="Cardiólogo, amigo de trabajo, primo..."/>
+          </div>
+        </div>
+      </div>
+
+      <div class="fdiv-lbl"><span>INVESTIGACIÓN PREVIA A LA VISITA</span></div>
+      <div class="info-box" style="margin-bottom:14px">Aunque llegue por recomendación, muchos pacientes investigan antes de venir. Cada punto de contacto cuenta para medir el impacto real de tu marketing digital.</div>
+      <label class="fl" style="margin-bottom:10px;display:block">ANTES DE AGENDAR, ¿REVISÓ ALGUNO DE ESTOS?</label>
+      <div class="tgl-group">
+        <div class="tgl" data-key="prev_redes" data-val="1" onclick="toggleTgl(this,'prev_redes','1')">📱 Redes sociales</div>
+        <div class="tgl" data-key="prev_web" data-val="1" onclick="toggleTgl(this,'prev_web','1')">🌐 Página web</div>
+        <div class="tgl" data-key="prev_gmaps" data-val="1" onclick="toggleTgl(this,'prev_gmaps','1')">📍 Google Maps</div>
+        <div class="tgl" data-key="prev_reseñas" data-val="1" onclick="toggleTgl(this,'prev_reseñas','1')">⭐ Reseñas en línea</div>
+        <div class="tgl" data-key="prev_nada" data-val="1" onclick="toggleTgl(this,'prev_nada','1')">Ninguno / No sabe</div>
+      </div>
+    </div>
+  </div>`;
+
+}
+
+function updateRecField(){
+  const anyRec = [...document.querySelectorAll('input[name=llegada_fuente]')]
+    .some(c => c.checked && (c.value.includes('Recomendación') || c.value.includes('paciente') || c.value.includes('médico')));
+  const rb = document.getElementById('rec-block');
+  if(rb) rb.style.display = anyRec ? 'block' : 'none';
+}
+
+function toggleTgl(el, key, val){
+  el.classList.toggle('on');
+  formData[key] = el.classList.contains('on') ? val : '';
+}
+
+function renderStep3(c){
+  const diseases = ['Diabetes','Hipertensión','Cáncer','Cardiopatía','Demencia/Alzheimer','Autoinmune','Depresión/Ansiedad','Obesidad'];
+  const relatives = ['Padre','Madre','Ab. Pat.','Ab. Mat.','Ab. Mat2','Hermano/a'];
+  c.innerHTML = `
+  <div class="info-box">Marca las enfermedades conocidas en cada familiar. Si el familiar falleció, indica la causa al final.</div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🧬</div><div class="card-title">Enfermedades por familiar</div></div>
+    <div class="card-body" style="overflow-x:auto;">
+      <table class="hf-table">
+        <thead>
+          <tr>
+            <th>Enfermedad</th>
+            ${relatives.map(r => `<th>${r}</th>`).join('')}
+            <th>¿No sabe?</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${diseases.map(d => `
+            <tr>
+              <td>${d}</td>
+              ${relatives.map((_,ri) => `<td><input class="hf-cb" type="checkbox" id="hf_${d.replace(/\W/g,'_')}_${ri}"></td>`).join('')}
+              <td><input class="hf-cb" type="checkbox" id="hf_${d.replace(/\W/g,'_')}_ns"></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">✝️</div><div class="card-title">Causas de muerte relevantes</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="grid g2">
+        <div class="fg"><label class="fl">PADRE (causa de muerte si aplica)</label><input id="muerte_padre" placeholder="Ej. Infarto, cáncer de pulmón..."/></div>
+        <div class="fg"><label class="fl">MADRE</label><input id="muerte_madre" placeholder=""/></div>
+        <div class="fg"><label class="fl">ABUELO PATERNO</label><input id="muerte_abpat" placeholder=""/></div>
+        <div class="fg"><label class="fl">ABUELA PATERNA</label><input id="muerte_abpat2" placeholder=""/></div>
+        <div class="fg"><label class="fl">ABUELO MATERNO</label><input id="muerte_abmat" placeholder=""/></div>
+        <div class="fg"><label class="fl">ABUELA MATERNA</label><input id="muerte_abmat2" placeholder=""/></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderStep4(c){
+  c.innerHTML = `
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🏥</div><div class="card-title">Enfermedades crónicas diagnosticadas</div></div>
+    <div class="card-body">
+      <div class="fg">
+        <label class="fl">ENFERMEDADES ACTUALES O PASADAS (con año de diagnóstico si lo recuerda)</label>
+        <textarea id="enf_cronicas" placeholder="Ej: Diabetes tipo 2 (2018), Hipertensión (2020), Hipotiroidismo (2015)..." style="min-height:80px"></textarea>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🔪</div><div class="card-title">Cirugías y hospitalizaciones</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="grid g2" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">CIRUGÍAS (nombre y año aproximado)</label>
+          <textarea id="cirugias" placeholder="Ej: Apendicectomía (2010), Cesárea (2015)..." style="min-height:70px"></textarea></div>
+        <div class="fg"><label class="fl">HOSPITALIZACIONES (motivo y año)</label>
+          <textarea id="hospitalizaciones" placeholder="Ej: Neumonía (2019), Accidente (2012)..." style="min-height:70px"></textarea></div>
+      </div>
+      <div class="fg"><label class="fl">FRACTURAS Y TRAUMATISMOS RELEVANTES</label>
+        <input id="fracturas" placeholder="Ej: Fractura de cadera izquierda (2021)..."/></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">⚠️</div><div class="card-title">Alergias conocidas</div></div>
+    <div class="card-body">
+      <div class="grid g3">
+        <div class="fg"><label class="fl">MEDICAMENTOS</label>
+          <input id="alergia_med" placeholder="Penicilina, AINEs, yodo..."/></div>
+        <div class="fg"><label class="fl">ALIMENTOS</label>
+          <input id="alergia_ali" placeholder="Mariscos, lácteos, nueces..."/></div>
+        <div class="fg"><label class="fl">AMBIENTALES / OTROS</label>
+          <input id="alergia_amb" placeholder="Polen, polvo, látex..."/></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🩸</div><div class="card-title">Otros antecedentes</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="grid g2">
+        <div class="fg"><label class="fl">TRANSFUSIONES (cuándo y por qué)</label>
+          <input id="transfusiones" placeholder="Ej: Post-operatorio 2018..."/></div>
+        <div class="fg"><label class="fl">ENFERMEDADES DE LA INFANCIA RELEVANTES</label>
+          <input id="inf_enf" placeholder="Fiebre reumática, meningitis..."/></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderStep5(c){
+  c.innerHTML = `
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🚬</div><div class="card-title">Tabaquismo</div></div>
+    <div class="card-body">
+      <label class="fl" style="margin-bottom:8px;display:block">ESTATUS</label>
+      <div class="tgl-group" style="margin-bottom:14px" id="tabaco-tgls">
+        <div class="tgl" data-key="tabaco_status" data-val="nunca" onclick="selectTabaco(this,'nunca')">Nunca fumó</div>
+        <div class="tgl" data-key="tabaco_status" data-val="ex" onclick="selectTabaco(this,'ex')">Ex-fumador</div>
+        <div class="tgl" data-key="tabaco_status" data-val="activo" onclick="selectTabaco(this,'activo')">Fumador activo</div>
+      </div>
+      <div id="tabaco-fields" class="cond-block">
+        <div class="grid g3">
+          <div class="fg" id="tab-desde-wrap"><label class="fl">DESDE CUÁNDO (año)</label><input id="tab_desde" type="number" min="1940" max="2025" placeholder="2005"/></div>
+          <div class="fg" id="tab-hasta-wrap"><label class="fl">DEJÓ DE FUMAR (año)</label><input id="tab_hasta" type="number" min="1940" max="2026" placeholder="2020"/></div>
+          <div class="fg"><label class="fl">CIGARROS POR DÍA</label><input id="tab_num" type="number" min="1" max="100" placeholder="10"/></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🍷</div><div class="card-title">Consumo de alcohol</div></div>
+    <div class="card-body">
+      <label class="fl" style="margin-bottom:8px;display:block">FRECUENCIA</label>
+      <div class="tgl-group" style="margin-bottom:14px" id="alcohol-tgls">
+        <div class="tgl" data-key="alcohol_status" data-val="nunca" onclick="selectAlcohol(this,'nunca')">Nunca</div>
+        <div class="tgl" data-key="alcohol_status" data-val="ocasional" onclick="selectAlcohol(this,'ocasional')">Ocasional</div>
+        <div class="tgl" data-key="alcohol_status" data-val="frecuente" onclick="selectAlcohol(this,'frecuente')">Frecuente</div>
+        <div class="tgl" data-key="alcohol_status" data-val="diario" onclick="selectAlcohol(this,'diario')">Diario</div>
+      </div>
+      <div id="alcohol-fields" class="cond-block">
+        <div class="grid g2">
+          <div class="fg"><label class="fl">TIPO DE BEBIDA</label><input id="alc_tipo" placeholder="Cerveza, vino, destilados..."/></div>
+          <div class="fg"><label class="fl">CANTIDAD APROXIMADA</label><input id="alc_cant" placeholder="2-3 cervezas por semana..."/></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🌿</div><div class="card-title">Otras sustancias</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="info-box">Este campo es confidencial y solo visible para el médico. La honestidad del paciente ayuda a evitar interacciones peligrosas.</div>
+      <div class="fg"><label class="fl">SUSTANCIAS RECREATIVAS O DE USO REGULAR</label>
+        <input id="otras_sust" placeholder="Marihuana, cannabis medicinal, suplementos no declarados..."/></div>
+    </div>
+  </div>
+
+  `;
+
+  // Restore toggles
+  if(formData['tabaco_status']) showTabacoFields(formData['tabaco_status']);
+  if(formData['alcohol_status']) showAlcoholFields(formData['alcohol_status']);
+}
+
+function selectTabaco(el, val){
+  document.querySelectorAll('#tabaco-tgls .tgl').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  formData['tabaco_status'] = val;
+  showTabacoFields(val);
+}
+function showTabacoFields(val){
+  const f = document.getElementById('tabaco-fields');
+  if(!f) return;
+  f.classList.toggle('show', val !== 'nunca');
+  const hasta = document.getElementById('tab-hasta-wrap');
+  if(hasta) hasta.style.display = val === 'ex' ? 'flex' : 'none';
+  // Restore active toggle
+  document.querySelectorAll('#tabaco-tgls .tgl').forEach(t => {
+    if(t.dataset.val === val) t.classList.add('on');
+  });
+}
+function selectAlcohol(el, val){
+  document.querySelectorAll('#alcohol-tgls .tgl').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  formData['alcohol_status'] = val;
+  showAlcoholFields(val);
+}
+function showAlcoholFields(val){
+  const f = document.getElementById('alcohol-fields');
+  if(!f) return;
+  f.classList.toggle('show', val !== 'nunca');
+  document.querySelectorAll('#alcohol-tgls .tgl').forEach(t => {
+    if(t.dataset.val === val) t.classList.add('on');
+  });
+}
+
+function renderStep6(c){
+  const sex = formData['sexo'] || '';
+  if(!sex){
+    c.innerHTML = `<div class="warn-box">⚠️ No se seleccionó sexo biológico en el Bloque 1. Regresa al paso anterior para completarlo.</div>`;
+    return;
+  }
+  if(sex === 'F'){
+    c.innerHTML = `
+    <div class="card">
+      <div class="card-head"><div class="card-icon">🌸</div><div class="card-title">Historia gineco-obstétrica</div></div>
+      <div class="card-body">
+        <div class="grid g4" style="margin-bottom:12px">
+          <div class="fg"><label class="fl">EDAD DE MENARCA</label><input id="menarca" type="number" min="8" max="20" placeholder="12"/></div>
+          <div class="fg"><label class="fl">CICLOS MENSTRUALES</label>
+            <select id="ciclos"><option value="">—</option>
+              <option>Regulares</option><option>Irregulares</option><option>Amenorrea</option>
+              <option>Menopausia</option><option>Histerectomía</option></select></div>
+          <div class="fg"><label class="fl">NÚMERO DE EMBARAZOS</label><input id="embarazos" type="number" min="0" max="20" placeholder="0"/></div>
+          <div class="fg"><label class="fl">PARTOS / CESÁREAS</label><input id="partos" placeholder="2P / 1C"/></div>
+        </div>
+        <div class="grid g3" style="margin-bottom:12px">
+          <div class="fg"><label class="fl">ABORTOS (espontáneos / inducidos)</label><input id="abortos" placeholder="0 / 0"/></div>
+          <div class="fg"><label class="fl">EDAD DE MENOPAUSIA (si aplica)</label><input id="menopausia" type="number" min="35" max="65" placeholder="—"/></div>
+          <div class="fg"><label class="fl">TIPO DE MENOPAUSIA</label>
+            <select id="meno_tipo"><option value="">—</option>
+              <option>Natural</option><option>Quirúrgica</option><option>Inducida</option></select></div>
+        </div>
+        <div class="fg"><label class="fl">MÉTODO ANTICONCEPTIVO ACTUAL</label>
+          <input id="anticonceptivo" placeholder="DIU, pastillas, implante, ninguno..."/></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-icon">🔬</div><div class="card-title">Estudios ginecológicos recientes</div><div class="card-opt">OPCIONAL</div></div>
+      <div class="card-body">
+        <div class="grid g3">
+          <div class="fg"><label class="fl">ÚLTIMO PAPANICOLAOU</label><input id="pap" placeholder="Año..."/></div>
+          <div class="fg"><label class="fl">ÚLTIMA MASTOGRAFÍA</label><input id="masto" placeholder="Año..."/></div>
+          <div class="fg"><label class="fl">ÚLTIMA COLPOSCOPÍA</label><input id="colpo" placeholder="Año..."/></div>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    c.innerHTML = `
+    <div class="card">
+      <div class="card-head"><div class="card-icon">💪</div><div class="card-title">Historia reproductiva masculina</div></div>
+      <div class="card-body">
+        <div class="fg" style="margin-bottom:14px">
+          <label class="fl" style="margin-bottom:8px;display:block">DISFUNCIÓN ERÉCTIL</label>
+          <div class="tgl-group">
+            <div class="tgl" data-key="de" data-val="no" onclick="selectTglGroup(this,'de','de-tgls')">No refiere</div>
+            <div class="tgl" data-key="de" data-val="ocasional" onclick="selectTglGroup(this,'de','de-tgls')">Ocasional</div>
+            <div class="tgl" data-key="de" data-val="frecuente" onclick="selectTglGroup(this,'de','de-tgls')">Frecuente</div>
+            <div class="tgl" data-key="de" data-val="severa" onclick="selectTglGroup(this,'de','de-tgls')">Severa</div>
+          </div>
+        </div>
+        <div class="fg" style="margin-bottom:14px">
+          <label class="fl" style="margin-bottom:8px;display:block">USO PREVIO DE TESTOSTERONA EXÓGENA</label>
+          <div class="tgl-group" id="test-tgls">
+            <div class="tgl" data-key="test_exo" data-val="no" onclick="selectTglGroup(this,'test_exo','test-tgls')">Nunca</div>
+            <div class="tgl" data-key="test_exo" data-val="pasado" onclick="selectTglGroup(this,'test_exo','test-tgls')">En el pasado</div>
+            <div class="tgl" data-key="test_exo" data-val="actual" onclick="selectTglGroup(this,'test_exo','test-tgls')">Actualmente</div>
+          </div>
+        </div>
+        <div class="grid g3">
+          <div class="fg"><label class="fl">HIJOS</label><input id="hijos" type="number" min="0" max="20" placeholder="0"/></div>
+          <div class="fg"><label class="fl">ÚLTIMO PSA (si lo tiene)</label><input id="psa_ult" placeholder="Año del estudio..."/></div>
+          <div class="fg"><label class="fl">RESULTADO PSA</label><input id="psa_val" placeholder="ng/mL..."/></div>
+        </div>
+      </div>
+    </div>`;
+  }
+}
+
+function selectTglGroup(el, key, groupId){
+  const wasOn = el.classList.contains('on');
+  document.querySelectorAll(`#${groupId} .tgl`).forEach(t => t.classList.remove('on'));
+  if(!wasOn){
+    el.classList.add('on');
+    formData[key] = el.dataset.val;
+  } else {
+    formData[key] = '';
+  }
+}
+
+function renderStep7(c){
+  c.innerHTML = `
+  <div class="warn-box">⚠️ Registrar los medicamentos que el paciente <strong>realmente está tomando</strong>, no los que debería. Incluir frecuencia real de uso.</div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">💊</div><div class="card-title">Medicamentos actuales</div></div>
+    <div class="card-body">
+      <div class="med-list" id="med-list"></div>
+      <button class="add-med-btn" onclick="addMed()">+ Agregar medicamento</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">📝</div><div class="card-title">Notas adicionales sobre medicamentos</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="fg"><label class="fl">OBSERVACIONES (automedicación, remedios caseros, herbolaria regular, etc.)</label>
+        <textarea id="med_notas" placeholder="El paciente toma aspirina 100mg ocasionalmente, toma un té de manzanilla cada noche..."></textarea></div>
+    </div>
+  </div>`;
+
+  // Restore saved meds
+  if(formData['meds'] && formData['meds'].length){
+    formData['meds'].forEach(m => addMed(m));
+  } else {
+    addMed(); // start with one empty row
+  }
+}
+
+function addMed(data){
+  medCount++;
+  const n = medCount;
+  const list = document.getElementById('med-list');
+  if(!list) return;
+  const div = document.createElement('div');
+  div.className = 'med-item';
+  div.id = `med-item-${n}`;
+  div.innerHTML = `
+    <div class="fg"><div class="med-n">MEDICAMENTO</div>
+      <input id="med_nombre_${n}" placeholder="Metformina, Ramipril..." value="${data?.nombre||''}"/></div>
+    <div class="fg"><div class="med-n">DOSIS</div>
+      <input id="med_dosis_${n}" placeholder="500mg, 10mg..." value="${data?.dosis||''}"/></div>
+    <div class="fg"><div class="med-n">FRECUENCIA REAL</div>
+      <select id="med_frec_${n}">
+        <option value="">—</option>
+        <option ${data?.frec==='Cada día'?'selected':''}>Cada día</option>
+        <option ${data?.frec==='Cada 12h'?'selected':''}>Cada 12h</option>
+        <option ${data?.frec==='Cada 8h'?'selected':''}>Cada 8h</option>
+        <option ${data?.frec==='Cada semana'?'selected':''}>Cada semana</option>
+        <option ${data?.frec==='Irregular'?'selected':''}>Irregular</option>
+        <option ${data?.frec==='Ya no lo toma'?'selected':''}>Ya no lo toma</option>
+      </select></div>
+    <div class="fg"><div class="med-n">DESDE</div>
+      <input id="med_desde_${n}" placeholder="2020, 6 meses..." value="${data?.desde||''}"/></div>
+    <button class="med-rm" onclick="removeMed(${n})" title="Eliminar">✕</button>`;
+  list.appendChild(div);
+}
+
+function removeMed(n){
+  const el = document.getElementById(`med-item-${n}`);
+  if(el) el.remove();
+}
+
+// ─── Finish ───
+function finishRegistration(){
+  saveCurrentData();
+  // Generate patient ID
+  const nombre = formData['nombre'] || 'PAC';
+  const apellidos = formData['apellidos'] || '';
+  const initials = (nombre[0]||'') + (nombre[1]||'') + (apellidos[0]||'') + ((apellidos.split(' ')[1]||'')[0]||'');
+  const num = String(Math.floor(Math.random()*900)+100).padStart(6,'0');
+  const pid = `${initials.toUpperCase()}-px${num}`;
+  formData['patient_id'] = pid;
+
+  document.getElementById('steps-container').style.display = 'none';
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('s-done').classList.add('show');
+  document.getElementById('done-id').textContent = pid;
+  const age = document.getElementById('age-display')?.textContent || '—';
+  document.getElementById('done-meta').innerHTML =
+    `<strong>${(formData['nombre']||'')} ${(formData['apellidos']||'')}</strong><br>
+     ${age} · ${formData['sexo']==='M'?'Masculino':'Femenino'}<br>
+     ${formData['email']||'Sin correo registrado'}`;
+  document.getElementById('bbar').style.display = 'none';
+}
+
+function irPrimeraVisita(){
+  window.location = 'apex-visita.html';
+}
+
+// ─── Init ───
+function init(){
+  renderStep();
+}
+init();
+</script>
+</body>
+</html>

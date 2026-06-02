@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX — Análisis Clínico</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070a0e;--bg2:#0c1118;--bg3:#111820;--bg4:#161f28;--b1:#1e2d3d;--b2:#2a3f54;--b3:#3a5570;--acc:#00e5a0;--acc2:#0ea5e9;--acc3:#f97316;--acc4:#a78bfa;--tx:#dde6ef;--tx2:#7a95aa;--tx3:#3d5870;--card:#0d1520;--card2:#101c28;--hdr-bg:rgba(7,10,14,.97);--grid-color:rgba(0,229,160,.016);--ok:#00e5a0;--warn:#f59e0b;--err:#f43f5e;}
+html[data-theme="light"]{--bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#d2dbe8;--b1:#c2cfe0;--b2:#9bb0c8;--b3:#6b8caa;--acc:#00b87a;--acc2:#0278c0;--acc3:#e06400;--acc4:#7c5cbf;--tx:#0c1f2e;--tx2:#3d5870;--tx3:#8aa5bd;--card:#ffffff;--card2:#f5f8fc;--hdr-bg:rgba(255,255,255,.97);--grid-color:rgba(0,150,100,.025);}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;transition:background .3s,color .25s;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(var(--grid-color) 1px,transparent 1px),linear-gradient(90deg,var(--grid-color) 1px,transparent 1px);background-size:48px 48px;}
+*{transition:background-color .3s,border-color .3s,color .25s;}
+
+#s-load{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s,filter .6s;}
+#s-load.out{opacity:0;filter:blur(12px);pointer-events:none;}
+.ld-wrap{max-width:480px;width:100%;padding:40px 24px;}
+.ld-logo{font-size:32px;font-weight:800;color:var(--acc);margin-bottom:4px;text-shadow:0 0 40px rgba(0,229,160,.3);}
+.ld-sub{font-family:'JetBrains Mono';font-size:11px;letter-spacing:4px;color:var(--tx3);margin-bottom:32px;}
+.ld-steps{display:flex;flex-direction:column;gap:7px;margin-bottom:22px;}
+.ld-step{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:7px;background:var(--bg3);border:1px solid var(--b1);font-family:'JetBrains Mono';font-size:12px;color:var(--tx3);opacity:0;transform:translateX(-10px);transition:all .35s cubic-bezier(.16,1,.3,1);}
+.ld-step.active{opacity:1;transform:translateX(0);border-color:rgba(0,229,160,.22);color:var(--acc);background:rgba(0,229,160,.05);}
+.ld-step.done{opacity:1;transform:translateX(0);border-color:rgba(14,165,233,.14);color:var(--tx2);}
+.ld-ic{width:20px;height:20px;border-radius:50%;background:var(--b1);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;}
+.ld-step.active .ld-ic{background:var(--acc);color:#000;animation:ip .8s ease-in-out infinite;}
+.ld-step.done .ld-ic{background:var(--acc2);color:#fff;}
+@keyframes ip{0%,100%{box-shadow:0 0 0 0 rgba(0,229,160,.4);}60%{box-shadow:0 0 0 6px rgba(0,229,160,0);}}
+.ld-bar{width:100%;height:2px;background:var(--b1);border-radius:2px;overflow:hidden;}
+.ld-bar-fill{height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));width:0;transition:width .4s;}
+.ld-scan{position:fixed;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,160,.35),transparent);animation:scan 2.2s linear infinite;top:0;z-index:1000;}
+@keyframes scan{0%{top:0;}100%{top:100vh;}}
+
+header{position:fixed;top:0;left:0;right:0;height:58px;z-index:200;background:var(--hdr-bg);border-bottom:1px solid var(--b1);backdrop-filter:blur(24px);display:flex;align-items:center;padding:0 24px;gap:10px;}
+.h-back{display:flex;align-items:center;gap:7px;padding:6px 12px;background:var(--bg3);border:1px solid var(--b1);border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;color:var(--tx2);text-decoration:none;transition:all .15s;}
+.h-back:hover{border-color:var(--b2);color:var(--tx);}
+.h-logo{font-size:17px;font-weight:800;color:var(--acc);letter-spacing:1px;display:flex;align-items:center;gap:7px;}
+.h-plan{font-family:'JetBrains Mono';font-size:9px;letter-spacing:3px;color:var(--acc2);background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);padding:2px 7px;border-radius:3px;}
+.h-sp{flex:1;}
+.h-ic{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--b1);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
+.h-div{width:1px;height:22px;background:var(--b1);}
+.h-doc{display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 8px;border-radius:8px;}
+.h-av{width:34px;height:34px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;border:2px solid rgba(0,229,160,.3);}
+.h-name{font-size:13px;font-weight:600;text-align:right;}
+.h-role{font-family:'JetBrains Mono';font-size:10px;color:var(--tx3);text-align:right;}
+
+#s-main{display:none;position:fixed;inset:0;top:58px;overflow-y:auto;overflow-x:hidden;opacity:0;transition:opacity .7s;}
+#s-main.show{display:block;opacity:1;}
+#s-main::-webkit-scrollbar{width:3px;}
+#s-main::-webkit-scrollbar-thumb{background:var(--b2);}
+.page-inner{max-width:860px;margin:0 auto;padding:24px 24px 80px;}
+
+.pat-strip{background:var(--card2);border:1px solid var(--b1);border-radius:12px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:center;gap:14px;}
+.ps-av{width:44px;height:44px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,#00e5a0,#0ea5e9);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#000;border:2px solid rgba(0,229,160,.3);}
+.ps-name{font-family:'Lora';font-size:17px;font-weight:500;}
+.ps-meta{font-family:'JetBrains Mono';font-size:11px;color:var(--tx2);}
+.ps-sp{flex:1;}
+.ps-badge{font-family:'JetBrains Mono';font-size:11px;letter-spacing:2px;padding:4px 12px;border-radius:4px;}
+
+.stepper{display:flex;align-items:flex-start;margin-bottom:28px;overflow-x:auto;padding-bottom:4px;}
+.stepper::-webkit-scrollbar{height:2px;}
+.stepper::-webkit-scrollbar-thumb{background:var(--b2);}
+.step-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;cursor:pointer;transition:all .2s;}
+.step-dot{width:30px;height:30px;border-radius:50%;border:2px solid var(--b2);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:var(--tx3);background:var(--bg3);transition:all .3s;flex-shrink:0;}
+.step-dot.done{background:var(--acc2);border-color:var(--acc2);color:#fff;}
+.step-dot.active{background:var(--acc);border-color:var(--acc);color:#000;box-shadow:0 0 0 4px rgba(0,229,160,.2);}
+.step-dot.clickable{cursor:pointer;}
+.step-dot.clickable:hover{border-color:var(--acc);}
+.step-lbl{font-family:'JetBrains Mono';font-size:9px;color:var(--tx3);text-align:center;margin-top:4px;white-space:nowrap;}
+.step-lbl.active{color:var(--acc);}
+.step-lbl.done{color:var(--acc2);}
+.step-conn{width:20px;height:2px;background:var(--b1);flex-shrink:0;margin-top:14px;}
+.step-conn.done{background:var(--acc2);}
+
+.done-card{background:var(--card2);border:1px solid var(--b1);border-radius:10px;padding:13px 18px;margin-bottom:10px;cursor:pointer;transition:border .15s;display:flex;align-items:flex-start;gap:12px;}
+.done-card:hover{border-color:var(--b2);}
+.done-card.clickable:hover{border-color:var(--acc2);background:rgba(14,165,233,.03);}
+.dc-check{width:28px;height:28px;border-radius:50%;background:rgba(0,229,160,.12);border:2px solid var(--acc);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--acc);flex-shrink:0;margin-top:2px;}
+.dc-info{flex:1;}
+.dc-title{font-size:14px;font-weight:700;margin-bottom:2px;}
+.dc-sum{font-family:'Lora';font-size:13px;color:var(--tx2);line-height:1.4;}
+.dc-mod{font-family:'JetBrains Mono';font-size:10px;color:var(--acc3);margin-top:3px;}
+.dc-detail{display:none;padding-top:12px;border-top:1px solid var(--b1);margin-top:10px;font-family:'Lora';font-size:13px;color:var(--tx2);line-height:1.6;}
+.dc-detail.show{display:block;}
+
+.act-step{background:var(--card);border:1px solid var(--b1);border-radius:14px;overflow:hidden;margin-bottom:12px;animation:fadeUp .35s;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.as-head{background:var(--card2);padding:16px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;}
+.as-badge{font-family:'JetBrains Mono';font-size:10px;letter-spacing:1px;padding:4px 10px;border-radius:4px;flex-shrink:0;}
+.b-trad{background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);color:var(--acc2);}
+.b-func{background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);color:var(--acc);}
+.b-long{background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);color:var(--acc4);}
+.b-prot{background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2);color:var(--acc3);}
+.b-exp{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.2);color:var(--err);}
+.b-fin{background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);color:var(--acc);}
+.as-title{font-family:'Lora';font-size:20px;font-weight:500;flex:1;}
+.as-title em{color:var(--acc);font-style:normal;}
+.as-body{padding:22px;}
+
+.ai-text{font-family:'Lora';font-size:15px;line-height:1.95;color:var(--tx);}
+.ai-text p{margin-bottom:14px;}
+.ai-text strong{color:var(--acc);}
+.ai-cite{font-family:'JetBrains Mono';font-size:10px;color:var(--tx3);background:var(--bg3);border:1px solid var(--b1);padding:1px 6px;border-radius:3px;}
+
+.conf-bar{margin-bottom:14px;}
+.cb-top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+.cb-top span:last-child{font-family:'JetBrains Mono';font-weight:700;color:var(--acc);}
+.cb-track{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;}
+.cb-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--acc2),var(--acc));transition:width 1.2s;}
+
+.prefac{background:rgba(0,229,160,.05);border:1px solid rgba(0,229,160,.15);border-radius:10px;padding:16px;margin-bottom:18px;}
+.pf-hdr{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.pf-icon{font-size:18px;}
+.pf-title{font-family:'Lora';font-size:15px;font-weight:700;color:var(--acc);}
+.pf-content{font-family:'Lora';font-size:14px;color:var(--tx);line-height:1.6;margin-bottom:10px;}
+.studies-list{display:flex;flex-direction:column;gap:8px;}
+.study{background:var(--bg3);border:1px solid var(--b1);border-radius:7px;padding:11px 14px;display:flex;align-items:flex-start;gap:10px;}
+.sdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px;}
+.sdot.r{background:var(--err);box-shadow:0 0 5px var(--err);}
+.sdot.y{background:var(--warn);}
+.sdot.b{background:var(--acc2);}
+.sname{font-size:14px;font-weight:700;margin-bottom:2px;}
+.swhy{font-family:'Lora';font-size:13px;color:var(--tx2);line-height:1.5;}
+
+.cascade{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin:16px 0;background:var(--bg3);border:1px solid var(--b1);border-radius:10px;padding:16px;}
+.cs-node{background:var(--card);border:1px solid var(--b1);border-radius:7px;padding:7px 12px;font-size:13px;font-weight:600;white-space:nowrap;}
+.cs-node.root{border-color:rgba(249,115,22,.4);color:var(--acc3);}
+.cs-node.key{border-color:rgba(0,229,160,.3);color:var(--acc);}
+.cs-arr{padding:0 7px;color:var(--tx3);font-size:14px;flex-shrink:0;}
+
+.alert{border-radius:8px;padding:12px 14px;font-size:14px;line-height:1.6;display:flex;gap:9px;align-items:flex-start;margin-bottom:12px;}
+.al-i{background:rgba(14,165,233,.07);border:1px solid rgba(14,165,233,.2);color:var(--acc2);}
+.al-g{background:rgba(0,229,160,.07);border:1px solid rgba(0,229,160,.2);color:var(--acc);}
+.al-r{background:rgba(244,63,94,.07);border:1px solid rgba(244,63,94,.2);color:var(--err);}
+.al-o{background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.2);color:var(--acc3);}
+
+.proto{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:8px;}
+.pr-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;}
+.pr-name{font-size:15px;font-weight:700;}
+.pr-dose{font-family:'JetBrains Mono';font-size:12px;color:var(--acc);margin-bottom:5px;}
+.pr-text{font-family:'Lora';font-size:14px;color:var(--tx2);line-height:1.6;}
+.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-family:'JetBrains Mono';font-size:10px;text-transform:uppercase;flex-shrink:0;}
+.bg{background:rgba(0,229,160,.1);color:var(--acc);border:1px solid rgba(0,229,160,.2);}
+.bb{background:rgba(14,165,233,.1);color:var(--acc2);border:1px solid rgba(14,165,233,.2);}
+.by{background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2);}
+.bo{background:rgba(249,115,22,.1);color:var(--acc3);border:1px solid rgba(249,115,22,.2);}
+.bp{background:rgba(167,139,250,.1);color:var(--acc4);border:1px solid rgba(167,139,250,.2);}
+
+.exp-card{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:13px 14px;margin-bottom:8px;}
+.exp-why{font-family:'Lora';font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:8px;}
+
+.inline-chat{background:var(--bg3);border:1px solid var(--b1);border-radius:10px;margin-top:20px;overflow:hidden;}
+.ic-hdr{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--b1);background:var(--card2);}
+.ic-av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#000;}
+.ic-title{font-size:13px;font-weight:700;}
+.ic-sub{font-family:'JetBrains Mono';font-size:10px;color:var(--tx2);margin-left:auto;}
+.ic-msgs{min-height:100px;max-height:220px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;}
+.ic-msgs::-webkit-scrollbar{width:2px;}
+.ic-msgs::-webkit-scrollbar-thumb{background:var(--b2);}
+.cm{padding:10px 12px;border-radius:8px;font-family:'Lora';font-size:14px;line-height:1.65;max-width:92%;}
+.cm-a{background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--acc);align-self:flex-start;}
+.cm-a .mw{font-family:'JetBrains Mono';font-size:9px;color:var(--acc);margin-bottom:4px;letter-spacing:1px;}
+.cm-u{background:rgba(167,139,250,.07);border:1px solid rgba(167,139,250,.2);border-right:3px solid var(--acc4);align-self:flex-end;}
+.cm-u .mw{font-family:'JetBrains Mono';font-size:9px;color:var(--acc4);margin-bottom:4px;text-align:right;letter-spacing:1px;}
+.ic-row{display:flex;gap:7px;padding:10px;border-top:1px solid var(--b1);background:var(--card2);}
+.ic-inp{flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--b1);border-radius:7px;color:var(--tx);font-family:'Syne';font-size:13px;outline:none;transition:border .2s;resize:none;min-height:36px;max-height:70px;}
+.ic-inp:focus{border-color:var(--acc);}
+.ic-send{padding:8px 14px;background:var(--acc);color:#000;border:none;border-radius:7px;cursor:pointer;font-family:'Syne';font-size:13px;font-weight:700;transition:all .15s;}
+.ic-send:hover{background:#00ffb0;}
+
+.act-section{margin-top:20px;padding-top:18px;border-top:1px solid var(--b1);}
+.act-lbl{font-family:'JetBrains Mono';font-size:10px;letter-spacing:2px;color:var(--tx3);margin-bottom:12px;}
+.act-btns{display:flex;gap:9px;flex-wrap:wrap;}
+.btn{padding:10px 18px;border-radius:8px;cursor:pointer;font-family:'Syne';font-size:14px;font-weight:700;transition:all .2s;border:none;display:inline-flex;align-items:center;gap:7px;}
+.btn-acc{background:var(--acc);color:#000;}
+.btn-acc:hover{background:#00ffb0;transform:translateY(-1px);}
+.btn-add{background:transparent;border:1px solid var(--b2);color:var(--tx2);}
+.btn-add:hover{border-color:var(--acc);color:var(--acc);}
+.btn-ov{background:transparent;border:1px solid rgba(249,115,22,.3);color:var(--acc3);}
+.btn-ov:hover{background:rgba(249,115,22,.08);}
+.btn-back{background:transparent;border:1px solid rgba(167,139,250,.3);color:var(--acc4);font-size:12px;padding:8px 14px;}
+.btn-back:hover{background:rgba(167,139,250,.08);}
+
+.ie{display:none;margin-top:14px;animation:fadeUp .3s;}
+.ie.show{display:block;}
+.ie-lbl{font-family:'JetBrains Mono';font-size:11px;color:var(--acc);margin-bottom:6px;}
+.ie-txt{width:100%;padding:12px 14px;background:var(--bg3);border:1px solid var(--b1);border-radius:8px;color:var(--tx);font-family:'Lora';font-size:14px;line-height:1.7;outline:none;resize:vertical;min-height:80px;transition:border .2s;}
+.ie-txt:focus{border-color:var(--acc);}
+.ie-save{margin-top:8px;padding:8px 18px;background:var(--acc);color:#000;border:none;border-radius:7px;cursor:pointer;font-family:'Syne';font-size:13px;font-weight:700;}
+.ie-save:hover{background:#00ffb0;}
+.ie-save.ov{background:var(--acc3);}
+
+.ns-lbl{font-family:'JetBrains Mono';font-size:11px;letter-spacing:2px;color:var(--tx3);margin-bottom:10px;}
+.ns-txt{width:100%;padding:14px;background:var(--bg3);border:1px solid var(--b1);border-radius:10px;color:var(--tx);font-family:'Lora';font-size:15px;line-height:1.7;outline:none;resize:vertical;min-height:100px;transition:border .2s;}
+.ns-txt:focus{border-color:var(--acc);}
+.ns-txt::placeholder{color:var(--tx3);}
+
+.print-card{background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:20px;margin-bottom:16px;}
+.pc-title{font-size:15px;font-weight:700;margin-bottom:4px;}
+.pc-sub{font-size:13px;color:var(--tx2);margin-bottom:16px;}
+.print-list{display:flex;flex-direction:column;gap:10px;}
+.pi{display:flex;align-items:flex-start;gap:12px;padding:13px 16px;background:var(--bg3);border:1px solid var(--b1);border-radius:8px;cursor:pointer;transition:all .15s;}
+.pi:hover{border-color:var(--b2);}
+.pi.on{border-color:rgba(0,229,160,.3);background:rgba(0,229,160,.04);}
+.pi-chk{width:20px;height:20px;border-radius:5px;border:2px solid var(--b2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;transition:all .15s;margin-top:1px;}
+.pi.on .pi-chk{background:var(--acc);border-color:var(--acc);color:#000;}
+.pi-name{font-size:14px;font-weight:700;margin-bottom:3px;}
+.pi-desc{font-size:13px;color:var(--tx2);line-height:1.45;}
+.final-btns{display:flex;gap:10px;flex-wrap:wrap;}
+.btn-save{padding:12px 28px;background:var(--acc);color:#000;border:none;border-radius:9px;cursor:pointer;font-family:'Syne';font-size:15px;font-weight:700;transition:all .2s;display:flex;align-items:center;gap:8px;}
+.btn-save:hover{background:#00ffb0;transform:translateY(-1px);}
+.btn-print{padding:12px 24px;background:transparent;border:1px solid var(--b2);color:var(--tx2);border-radius:9px;cursor:pointer;font-family:'Syne';font-size:15px;font-weight:700;transition:all .2s;display:flex;align-items:center;gap:8px;}
+.btn-print:hover{border-color:var(--acc2);color:var(--acc2);}
+
+.nav-hint{font-family:'JetBrains Mono';font-size:10px;color:var(--tx3);margin-top:20px;padding-top:16px;border-top:1px solid var(--b1);text-align:center;}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;animation:fadeIn .2s;}
+.modal-overlay.show{display:flex;}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+.modal-content{background:var(--card);border:1px solid var(--b1);border-radius:12px;max-width:750px;width:90%;max-height:85vh;overflow-y:auto;position:relative;animation:slideUp .3s;}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s;z-index:10;}
+.modal-close:hover{border-color:var(--acc);color:var(--acc);}
+
+.doc-header{padding:24px;border-bottom:1px solid var(--b1);background:var(--card2);}
+.doc-title{font-size:18px;font-weight:700;margin-bottom:4px;}
+.doc-info{font-size:12px;color:var(--tx2);font-family:'JetBrains Mono';}
+.doc-body{padding:24px;}
+.doc-section{margin-bottom:20px;}
+.doc-section-title{font-size:14px;font-weight:700;color:var(--acc);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;font-family:'JetBrains Mono';}
+.doc-patient{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;}
+.doc-patient-row{display:flex;flex-direction:column;}
+.doc-patient-lbl{color:var(--tx2);font-size:11px;margin-bottom:2px;}
+.doc-patient-val{font-weight:700;color:var(--tx);}
+
+.rx-item{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:8px;}
+.rx-name{font-weight:700;margin-bottom:2px;}
+.rx-dose{font-family:'JetBrains Mono';font-size:12px;color:var(--acc);}
+.rx-freq{font-size:12px;color:var(--tx2);margin-top:2px;}
+
+.study-item{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:6px;font-size:13px;font-weight:600;}
+
+.report-text{font-family:'Lora';font-size:14px;line-height:1.7;color:var(--tx2);margin-bottom:12px;}
+
+.doc-sig{margin-top:24px;padding-top:16px;border-top:1px solid var(--b1);display:flex;justify-content:space-between;align-items:flex-end;font-size:12px;}
+.sig-box{text-align:center;}
+.sig-line{width:120px;height:1px;background:var(--b1);margin-bottom:4px;}
+</style>
+</head>
+<body>
+
+<div id="s-load">
+  <div class="ld-scan"></div>
+  <div class="ld-wrap">
+    <div class="ld-logo">APEX</div>
+    <div class="ld-sub">ANALIZANDO CASO CLÍNICO</div>
+    <div class="ld-steps" id="ld-steps"></div>
+    <div class="ld-bar"><div class="ld-bar-fill" id="ld-bar"></div></div>
+  </div>
+</div>
+
+<header>
+  <a class="h-back" href="apex-visita.html">← Visita</a>
+  <div class="h-logo">APEX <span class="h-plan">PRO</span></div>
+  <div class="h-sp"></div>
+  <div class="h-ic" id="theme-btn" onclick="toggleTheme()">☀️</div>
+  <div class="h-div"></div>
+  <div class="h-doc">
+    <div style="text-align:right">
+      <div class="h-name">Dr. Alejandro Juárez</div>
+      <div class="h-role">Medicina Funcional · Pro</div>
+    </div>
+    <div class="h-av">AJ</div>
+  </div>
+</header>
+
+<div id="s-main">
+<div class="page-inner">
+  <div class="pat-strip">
+    <div class="ps-av">ER</div>
+    <div>
+      <div class="ps-name">Esteban Reyna</div>
+      <div class="ps-meta">EJRI-px000145 · 38 años · Masculino · Visita #4</div>
+    </div>
+    <div class="ps-sp"></div>
+    <div class="ps-badge" id="step-badge">DIAGNÓSTICO 1/3</div>
+  </div>
+  <div class="stepper" id="stepper"></div>
+  <div id="flow"></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="modal" onclick="if(event.target.id==='modal')closeModal()">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-close" onclick="closeModal()">✕</div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+let darkMode = localStorage.getItem('apex-theme') !== 'light';
+function applyTheme(){document.documentElement.setAttribute('data-theme',darkMode?'dark':'light');document.getElementById('theme-btn').textContent=darkMode?'☀️':'🌙';}
+function toggleTheme(){darkMode=!darkMode;localStorage.setItem('apex-theme',darkMode?'dark':'light');applyTheme();}
+applyTheme();
+
+let actx=null;
+function aud(){if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();}
+function tone(f,t,d,v=.06,tp='sine'){aud();const o=actx.createOscillator(),g=actx.createGain();o.type=tp;o.frequency.setValueAtTime(f,actx.currentTime+t);g.gain.setValueAtTime(0,actx.currentTime+t);g.gain.linearRampToValueAtTime(v,actx.currentTime+t+.03);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+t+d);o.connect(g);g.connect(actx.destination);o.start(actx.currentTime+t);o.stop(actx.currentTime+t+d+.05);}
+function analyzeSound(){tone(48,0,18,.025);tone(72,0,18,.015);[160,180,210,240,262,294,330,370,415,466].forEach((f,i)=>{tone(f,.5+i*1.8,.18,.06);tone(f*1.5,.5+i*1.8,.1,.025);});tone(880,18.8,.4,.09);tone(1100,19,.5,.07);tone(1320,19.2,.6,.055);}
+
+function startLoader(){analyzeSound();const msgs=['Cargando historial clínico de Esteban Reyna','Analizando signos vitales y datos de la visita','Revisando antecedentes y medicamentos actuales','Consultando base de conocimiento — 847 libros cargados','Realizando deep research — PubMed · Cochrane · UpToDate','Buscando estudios de los últimos 3 años','Cruzando datos con patrones de medicina funcional','Calculando edad biológica y proyecciones de longevidad','Filtro anti-alucinaciones — verificando todas las fuentes','Preparando diagnóstico en 3 capas y protocolo personalizado'];
+const steps=document.getElementById('ld-steps');msgs.forEach((m,i)=>{const d=document.createElement('div');d.className='ld-step';d.id='ls'+i;d.innerHTML=`<div class="ld-ic">—</div><span>${m}</span>`;steps.appendChild(d);});
+const bar=document.getElementById('ld-bar');msgs.forEach((m,i)=>{setTimeout(()=>{if(i>0){const p=document.getElementById('ls'+(i-1));p.classList.replace('active','done');p.querySelector('.ld-ic').textContent='✓';}const el=document.getElementById('ls'+i);el.classList.add('active');el.querySelector('.ld-ic').textContent='●';bar.style.width=(10+i*10)+'%';},400+i*1900);});setTimeout(()=>{document.getElementById('ls9').classList.replace('active','done');document.getElementById('ls9').querySelector('.ld-ic').textContent='✓';bar.style.width='100%';setTimeout(showMain,700);},400+9*1900+800);}
+
+function showMain(){document.getElementById('s-load').classList.add('out');setTimeout(()=>{document.getElementById('s-load').style.display='none';const mn=document.getElementById('s-main');mn.style.display='block';setTimeout(()=>{mn.classList.add('show');initFlow();},50);},620);}
+
+const STEPS=[{id:'dx-trad',lbl:'Dx Tradicional',badge:'MEDICINA TRADICIONAL',bc:'b-trad'},{id:'dx-func',lbl:'Dx Funcional',badge:'MEDICINA FUNCIONAL',bc:'b-func'},{id:'dx-long',lbl:'Dx Longevidad',badge:'MEDICINA DE LONGEVIDAD',bc:'b-long'},{id:'pr-trad',lbl:'Proto Tradicional',badge:'PROTOCOLO TRADICIONAL',bc:'b-prot'},{id:'pr-func',lbl:'Proto Funcional',badge:'PROTOCOLO FUNCIONAL',bc:'b-func'},{id:'pr-long',lbl:'Proto Longevidad',badge:'PROTOCOLO LONGEVIDAD',bc:'b-long'},{id:'pr-exp',lbl:'Proto Experimental',badge:'INFORMATIVO — EXPERIMENTAL',bc:'b-exp'},{id:'final',lbl:'Finalizar',badge:'FINALIZAR VISITA',bc:'b-fin'}];
+
+const TITLES={'dx-trad':'Diagnóstico <em>Tradicional</em>','dx-func':'Diagnóstico <em>Funcional</em>','dx-long':'Diagnóstico de <em>Longevidad</em>','pr-trad':'Protocolo <em>Tradicional</em>','pr-func':'Protocolo Funcional y de <em>Optimización</em>','pr-long':'Protocolo de <em>Longevidad</em>','pr-exp':'Opciones <em>Experimentales</em>','final':'Notas finales e <em>Impresión</em>'};
+
+let cur=0;const SD={};const chatIdxs={};
+
+const PREFACS={'dx-trad':()=>`<div class="prefac"><div class="pf-hdr"><div class="pf-icon">📊</div><div class="pf-title">Confianza en el diagnóstico: 87%</div></div><div class="pf-content">Con los datos actuales, tengo alta confianza en síndrome metabólico incipiente + HTA estadio 1. La imagen está clara: presión, glucosa y distribución central de grasa. Lo que falta son los lípidos para confirmar completamente los criterios ATP-III.</div><div style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:1px;color:var(--tx2);margin-top:8px">ESTUDIOS PROPUESTOS PARA CONFIRMAR O CAMBIAR</div><div class="studies-list" style="margin-top:8px"><div class="study"><div class="sdot r"></div><div><div class="sname">Glucosa venosa + HbA1c + Insulina + HOMA-IR</div><div class="swhy">Confirmar o descartar prediabetes. Insulina e HOMA-IR revelan profundidad de resistencia.</div></div></div><div class="study"><div class="sdot r"></div><div><div class="sname">Perfil lipídico completo (LDL, HDL, TG, ApoB)</div><div class="swhy">Sin estos datos el diagnóstico de síndrome metabólico está incompleto. Son críticos para confirmar.</div></div></div></div></div>`,'dx-func':()=>`<div class="prefac"><div class="pf-hdr"><div class="pf-icon">🧠</div><div class="pf-title">Confianza en el mapa causal: 74%</div></div><div class="pf-content">El patrón es coherente: estrés crónico (8/10) → cortisol elevado → resistencia a insulina → grasa visceral → hipertensión. Pero la confianza es 74% porque sin cortisol diurno no puedo confirmar la forma exacta de la alteración del eje HPA (patrón flat vs otros).</div><div style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:1px;color:var(--tx2);margin-top:8px">ESTUDIOS PROPUESTOS PARA CONFIRMAR O CAMBIAR</div><div class="studies-list" style="margin-top:8px"><div class="study"><div class="sdot y"></div><div><div class="sname">Cortisol diurno × 4 puntos (0, 8am, 12pm, 8pm) + DHEA-S</div><div class="swhy">Esto sube confianza a >92%. Revela si el patrón es flat, normal alterado, o hipercortisolismo.</div></div></div><div class="study"><div class="sdot b"></div><div><div class="sname">Insulina en ayuna + HOMA-IR</div><div class="swhy">Cuantifica la profundidad de resistencia insulínica.</div></div></div></div></div>`,'dx-long':()=>`<div class="prefac"><div class="pf-hdr"><div class="pf-icon">📈</div><div class="pf-title">Confianza en edad biológica: 79%</div></div><div class="pf-content">Con edad biológica de 44 años (+6), la proyección a 10 años es clara si no hay intervención. Pero la confianza es 79% porque necesito testosterona libre + SHBG y algunos marcadores adicionales para refinar la edad biológica exacta.</div><div style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:1px;color:var(--tx2);margin-top:8px">ESTUDIOS PROPUESTOS PARA CONFIRMAR O CAMBIAR</div><div class="studies-list" style="margin-top:8px"><div class="study"><div class="sdot r"></div><div><div class="sname">Testosterona total + libre + SHBG</div><div class="swhy">T total 410 es subóptima. Libre y SHBG dicen si es biodisponible o si hay alta SHBG por insulina.</div></div></div><div class="study"><div class="sdot y"></div><div><div class="sname">Vitamina D 25-OH + PCR-us + Homocisteína</div><div class="swhy">Vitamina D probablemente baja (estrés ↑). PCR-us mide inflamación sistémica. Homocisteína es factor CV independiente.</div></div></div></div></div>`};
+
+const BODY={'dx-trad':()=>`<div class="ai-text"><p>Revisando los datos de Esteban, la combinación de <strong>presión arterial en 128/84 mmHg</strong> — ya en rango de hipertensión estadio 1 — con una <strong>glucosa capilar de 102 mg/dL</strong> en ayuno de 8 horas es el hallazgo más relevante. Según criterios ADA 2023, cualquier valor entre 100 y 125 mg/dL en ayuno es prediabetes. <span class="ai-cite">ADA Standards 2023</span></p><p>El IMC de 26.8 con circunferencia abdominal de 94 cm confirma acumulación de grasa de distribución central. En hombres, el corte de riesgo cardiovascular está en 94 cm según la Federación Internacional de Diabetes. <span class="ai-cite">IDF Consensus 2006</span></p><p>Sumando los tres datos — presión borderline, glucosa en prediabetes, circunferencia abdominal en el límite — el diagnóstico clínico es <strong>Síndrome Metabólico incipiente</strong> (cumple 3 de 5 criterios ATP-III) con hipertensión estadio 1 asociada. <span class="ai-cite">Grundy SM et al. Circulation 2005</span></p></div><div class="alert al-i" style="margin-top:14px">💡 <span>El diagnóstico de síndrome metabólico completo requiere confirmar triglicéridos y HDL — aún no disponibles. El diagnóstico es provisional.</span></div>`,'dx-func':()=>`${SD['dx-trad']?.modified?`<div class="alert al-o" style="margin-bottom:14px">🔄 <span>Tomé en cuenta tu corrección: "${SD['dx-trad'].note}"</span></div>`:''}<div class="ai-text"><p>Cruzando todos los datos — incluyendo el reporte con energía de 4/10 al despertar, sueño de 5/10 y estrés de 8/10 — el patrón emergente es claro: <strong>estrés crónico sostenido como motor principal de la cascada metabólica.</strong></p><p>El estrés crónico mantiene cortisol elevado que directamente impide que la insulina actúe en las células — eso explica la glucosa en 102 sin que Esteban sea diabético. El cortisol elevado también promueve depósito de grasa abdominal con los 94 cm. <span class="ai-cite">Talbott SM. J Obes Weight Loss 2011</span></p><p>La energía baja al despertar con estrés de 8/10 sugiere alteración del eje HPA — patrón de cortisol flat: alto por la noche, bajo por la mañana. Esto explica el sueño no reparador a pesar de 7 horas. <span class="ai-cite">Hellhammer DH et al. Psychoneuroendocrinology 2009</span></p></div><div class="cascade"><div class="cs-node root">Estrés crónico (8/10)</div><div class="cs-arr">→</div><div class="cs-node">↑ Cortisol</div><div class="cs-arr">→</div><div class="cs-node">Resist. insulina</div><div class="cs-arr">→</div><div class="cs-node">Grasa visceral</div><div class="cs-arr" style="width:100%;text-align:center">↓</div><div class="cs-node key">HTA estadio 1</div><div class="cs-arr">←</div><div class="cs-node">Disfunción endotelial</div><div class="cs-arr">←</div><div class="cs-node">Inflamación</div></div><div class="alert al-i">💡 <span>Cortisol diurno × 4 puntos confirmaría el patrón del eje HPA alterado.</span></div>`,'dx-long':()=>`${SD['dx-func']?.modified?`<div class="alert al-o" style="margin-bottom:14px">🔄 <span>Incorporé tu ajuste al diagnóstico funcional.</span></div>`:''}<div class="ai-text"><p>Con este perfil, Esteban tiene marcadores compatibles con una <strong>edad biológica aproximada de 44 años</strong> — 6 años mayor que su edad cronológica. Los principales marcadores que elevan la edad biológica: glucosa subóptima, presión borderline, testosterona en 410 ng/dL (subóptima para 38 años) y estrés crónico sostenido.</p><p>Lo que más preocupa en términos de longevidad no es la presión ni la glucosa per se, sino la combinación de estrés crónico con testosterona en 410 ng/dL. Testosterona por debajo de 550 ng/dL a los 35-45 años se asocia con mayor riesgo cardiovascular a 10 años y pérdida acelerada de masa muscular. <span class="ai-cite">Yeap BB et al. JCEM 2014</span></p><p>Si proyectamos sin intervención: riesgo cardiovascular según Framingham sube de 4.2% actual a 11-13% en 10 años. Con el declive típico de testosterona del 1-2% anual por estrés, en 10 años podría estar en 320-350 ng/dL — territorio de hipogonadismo funcional. <span class="ai-cite">Araujo AB et al. JCEM 2004</span></p><p><strong>La buena noticia:</strong> Esteban tiene 38 años y ninguno de estos procesos está establecido. La ventana de reversibilidad está completamente abierta.</p></div><div class="alert al-g">✅ <span>Esta es la edad donde intervenir tiene el mayor ROI biológico. Sin daño orgánico — solo una cascada reversible.</span></div>`,'pr-trad':()=>`<div class="alert al-i" style="margin-bottom:16px">💡 <span>No hay indicación de antihipertensivo ni hipoglucemiante todavía — zona de intervención de estilo de vida primero.</span></div><div class="proto"><div class="pr-hdr"><div class="pr-name">Intervención de estilo de vida estructurada</div><span class="badge bg">Obligatorio</span></div><div class="pr-dose">Base no negociable de todo el protocolo</div><div class="pr-text">Reducción de sodio a menos de 2g/día → PA baja 4-6 mmHg. Actividad aeróbica 150 min/semana → PA baja 3-5 mmHg adicionales y mejora sensibilidad a insulina 20-35%. Reducción de CHO refinados → normaliza glucosa en prediabetes en 58% sin medicamento. <span class="ai-cite">Whelton PK et al. JACC 2018</span> <span class="ai-cite">DPP Research Group. NEJM 2002</span></div></div><div class="proto"><div class="pr-hdr"><div class="pr-name">Metformina 500mg con la cena</div><span class="badge bb">Condicional + Longevidad</span></div><div class="pr-dose">Si glucosa ≥100 mg/dL persistente en 3 meses</div><div class="pr-text">Indicación estándar en prediabetes ADA 2023. Adicionalmente activa AMPK con efectos documentados en longevidad vascular. <span class="ai-cite">ADA Standards 2023</span> <span class="ai-cite">Barzilai N et al. Cell Metab 2016</span></div></div>`,'pr-func':()=>`<div class="proto"><div class="pr-hdr"><div class="pr-name">Ashwagandha KSM-66 — 300mg</div><span class="badge bg">Evidencia sólida</span></div><div class="pr-dose">Una vez al día con el desayuno · 8-12 semanas</div><div class="pr-text">Primera línea para el estrés crónico de 8/10. Chandrasekhar documentó reducción de cortisol sérico del 27.9% y estrés percibido del 44% vs placebo. <span class="ai-cite">Chandrasekhar K et al. IJAM 2012</span></div></div><div class="proto"><div class="pr-hdr"><div class="pr-name">Magnesio glicinato — 400mg</div><span class="badge bg">Evidencia sólida</span></div><div class="pr-dose">Antes de dormir · continuo</div><div class="pr-text">Triple función: vasodilatador leve (PA baja 3-4 mmHg), mejora del sueño (sueño de 5/10), sensibilizador de insulina. <span class="ai-cite">Rosanoff A et al. Nutr Rev 2012</span></div></div><div class="proto"><div class="pr-hdr"><div class="pr-name">Omega-3 (EPA+DHA) — 2g/día</div><span class="badge bg">Evidencia sólida</span></div><div class="pr-dose">Con el desayuno · continuo</div><div class="pr-text">Efecto antiinflamatorio y reducción de reactividad al estrés. <span class="ai-cite">Skulas-Ray AC et al. Circulation 2019</span></div></div><div class="proto"><div class="pr-hdr"><div class="pr-name">Vitamina D3 5,000 IU + K2 MK-7 100mcg</div><span class="badge by">Probable déficit</span></div><div class="pr-dose">Con comida con grasa · continuo</div><div class="pr-text">Con estrés crónico el déficit es probable. K2 dirige calcio al hueso. <span class="ai-cite">Forman JP et al. Hypertension 2010</span></div></div>`,'pr-long':()=>`<div class="proto"><div class="pr-hdr"><div class="pr-name">Berberina — 500mg dos veces/día</div><span class="badge bg">Evidencia sólida</span></div><div class="pr-dose">Con comidas · 3 meses continuo</div><div class="pr-text">Sensibilizador comparable a metformina. Activa AMPK con efectos de longevidad metabólica. Sinérgico con metformina si se inicia. <span class="ai-cite">Yin J et al. Metabolism 2008</span></div></div><div class="proto"><div class="pr-hdr"><div class="pr-name">Fosfatidilserina — 300mg</div><span class="badge bb">Evidencia moderada</span></div><div class="pr-dose">Antes de dormir · 6-8 semanas</div><div class="pr-text">Modula eje HPA reduciendo liberación de cortisol ante estrés. Potenciador del ashwagandha. <span class="ai-cite">Hellhammer J et al. Stress 2004</span></div></div><div class="proto"><div class="pr-hdr"><div class="pr-name">Creatina monohidratada — 3-5g/día</div><span class="badge bg">Evidencia sólida</span></div><div class="pr-dose">Con cualquier comida · continuo</div><div class="pr-text">Preservación de masa muscular (ligada a longevidad), mejora cognitiva bajo estrés, neuroprotección. A los 38 años es inversión a largo plazo. <span class="ai-cite">Rawson ES. J Strength Cond Res 2003</span></div></div>`,'pr-exp':()=>`<div class="alert al-r" style="margin-bottom:16px">⚠️ <span>Solo informativo. No genera documentos imprimibles para el paciente. La responsabilidad de aplicar es 100% del médico.</span></div><div class="exp-card"><div class="pr-hdr"><div class="pr-name">BPC-157 (Body Protection Compound)</div><span class="badge bp">Preclínico</span></div><div class="exp-why">Potencial en reducción de inflamación vascular sistémica y mejora de sensibilidad a insulina. Mecanismo vía upregulation de receptor GH y sistema NO. Excelente perfil de seguridad reportado.</div></div><div class="exp-card"><div class="pr-hdr"><div class="pr-name">NMN — 500mg en ayunas</div><span class="badge bb">Fase II</span></div><div class="exp-why">A los 38 años el NAD+ empieza a declinar. Podría mejorar función mitocondrial y reparación de ADN. Yoshino (Science 2021) mostró mejora de sensibilidad insulínica en prediabéticos.</div></div><div class="exp-card"><div class="pr-hdr"><div class="pr-name">Metformina como agente de longevidad</div><span class="badge bg">Offlabel respaldado</span></div><div class="exp-why">Ya incluida como condicional en protocolo tradicional. En este contexto activa AMPK con efectos anti-envejecimiento. El estudio TAME en curso. Bono del tratamiento con indicación ya establecida.</div></div>`};
+
+const CHAT_REPLIES={'dx-trad':['Con los datos disponibles el diagnóstico es síndrome metabólico incipiente. Queda pendiente el perfil lipídico. ¿Hay algo que quiera ajustar?','El criterio para no iniciar antihipertensivo ahora se basa en que PA 128/84 estadio 1 sin daño orgánico responde bien a estilo de vida primero.','El diagnóstico es provisional hasta tener TG y HDL. Lo indico en los estudios urgentes.'],'dx-func':['El mapa causal que presento es el más probable. El cortisol como motor central tiene respaldo directo en estrés de 8/10 y energía baja al despertar.','Si sospecha otra causa raíz, con gusto reviso. ¿Qué datos clínicos le hacen considerar eso?','La disbiosis podría ser cofactor pero con estrés de 8/10 dominando, lo sitúo como secundario al eje cortisol-insulina.'],'dx-long':['La edad biológica de 44 es estimación conservadora. Con los labs de cortisol y testosterona podría ajustarse.','La proyección de Framingham es con valores actuales. Con intervención efectiva en 6 meses, el riesgo a 10 años puede bajar de 4.2% a menos de 3%.','Para esa pregunta necesito más contexto del caso — ¿puede detallar?'],'pr-trad':['La decisión de no iniciar metformina todavía se basa en que glucosa de 102 es capilar orientativa. Con venosa y HbA1c la decisión será más precisa.','El offlabel de metformina para longevidad está respaldado por estudio TAME. No es especulación — es la indicación más estudiada del universo offlabel.','Si prefiere iniciar metformina ahora con indicación estándar de prediabetes, tiene toda la evidencia para respaldarlo.'],'pr-func':['Ashwagandha y magnesio son complementarios: el primero ataca el cortisol (causa raíz) y el segundo trabaja en múltiples frentes.','La dosis de magnesio glicinato de 400mg tiene mejor evidencia para efecto en sueño y sensibilidad a insulina.','Para cambiar algún suplemento por otra opción, indíqueme cuál y revisamos las alternativas.'],'pr-long':['Berberina es el complemento más potente del protocolo funcional vía AMPK. Fosfatidilserina es el add-on más directo para el eje cortisol.','Creatina a los 38 años es inversión a largo plazo — la masa muscular que se preserva ahora protege contra sarcopenia futura.','Con los valores de creatinina actuales de Esteban no hay contraindicación para creatina.'],'pr-exp':['Los items que presento tienen perfiles de seguridad documentados con amplio uso reportado.','Correcto — esta sección es 100% informativa. No genera ningún documento para el paciente.','La decisión de proceder con cualquier experimental es 100% del médico con consentimiento informado del paciente.']};
+
+const SUMMARIES={'dx-trad':'Síndrome Metabólico incipiente (3 criterios ATP-III) + HTA estadio 1. Provisional — pendiente perfil lipídico.','dx-func':'Motor causal: Estrés → ↑ cortisol → resistencia insulina → grasa visceral → HTA. Pendiente cortisol diurno.','dx-long':'Edad biológica 44 años (+6). Riesgo CV Framingham 4.2% → 11-13% en 10 años sin intervención.','pr-trad':'Intervención estilo de vida + Metformina 500mg condicional.','pr-func':'Ashwagandha 300mg · Magnesio 400mg · Omega-3 2g · Vitamina D3+K2.','pr-long':'Berberina 500mg · Fosfatidilserina 300mg · Creatina 3-5g.','pr-exp':'Informativo. BPC-157 y NMN relevantes. No imprimible.'};
+
+const DETAILS={'dx-trad':'PA 128/84 mmHg · Glucosa 102 mg/dL · IMC 26.8 · Circ. 94 cm. Pendiente: TG, HDL, LDL.','dx-func':'Cascada: Estrés 8/10 → Cortisol → Resist. insulina → Grasa visceral → Inflamación → HTA.','dx-long':'Edad biológica 44 años. Testosterona 410 subóptima. Framingham 10 años: 11-13%. Ventana abierta.','pr-trad':'1. Estilo de vida: sodio <2g, 150min/sem aeróbico, reducción CHO. 2. Metformina 500mg condicional.','pr-func':'Ashwagandha 300mg AM · Magnesio 400mg noche · Omega-3 2g · D3 5000IU+K2 100mcg.','pr-long':'Berberina 2x500mg · Fosfatidilserina 300mg noche · Creatina 3-5g. + Estudios: cortisol, testosterona, vitamina D.','pr-exp':'BPC-157 ⭐⭐⭐⭐⭐ seg / ⭐⭐⭐ evid. NMN ⭐⭐⭐⭐ / ⭐⭐⭐. No imprimible.'};
+
+function initFlow(){renderStepper();renderFlow();}
+
+function renderStepper(){
+  const s=document.getElementById('stepper');
+  s.innerHTML=STEPS.map((st,i)=>`<div class="step-item" ${i<cur?`onclick="goTo(${i})"`:''} style="${i<cur?'cursor:pointer;':''}""><div class="step-dot ${i<cur?'done':i===cur?'active':''} ${i<cur?'clickable':''}">${i<cur?'✓':i+1}</div><div class="step-lbl ${i<cur?'done':i===cur?'active':''}">${st.lbl}</div></div>${i<STEPS.length-1?`<div class="step-conn ${i<cur?'done':''}"></div>`:''}`).join('');
+  const st=STEPS[cur];const badge=document.getElementById('step-badge');
+  if(cur<3){badge.textContent='DIAGNÓSTICO '+(cur+1)+'/3';badge.style.cssText='color:var(--acc2);background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);';}
+  else if(cur<7){badge.textContent='PROTOCOLO '+(cur-2)+'/4';badge.style.cssText='color:var(--acc3);background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2);';}
+  else{badge.textContent='FINALIZAR';badge.style.cssText='color:var(--acc);background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);';}
+}
+
+function renderFlow(){
+  const f=document.getElementById('flow');f.innerHTML='';
+  for(let i=0;i<cur;i++)f.appendChild(mkDone(i));
+  if(cur<STEPS.length)f.appendChild(cur===7?mkFinal():mkActive(cur));
+  document.getElementById('s-main').scrollTo({top:0,behavior:'smooth'});
+  setTimeout(()=>{document.querySelectorAll('.cb-fill').forEach(el=>{const w=el.style.width;el.style.width='0';setTimeout(()=>el.style.width=w,100);});},150);
+}
+
+function mkDone(i){
+  const st=STEPS[i];const d=SD[st.id]||{};
+  const div=document.createElement('div');div.className='done-card clickable';
+  div.onclick=()=>{goTo(i);};
+  div.innerHTML=`<div class="dc-check">✓</div><div class="dc-info"><div class="dc-title">${st.lbl}</div><div class="dc-sum">${SUMMARIES[st.id]||'—'}</div>${d.modified?`<div class="dc-mod">✏️ Modificado: "${(d.note||'').substring(0,80)}"</div>`:''}</div>`;
+  return div;
+}
+
+function mkActive(i){
+  const st=STEPS[i];
+  const prefacFn=PREFACS[st.id];
+  const prefac=prefacFn?prefacFn():'';
+  const bodyFn=BODY[st.id];
+  const body=bodyFn?bodyFn():'';
+  const firstReply=(CHAT_REPLIES[st.id]||['¿Alguna pregunta?'])[0];
+  const div=document.createElement('div');div.className='act-step';
+  div.innerHTML=`<div class="as-head"><span class="as-badge ${st.bc}">${st.badge}</span><div class="as-title">${TITLES[st.id]}</div></div><div class="as-body">${prefac}${body}<div class="inline-chat"><div class="ic-hdr"><div class="ic-av">A</div><div class="ic-title">Discute con APEX</div><div class="ic-sub">Sobre ${st.badge.toLowerCase()}</div></div><div class="ic-msgs" id="ic-msgs"><div class="cm cm-a"><div class="mw">APEX</div>${firstReply}</div></div><div class="ic-row"><textarea class="ic-inp" id="ic-inp" placeholder="Pregunta, corrección o duda..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendIC('${st.id}');}"></textarea><button class="ic-send" onclick="sendIC('${st.id}')">→</button></div></div><div class="act-section"><div class="act-lbl">DECISIÓN</div><div class="act-btns"><button class="btn btn-acc" onclick="accept('${st.id}')">✓ Aceptar →</button><button class="btn btn-add" onclick="toggleIE('add-${st.id}')">➕ Agregar</button><button class="btn btn-ov" onclick="toggleIE('ov-${st.id}')">✏️ Sobreescribir</button></div><div class="ie" id="add-${st.id}"><div class="ie-lbl" style="margin-top:12px">AGREGAR — se suma</div><textarea class="ie-txt" id="add-txt" placeholder="Observación o dato adicional..."></textarea><button class="ie-save" onclick="saveAdd('${st.id}')">Guardar →</button></div><div class="ie" id="ov-${st.id}"><div class="ie-lbl" style="margin-top:12px">SOBREESCRIBIR — reemplaza</div><textarea class="ie-txt" id="ov-txt" placeholder="Tu propio análisis..."></textarea><button class="ie-save ov" onclick="saveOv('${st.id}')">Guardar →</button></div></div><div class="nav-hint">💡 Haz click en el timeline arriba para revisar cualquier paso anterior</div></div>`;
+  return div;
+}
+
+function mkFinal(){
+  const div=document.createElement('div');div.className='act-step';
+  div.innerHTML=`<div class="as-head"><span class="as-badge b-fin">FINALIZAR</span><div class="as-title">Notas e <em>Impresión</em></div></div><div class="as-body"><div style="margin-bottom:20px"><div class="ns-lbl">NOTAS ADICIONALES</div><textarea class="ns-txt" id="final-notes" placeholder="Observaciones adicionales..."></textarea></div><div class="print-card"><div class="pc-title">🖨️ Documentos para imprimir</div><div class="pc-sub">Haz click en cualquier documento para ver una vista previa.</div><div class="print-list"><div class="pi on" onclick="event.stopPropagation();togglePi(this)"><div class="pi-chk">✓</div><div style="cursor:pointer;flex:1" onclick="event.stopPropagation();showReceta()"><div class="pi-name">📋 Hoja 1 — Receta médica</div><div class="pi-desc">Documento legal con medicamentos, dosis y frecuencia. Listo para farmacia.</div></div></div></div><div class="pi on" onclick="event.stopPropagation();togglePi(this)"><div class="pi-chk">✓</div><div style="cursor:pointer;flex:1" onclick="event.stopPropagation();showReporte()"><div class="pi-name">📄 Hoja 2 — Reporte del paciente</div><div class="pi-desc">Mediciones, resumen amigable, instrucciones de medicamentos y suplementos, recomendaciones. Firmado por el médico.</div></div></div></div><div class="pi on" onclick="event.stopPropagation();togglePi(this)"><div class="pi-chk">✓</div><div style="cursor:pointer;flex:1" onclick="event.stopPropagation();showEstudios()"><div class="pi-name">🔬 Hoja 3 — Solicitud de estudios</div><div class="pi-desc">Formato para el laboratorio. Solo nombres — sin justificación clínica visible.</div></div></div></div></div><div class="alert al-r" style="margin-bottom:20px">⚠️ <span>Los protocolos experimentales nunca se incluyen en documentos imprimibles.</span></div><div class="final-btns"><button class="btn-save" onclick="guardar()">💾 Guardar</button><button class="btn-print" onclick="imprimir()">🖨️ Imprimir</button></div><div class="nav-hint">💡 Haz click en el timeline arriba para revisar cualquier paso anterior</div></div>`;
+  return div;
+}
+
+function sendIC(stId){const inp=document.getElementById('ic-inp');const msgs=document.getElementById('ic-msgs');const v=inp?.value?.trim();if(!v||!msgs)return;msgs.innerHTML+=`<div class="cm cm-u"><div class="mw">MÉDICO</div>${v}</div>`;inp.value='';msgs.scrollTop=msgs.scrollHeight;const replies=CHAT_REPLIES[stId]||['Entendido.'];const idx=(chatIdxs[stId]||0);chatIdxs[stId]=(idx+1)%replies.length;setTimeout(()=>{msgs.innerHTML+=`<div class="cm cm-a" id="typ"><div class="mw">APEX</div><span style="color:var(--tx3)">···</span></div>`;msgs.scrollTop=msgs.scrollHeight;setTimeout(()=>{const t=document.getElementById('typ');if(t){t.innerHTML=`<div class="mw">APEX</div>${replies[idx]}`;msgs.scrollTop=msgs.scrollHeight;}},1000);},280);}
+
+function toggleIE(id){document.getElementById(id)?.classList.toggle('show');}
+function accept(id){SD[id]={accepted:true};advance();}
+function saveAdd(id){const txt=document.getElementById('add-txt')?.value?.trim();if(!txt)return;SD[id]={accepted:true,modified:true,note:txt};advance();}
+function saveOv(id){const txt=document.getElementById('ov-txt')?.value?.trim();if(!txt)return;SD[id]={accepted:true,modified:true,note:txt};advance();}
+function advance(){cur++;renderStepper();renderFlow();}
+function goTo(idx){if(idx<cur){cur=idx;renderStepper();renderFlow();}}
+function togglePi(el){el.classList.toggle('on');el.querySelector('.pi-chk').textContent=el.classList.contains('on')?'✓':'';}
+function guardar(){alert('✅ Visita guardada. Expediente de Esteban Reyna actualizado.');}
+function imprimir(){const docs=[...document.querySelectorAll('.pi.on')].map(el=>el.querySelector('.pi-name').textContent);if(!docs.length){alert('Selecciona al menos un documento.');return;}alert('🖨️ Imprimiendo:\n'+docs.join('\n'));}
+
+function openModal(content){document.getElementById('modal-body').innerHTML=content;document.getElementById('modal').classList.add('show');}
+function closeModal(){document.getElementById('modal').classList.remove('show');}
+
+function showReceta(){const html=`<div class="doc-header"><div class="doc-title">📋 Receta Médica</div><div class="doc-info">Visita #4 · 2025-01-16 · Dr. Alejandro Juárez</div></div><div class="doc-body"><div class="doc-section"><div class="doc-patient"><div class="doc-patient-row"><div class="doc-patient-lbl">PACIENTE</div><div class="doc-patient-val">Esteban Reyna</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">EDAD</div><div class="doc-patient-val">38 años</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">CÉDULA</div><div class="doc-patient-val">EJRI-px000145</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">FECHA</div><div class="doc-patient-val">16 de enero, 2025</div></div></div></div><div class="doc-section"><div class="doc-section-title">Medicamentos y Suplementos</div><div class="rx-item"><div class="rx-name">Ashwagandha KSM-66</div><div class="rx-dose">300 mg · Una vez al día</div><div class="rx-freq">Con el desayuno · Continuo</div></div><div class="rx-item"><div class="rx-name">Magnesio Glicinato</div><div class="rx-dose">400 mg · Una vez al día</div><div class="rx-freq">Antes de dormir · Continuo</div></div><div class="rx-item"><div class="rx-name">Omega-3 (EPA+DHA)</div><div class="rx-dose">2,000 mg · Una vez al día</div><div class="rx-freq">Con el desayuno · Continuo</div></div><div class="rx-item"><div class="rx-name">Vitamina D3 + K2 MK-7</div><div class="rx-dose">5,000 IU + 100 mcg</div><div class="rx-freq">Con comida · Continuo</div></div><div class="rx-item"><div class="rx-name">Berberina</div><div class="rx-dose">500 mg · Dos veces al día</div><div class="rx-freq">Con comidas · 3 meses continuo</div></div><div class="rx-item"><div class="rx-name">Fosfatidilserina</div><div class="rx-dose">300 mg · Una vez al día</div><div class="rx-freq">Antes de dormir · 6-8 semanas</div></div><div class="rx-item"><div class="rx-name">Creatina Monohidratada</div><div class="rx-dose">3-5 g · Una vez al día</div><div class="rx-freq">Con cualquier comida · Continuo</div></div></div><div class="doc-section"><div class="doc-section-title">Indicaciones</div><div class="report-text">1. Tomar los suplementos tal como se indica. No duplicar dosis. 2. En caso de efectos secundarios, contactar inmediatamente. 3. Realizar seguimiento en 8 semanas para evaluar respuesta. 4. Mantener registro de síntomas y energía.</div></div><div class="doc-sig"><div class="sig-box"><div class="sig-line"></div><div>Dr. Alejandro Juárez</div><div style="font-size:11px;color:var(--tx2);">Medicina Funcional · Pro</div></div><div style="text-align:center;font-size:11px;color:var(--tx2);">Sellos y firmas regulatorias</div></div></div>`;openModal(html);}
+
+function showReporte(){const html=`<div class="doc-header"><div class="doc-title">📄 Reporte Clínico del Paciente</div><div class="doc-info">Visita #4 · 2025-01-16 · Dr. Alejandro Juárez</div></div><div class="doc-body"><div class="doc-section"><div class="doc-patient"><div class="doc-patient-row"><div class="doc-patient-lbl">PACIENTE</div><div class="doc-patient-val">Esteban Reyna</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">EDAD</div><div class="doc-patient-val">38 años</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">CÉDULA</div><div class="doc-patient-val">EJRI-px000145</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">FECHA</div><div class="doc-patient-val">16 de enero, 2025</div></div></div></div><div class="doc-section"><div class="doc-section-title">Hallazgos Principales</div><div class="report-text"><strong>Presión arterial:</strong> 128/84 mmHg (Hipertensión estadio 1)<br><strong>Glucosa en ayunas:</strong> 102 mg/dL (Prediabetes)<br><strong>Testosterona total:</strong> 410 ng/dL (Subóptima)<br><strong>Circunferencia abdominal:</strong> 94 cm (Riesgo cardiovascular)</div></div><div class="doc-section"><div class="doc-section-title">Diagnóstico</div><div class="report-text"><strong>Síndrome Metabólico incipiente</strong> con Hipertensión estadio 1 y resistencia insulínica secundaria a estrés crónico (8/10). <strong>Edad biológica: 44 años</strong> (+6 años). Riesgo cardiovascular a 10 años sin intervención: 11-13%.</div></div><div class="doc-section"><div class="doc-section-title">Recomendaciones de Estilo de Vida</div><div class="report-text">1. <strong>Reducción de sodio:</strong> Menos de 2g/día (evitar alimentos procesados, salsas). 2. <strong>Actividad física:</strong> 150 minutos/semana de ejercicio aeróbico (caminar, correr, bicicleta). 3. <strong>Alimentación:</strong> Reducir carbohidratos refinados, aumentar fibra y proteína. 4. <strong>Sueño:</strong> 7-8 horas regularmente, mejorar higiene del sueño. 5. <strong>Estrés:</strong> Meditación 10-15 min/día, técnicas de respiración.</div></div><div class="doc-section"><div class="doc-section-title">Protocolo Recomendado</div><div class="report-text">Se recomienda iniciar suplementación según receta adjunta. El objetivo es reducir presión arterial, mejorar sensibilidad a insulina y reducir inflamación sistémica. Seguimiento a 8 semanas.</div></div><div class="doc-section"><div class="doc-section-title">Próximos Pasos</div><div class="report-text">1. Realizer estudios solicitados. 2. Registrar PA diariamente. 3. Registrar energía y sueño. 4. Contactar si tiene preguntas.</div></div><div class="doc-sig"><div class="sig-box"><div class="sig-line"></div><div>Dr. Alejandro Juárez</div><div style="font-size:11px;color:var(--tx2);">Medicina Funcional · Pro</div></div><div style="text-align:center;font-size:11px;color:var(--tx2);">Sellos y firmas regulatorias</div></div></div>`;openModal(html);}
+
+function showEstudios(){const html=`<div class="doc-header"><div class="doc-title">🔬 Solicitud de Estudios de Laboratorio</div><div class="doc-info">Visita #4 · 2025-01-16 · Dr. Alejandro Juárez</div></div><div class="doc-body"><div class="doc-section"><div class="doc-patient"><div class="doc-patient-row"><div class="doc-patient-lbl">PACIENTE</div><div class="doc-patient-val">Esteban Reyna</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">EDAD</div><div class="doc-patient-val">38 años</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">CÉDULA</div><div class="doc-patient-val">EJRI-px000145</div></div><div class="doc-patient-row"><div class="doc-patient-lbl">LABORATORIO</div><div class="doc-patient-val">Laboratorio Central</div></div></div></div><div class="doc-section"><div class="doc-section-title">Estudios Solicitados</div><div class="study-item">✓ Glucosa venosa en ayunas</div><div class="study-item">✓ HbA1c (Hemoglobina glicosilada)</div><div class="study-item">✓ Insulina en ayunas</div><div class="study-item">✓ HOMA-IR (Índice de resistencia insulínica)</div><div class="study-item">✓ Perfil lipídico completo (LDL, HDL, TG, ApoB)</div><div class="study-item">✓ Cortisol diurno (0, 8am, 12pm, 8pm)</div><div class="study-item">✓ DHEA-S (Dehidroepiandrosterona)</div><div class="study-item">✓ Testosterona total y libre</div><div class="study-item">✓ SHBG (Sex Hormone-Binding Globulin)</div><div class="study-item">✓ Vitamina D 25-OH</div><div class="study-item">✓ PCR-us (Proteína C Reactiva ultrasensible)</div><div class="study-item">✓ Homocisteína</div></div><div class="doc-section"><div class="doc-section-title">Indicaciones</div><div class="report-text">• Realizar en ayunas de 8-12 horas<br>• Para cortisol diurno: recolectar saliva en tubos específicos<br>• Enviar al laboratorio bajo las condiciones especificadas<br>• Resultados esperados en 5-7 días hábiles</div></div><div class="doc-section"><div class="doc-section-title">Notas</div><div class="report-text">Este documento no incluye justificaciones clínicas para mantener privacidad del paciente en el laboratorio. La interpretación será realizada por el médico tratante.</div></div><div class="doc-sig"><div class="sig-box"><div class="sig-line"></div><div>Dr. Alejandro Juárez</div><div style="font-size:11px;color:var(--tx2);">Medicina Funcional · Pro</div></div><div style="text-align:center;font-size:11px;color:var(--tx2);">Firma y sello</div></div></div>`;openModal(html);}
+
+window.addEventListener('click',()=>{if(!actx)aud();},{once:true});
+startLoader();
+</script>
+</body>
+</html>

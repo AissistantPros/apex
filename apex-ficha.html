@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX — Ficha del Paciente</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070a0e;--bg2:#0c1118;--bg3:#111820;--bg4:#161f28;
+  --b1:#1e2d3d;--b2:#2a3f54;--b3:#3a5570;
+  --acc:#00e5a0;--acc2:#0ea5e9;--acc3:#f97316;--acc4:#a78bfa;
+  --tx:#dde6ef;--tx2:#7a95aa;--tx3:#3d5870;
+  --card:#0d1520;--card2:#101c28;
+  --hdr-bg:rgba(7,10,14,.97);
+  --grid-color:rgba(0,229,160,.016);
+  --ok:#00e5a0;--warn:#f59e0b;--err:#f43f5e;
+}
+html[data-theme="light"]{
+  --bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#d2dbe8;
+  --b1:#c2cfe0;--b2:#9bb0c8;--b3:#6b8caa;
+  --acc:#00b87a;--acc2:#0278c0;--acc3:#e06400;--acc4:#7c5cbf;
+  --tx:#0c1f2e;--tx2:#3d5870;--tx3:#8aa5bd;
+  --card:#ffffff;--card2:#f5f8fc;
+  --hdr-bg:rgba(255,255,255,.97);
+  --grid-color:rgba(0,150,100,.025);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;
+  transition:background .3s,color .25s;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(var(--grid-color) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid-color) 1px,transparent 1px);
+  background-size:48px 48px;}
+*{transition:background-color .3s,border-color .3s,color .25s;}
+
+/* HEADER */
+header{position:fixed;top:0;left:0;right:0;height:58px;z-index:300;
+  background:var(--hdr-bg);border-bottom:1px solid var(--b1);
+  backdrop-filter:blur(24px);display:flex;align-items:center;padding:0 22px;gap:10px;}
+.h-back{display:flex;align-items:center;gap:7px;padding:6px 12px;background:var(--bg3);
+  border:1px solid var(--b1);border-radius:7px;cursor:pointer;font-size:13px;
+  font-weight:600;color:var(--tx2);text-decoration:none;transition:all .15s;}
+.h-back:hover{border-color:var(--b2);color:var(--tx);}
+.h-logo{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--acc);
+  letter-spacing:1px;display:flex;align-items:center;gap:7px;}
+.h-plan{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;
+  color:var(--acc2);background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);
+  padding:2px 7px;border-radius:3px;}
+.h-sp{flex:1;}
+.h-ic{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
+.h-div{width:1px;height:22px;background:var(--b1);}
+.h-doc{display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 8px;border-radius:8px;}
+.h-av{width:34px;height:34px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;
+  border:2px solid rgba(0,229,160,.3);}
+.h-name{font-size:13px;font-weight:600;text-align:right;}
+.h-role{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);text-align:right;}
+
+/* LAYOUT */
+.layout{position:fixed;inset:0;top:58px;display:flex;}
+
+/* ── SIDEBAR ── */
+.sidebar{width:260px;flex-shrink:0;height:100%;overflow-y:auto;
+  border-right:1px solid var(--b1);background:var(--card2);
+  display:flex;flex-direction:column;}
+.sidebar::-webkit-scrollbar{width:2px;}
+.sidebar::-webkit-scrollbar-thumb{background:var(--b2);}
+
+.sb-photo-area{padding:24px 20px 16px;text-align:center;border-bottom:1px solid var(--b1);}
+.patient-photo{width:88px;height:88px;border-radius:50%;margin:0 auto 10px;
+  background:linear-gradient(135deg,var(--b2),var(--b3));
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;font-weight:700;color:var(--tx2);
+  border:3px solid rgba(0,229,160,.3);overflow:hidden;position:relative;}
+.patient-photo img{width:100%;height:100%;object-fit:cover;}
+.patient-photo-edit{position:absolute;bottom:0;right:0;width:24px;height:24px;
+  border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;
+  font-size:11px;cursor:pointer;border:2px solid var(--card2);}
+.sb-id{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--acc2);letter-spacing:1px;margin-bottom:3px;}
+.sb-name{font-family:'Lora',serif;font-size:19px;font-weight:500;margin-bottom:8px;}
+.sb-tags{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-bottom:13px;}
+.sb-tag{font-family:'JetBrains Mono',monospace;font-size:10px;
+  background:var(--bg3);border:1px solid var(--b1);padding:3px 8px;border-radius:3px;color:var(--tx2);}
+.sb-tag.g{background:rgba(0,229,160,.1);border-color:rgba(0,229,160,.2);color:var(--acc);}
+.sb-tag.b{background:rgba(14,165,233,.1);border-color:rgba(14,165,233,.2);color:var(--acc2);}
+.sb-tag.w{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.2);color:var(--warn);}
+.bioage{background:linear-gradient(135deg,rgba(0,229,160,.08),rgba(14,165,233,.05));
+  border:1px solid rgba(0,229,160,.18);border-radius:8px;padding:10px;text-align:center;}
+.ba-l{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--tx2);}
+.ba-n{font-family:'Lora',serif;font-size:32px;color:var(--acc);line-height:1.1;}
+.ba-u{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);}
+.ba-w{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--warn);margin-top:2px;}
+
+/* Sidebar nav */
+.sb-nav{padding:8px;flex:1;}
+.sn{width:100%;padding:10px 12px;border-radius:7px;border:none;background:transparent;
+  color:var(--tx2);cursor:pointer;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;
+  transition:all .15s;text-align:left;display:flex;align-items:center;gap:10px;margin-bottom:3px;}
+.sn:hover{background:var(--bg3);color:var(--tx);}
+.sn.active{background:rgba(0,229,160,.1);color:var(--acc);}
+.sn-ic{font-size:15px;width:22px;text-align:center;flex-shrink:0;}
+.sn-badge{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;
+  padding:1px 7px;border-radius:10px;}
+.sn-badge.red{background:var(--err);color:#fff;}
+.sn-badge.blue{background:var(--acc2);color:#fff;}
+.sb-cta{padding:12px;border-top:1px solid var(--b1);}
+.cta-btn{width:100%;padding:12px;background:var(--acc);color:#000;border:none;
+  border-radius:9px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;
+  transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;}
+.cta-btn:hover{background:#00ffb0;transform:translateY(-1px);}
+
+/* ── MAIN ── */
+.main{flex:1;overflow-y:auto;overflow-x:hidden;}
+.main::-webkit-scrollbar{width:3px;}
+.main::-webkit-scrollbar-thumb{background:var(--b2);}
+.main-inner{max-width:800px;margin:0 auto;padding:28px 28px 80px;}
+
+.panel{display:none;animation:fadeUp .3s ease;}
+.panel.active{display:block;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--b1);border-radius:12px;margin-bottom:14px;overflow:hidden;}
+.card-head{display:flex;align-items:center;gap:12px;padding:14px 18px;
+  border-bottom:1px solid var(--b1);background:var(--card2);}
+.card-icon{width:32px;height:32px;border-radius:8px;background:var(--bg3);border:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:center;font-size:15px;}
+.card-title{font-size:15px;font-weight:700;flex:1;}
+.card-body{padding:20px;}
+
+/* AI Brief */
+.ai-brief{background:linear-gradient(135deg,rgba(0,229,160,.06),rgba(14,165,233,.03));
+  border:1px solid rgba(0,229,160,.2);border-radius:10px;padding:18px;margin-bottom:16px;}
+.ab-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;
+  color:var(--acc);margin-bottom:10px;display:flex;align-items:center;gap:7px;}
+.ab-label::after{content:'';flex:1;height:1px;background:rgba(0,229,160,.15);}
+.ab-text{font-family:'Lora',serif;font-size:15px;line-height:1.85;color:var(--tx);}
+.ab-text strong{color:var(--acc);}
+.ab-text em{color:var(--warn);font-style:normal;}
+.pending{display:flex;align-items:flex-start;gap:7px;font-size:12px;
+  color:var(--warn);margin-top:10px;font-family:'JetBrains Mono',monospace;line-height:1.5;}
+
+/* Metrics */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.metric-box{background:var(--card);border:1px solid var(--b1);border-radius:9px;padding:13px 14px;}
+.met-val{font-family:'Lora',serif;font-size:22px;font-weight:500;line-height:1;}
+.met-val.g{color:var(--acc);}
+.met-val.w{color:var(--warn);}
+.met-lbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);margin-top:3px;}
+.met-trend{font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:2px;}
+.met-trend.up{color:var(--acc);}
+.met-trend.dn{color:var(--err);}
+
+/* Protocol items */
+.proto-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.proto-item{background:var(--bg3);border:1px solid var(--b1);border-radius:9px;padding:13px 14px;}
+.proto-name{font-size:14px;font-weight:700;margin-bottom:4px;color:var(--tx);}
+.proto-dose{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--acc);margin-bottom:3px;}
+.proto-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);}
+
+/* Evolution */
+.evo-row{display:flex;gap:12px;margin-bottom:10px;align-items:flex-start;}
+.evo-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:6px;}
+.evo-dot.ok{background:var(--acc);}
+.evo-dot.warn{background:var(--warn);}
+.evo-content{flex:1;background:var(--bg3);border:1px solid var(--b1);border-radius:7px;padding:11px 14px;}
+.evo-date{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);margin-bottom:4px;}
+.evo-text{font-family:'Lora',serif;font-size:14px;color:var(--tx2);line-height:1.55;}
+
+/* Visits */
+.visit-item{background:var(--card);border:1px solid var(--b1);border-radius:10px;
+  margin-bottom:10px;overflow:hidden;transition:border-color .15s;}
+.visit-item:hover{border-color:var(--b2);}
+.vi-head{display:flex;align-items:center;gap:12px;padding:15px 17px;cursor:pointer;}
+.vi-num{width:36px;height:36px;border-radius:50%;background:var(--bg3);border:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--tx2);flex-shrink:0;}
+.vi-num.latest{background:rgba(0,229,160,.12);border-color:rgba(0,229,160,.3);color:var(--acc);}
+.vi-inf{flex:1;}
+.vi-date{font-size:14px;font-weight:700;margin-bottom:3px;}
+.vi-sum{font-size:13px;color:var(--tx2);line-height:1.4;}
+.vi-chev{color:var(--tx3);font-size:13px;transition:transform .2s;flex-shrink:0;}
+.vi-chev.open{transform:rotate(180deg);}
+.vi-body{display:none;padding:0 17px 16px;border-top:1px solid var(--b1);}
+.vi-body.show{display:block;}
+.vi-section-lbl{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;
+  color:var(--tx3);margin:14px 0 8px;}
+.vi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.vi-metric{background:var(--bg3);border:1px solid var(--b1);border-radius:7px;padding:10px 12px;}
+.vm-lbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);margin-bottom:3px;}
+.vm-val{font-size:14px;font-weight:700;}
+.vm-val.g{color:var(--acc);}
+.vm-val.w{color:var(--warn);}
+.vm-val.r{color:var(--err);}
+.vi-meds{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.vi-med{font-family:'JetBrains Mono',monospace;font-size:11px;
+  background:var(--bg3);border:1px solid var(--b1);padding:4px 10px;border-radius:4px;color:var(--tx2);}
+.vi-note{font-family:'Lora',serif;font-size:13px;color:var(--tx2);
+  line-height:1.65;border-left:2px solid var(--b2);padding-left:11px;font-style:italic;}
+.vi-actions{display:flex;gap:7px;margin-top:12px;}
+.vi-btn{padding:7px 14px;border-radius:6px;border:1px solid var(--b1);background:var(--bg3);
+  color:var(--tx2);cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;transition:all .15s;}
+.vi-btn:hover{border-color:var(--acc);color:var(--acc);}
+.vi-btn.primary{background:var(--acc);color:#000;border-color:var(--acc);}
+.vi-btn.primary:hover{background:#00ffb0;}
+
+/* Notas rápidas */
+.nota-add-box{background:var(--card);border:1px solid var(--b1);border-radius:12px;
+  padding:20px;margin-bottom:18px;}
+.na-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;
+  color:var(--acc);margin-bottom:12px;}
+.na-textarea{width:100%;padding:12px 14px;background:var(--bg3);border:1px solid var(--b1);
+  border-radius:8px;color:var(--tx);font-family:'Syne',sans-serif;font-size:14px;
+  outline:none;transition:border-color .2s;resize:none;min-height:72px;max-height:130px;line-height:1.6;}
+.na-textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(0,229,160,.07);}
+.na-textarea::placeholder{color:var(--tx3);}
+.na-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:10px;}
+.na-file-area{display:flex;align-items:center;gap:8px;}
+.na-file-btn{padding:8px 14px;background:var(--bg3);border:1px solid var(--b1);border-radius:7px;
+  color:var(--tx2);cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;
+  transition:all .15s;display:flex;align-items:center;gap:6px;}
+.na-file-btn:hover{border-color:var(--b2);}
+.na-file-name{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--acc);}
+.na-save{padding:9px 22px;background:var(--acc);color:#000;border:none;border-radius:8px;
+  cursor:pointer;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;transition:all .15s;}
+.na-save:hover{background:#00ffb0;}
+.na-file-desc{margin-top:10px;display:none;}
+.na-file-desc textarea{width:100%;padding:10px 13px;background:var(--bg3);border:1px solid var(--b1);
+  border-radius:7px;color:var(--tx);font-family:'Syne',sans-serif;font-size:13px;
+  outline:none;resize:none;min-height:52px;border-color:rgba(0,229,160,.3);}
+.na-file-desc textarea:focus{border-color:var(--acc);}
+.na-file-desc-lbl{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--acc);margin-bottom:6px;}
+
+/* Nota items */
+.nota-item{background:var(--card);border:1px solid var(--b1);border-radius:10px;
+  padding:14px 16px;margin-bottom:9px;}
+.ni-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.ni-date{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);}
+.ni-text{font-family:'Lora',serif;font-size:14px;color:var(--tx2);line-height:1.65;}
+.ni-file{display:flex;align-items:center;gap:7px;margin-top:8px;
+  background:var(--bg3);border:1px solid var(--b1);border-radius:6px;padding:7px 10px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--acc);}
+
+/* Edit form */
+.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fl{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2);}
+input,select{width:100%;padding:10px 13px;background:var(--bg3);border:1px solid var(--b1);
+  border-radius:7px;color:var(--tx);font-family:'Syne',sans-serif;font-size:14px;
+  outline:none;transition:border-color .2s;appearance:none;}
+input:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(0,229,160,.07);}
+input::placeholder{color:var(--tx3);}
+.edit-photo-row{display:flex;align-items:center;gap:16px;margin-bottom:18px;
+  background:var(--bg3);border:1px solid var(--b1);border-radius:10px;padding:16px;}
+.ep-photo{width:72px;height:72px;border-radius:50%;
+  background:linear-gradient(135deg,var(--b2),var(--b3));
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:700;color:var(--tx2);border:2px solid var(--b2);
+  overflow:hidden;flex-shrink:0;}
+.ep-photo img{width:100%;height:100%;object-fit:cover;}
+.ep-info p{font-size:13px;color:var(--tx2);margin-bottom:9px;line-height:1.5;}
+.ep-btns{display:flex;gap:7px;}
+.ep-btn{padding:7px 14px;border-radius:6px;border:1px solid var(--b1);background:var(--bg3);
+  color:var(--tx2);cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:600;transition:all .15s;}
+.ep-btn:hover{border-color:var(--acc);color:var(--acc);}
+.danger-zone{background:rgba(244,63,94,.05);border:1px solid rgba(244,63,94,.2);
+  border-radius:10px;padding:16px;margin-top:8px;}
+.dz-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--err);margin-bottom:10px;}
+.dz-btn{padding:9px 18px;border:1px solid rgba(244,63,94,.3);border-radius:7px;
+  background:transparent;color:var(--err);cursor:pointer;font-family:'Syne',sans-serif;
+  font-size:13px;font-weight:600;transition:all .15s;}
+.dz-btn:hover{background:rgba(244,63,94,.08);}
+
+/* FLOATING CHAT BUBBLE */
+#chat-bubble{position:fixed;bottom:28px;right:28px;z-index:500;
+  width:58px;height:58px;border-radius:50%;background:var(--acc);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 6px 28px rgba(0,229,160,.4);transition:all .2s;
+  animation:bIn .5s cubic-bezier(.16,1,.3,1) both;}
+#chat-bubble:hover{transform:scale(1.1);box-shadow:0 8px 36px rgba(0,229,160,.55);}
+@keyframes bIn{from{opacity:0;transform:scale(.4);}to{opacity:1;transform:scale(1);}}
+.cb-icon{font-size:23px;}
+.cb-badge{position:absolute;top:-2px;right:-2px;width:17px;height:17px;
+  border-radius:50%;background:var(--acc3);color:#fff;font-size:10px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);}
+
+/* CHAT PANEL */
+#chat-panel{position:fixed;bottom:100px;right:28px;z-index:499;width:380px;
+  background:var(--card);border:1px solid var(--b2);border-radius:16px;
+  box-shadow:0 24px 64px rgba(0,0,0,.5);display:none;flex-direction:column;overflow:hidden;}
+#chat-panel.open{display:flex;animation:cpIn .28s cubic-bezier(.16,1,.3,1);}
+@keyframes cpIn{from{opacity:0;transform:translateY(14px) scale(.97);}to{opacity:1;transform:none;}}
+.cp-hdr{padding:13px 16px;border-bottom:1px solid var(--b1);background:var(--card2);
+  display:flex;align-items:center;gap:10px;}
+.cp-av{width:32px;height:32px;border-radius:50%;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#000;}
+.cp-inf{flex:1;}
+.cp-t{font-size:13px;font-weight:700;}
+.cp-s{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--acc);}
+.cp-mem{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--acc);
+  background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);padding:2px 7px;border-radius:3px;}
+.cp-x{cursor:pointer;color:var(--tx3);font-size:18px;padding:3px;transition:color .15s;line-height:1;}
+.cp-x:hover{color:var(--tx);}
+.cp-msgs{min-height:200px;max-height:300px;overflow-y:auto;
+  padding:13px;display:flex;flex-direction:column;gap:8px;}
+.cp-msgs::-webkit-scrollbar{width:2px;}
+.cp-msgs::-webkit-scrollbar-thumb{background:var(--b2);}
+.cmsg{padding:10px 12px;border-radius:9px;font-family:'Lora',serif;font-size:13px;line-height:1.65;max-width:92%;}
+.cmsg-a{background:var(--bg3);border:1px solid var(--b1);border-left:3px solid var(--acc);align-self:flex-start;}
+.cmsg-a .mw{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--acc);margin-bottom:4px;letter-spacing:1px;}
+.cmsg-u{background:rgba(167,139,250,.07);border:1px solid rgba(167,139,250,.2);
+  border-right:3px solid var(--acc4);align-self:flex-end;}
+.cmsg-u .mw{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--acc4);margin-bottom:4px;text-align:right;letter-spacing:1px;}
+.cp-inp-row{display:flex;gap:7px;padding:11px;border-top:1px solid var(--b1);background:var(--card2);}
+.cp-inp{flex:1;padding:9px 12px;background:var(--bg3);border:1px solid var(--b1);
+  border-radius:7px;color:var(--tx);font-family:'Syne',sans-serif;font-size:13px;
+  outline:none;transition:border-color .2s;resize:none;min-height:38px;max-height:80px;}
+.cp-inp:focus{border-color:var(--acc);}
+.cp-send{padding:9px 14px;background:var(--acc);color:#000;border:none;border-radius:7px;
+  cursor:pointer;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;transition:all .15s;}
+.cp-send:hover{background:#00ffb0;}
+.cp-disc{padding:7px 14px;font-family:'JetBrains Mono',monospace;font-size:9px;
+  color:var(--tx3);text-align:center;border-top:1px solid var(--b1);}
+
+.btn{padding:9px 20px;border-radius:8px;border:none;cursor:pointer;
+  font-family:'Syne',sans-serif;font-size:13px;font-weight:700;transition:all .2s;
+  display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--acc);color:#000;}
+.btn-primary:hover{background:#00ffb0;}
+.btn-secondary{background:transparent;color:var(--tx2);border:1px solid var(--b2);}
+.btn-secondary:hover{border-color:var(--acc);color:var(--acc);}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="h-back" href="apex-home.html">← Inicio</a>
+  <div class="h-logo">APEX <span class="h-plan">PRO</span></div>
+  <div class="h-sp"></div>
+  <div class="h-ic" id="theme-btn" onclick="toggleTheme()">☀️</div>
+  <div class="h-div"></div>
+  <div class="h-doc">
+    <div style="text-align:right">
+      <div class="h-name">Dr. Alejandro Juárez</div>
+      <div class="h-role">Medicina Funcional · Pro</div>
+    </div>
+    <div class="h-av">AJ</div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-photo-area">
+      <div class="patient-photo">
+        ER
+        <div class="patient-photo-edit" onclick="showPanel('editar')" title="Editar">✏️</div>
+      </div>
+      <div class="sb-id">EJRI-px000145</div>
+      <div class="sb-name">Esteban Reyna</div>
+      <div class="sb-tags">
+        <span class="sb-tag">38 años</span>
+        <span class="sb-tag">Masculino</span>
+        <span class="sb-tag g">Protocolo activo</span>
+        <span class="sb-tag b">4 visitas</span>
+        <span class="sb-tag w">Labs pendientes</span>
+      </div>
+      <div class="bioage">
+        <div class="ba-l">EDAD BIOLÓGICA</div>
+        <div class="ba-n">44</div>
+        <div class="ba-u">años</div>
+        <div class="ba-w">+6 vs edad real</div>
+      </div>
+    </div>
+    <div class="sb-nav">
+      <button class="sn active" id="sn-resumen" onclick="showPanel('resumen')">
+        <span class="sn-ic">🧬</span>Resumen
+      </button>
+      <button class="sn" id="sn-historial" onclick="showPanel('historial')">
+        <span class="sn-ic">📋</span>Historial de visitas
+        <span class="sn-badge blue">4</span>
+      </button>
+      <button class="sn" id="sn-notas" onclick="showPanel('notas')">
+        <span class="sn-ic">📝</span>Notas rápidas
+        <span class="sn-badge red" id="notas-count">3</span>
+      </button>
+      <button class="sn" id="sn-editar" onclick="showPanel('editar')">
+        <span class="sn-ic">⚙️</span>Editar registro
+      </button>
+    </div>
+    <div class="sb-cta">
+      <button class="cta-btn" onclick="window.location='apex-visita.html'">
+        ➕ Nueva visita
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+  <div class="main-inner">
+
+    <!-- ── RESUMEN ── -->
+    <div id="panel-resumen" class="panel active">
+
+      <div class="ai-brief">
+        <div class="ab-label">APEX — RESUMEN DEL PACIENTE</div>
+        <div class="ab-text">
+          <strong>Esteban Reyna, 38 años, empresario.</strong> Llegó hace 3 meses por fatiga crónica y estrés laboral de 8/10. En la primera visita se encontró glucosa en 106, presión 132/86 y circunferencia abdominal de 94 cm — síndrome metabólico incipiente con estrés crónico como motor principal. Lleva <strong>4 visitas con buena adherencia</strong> al protocolo. Bajó <strong>2.5 kg</strong> desde el inicio y su energía mejoró de 3 a 6/10. La presión bajó de 132/86 a 128/84. <em>El estrés sigue en 8/10</em> — la raíz aún sin resolver. Antecedente relevante: padre con infarto a los 55 años.
+        </div>
+        <div class="pending">⏳ Pendiente desde visita 3: cortisol diurno × 4 puntos · testosterona libre · vitamina D · PCR-us</div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric-box">
+          <div class="met-val w">128/84</div>
+          <div class="met-lbl">PRESIÓN (mmHg)</div>
+          <div class="met-trend up">↓ vs 132/86 inicio</div>
+        </div>
+        <div class="metric-box">
+          <div class="met-val w">102</div>
+          <div class="met-lbl">GLUCOSA (mg/dL)</div>
+          <div class="met-trend up">↓ vs 106 inicio</div>
+        </div>
+        <div class="metric-box">
+          <div class="met-val g">83.0</div>
+          <div class="met-lbl">PESO (kg)</div>
+          <div class="met-trend up">↓ 2.5 kg total</div>
+        </div>
+        <div class="metric-box">
+          <div class="met-val g">6/10</div>
+          <div class="met-lbl">ENERGÍA AM</div>
+          <div class="met-trend up">↑ vs 3/10 inicio</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-icon">📈</div><div class="card-title">Evolución visita a visita</div></div>
+        <div class="card-body">
+          <div class="evo-row">
+            <div class="evo-dot ok"></div>
+            <div class="evo-content">
+              <div class="evo-date">Visita 4 · 28 mayo 2026 · HOY</div>
+              <div class="evo-text">Energía 6/10. Bajó 1 kg adicional. Estrés sigue en 8/10. Trae estudios de glucosa e insulina. Se inicia análisis APEX con labs.</div>
+            </div>
+          </div>
+          <div class="evo-row">
+            <div class="evo-dot ok"></div>
+            <div class="evo-content">
+              <div class="evo-date">Visita 3 · 25 mayo 2026</div>
+              <div class="evo-text">Primera mejora clara: energía 4→6, bajó 1.2 kg, glucosa 104→99. Adherencia perfecta. Se agregó vitamina D3+K2. Pendiente labs hormonales.</div>
+            </div>
+          </div>
+          <div class="evo-row">
+            <div class="evo-dot warn"></div>
+            <div class="evo-content">
+              <div class="evo-date">Visita 2 · 10 mayo 2026</div>
+              <div class="evo-text">Sin cambios significativos. Semana muy estresante (9/10). Se ajustó magnesio de 200 a 400mg. Se recomendaron técnicas de respiración.</div>
+            </div>
+          </div>
+          <div class="evo-row">
+            <div class="evo-dot warn"></div>
+            <div class="evo-content">
+              <div class="evo-date">Visita 1 · 1 marzo 2026 · INICIO</div>
+              <div class="evo-text">Glucosa 106, PA 132/86, circunf. 94cm, energía 3/10. Diagnóstico: síndrome metabólico incipiente por estrés crónico. Inicia protocolo funcional.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-icon">💊</div><div class="card-title">Protocolo activo actualmente</div></div>
+        <div class="card-body">
+          <div class="proto-grid">
+            <div class="proto-item">
+              <div class="proto-name">Ashwagandha KSM-66</div>
+              <div class="proto-dose">300 mg · cada mañana</div>
+              <div class="proto-time">Desde hace 3 meses</div>
+            </div>
+            <div class="proto-item">
+              <div class="proto-name">Magnesio glicinato</div>
+              <div class="proto-dose">400 mg · antes de dormir</div>
+              <div class="proto-time">Desde hace 2.5 meses</div>
+            </div>
+            <div class="proto-item">
+              <div class="proto-name">Omega-3 (EPA+DHA)</div>
+              <div class="proto-dose">2 g · con el desayuno</div>
+              <div class="proto-time">Desde hace 3 meses</div>
+            </div>
+            <div class="proto-item">
+              <div class="proto-name">Vitamina D3 + K2</div>
+              <div class="proto-dose">5,000 UI + 100 mcg · con comida</div>
+              <div class="proto-time">Desde hace 3 semanas</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── HISTORIAL ── -->
+    <div id="panel-historial" class="panel">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;color:var(--tx3)">4 VISITAS REGISTRADAS</div>
+        <button class="btn btn-primary" onclick="window.location='apex-visita.html'" style="padding:8px 16px;font-size:12px">➕ Nueva visita</button>
+      </div>
+
+      <!-- Visita 4 -->
+      <div class="visit-item">
+        <div class="vi-head" onclick="toggleV(this)">
+          <div class="vi-num latest">4</div>
+          <div class="vi-inf">
+            <div class="vi-date">28 mayo 2026
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--acc);
+                margin-left:8px;background:rgba(0,229,160,.1);padding:2px 7px;border-radius:3px">ÚLTIMA</span>
+            </div>
+            <div class="vi-sum">Fatiga matutina, estrés 8/10. Trae labs de glucosa e insulina.</div>
+          </div>
+          <span class="vi-chev open">▾</span>
+        </div>
+        <div class="vi-body show">
+          <div class="vi-section-lbl">SIGNOS VITALES Y MEDICIONES</div>
+          <div class="vi-grid">
+            <div class="vi-metric"><div class="vm-lbl">PRESIÓN ARTERIAL</div><div class="vm-val w">128/84 mmHg</div></div>
+            <div class="vi-metric"><div class="vm-lbl">GLUCOSA CAPILAR</div><div class="vm-val w">102 mg/dL</div></div>
+            <div class="vi-metric"><div class="vm-lbl">PESO</div><div class="vm-val">83.0 kg</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ENERGÍA AM</div><div class="vm-val g">6/10</div></div>
+            <div class="vi-metric"><div class="vm-lbl">CALIDAD SUEÑO</div><div class="vm-val w">5/10</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ESTRÉS</div><div class="vm-val r">8/10</div></div>
+          </div>
+          <div class="vi-section-lbl" style="margin-top:14px">PROTOCOLO EN ESTA VISITA</div>
+          <div class="vi-meds">
+            <span class="vi-med">💊 Ashwagandha 300mg</span>
+            <span class="vi-med">💊 Magnesio 400mg</span>
+            <span class="vi-med">💊 Omega-3 2g</span>
+            <span class="vi-med">💊 Vitamina D3+K2</span>
+          </div>
+          <div class="vi-note">"Sigo cansado en la mañana aunque duermo 7 horas. El estrés del trabajo no baja."</div>
+          <div class="vi-actions">
+            <button class="vi-btn primary" onclick="window.location='apex-analisis.html'">🧬 Ver análisis APEX</button>
+            <button class="vi-btn">Ver detalle completo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visita 3 -->
+      <div class="visit-item">
+        <div class="vi-head" onclick="toggleV(this)">
+          <div class="vi-num">3</div>
+          <div class="vi-inf">
+            <div class="vi-date">25 mayo 2026</div>
+            <div class="vi-sum">Primera mejora clara. Bajó 1.2 kg. Adherencia perfecta al protocolo.</div>
+          </div>
+          <span class="vi-chev">▾</span>
+        </div>
+        <div class="vi-body">
+          <div class="vi-section-lbl">SIGNOS VITALES Y MEDICIONES</div>
+          <div class="vi-grid">
+            <div class="vi-metric"><div class="vm-lbl">PRESIÓN ARTERIAL</div><div class="vm-val w">126/82 mmHg</div></div>
+            <div class="vi-metric"><div class="vm-lbl">GLUCOSA CAPILAR</div><div class="vm-val g">99 mg/dL</div></div>
+            <div class="vi-metric"><div class="vm-lbl">PESO</div><div class="vm-val g">83.5 kg ↓</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ENERGÍA AM</div><div class="vm-val g">6/10 ↑</div></div>
+            <div class="vi-metric"><div class="vm-lbl">CALIDAD SUEÑO</div><div class="vm-val w">6/10</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ESTRÉS</div><div class="vm-val w">7/10</div></div>
+          </div>
+          <div class="vi-section-lbl" style="margin-top:14px">PROTOCOLO</div>
+          <div class="vi-meds">
+            <span class="vi-med">💊 Ashwagandha 300mg</span>
+            <span class="vi-med">💊 Magnesio 400mg</span>
+            <span class="vi-med">💊 Omega-3 2g</span>
+          </div>
+          <div class="vi-note">Nota médico: Primera vez que reporta mejora subjetiva. Se agrega vitamina D3+K2. Pendiente labs cortisol y hormonales.</div>
+          <div class="vi-actions">
+            <button class="vi-btn primary" onclick="window.location='apex-analisis.html'">🧬 Ver análisis APEX</button>
+            <button class="vi-btn">Ver detalle completo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visita 2 -->
+      <div class="visit-item">
+        <div class="vi-head" onclick="toggleV(this)">
+          <div class="vi-num">2</div>
+          <div class="vi-inf">
+            <div class="vi-date">10 mayo 2026</div>
+            <div class="vi-sum">Sin cambios. Semana de mucho trabajo. Se ajusta magnesio a 400mg.</div>
+          </div>
+          <span class="vi-chev">▾</span>
+        </div>
+        <div class="vi-body">
+          <div class="vi-section-lbl">SIGNOS VITALES Y MEDICIONES</div>
+          <div class="vi-grid">
+            <div class="vi-metric"><div class="vm-lbl">PRESIÓN ARTERIAL</div><div class="vm-val w">130/85 mmHg</div></div>
+            <div class="vi-metric"><div class="vm-lbl">GLUCOSA CAPILAR</div><div class="vm-val w">104 mg/dL</div></div>
+            <div class="vi-metric"><div class="vm-lbl">PESO</div><div class="vm-val">84.7 kg</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ENERGÍA AM</div><div class="vm-val w">4/10</div></div>
+            <div class="vi-metric"><div class="vm-lbl">CALIDAD SUEÑO</div><div class="vm-val r">4/10</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ESTRÉS</div><div class="vm-val r">9/10</div></div>
+          </div>
+          <div class="vi-section-lbl" style="margin-top:14px">PROTOCOLO AJUSTADO</div>
+          <div class="vi-meds">
+            <span class="vi-med">💊 Ashwagandha 300mg</span>
+            <span class="vi-med">💊 Magnesio 200→400mg</span>
+            <span class="vi-med">💊 Omega-3 2g</span>
+          </div>
+          <div class="vi-note">Semana de mucho trabajo. No ha dormido bien. Se recomendó técnica de respiración antes de dormir (4-7-8).</div>
+          <div class="vi-actions">
+            <button class="vi-btn primary" onclick="window.location='apex-analisis.html'">🧬 Ver análisis APEX</button>
+            <button class="vi-btn">Ver detalle completo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visita 1 -->
+      <div class="visit-item">
+        <div class="vi-head" onclick="toggleV(this)">
+          <div class="vi-num">1</div>
+          <div class="vi-inf">
+            <div class="vi-date">1 marzo 2026 — Primera visita</div>
+            <div class="vi-sum">Paciente nuevo. Fatiga, estrés laboral, presión borderline. Inicia protocolo funcional.</div>
+          </div>
+          <span class="vi-chev">▾</span>
+        </div>
+        <div class="vi-body">
+          <div class="vi-section-lbl">SIGNOS VITALES Y MEDICIONES</div>
+          <div class="vi-grid">
+            <div class="vi-metric"><div class="vm-lbl">PRESIÓN ARTERIAL</div><div class="vm-val w">132/86 mmHg</div></div>
+            <div class="vi-metric"><div class="vm-lbl">GLUCOSA CAPILAR</div><div class="vm-val w">106 mg/dL</div></div>
+            <div class="vi-metric"><div class="vm-lbl">PESO INICIAL</div><div class="vm-val">85.5 kg</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ENERGÍA AM</div><div class="vm-val r">3/10</div></div>
+            <div class="vi-metric"><div class="vm-lbl">ESTRÉS PERCIBIDO</div><div class="vm-val r">9/10</div></div>
+            <div class="vi-metric"><div class="vm-lbl">CIRCUNF. ABDOMINAL</div><div class="vm-val w">94 cm</div></div>
+          </div>
+          <div class="vi-section-lbl" style="margin-top:14px">PROTOCOLO INICIAL</div>
+          <div class="vi-meds">
+            <span class="vi-med">💊 Ashwagandha KSM-66 300mg</span>
+            <span class="vi-med">💊 Magnesio 200mg</span>
+            <span class="vi-med">💊 Omega-3 2g</span>
+          </div>
+          <div class="vi-note">Llegó por recomendación del Dr. Marcos Olvera. Empresario con jornadas de 14h. Alta motivación. Padre con infarto a los 55.</div>
+          <div class="vi-actions">
+            <button class="vi-btn primary" onclick="window.location='apex-analisis.html'">🧬 Ver análisis APEX</button>
+            <button class="vi-btn">Ver detalle completo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── NOTAS RÁPIDAS ── -->
+    <div id="panel-notas" class="panel">
+
+      <div class="nota-add-box">
+        <div class="na-label">NUEVA NOTA RÁPIDA</div>
+        <textarea class="na-textarea" id="nota-input"
+          placeholder="Escribe la nota — llamada del paciente, cambio de medicamento, observación clínica, recordatorio..."></textarea>
+        <div class="na-bottom">
+          <div class="na-file-area">
+            <button class="na-file-btn" onclick="document.getElementById('nota-file').click()">
+              📎 Adjuntar foto o documento
+            </button>
+            <input type="file" id="nota-file" style="display:none" accept="image/*,.pdf,.doc,.docx"
+              onchange="handleNotaFile(this)">
+            <span class="na-file-name" id="nota-file-name"></span>
+          </div>
+          <button class="na-save" onclick="addNota()">Guardar nota</button>
+        </div>
+        <div class="na-file-desc" id="nota-file-desc">
+          <div class="na-file-desc-lbl">DESCRIPCIÓN DEL ARCHIVO — ¿Qué es lo que subiste?</div>
+          <textarea id="nota-file-desc-input" rows="2"
+            placeholder="Ejemplo: Resultados de laboratorio del 28 mayo, labs de glucosa e insulina enviados por WhatsApp..."></textarea>
+        </div>
+      </div>
+
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;color:var(--tx3);margin-bottom:12px">NOTAS ANTERIORES</div>
+      <div id="notas-list">
+        <div class="nota-item">
+          <div class="ni-top">
+            <span style="font-size:14px;font-weight:700">Magnesio — ajuste de dosis</span>
+            <span class="ni-date">27 may 2026 · 14:32</span>
+          </div>
+          <div class="ni-text">Esteban llamó para avisar que el magnesio le está causando sueño muy profundo. Le expliqué que es normal las primeras 2 semanas y que el efecto se regula solo. No se cambia el protocolo.</div>
+        </div>
+        <div class="nota-item">
+          <div class="ni-top">
+            <span style="font-size:14px;font-weight:700">Labs listos en Médica Sur</span>
+            <span class="ni-date">12 may 2026 · 09:15</span>
+          </div>
+          <div class="ni-text">Laboratorio confirmó que los estudios de cortisol están listos. Paciente fue avisado por WhatsApp — pendiente recogerlos antes de próxima visita.</div>
+          <div class="ni-file">📄 orden-cortisol-mayo.pdf</div>
+        </div>
+        <div class="nota-item">
+          <div class="ni-top">
+            <span style="font-size:14px;font-weight:700">Primera impresión post-visita</span>
+            <span class="ni-date">5 mar 2026 · 11:48</span>
+          </div>
+          <div class="ni-text">Paciente muy informado, ya había investigado sobre ashwagandha por su cuenta. Excelente actitud. Refiere que su papá tuvo infarto a los 55 — lo toma muy en serio y es un buen motivador para la adherencia.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── EDITAR ── -->
+    <div id="panel-editar" class="panel">
+
+      <div class="edit-photo-row">
+        <div class="ep-photo" id="ep-photo">ER</div>
+        <div class="ep-info">
+          <p>La foto aparece en la ficha del médico. Nunca en documentos que recibe el paciente.</p>
+          <div class="ep-btns">
+            <button class="ep-btn" onclick="document.getElementById('edit-foto').click()">📷 Cambiar foto</button>
+            <button class="ep-btn" onclick="document.getElementById('ep-photo').innerHTML='ER'">✕ Quitar</button>
+            <input type="file" id="edit-foto" accept="image/*" style="display:none" onchange="updatePhoto(this)">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-icon">👤</div><div class="card-title">Datos personales</div></div>
+        <div class="card-body">
+          <div class="edit-grid">
+            <div class="fg"><label class="fl">NOMBRE(S)</label><input value="Esteban"/></div>
+            <div class="fg"><label class="fl">APELLIDOS</label><input value="Reyna"/></div>
+            <div class="fg"><label class="fl">FECHA DE NACIMIENTO</label><input type="date" value="1988-03-14"/></div>
+            <div class="fg"><label class="fl">OCUPACIÓN</label><input value="Empresario"/></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-icon">📱</div><div class="card-title">Contacto</div></div>
+        <div class="card-body">
+          <div class="edit-grid">
+            <div class="fg"><label class="fl">CORREO ELECTRÓNICO</label><input type="email" value="esteban@empresa.mx"/></div>
+            <div class="fg"><label class="fl">CELULAR</label><input value="+52 55 1234 5678"/></div>
+            <div class="fg"><label class="fl">CONTACTO EMERGENCIA</label><input value="Ana Reyna (esposa)"/></div>
+            <div class="fg"><label class="fl">CELULAR EMERGENCIA</label><input value="+52 55 8765 4321"/></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:20px">
+        <button class="btn btn-primary" onclick="alert('✅ Cambios guardados.');showPanel('resumen')">💾 Guardar cambios</button>
+        <button class="btn btn-secondary" onclick="showPanel('resumen')">Cancelar</button>
+      </div>
+
+      <div class="danger-zone">
+        <div class="dz-title">ZONA DE RIESGO</div>
+        <button class="dz-btn" onclick="if(confirm('¿Eliminar el expediente completo de Esteban Reyna?'))alert('Eliminado.')">🗑️ Eliminar paciente</button>
+        <p style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);margin-top:8px;line-height:1.5">
+          Esta acción no se puede deshacer. El expediente completo se eliminará permanentemente.
+        </p>
+      </div>
+    </div>
+
+  </div>
+  </div>
+</div>
+
+<!-- FLOATING CHAT BUBBLE -->
+<div id="chat-bubble" onclick="toggleChat()">
+  <span class="cb-icon">💬</span>
+  <div class="cb-badge">!</div>
+</div>
+
+<!-- CHAT PANEL -->
+<div id="chat-panel">
+  <div class="cp-hdr">
+    <div class="cp-av">A</div>
+    <div class="cp-inf">
+      <div class="cp-t">APEX Chat — Esteban Reyna</div>
+      <div class="cp-s">Historial completo cargado · 4 visitas · notas</div>
+    </div>
+    <div class="cp-mem">CON MEMORIA</div>
+    <div class="cp-x" onclick="toggleChat()">✕</div>
+  </div>
+  <div class="cp-msgs" id="cp-msgs">
+    <div class="cmsg cmsg-a">
+      <div class="mw">APEX</div>
+      Doctor, tengo cargado el expediente completo de Esteban — 4 visitas, notas y análisis previo. El estrés sigue en 8/10 a pesar del ashwagandha. ¿Quiere que revisemos si hay algo en la raíz que no estamos atacando?
+    </div>
+  </div>
+  <div class="cp-inp-row">
+    <textarea class="cp-inp" id="cp-inp" placeholder="Pregunta sobre Esteban, su historial, protocolo..." rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+    <button class="cp-send" onclick="sendChat()">→</button>
+  </div>
+  <div class="cp-disc">Conversación guardada en el expediente · CON MEMORIA</div>
+</div>
+
+<script>
+// Theme
+let darkMode = localStorage.getItem('apex-theme') !== 'light';
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', darkMode?'dark':'light');
+  document.getElementById('theme-btn').textContent = darkMode?'☀️':'🌙';
+}
+function toggleTheme(){ darkMode=!darkMode; localStorage.setItem('apex-theme',darkMode?'dark':'light'); applyTheme(); }
+applyTheme();
+
+// Panel nav
+function showPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.sn').forEach(s=>s.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  const sn = document.getElementById('sn-'+id);
+  if(sn) sn.classList.add('active');
+  document.querySelector('.main').scrollTop = 0;
+}
+
+// Visit accordion
+function toggleV(head){
+  const body = head.nextElementSibling;
+  const chev = head.querySelector('.vi-chev');
+  const open = body.classList.contains('show');
+  body.classList.toggle('show',!open);
+  if(chev) chev.classList.toggle('open',!open);
+}
+
+// Notes
+let notaFile = null;
+function handleNotaFile(input){
+  if(!input.files[0]) return;
+  notaFile = input.files[0];
+  document.getElementById('nota-file-name').textContent = notaFile.name;
+  document.getElementById('nota-file-desc').style.display = 'block';
+}
+
+function addNota(){
+  const inp = document.getElementById('nota-input');
+  const v = inp.value.trim();
+  const desc = document.getElementById('nota-file-desc-input')?.value?.trim();
+  if(!v && !notaFile) return;
+  const list = document.getElementById('notas-list');
+  const now = new Date();
+  const d = now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  const t = now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  const title = v ? v.substring(0,60)+(v.length>60?'…':'') : (desc||notaFile?.name||'Documento adjunto');
+  const div = document.createElement('div');
+  div.className = 'nota-item';
+  div.style.animation = 'fadeUp .3s ease';
+  let html = `<div class="ni-top"><span style="font-size:14px;font-weight:700">${title}</span><span class="ni-date">${d} · ${t}</span></div>`;
+  if(v) html += `<div class="ni-text">${v}</div>`;
+  if(notaFile) html += `<div class="ni-file">📄 ${notaFile.name}${desc?' — '+desc:''}</div>`;
+  div.innerHTML = html;
+  list.prepend(div);
+  inp.value = '';
+  notaFile = null;
+  document.getElementById('nota-file-name').textContent = '';
+  document.getElementById('nota-file-desc').style.display = 'none';
+  document.getElementById('nota-file-desc-input').value = '';
+  document.getElementById('nota-file').value = '';
+  const badge = document.getElementById('notas-count');
+  if(badge) badge.textContent = parseInt(badge.textContent||'0')+1;
+}
+
+// Chat bubble
+let chatOpen = false;
+function toggleChat(){
+  chatOpen = !chatOpen;
+  document.getElementById('chat-panel').classList.toggle('open', chatOpen);
+  document.querySelector('#chat-bubble .cb-badge').style.display = chatOpen ? 'none' : 'flex';
+  if(chatOpen) setTimeout(()=>document.getElementById('cp-inp').focus(),100);
+}
+
+let rIdx = 0;
+const replies = [
+  'Revisando el historial: el estrés de 8/10 sostenido es lo que más me preocupa. El ashwagandha ayuda pero no puede solo cuando la fuente es situacional — jornadas de 14h laborales. ¿Ha considerado explorar eso en consulta con Esteban?',
+  'Con los labs de hoy voy a poder responder la pregunta clave: ¿la resistencia a la insulina ya está establecida o todavía es funcional? Si el HOMA-IR está bajo 1.5, seguimos sin metformina. Si está sobre 2, hay que reconsiderar.',
+  'La bajada de 2.5 kg en 3 meses sin cambios drásticos de dieta sugiere que la sensibilización a la insulina está funcionando. Es lento pero sostenible. Con los labs de cortisol podría ajustar el protocolo para ir más directo a la raíz.',
+  'Buena pregunta. Dame más contexto y reviso el historial de Esteban para darte una respuesta más precisa.',
+];
+function sendChat(){
+  const inp = document.getElementById('cp-inp');
+  const msgs = document.getElementById('cp-msgs');
+  const v = inp.value.trim();
+  if(!v) return;
+  msgs.innerHTML += `<div class="cmsg cmsg-u"><div class="mw">MÉDICO</div>${v}</div>`;
+  inp.value = ''; msgs.scrollTop = msgs.scrollHeight;
+  setTimeout(()=>{
+    msgs.innerHTML += `<div class="cmsg cmsg-a" id="typ"><div class="mw">APEX</div><span style="color:var(--tx3)">···</span></div>`;
+    msgs.scrollTop = msgs.scrollHeight;
+    setTimeout(()=>{
+      const t = document.getElementById('typ');
+      if(t){ t.innerHTML=`<div class="mw">APEX</div>${replies[rIdx++%replies.length]}`; msgs.scrollTop=msgs.scrollHeight; }
+    },950);
+  },250);
+}
+
+// Edit photo
+function updatePhoto(input){
+  if(!input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('ep-photo').innerHTML = `<img src="${e.target.result}">`;
+    const sbPhoto = document.querySelector('.patient-photo');
+    if(sbPhoto) sbPhoto.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">
+      <div class="patient-photo-edit" onclick="showPanel('editar')">✏️</div>`;
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+</script>
+</body>
+</html>

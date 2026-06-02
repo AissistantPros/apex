@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ayuda y Contacto — APEX</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070a0e;--bg2:#0c1118;--bg3:#111820;--bg4:#161f28;--b1:#1e2d3d;--b2:#2a3f54;--b3:#3a5570;--acc:#00e5a0;--acc2:#0ea5e9;--acc3:#f97316;--acc4:#a78bfa;--tx:#dde6ef;--tx2:#7a95aa;--tx3:#3d5870;--card:#0d1520;--card2:#101c28;--hdr-bg:rgba(7,10,14,.97);--grid-color:rgba(0,229,160,.016);}
+html[data-theme="light"]{--bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#d2dbe8;--b1:#c2cfe0;--b2:#9bb0c8;--b3:#6b8caa;--acc:#00b87a;--acc2:#0278c0;--acc3:#e06400;--acc4:#7c5cbf;--tx:#0c1f2e;--tx2:#3d5870;--tx3:#8aa5bd;--card:#ffffff;--card2:#f5f8fc;--hdr-bg:rgba(255,255,255,.97);--grid-color:rgba(0,150,100,.025);}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;transition:background .3s,color .25s;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(var(--grid-color) 1px,transparent 1px),linear-gradient(90deg,var(--grid-color) 1px,transparent 1px);background-size:48px 48px;}
+*{transition:background-color .3s,border-color .3s,color .25s;}
+
+header{position:fixed;top:0;left:0;right:0;height:58px;z-index:200;background:var(--hdr-bg);border-bottom:1px solid var(--b1);backdrop-filter:blur(24px);display:flex;align-items:center;padding:0 24px;gap:10px;}
+.h-back{display:flex;align-items:center;gap:7px;padding:6px 12px;background:var(--bg3);border:1px solid var(--b1);border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;color:var(--tx2);text-decoration:none;transition:all .15s;}
+.h-back:hover{border-color:var(--b2);color:var(--tx);}
+.h-logo{font-size:17px;font-weight:800;color:var(--acc);letter-spacing:1px;display:flex;align-items:center;gap:7px;}
+.h-plan{font-family:'JetBrains Mono';font-size:9px;letter-spacing:3px;color:var(--acc2);background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);padding:2px 7px;border-radius:3px;}
+.h-sp{flex:1;}
+.h-ic{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--b1);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
+
+#s-main{display:none;position:fixed;inset:0;top:58px;overflow-y:auto;overflow-x:hidden;opacity:0;transition:opacity .7s;}
+#s-main.show{display:block;opacity:1;}
+#s-main::-webkit-scrollbar{width:3px;}
+#s-main::-webkit-scrollbar-thumb{background:var(--b2);}
+.page-inner{max-width:900px;margin:0 auto;padding:24px;}
+
+.help-header{margin-bottom:32px;text-align:center;}
+.hh-title{font-size:28px;font-weight:800;margin-bottom:8px;}
+.hh-sub{font-size:14px;color:var(--tx2);}
+
+.tabs{display:flex;gap:8px;margin-bottom:24px;border-bottom:1px solid var(--b1);padding-bottom:0;overflow-x:auto;}
+.tab{padding:12px 16px;cursor:pointer;border-bottom:3px solid transparent;font-weight:600;color:var(--tx2);transition:all .2s;white-space:nowrap;}
+.tab.active{color:var(--acc);border-bottom-color:var(--acc);}
+.tab:hover{color:var(--tx);}
+
+.tab-content{display:none;}
+.tab-content.active{display:block;animation:fadeIn .3s;}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+
+.section{margin-bottom:24px;}
+.section-title{font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.section-title::before{content:'';width:3px;height:18px;background:var(--acc);border-radius:1px;}
+
+.collapsible{background:var(--card2);border:1px solid var(--b1);border-radius:10px;margin-bottom:10px;overflow:hidden;cursor:pointer;transition:all .2s;}
+.collapsible:hover{border-color:var(--b2);}
+.collapsible-header{padding:14px;display:flex;align-items:center;gap:12px;justify-content:space-between;}
+.collapsible-title{font-weight:600;flex:1;}
+.collapsible-icon{width:24px;height:24px;display:flex;align-items:center;justify-content:center;transition:transform .2s;}
+.collapsible.open .collapsible-icon{transform:rotate(180deg);}
+.collapsible-body{display:none;padding:16px;border-top:1px solid var(--b1);background:rgba(0,229,160,.02);}
+.collapsible.open .collapsible-body{display:block;}
+
+.tutorial-item{background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:10px;display:flex;gap:12px;align-items:center;cursor:pointer;transition:all .2s;}
+.tutorial-item:hover{border-color:var(--acc);}
+.tut-icon{width:40px;height:40px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+.tut-info{flex:1;}
+.tut-title{font-weight:600;margin-bottom:2px;}
+.tut-desc{font-size:12px;color:var(--tx2);}
+
+.learning-card{background:var(--card2);border:1px solid var(--b1);border-radius:10px;padding:16px;margin-bottom:16px;}
+.lc-title{font-weight:700;margin-bottom:8px;}
+.lc-text{font-family:'Lora';font-size:14px;line-height:1.6;color:var(--tx2);margin-bottom:12px;}
+.lc-btn{display:inline-block;padding:8px 14px;background:var(--acc);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;transition:all .2s;}
+.lc-btn:hover{background:#00ffb0;}
+
+.chat-container{background:var(--card2);border:1px solid var(--b1);border-radius:10px;overflow:hidden;height:500px;display:flex;flex-direction:column;}
+.chat-header{background:var(--bg3);padding:14px;border-bottom:1px solid var(--b1);font-weight:700;}
+.chat-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+.chat-msg{padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.5;}
+.chat-msg.ai{background:var(--bg3);border-left:3px solid var(--acc);}
+.chat-msg.user{background:rgba(0,229,160,.1);border-right:3px solid var(--acc);align-self:flex-end;max-width:80%;}
+.chat-input{padding:12px;border-top:1px solid var(--b1);display:flex;gap:8px;}
+.chat-field{flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-family:'Syne';outline:none;resize:none;max-height:60px;}
+.chat-field:focus{border-color:var(--acc);}
+.chat-send{padding:8px 14px;background:var(--acc);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:700;transition:all .2s;}
+.chat-send:hover{background:#00ffb0;}
+
+.ticket-form{background:var(--card2);border:1px solid var(--b1);border-radius:10px;padding:16px;}
+.form-group{margin-bottom:14px;}
+.form-label{font-weight:600;margin-bottom:6px;display:block;font-size:13px;}
+.form-input,.form-textarea{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-family:'Syne';outline:none;resize:vertical;}
+.form-textarea{font-family:'Lora';min-height:100px;}
+.form-input:focus,.form-textarea:focus{border-color:var(--acc);}
+.form-submit{padding:10px 20px;background:var(--acc);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:700;transition:all .2s;}
+.form-submit:hover{background:#00ffb0;}
+.form-submit:disabled{opacity:.5;cursor:not-allowed;}
+
+.contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:24px;}
+.contact-card{background:var(--card2);border:1px solid var(--b1);border-radius:10px;padding:16px;text-align:center;}
+.cc-icon{font-size:28px;margin-bottom:8px;}
+.cc-title{font-weight:700;margin-bottom:6px;}
+.cc-desc{font-size:13px;color:var(--tx2);margin-bottom:10px;}
+.cc-link{display:inline-block;padding:8px 14px;background:transparent;border:1px solid var(--acc);color:var(--acc);border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;}
+.cc-link:hover{background:var(--acc);color:#000;}
+
+.alert{background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--acc2);margin-bottom:16px;}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="h-back" href="apex-visita.html">← Atrás</a>
+  <div class="h-logo">APEX <span class="h-plan">PRO</span></div>
+  <div class="h-sp"></div>
+  <div class="h-ic" id="theme-btn" onclick="toggleTheme()">☀️</div>
+</header>
+
+<div id="s-main">
+<div class="page-inner">
+  <div class="help-header">
+    <div class="hh-title">📚 Ayuda y Contacto</div>
+    <div class="hh-sub">Tutoriales, aprendizaje y soporte técnico</div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab(0)">🎓 Tutoriales</div>
+    <div class="tab" onclick="switchTab(1)">🧬 Medicina Funcional</div>
+    <div class="tab" onclick="switchTab(2)">📈 Longevidad</div>
+    <div class="tab" onclick="switchTab(3)">💬 Chat IA</div>
+    <div class="tab" onclick="switchTab(4)">🎫 Ticket</div>
+    <div class="tab" onclick="switchTab(5)">📞 Contacto</div>
+  </div>
+
+  <!-- TAB 0: TUTORIALES -->
+  <div class="tab-content active">
+    <div class="section">
+      <div class="section-title">Cómo usar APEX</div>
+      <div class="tutorial-item" onclick="alert('Tutorial: Análisis clínico paso a paso\n\n1. Ingresa datos del paciente\n2. Sistema genera análisis en 3 capas\n3. Revisa diagnósticos\n4. Acepta o modifica protocolos\n5. Genera documentos imprimibles')">
+        <div class="tut-icon">📊</div>
+        <div class="tut-info">
+          <div class="tut-title">Análisis clínico paso a paso</div>
+          <div class="tut-desc">Cómo navegar el flujo de diagnóstico, protocolos y documentos finales</div>
+        </div>
+      </div>
+      <div class="tutorial-item" onclick="alert('Tutorial: Charla con APEX\n\n- En cada sección puedes hacer preguntas\n- APEX responde con bibliografía\n- Puedes corregir análisis\n- Sistema aprende de tus decisiones')">
+        <div class="tut-icon">💬</div>
+        <div class="tut-info">
+          <div class="tut-title">Cómo discutir con APEX</div>
+          <div class="tut-desc">Preguntas, correcciones y cómo el sistema se adapta a ti</div>
+        </div>
+      </div>
+      <div class="tutorial-item" onclick="alert('Tutorial: Documentos imprimibles\n\n- 3 documentos generados automáticamente\n- Receta médica (legal)\n- Reporte para paciente (educativo)\n- Solicitud de estudios (laboratorio)\n- Personalizables antes de imprimir')">
+        <div class="tut-icon">🖨️</div>
+        <div class="tut-info">
+          <div class="tut-title">Generación de documentos</div>
+          <div class="tut-desc">Recetas, reportes y solicitud de estudios automáticos</div>
+        </div>
+      </div>
+      <div class="tutorial-item" onclick="alert('Tutorial: Dashboard de tu práctica\n\n- Visualiza estadísticas de tu clínica\n- Pacientes nuevos y retención\n- Diagnósticos más frecuentes\n- Medicamentos más usados\n- Análisis de fuentes de pacientes')">
+        <div class="tut-icon">📈</div>
+        <div class="tut-info">
+          <div class="tut-title">Mi Clínica — Dashboard</div>
+          <div class="tut-desc">Métricas, estadísticas y análisis de tu práctica</div>
+        </div>
+      </div>
+      <div class="tutorial-item" onclick="alert('Tutorial: Revisión retrospectiva\n\n- Navega hacia atrás en cualquier momento\n- Revisa diagnósticos anteriores\n- Edita o modifica protocolos\n- Mantén historial completo de decisiones')">
+        <div class="tut-icon">⏮️</div>
+        <div class="tut-info">
+          <div class="tut-title">Navegar hacia atrás</div>
+          <div class="tut-desc">Revisa y modifica cualquier paso anterior</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 1: MEDICINA FUNCIONAL -->
+  <div class="tab-content">
+    <div class="section">
+      <div class="section-title">Introducción a Medicina Funcional</div>
+      <div class="learning-card">
+        <div class="lc-title">¿Qué es Medicina Funcional?</div>
+        <div class="lc-text">La medicina funcional es un enfoque centrado en identificar y abordareorígenes de las enfermedades, en lugar de solo tratar síntomas. Busca restaurar las funciones corporales mediante nutrición, estilo de vida y tratamientos basados en evidencia.</div>
+        <button class="lc-btn" onclick="expandSection(0)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">Eje Hipotálamo-Pituitaria-Adrenal (HPA)</div>
+        <div class="lc-text">El eje HPA regula tu respuesta al estrés. Cuando está disfuncional, produce cortisol elevado o bajo, afectando metabolismo, sueño e inmunidad. APEX analiza esto como raíz causal en muchos pacientes.</div>
+        <button class="lc-btn" onclick="expandSection(1)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">Resistencia Insulínica</div>
+        <div class="lc-text">Las células "no escuchan" la insulina. Resultado: glucosa elevada, presión arterial alta, grasa visceral. Es la base del síndrome metabólico. APEX identifica cuando está presente y diseña intervenciones específicas.</div>
+        <button class="lc-btn" onclick="expandSection(2)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">Disbiosis y Permeabilidad Intestinal</div>
+        <div class="lc-text">El intestino "permeable" permite que bacterias y toxinas pasen a la sangre. Esto dispara inflamación sistémica y autoinmunidad. APEX propone estudios y protocolos para restaurar la barrera intestinal.</div>
+        <button class="lc-btn" onclick="expandSection(3)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">Inflamación Crónica de Bajo Grado</div>
+        <div class="lc-text">Muchas enfermedades modernas (síndrome metabólico, fatiga, depresión) tienen inflamación sistémica como raíz. APEX mide marcadores como PCR-us y diseña intervenciones antiinflamatorias.</div>
+        <button class="lc-btn" onclick="expandSection(4)">Leer más</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: LONGEVIDAD -->
+  <div class="tab-content">
+    <div class="section">
+      <div class="section-title">Medicina de Longevidad</div>
+      <div class="learning-card">
+        <div class="lc-title">¿Qué es Edad Biológica?</div>
+        <div class="lc-text">No es tu edad cronológica. Es cuán rápido están envejeciendo tus células según marcadores como glucosa, presión, testosterona, inflamación, estrés oxidativo. APEX calcula tu edad biológica y proyecta riesgo a 10 años.</div>
+        <button class="lc-btn" onclick="expandSection(5)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">Epigenética y Reversibilidad</div>
+        <div class="lc-text">Tus genes no son destino. Nutrición, ejercicio, sueño y estrés modifican qué genes se expresan. APEX diseña intervenciones para "apagar" genes de envejecimiento acelerado y "encender" genes de longevidad.</div>
+        <button class="lc-btn" onclick="expandSection(6)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">NAD+ y Mitocondrias</div>
+        <div class="lc-text">NAD+ es la "moneda energética" de tus células. Declina con la edad. Mantenerlo alto (ejercicio, sueño, ayuno) prolonga vida en modelos animales. APEX propone estrategias para optimizarlo.</div>
+        <button class="lc-btn" onclick="expandSection(7)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">Sarcopenia y Masa Muscular</div>
+        <div class="lc-text">Perder músculo con la edad es el factor #1 de envejecimiento. APEX prioriza preservación de masa muscular mediante ejercicio de resistencia y nutrición proteica optimizada.</div>
+        <button class="lc-btn" onclick="expandSection(8)">Leer más</button>
+      </div>
+      <div class="learning-card">
+        <div class="lc-title">Riesgo Cardiovascular y Proyecciones</div>
+        <div class="lc-text">APEX usa Framingham Risk Score y otros modelos para proyectar tu riesgo de infarto a 10 años. Con intervención temprana, ese riesgo puede bajar 60-70% sin medicamentos.</div>
+        <button class="lc-btn" onclick="expandSection(9)">Leer más</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: CHAT IA -->
+  <div class="tab-content">
+    <div class="alert">💡 Chat con IA especializada en APEX. Pregunta sobre cómo usar la plataforma, interpretación de datos, o clarificaciones sobre medicina funcional.</div>
+    <div class="chat-container" id="chat-container">
+      <div class="chat-header">APEX Assistant — Soporte Técnico</div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-msg ai">Hola 👋 Soy tu asistente especializado en APEX. ¿Tienes preguntas sobre cómo usar la plataforma o necesitas aclaración sobre algo?</div>
+      </div>
+      <div class="chat-input">
+        <input type="text" class="chat-field" id="chat-input" placeholder="Escribe tu pregunta..." onkeydown="if(event.key==='Enter'){sendChat();}">
+        <button class="chat-send" onclick="sendChat()">→</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: TICKET -->
+  <div class="tab-content">
+    <div class="section">
+      <div class="section-title">Abrir Ticket de Atención</div>
+      <div class="ticket-form">
+        <div class="form-group">
+          <label class="form-label">Tipo de problema</label>
+          <select class="form-input" id="ticket-type" onchange="">
+            <option>Selecciona...</option>
+            <option>Bug / Comportamiento inesperado</option>
+            <option>Pregunta técnica</option>
+            <option>Solicitud de feature</option>
+            <option>Problema de acceso/cuenta</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Asunto</label>
+          <input type="text" class="form-input" id="ticket-subject" placeholder="Ej: No puedo generar documentos...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descripción detallada</label>
+          <textarea class="form-textarea" id="ticket-desc" placeholder="Describe el problema con el máximo detalle posible..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prioridad</label>
+          <select class="form-input" id="ticket-priority">
+            <option>Normal</option>
+            <option>Alta</option>
+            <option>Urgente</option>
+          </select>
+        </div>
+        <button class="form-submit" onclick="submitTicket()">📬 Enviar Ticket</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 5: CONTACTO -->
+  <div class="tab-content">
+    <div class="section">
+      <div class="section-title">Canales de Contacto</div>
+      <div class="contact-grid">
+        <div class="contact-card">
+          <div class="cc-icon">💬</div>
+          <div class="cc-title">Chat en Vivo</div>
+          <div class="cc-desc">Habla con un especialista de APEX en tiempo real (Lun-Vie 9am-6pm)</div>
+          <button class="cc-link" onclick="alert('Conectando con especialista...\n\nUn agente estará contigo en menos de 2 minutos.')">Iniciar Chat</button>
+        </div>
+        <div class="contact-card">
+          <div class="cc-icon">📧</div>
+          <div class="cc-title">Email</div>
+          <div class="cc-desc">Envía tu consulta detallada</div>
+          <button class="cc-link" onclick="alert('Email: soporte@apex.medical\n\nRespuesta en máximo 24 horas')">Ver Email</button>
+        </div>
+        <div class="contact-card">
+          <div class="cc-icon">📞</div>
+          <div class="cc-title">Teléfono</div>
+          <div class="cc-desc">Soporte telefónico directo</div>
+          <button class="cc-link" onclick="alert('📞 +1-844-APEX-PRO (2739-776)\n\nLun-Vie 8am-8pm · Sábado 10am-4pm')">Llamar</button>
+        </div>
+        <div class="contact-card">
+          <div class="cc-icon">🎬</div>
+          <div class="cc-title">Webinars</div>
+          <div class="cc-desc">Sesiones en vivo cada semana</div>
+          <button class="cc-link" onclick="alert('🎬 Webinars semanales:\n\nMartes 7pm — Intro a APEX\nJueves 7pm — Casos avanzados\nDomingo 11am — Medicina Funcional\n\nRegístrate en apex.medical/webinars')">Ver Calendario</button>
+        </div>
+        <div class="contact-card">
+          <div class="cc-icon">📚</div>
+          <div class="cc-title">Base de Conocimiento</div>
+          <div class="cc-desc">Artículos y FAQs</div>
+          <button class="cc-link" onclick="alert('📚 Accede a:\n\n- 127 artículos documentados\n- FAQ de APEX\n- Videos tutoriales\n- Estudios de caso\n\nEn: apex.medical/knowledge')">Explorar</button>
+        </div>
+        <div class="contact-card">
+          <div class="cc-icon">👥</div>
+          <div class="cc-title">Comunidad APEX</div>
+          <div class="cc-desc">Conecta con otros médicos usuarios</div>
+          <button class="cc-link" onclick="alert('👥 Comunidad privada de doctores APEX:\n\n- Foro de casos clínicos\n- Consejos y buenas prácticas\n- Acceso a expertos\n- Eventos mensuales\n\nEn: community.apex.medical')">Unirte</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+let darkMode = localStorage.getItem('apex-theme') !== 'light';
+function applyTheme(){document.documentElement.setAttribute('data-theme',darkMode?'dark':'light');document.getElementById('theme-btn').textContent=darkMode?'☀️':'🌙';}
+function toggleTheme(){darkMode=!darkMode;localStorage.setItem('apex-theme',darkMode?'dark':'light');applyTheme();}
+applyTheme();
+
+function switchTab(idx){
+  document.querySelectorAll('.tab').forEach((t,i)=>{t.classList.toggle('active',i===idx);});
+  document.querySelectorAll('.tab-content').forEach((c,i)=>{c.classList.toggle('active',i===idx);});
+}
+
+function sendChat(){
+  const inp=document.getElementById('chat-input');const msgs=document.getElementById('chat-messages');
+  const v=inp?.value?.trim();if(!v||!msgs)return;
+  msgs.innerHTML+=`<div class="chat-msg user">${v}</div>`;inp.value='';
+  msgs.scrollTop=msgs.scrollHeight;
+  const replies=['Eso es correcto. ¿Hay algo más que necesites?','Entendido. En APEX puedes hacer eso de esta manera: [explicación].','Buena pregunta. Aquí te muestro cómo: [paso a paso].','Claro, eso lo manejo desde la sección [X] de la plataforma.'];
+  setTimeout(()=>{msgs.innerHTML+=`<div class="chat-msg ai">${replies[Math.floor(Math.random()*replies.length)]}</div>`;msgs.scrollTop=msgs.scrollHeight;},800);
+}
+
+function submitTicket(){
+  const type=document.getElementById('ticket-type')?.value;const subj=document.getElementById('ticket-subject')?.value;
+  const desc=document.getElementById('ticket-desc')?.value;const pri=document.getElementById('ticket-priority')?.value;
+  if(!type||type==='Selecciona...'||!subj||!desc){alert('⚠️ Completa todos los campos.');return;}
+  alert(`✅ Ticket abierto\n\n📌 Número: #${Math.floor(Math.random()*100000)}\n📊 Tipo: ${type}\n🎯 Asunto: ${subj}\n⏱️ Prioridad: ${pri}\n\nNos pondremos en contacto en máximo 24 horas.`);
+  document.getElementById('ticket-type').value='Selecciona...';document.getElementById('ticket-subject').value='';document.getElementById('ticket-desc').value='';
+}
+
+function expandSection(idx){alert('Contenido expandido de la sección '+idx+'\n\n[En la versión completa mostraría más detalle, estudios y recomendaciones específicas]');}
+
+function showMain(){const mn=document.getElementById('s-main');mn.classList.add('show');}
+window.addEventListener('load',()=>setTimeout(showMain,100));
+</script>
+</body>
+</html>

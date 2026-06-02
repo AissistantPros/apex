@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX — Registrar Visita</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070a0e;--bg2:#0c1118;--bg3:#111820;--bg4:#161f28;
+  --b1:#1e2d3d;--b2:#2a3f54;--b3:#3a5570;
+  --acc:#00e5a0;--acc2:#0ea5e9;--acc3:#f97316;--acc4:#a78bfa;
+  --tx:#dde6ef;--tx2:#7a95aa;--tx3:#3d5870;
+  --card:#0d1520;--card2:#101c28;
+  --hdr-bg:rgba(7,10,14,.97);
+  --grid-color:rgba(0,229,160,.016);
+  --ok:#00e5a0;--warn:#f59e0b;--err:#f43f5e;
+  --r:10px;
+}
+html[data-theme="light"]{
+  --bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#d2dbe8;
+  --b1:#c2cfe0;--b2:#9bb0c8;--b3:#6b8caa;
+  --acc:#00b87a;--acc2:#0278c0;--acc3:#e06400;--acc4:#7c5cbf;
+  --tx:#0c1f2e;--tx2:#3d5870;--tx3:#8aa5bd;
+  --card:#ffffff;--card2:#f5f8fc;
+  --hdr-bg:rgba(255,255,255,.97);
+  --grid-color:rgba(0,150,100,.025);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;
+  transition:background .3s,color .25s;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(var(--grid-color) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid-color) 1px,transparent 1px);
+  background-size:48px 48px;}
+*{transition:background-color .3s,border-color .3s,color .25s;}
+
+/* ── HEADER ── */
+header{position:fixed;top:0;left:0;right:0;height:58px;z-index:200;
+  background:var(--hdr-bg);border-bottom:1px solid var(--b1);
+  backdrop-filter:blur(24px);display:flex;align-items:center;padding:0 24px;gap:10px;}
+.h-back{display:flex;align-items:center;gap:7px;padding:6px 12px;background:var(--bg3);
+  border:1px solid var(--b1);border-radius:7px;cursor:pointer;font-size:15px;
+  font-weight:600;color:var(--tx2);text-decoration:none;transition:all .15s;}
+.h-back:hover{border-color:var(--b2);color:var(--tx);}
+.h-logo{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--acc);
+  letter-spacing:1px;display:flex;align-items:center;gap:7px;}
+.h-plan{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:3px;
+  color:var(--acc2);background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);
+  padding:2px 7px;border-radius:3px;}
+.h-sp{flex:1;}
+.h-ic{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;transition:all .15s;}
+.h-ic:hover{border-color:var(--b2);}
+.h-div{width:1px;height:22px;background:var(--b1);}
+.h-doc{display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 8px;border-radius:8px;}
+.h-av{width:34px;height:34px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;color:#000;border:2px solid rgba(0,229,160,.3);}
+.h-di .h-name{font-size:15px;font-weight:600;text-align:right;}
+.h-di .h-role{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);text-align:right;}
+
+/* ── PATIENT STRIP ── */
+.pat-strip{position:fixed;top:58px;left:0;right:0;z-index:150;
+  background:var(--card2);border-bottom:1px solid var(--b1);
+  padding:10px 28px;display:flex;align-items:center;gap:14px;}
+.ps-av{width:38px;height:38px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#00e5a0,#0ea5e9);
+  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#000;}
+.ps-info{flex:1;}
+.ps-name{font-size:15px;font-weight:700;}
+.ps-meta{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx2);}
+.ps-last{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);text-align:right;}
+.ps-visit-badge{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;
+  color:var(--acc);background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);
+  padding:3px 10px;border-radius:3px;flex-shrink:0;}
+
+/* ── LAYOUT ── */
+.page{position:fixed;inset:0;top:116px;bottom:72px;overflow-y:auto;overflow-x:hidden;
+  display:flex;justify-content:center;z-index:1;}
+.page::-webkit-scrollbar{width:3px;}
+.page::-webkit-scrollbar-thumb{background:var(--b2);}
+.inner{width:100%;max-width:800px;padding:28px 24px;}
+
+/* ── PROGRESS ── */
+.progress-wrap{margin-bottom:28px;}
+.prog-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.prog-step-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:3px;color:var(--acc2);}
+.prog-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);}
+.prog-title{font-family:'Lora',serif;font-size:24px;font-weight:500;margin-bottom:3px;}
+.prog-title em{color:var(--acc);font-style:normal;}
+.prog-sub{font-size:15px;color:var(--tx2);margin-bottom:12px;}
+.prog-dots{display:flex;gap:4px;}
+.prog-dot{flex:1;height:3px;border-radius:2px;background:var(--b1);transition:background .3s;}
+.prog-dot.done{background:var(--acc2);}
+.prog-dot.active{background:var(--acc);}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--b1);border-radius:var(--r);
+  margin-bottom:14px;overflow:hidden;}
+.card-head{display:flex;align-items:center;gap:12px;padding:13px 18px;
+  border-bottom:1px solid var(--b1);background:var(--card2);}
+.card-icon{width:32px;height:32px;border-radius:8px;background:var(--bg3);
+  border:1px solid var(--b1);display:flex;align-items:center;justify-content:center;font-size:15px;}
+.card-title{font-size:15px;font-weight:700;flex:1;}
+.card-opt{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);
+  background:var(--bg3);border:1px solid var(--b1);padding:2px 8px;border-radius:3px;}
+.card-body{padding:20px;}
+
+/* ── FORM ── */
+.grid{display:grid;gap:12px;}
+.g2{grid-template-columns:1fr 1fr;}
+.g3{grid-template-columns:1fr 1fr 1fr;}
+.g4{grid-template-columns:1fr 1fr 1fr 1fr;}
+.g5{grid-template-columns:repeat(5,1fr);}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fl{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.5px;color:var(--tx2);}
+.fl span{color:var(--err);}
+input,select,textarea{width:100%;padding:10px 13px;background:var(--bg3);
+  border:1px solid var(--b1);border-radius:7px;color:var(--tx);
+  font-family:'Syne',sans-serif;font-size:15px;outline:none;
+  transition:border-color .2s,box-shadow .2s;appearance:none;}
+input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(0,229,160,.08);}
+input::placeholder,textarea::placeholder{color:var(--tx3);}
+select option{background:var(--bg3);color:var(--tx);}
+textarea{resize:vertical;line-height:1.6;min-height:72px;}
+.calc-box{padding:10px 13px;background:var(--bg3);border:1px solid var(--b1);
+  border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:15px;
+  font-weight:700;color:var(--acc);text-align:center;}
+
+/* Toggles */
+.tgl-group{display:flex;gap:6px;flex-wrap:wrap;}
+.tgl{padding:8px 16px;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;
+  cursor:pointer;font-size:15px;font-weight:600;color:var(--tx2);
+  transition:all .15s;user-select:none;white-space:nowrap;}
+.tgl:hover{border-color:var(--b2);}
+.tgl.on{background:rgba(0,229,160,.12);border-color:var(--acc);color:var(--acc);}
+.tgl.on-warn{background:rgba(245,158,11,.12);border-color:var(--warn);color:var(--warn);}
+
+/* Slider */
+.sl-wrap{margin-bottom:0;}
+.sl-row{display:flex;align-items:center;gap:10px;}
+input[type=range]{flex:1;height:4px;accent-color:var(--acc);cursor:pointer;padding:0;}
+.sl-val{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;
+  color:var(--acc);min-width:30px;text-align:center;}
+.sl-labels{display:flex;justify-content:space-between;
+  font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);margin-top:4px;}
+
+/* Divider */
+.fdiv{height:1px;background:var(--b1);margin:16px 0;}
+.fdiv-lbl{text-align:center;position:relative;margin:16px 0;}
+.fdiv-lbl::before{content:'';position:absolute;top:50%;left:0;right:0;height:1px;background:var(--b1);}
+.fdiv-lbl span{position:relative;background:var(--card);padding:0 10px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);letter-spacing:2px;}
+
+/* Info boxes */
+.info-box{background:rgba(14,165,233,.06);border:1px solid rgba(14,165,233,.18);
+  border-radius:8px;padding:11px 14px;font-size:15px;color:var(--acc2);line-height:1.6;margin-bottom:14px;}
+.note-box{background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.18);
+  border-radius:8px;padding:11px 14px;font-size:15px;color:var(--acc4);line-height:1.6;margin-bottom:14px;}
+
+/* Urine color scale */
+.urine-scale{display:flex;gap:4px;margin-top:6px;}
+.uc{flex:1;height:36px;border-radius:5px;cursor:pointer;border:2px solid transparent;
+  transition:all .15s;display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;}
+.uc.sel{border-color:var(--tx);transform:scale(1.08);}
+.uc-label{display:flex;justify-content:space-between;
+  font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);margin-top:4px;}
+
+/* ── SEMÁFORO DE LABS ── */
+.lab-section{margin-bottom:20px;}
+.lab-section-title{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:3px;
+  color:var(--acc2);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.lab-section-title::after{content:'';flex:1;height:1px;background:var(--b1);}
+.lab-row{display:grid;grid-template-columns:1fr 100px 36px;gap:8px;
+  align-items:center;margin-bottom:8px;}
+.lab-row .fl{margin:0;}
+.lab-input-wrap{position:relative;}
+.lab-input-wrap input{padding-right:52px;}
+.lab-unit{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);pointer-events:none;}
+.semaforo{width:32px;height:32px;border-radius:50%;border:2px solid var(--b1);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  cursor:pointer;transition:all .2s;flex-shrink:0;}
+.semaforo.red{background:rgba(244,63,94,.15);border-color:var(--err);
+  box-shadow:0 0 8px rgba(244,63,94,.3);}
+.semaforo.yellow{background:rgba(245,158,11,.15);border-color:var(--warn);
+  box-shadow:0 0 8px rgba(245,158,11,.3);}
+.semaforo.green{background:rgba(0,229,160,.15);border-color:var(--acc);
+  box-shadow:0 0 8px rgba(0,229,160,.3);}
+.semaforo.empty{background:var(--bg3);}
+
+.lab-detail{font-family:'JetBrains Mono',monospace;font-size:15px;line-height:1.5;
+  padding:7px 10px;background:var(--bg3);border:1px solid var(--b1);border-radius:5px;
+  margin-top:4px;display:none;grid-column:1/-1;}
+.lab-detail.show{display:block;}
+.lab-detail.red-detail{border-color:rgba(244,63,94,.3);color:var(--err);}
+.lab-detail.yellow-detail{border-color:rgba(245,158,11,.3);color:var(--warn);}
+.lab-detail.green-detail{border-color:rgba(0,229,160,.3);color:var(--acc);}
+
+.semaforo-legend{display:flex;gap:14px;margin-bottom:14px;
+  font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx2);}
+.sl-item{display:flex;align-items:center;gap:5px;}
+.sl-dot{width:10px;height:10px;border-radius:50%;}
+.sl-dot.r{background:var(--err);}
+.sl-dot.y{background:var(--warn);}
+.sl-dot.g{background:var(--acc);}
+
+/* Upload zone */
+.upload-zone{border:2px dashed var(--b2);border-radius:10px;padding:24px;
+  text-align:center;cursor:pointer;transition:all .2s;background:var(--bg4);
+  position:relative;overflow:hidden;margin-bottom:16px;}
+.upload-zone:hover{border-color:var(--acc);background:rgba(0,229,160,.03);}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
+.uz-icon{font-size:26px;margin-bottom:6px;}
+.uz-text{font-size:15px;color:var(--tx2);}
+.uz-sub{font-size:15px;color:var(--tx3);margin-top:3px;font-family:'JetBrains Mono',monospace;}
+.uploaded-tag{display:inline-flex;align-items:center;gap:6px;
+  background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);
+  border-radius:5px;padding:4px 10px;font-size:15px;font-family:'JetBrains Mono',monospace;
+  color:var(--acc);margin-top:8px;}
+
+/* Functional tests */
+.ftest{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;
+  padding:14px;margin-bottom:8px;}
+.ftest-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.ftest-name{font-size:15px;font-weight:700;}
+.ftest-ref{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);}
+.ftest-inputs{display:flex;gap:8px;align-items:center;}
+.ftest-inputs input{max-width:100px;}
+.ftest-unit{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx3);flex-shrink:0;}
+.ftest-result{font-family:'JetBrains Mono',monospace;font-size:15px;padding:4px 10px;
+  border-radius:4px;flex-shrink:0;}
+.ftest-result.ok{background:rgba(0,229,160,.1);color:var(--acc);border:1px solid rgba(0,229,160,.2);}
+.ftest-result.warn{background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2);}
+.ftest-result.bad{background:rgba(244,63,94,.1);color:var(--err);border:1px solid rgba(244,63,94,.2);}
+
+/* ── BOTTOM BAR ── */
+.bbar{position:fixed;bottom:0;left:0;right:0;height:72px;z-index:200;
+  background:var(--hdr-bg);border-top:1px solid var(--b1);
+  backdrop-filter:blur(20px);display:flex;align-items:center;
+  justify-content:space-between;padding:0 28px;}
+.bbar-info{font-size:15px;color:var(--tx2);}
+.bbar-info strong{color:var(--tx);}
+.bbar-btns{display:flex;gap:8px;}
+.btn{padding:9px 22px;border-radius:8px;border:none;cursor:pointer;
+  font-family:'Syne',sans-serif;font-size:15px;font-weight:700;
+  transition:all .2s;display:inline-flex;align-items:center;gap:7px;}
+.btn-primary{background:var(--acc);color:#000;}
+.btn-primary:hover{background:#00ffb0;transform:translateY(-1px);}
+.btn-secondary{background:transparent;color:var(--tx2);border:1px solid var(--b2);}
+.btn-secondary:hover{border-color:var(--acc);color:var(--acc);}
+.btn-apex{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#000;
+  padding:10px 28px;font-size:15px;}
+.btn-apex:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,229,160,.3);}
+.btn:disabled{opacity:.35;pointer-events:none;}
+
+/* Completion */
+#s-done{display:none;animation:fadeUp .4s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <a class="h-back" href="apex-home.html">← Inicio</a>
+  <div class="h-logo">APEX <span class="h-plan">PRO</span></div>
+  <div class="h-sp"></div>
+  <div class="h-ic" id="theme-btn" onclick="toggleTheme()">☀️</div>
+  <div class="h-div"></div>
+  <div class="h-doc">
+    <div class="h-di">
+      <div class="h-name">Dr. Alejandro Juárez</div>
+      <div class="h-role">Medicina Funcional · Pro</div>
+    </div>
+    <div class="h-av">AJ</div>
+  </div>
+</header>
+
+<!-- PATIENT STRIP -->
+<div class="pat-strip">
+  <div class="ps-av">ER</div>
+  <div class="ps-info">
+    <div class="ps-name">Esteban Reyna</div>
+    <div class="ps-meta">EJRI-px000145 · 38 años · Masculino</div>
+  </div>
+  <div class="ps-last">Última visita: 3 días<br><span style="color:var(--acc)">Protocolo funcional activo</span></div>
+  <div class="ps-visit-badge">VISITA #4</div>
+</div>
+
+<!-- PAGE -->
+<div class="page">
+<div class="inner">
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="prog-top">
+      <div class="prog-step-label" id="prog-label">BLOQUE A</div>
+      <div class="prog-count" id="prog-count">1 / 7</div>
+    </div>
+    <div class="prog-title" id="prog-title">Motivo de la <em>Visita</em></div>
+    <div class="prog-sub" id="prog-sub">¿Qué trae al paciente hoy?</div>
+    <div class="prog-dots" id="prog-dots"></div>
+  </div>
+
+  <div id="steps-container"></div>
+
+  <!-- DONE -->
+  <div id="s-done">
+    <div class="card">
+      <div class="card-body" style="text-align:center;padding:48px 32px">
+        <div style="font-size:48px;margin-bottom:16px">🧬</div>
+        <div style="font-family:'Lora',serif;font-size:26px;margin-bottom:8px">Visita registrada</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2);margin-bottom:28px">
+          Todos los datos han sido guardados en el expediente de Esteban Reyna
+        </div>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <a class="btn btn-secondary" href="apex-home.html">← Volver al inicio</a>
+          <button class="btn btn-apex" onclick="irAnalisis()">🧬 Analizar con APEX →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div class="bbar" id="bbar">
+  <div class="bbar-info" id="bbar-info">Completa los datos disponibles y continúa</div>
+  <div class="bbar-btns">
+    <button class="btn btn-secondary" id="btn-prev" onclick="prevStep()">← Anterior</button>
+    <button class="btn btn-primary" id="btn-next" onclick="nextStep()">Siguiente →</button>
+  </div>
+</div>
+
+<script>
+// ─── Theme ───
+let darkMode = localStorage.getItem('apex-theme') !== 'light';
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  document.getElementById('theme-btn').textContent = darkMode ? '☀️' : '🌙';
+}
+function toggleTheme(){ darkMode=!darkMode; localStorage.setItem('apex-theme',darkMode?'dark':'light'); applyTheme(); }
+applyTheme();
+
+// ─── State ───
+let currentStep = 0;
+let formData = {};
+
+const steps = [
+  { label:'BLOQUE A',  title:'Motivo de la <em>Visita</em>',          sub:'¿Qué trae al paciente hoy?',                    render: renderA },
+  { label:'BLOQUE B',  title:'Signos <em>Vitales</em>',               sub:'Presión, glucosa, temperatura, peso y talla',   render: renderB },
+  { label:'BLOQUE C',  title:'Composición <em>Corporal</em>',         sub:'Medidas, circunferencias, InBody y actividad física', render: renderC },
+  { label:'BLOQUE D',  title:'Pruebas <em>Funcionales</em>',          sub:'Fuerza, movilidad, ECG y cognición',             render: renderD },
+  { label:'BLOQUE E',  title:'Reporte <em>Subjetivo</em>',            sub:'Cómo se siente el paciente hoy',                render: renderE },
+  { label:'BLOQUE F',  title:'Exploración <em>Clínica</em>',          sub:'Lo que el médico observa — el ojo humano experto', render: renderF },
+  { label:'BLOQUE G',  title:'Laboratorios con <em>Semáforo</em>',    sub:'Resultados con rangos clínicos y de optimización', render: renderG },
+];
+
+// ─── Nav ───
+function renderProgress(){
+  document.getElementById('prog-label').textContent = steps[currentStep].label;
+  document.getElementById('prog-title').innerHTML = steps[currentStep].title;
+  document.getElementById('prog-sub').textContent = steps[currentStep].sub;
+  document.getElementById('prog-count').textContent = `${currentStep+1} / ${steps.length}`;
+  document.getElementById('prog-dots').innerHTML = steps.map((_,i)=>
+    `<div class="prog-dot ${i<currentStep?'done':i===currentStep?'active':''}"></div>`).join('');
+  document.getElementById('btn-prev').disabled = currentStep===0;
+  document.getElementById('btn-next').textContent = currentStep===steps.length-1 ? 'Guardar visita →' : 'Siguiente →';
+}
+
+function renderStep(){
+  saveData();
+  const c = document.getElementById('steps-container');
+  c.style.animation='none'; c.offsetHeight; c.style.animation='fadeUp .3s ease';
+  c.innerHTML='';
+  steps[currentStep].render(c);
+  renderProgress();
+  restoreData();
+  document.querySelector('.page').scrollTop=0;
+}
+
+function nextStep(){ saveData(); if(currentStep<steps.length-1){currentStep++;renderStep();}else{finishVisit();} }
+function prevStep(){ saveData(); if(currentStep>0){currentStep--;renderStep();} }
+
+function saveData(){
+  document.querySelectorAll('#steps-container input,#steps-container select,#steps-container textarea').forEach(el=>{
+    if(el.type==='checkbox') formData[el.id]=el.checked;
+    else formData[el.id]=el.value;
+  });
+}
+function restoreData(){
+  document.querySelectorAll('#steps-container input,#steps-container select,#steps-container textarea').forEach(el=>{
+    if(formData[el.id]!==undefined){
+      if(el.type==='checkbox') el.checked=formData[el.id];
+      else el.value=formData[el.id];
+    }
+  });
+  document.querySelectorAll('.tgl[data-key]').forEach(t=>{
+    t.classList.remove('on');
+    if(formData[t.dataset.key]===t.dataset.val) t.classList.add('on');
+  });
+  calcBMI(); calcBMIInBody();
+  updateFtestResults();
+}
+
+// ─── Helpers ───
+function tglGroup(el,key,groupSel){
+  const wasOn=el.classList.contains('on');
+  document.querySelectorAll(groupSel).forEach(t=>t.classList.remove('on'));
+  if(!wasOn){ el.classList.add('on'); formData[key]=el.dataset.val; }
+  else formData[key]='';
+}
+function tglToggle(el,key,val){
+  el.classList.toggle('on');
+  formData[key]=el.classList.contains('on')?val:'';
+}
+function sl(id,outId){ document.getElementById(outId).textContent=document.getElementById(id).value; }
+
+// ─── BLOQUE A ───
+function renderA(c){
+  c.innerHTML=`
+  <div class="card">
+    <div class="card-head"><div class="card-icon">💬</div><div class="card-title">Motivo de consulta</div></div>
+    <div class="card-body">
+      <div class="fg" style="margin-bottom:16px">
+        <label class="fl">¿QUÉ TRAE AL PACIENTE HOY? <span>*</span></label>
+        <textarea id="motivo" placeholder="Descripción libre del motivo de la visita..." style="min-height:90px"></textarea>
+      </div>
+      <div class="grid g3" style="margin-bottom:16px">
+        <div class="fg">
+          <label class="fl">INTENSIDAD DEL MALESTAR PRINCIPAL</label>
+          <div class="sl-row" style="margin-top:6px">
+            <input type="range" id="intensidad" min="0" max="10" value="5" oninput="sl('intensidad','int-val')">
+            <span class="sl-val" id="int-val">5</span>
+          </div>
+          <div class="sl-labels"><span>0 Sin molestia</span><span>10 Insoportable</span></div>
+        </div>
+        <div class="fg">
+          <label class="fl">¿DESDE CUÁNDO?</label>
+          <input id="desde_cuando" placeholder="3 días, 2 semanas, 1 mes..."/>
+        </div>
+        <div class="fg">
+          <label class="fl">¿ES LA PRIMERA VEZ?</label>
+          <div class="tgl-group" style="margin-top:6px">
+            <div class="tgl" data-key="primera_vez" data-val="si" onclick="tglGroup(this,'primera_vez','.pv-tgl')">Sí</div>
+            <div class="tgl pv-tgl" data-key="primera_vez" data-val="no" onclick="tglGroup(this,'primera_vez','.pv-tgl')">No, ya ha ocurrido</div>
+          </div>
+        </div>
+      </div>
+      <div class="fdiv-lbl"><span>ADHERENCIA AL TRATAMIENTO PREVIO</span></div>
+      <div class="grid g2">
+        <div class="fg">
+          <label class="fl">¿TOMÓ SUS MEDICAMENTOS ESTA SEMANA?</label>
+          <div class="tgl-group" style="margin-top:6px">
+            <div class="tgl" data-key="adh_meds" data-val="siempre" onclick="tglGroup(this,'adh_meds','.adh-tgl')">Siempre ✓</div>
+            <div class="tgl adh-tgl" data-key="adh_meds" data-val="aveces" onclick="tglGroup(this,'adh_meds','.adh-tgl')">A veces</div>
+            <div class="tgl adh-tgl" data-key="adh_meds" data-val="no" onclick="tglGroup(this,'adh_meds','.adh-tgl')">No los tomó</div>
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl">CAMBIOS EN MEDICAMENTOS DESDE ÚLTIMA VISITA</label>
+          <input id="cambios_meds" placeholder="Dejó X, empezó Y, cambió dosis de Z..."/>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── BLOQUE B ───
+function renderB(c){
+  c.innerHTML=`
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🩺</div><div class="card-title">Presión arterial y signos vitales</div></div>
+    <div class="card-body">
+      <div class="fdiv-lbl"><span>PRESIÓN ARTERIAL</span></div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="fg"><label class="fl">SISTÓLICA — BR. DERECHO</label><input id="pas_d" type="number" placeholder="120" min="60" max="220"/></div>
+        <div class="fg"><label class="fl">DIASTÓLICA — BR. DERECHO</label><input id="pad_d" type="number" placeholder="80" min="40" max="140"/></div>
+        <div class="fg"><label class="fl">SISTÓLICA — BR. IZQUIERDO</label><input id="pas_i" type="number" placeholder="118" min="60" max="220"/></div>
+        <div class="fg"><label class="fl">DIASTÓLICA — BR. IZQUIERDO</label><input id="pad_i" type="number" placeholder="78" min="40" max="140"/></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="fg"><label class="fl">FRECUENCIA CARDÍACA (lpm)</label><input id="fc" type="number" placeholder="72" min="30" max="200"/></div>
+        <div class="fg"><label class="fl">TEMPERATURA (°C)</label><input id="temp" type="number" step=".1" placeholder="36.6" min="34" max="42"/></div>
+        <div class="fg"><label class="fl">SAT. OXÍGENO (%)</label><input id="sato2" type="number" placeholder="98" min="70" max="100"/></div>
+        <div class="fg"><label class="fl">FR. RESP. (rpm)</label><input id="fr" type="number" placeholder="16" min="8" max="40"/></div>
+      </div>
+      <div class="fdiv-lbl"><span>GLUCOSA CAPILAR</span></div>
+      <div class="grid g2">
+        <div class="fg"><label class="fl">GLUCOSA CAPILAR (mg/dL)</label><input id="glucosa_cap" type="number" placeholder="95" min="40" max="600"/></div>
+        <div class="fg"><label class="fl">HORAS DESDE ÚLTIMA COMIDA</label>
+          <select id="horas_ayuno">
+            <option value="">—</option>
+            <option>Ayuno completo (+8h)</option>
+            <option>6-8 horas</option>
+            <option>3-5 horas</option>
+            <option>1-2 horas (postprandial)</option>
+            <option>No recuerda</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">⚖️</div><div class="card-title">Peso, talla e IMC</div></div>
+    <div class="card-body">
+      <div class="grid g4">
+        <div class="fg"><label class="fl">PESO (kg)</label><input id="peso" type="number" step=".1" placeholder="78.5" oninput="calcBMI()"/></div>
+        <div class="fg"><label class="fl">TALLA (cm)</label><input id="talla" type="number" step=".1" placeholder="175" oninput="calcBMI()"/></div>
+        <div class="fg"><label class="fl">IMC</label><div class="calc-box" id="bmi-box">—</div></div>
+        <div class="fg"><label class="fl">CATEGORÍA IMC</label><div class="calc-box" id="bmi-cat" style="font-size:15px">—</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function calcBMI(){
+  const p=parseFloat(document.getElementById('peso')?.value);
+  const t=parseFloat(document.getElementById('talla')?.value);
+  const bmi=document.getElementById('bmi-box');
+  const cat=document.getElementById('bmi-cat');
+  if(!bmi||!cat) return;
+  if(!p||!t){bmi.textContent='—';cat.textContent='—';return;}
+  const v=(p/(t/100)**2).toFixed(1);
+  bmi.textContent=v;
+  const cats=[[18.5,'Bajo peso'],[25,'Normal ✓'],[30,'Sobrepeso'],[35,'Obesidad I'],[40,'Obesidad II'],[999,'Obesidad III']];
+  const c=cats.find(x=>parseFloat(v)<x[0]);
+  cat.textContent=c?c[1]:'—';
+  cat.style.color=parseFloat(v)>=18.5&&parseFloat(v)<25?'var(--acc)':'var(--warn)';
+}
+
+function evalGlucosaCap(){
+  const v=parseInt(document.getElementById('glucosa_cap')?.value);
+  const r=document.getElementById('gluc-result');
+  if(!r) return;
+  if(!v){r.textContent='—';r.style.color='var(--acc)';return;}
+  if(v<60) {r.textContent='🔴 Hipoglucemia';r.style.color='var(--err)';}
+  else if(v<=90) {r.textContent='🟢 Óptimo';r.style.color='var(--acc)';}
+  else if(v<=99) {r.textContent='🟡 Aceptable';r.style.color='var(--warn)';}
+  else if(v<=125){r.textContent='🟡 Prediabetes';r.style.color='var(--warn)';}
+  else {r.textContent='🔴 Diabetes (criterio)';r.style.color='var(--err)';}
+}
+
+// ─── BLOQUE C ───
+function renderC(c){
+  c.innerHTML=`
+  <div class="card">
+    <div class="card-head"><div class="card-icon">📏</div><div class="card-title">Circunferencias</div></div>
+    <div class="card-body">
+      <div class="grid g3" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">CIRCUNF. ABDOMINAL (cm)</label><input id="circ_abd" type="number" step=".1" placeholder="92"/></div>
+        <div class="fg"><label class="fl">CINTURA (cm)</label><input id="circ_cintura" type="number" step=".1" placeholder="88"/></div>
+        <div class="fg"><label class="fl">CADERA (cm)</label><input id="circ_cadera" type="number" step=".1" placeholder="100"/></div>
+      </div>
+      <div class="grid g3">
+        <div class="fg"><label class="fl">CUELLO (cm)</label><input id="circ_cuello" type="number" step=".1" placeholder="38"/></div>
+        <div class="fg"><label class="fl">BÍCEPS DOMINANTE (cm)</label><input id="circ_biceps" type="number" step=".1" placeholder="35"/></div>
+        <div class="fg"><label class="fl">MUÑECA (cm)</label><input id="circ_muneca" type="number" step=".1" placeholder="17"/></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🧮</div><div class="card-title">InBody / Bioimpedancia</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="upload-zone" style="margin-bottom:18px">
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="handleInBodyFile(this)">
+        <div class="uz-icon">📊</div>
+        <div class="uz-text">Subir reporte InBody — APEX extrae todos los valores automáticamente</div>
+        <div class="uz-sub">PDF · JPG · PNG</div>
+      </div>
+      <div id="inbody-file-tag"></div>
+      <div class="fdiv-lbl"><span>O INGRESA MANUALMENTE</span></div>
+      <div class="grid g4" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">PESO CORPORAL (kg)</label><input id="ib_peso" type="number" step=".1" placeholder="78.5"/></div>
+        <div class="fg"><label class="fl">GRASA CORPORAL (%)</label><input id="ib_grasa" type="number" step=".1" placeholder="22.5"/></div>
+        <div class="fg"><label class="fl">MASA MUSCULAR TOTAL (kg)</label><input id="ib_musculo" type="number" step=".1" placeholder="58.2" oninput="calcBMIInBody()"/></div>
+        <div class="fg"><label class="fl">MASA MUSC. ESQUELÉTICA (kg)</label><input id="ib_mme" type="number" step=".1" placeholder="29.4" oninput="calcBMIInBody()"/></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">AGUA CORPORAL TOTAL (%)</label><input id="ib_agua" type="number" step=".1" placeholder="54.1"/></div>
+        <div class="fg"><label class="fl">GRASA VISCERAL (nivel 1-20)</label><input id="ib_visceral" type="number" min="1" max="20" placeholder="8"/></div>
+        <div class="fg"><label class="fl">MASA ÓSEA (kg)</label><input id="ib_osea" type="number" step=".1" placeholder="3.2"/></div>
+        <div class="fg"><label class="fl">PROTEÍNA (kg)</label><input id="ib_proteina" type="number" step=".1" placeholder="11.8"/></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">BRAZO DERECHO — MÚSCULO (kg)</label><input id="ib_br_d" type="number" step=".1" placeholder="3.8"/></div>
+        <div class="fg"><label class="fl">BRAZO IZQUIERDO — MÚSCULO (kg)</label><input id="ib_br_i" type="number" step=".1" placeholder="3.6"/></div>
+        <div class="fg"><label class="fl">PIERNA DERECHA — MÚSCULO (kg)</label><input id="ib_pi_d" type="number" step=".1" placeholder="10.2"/></div>
+        <div class="fg"><label class="fl">PIERNA IZQUIERDA — MÚSCULO (kg)</label><input id="ib_pi_i" type="number" step=".1" placeholder="10.0"/></div>
+      </div>
+      <div class="grid g4">
+        <div class="fg"><label class="fl">TRONCO — MÚSCULO (kg)</label><input id="ib_tronco" type="number" step=".1" placeholder="30.4"/></div>
+        <div class="fg"><label class="fl">TALLA PARA IMM (cm)</label><input id="ib_talla_ref" type="number" step=".1" placeholder="175" oninput="calcBMIInBody()"/></div>
+        <div class="fg"><label class="fl">ÍNDICE MUSC. ESQUELÉTICO</label><div class="calc-box" id="imm-box" style="font-size:15px">—</div></div>
+        <div class="fg"><label class="fl">PUNTUACIÓN INBODY</label><input id="ib_score" type="number" min="0" max="100" placeholder="75"/></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🏃</div><div class="card-title">Actividad física actual</div></div>
+    <div class="card-body">
+      <div class="grid g3">
+        <div class="fg"><label class="fl">TIPO DE EJERCICIO ESTA SEMANA</label>
+          <input id="ej_tipo" placeholder="Pesas, correr, yoga..."/></div>
+        <div class="fg"><label class="fl">FRECUENCIA</label>
+          <select id="ej_frec">
+            <option value="">—</option>
+            <option>Sedentario</option><option>1-2 días/semana</option>
+            <option>3-4 días/semana</option><option>5-6 días/semana</option>
+            <option>Todos los días</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">INTENSIDAD</label>
+          <select id="ej_int">
+            <option value="">—</option>
+            <option>Baja</option><option>Moderada</option>
+            <option>Alta</option><option>Muy alta / atlético</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function calcBMIInBody(){
+  const mme=parseFloat(document.getElementById('ib_mme')?.value);
+  const t=parseFloat(document.getElementById('ib_talla_ref')?.value||document.getElementById('talla')?.value||0);
+  const box=document.getElementById('imm-box');
+  if(!box) return;
+  if(!mme||!t){box.textContent='—';return;}
+  box.textContent=(mme/(t/100)**2).toFixed(2)+' kg/m²';
+}
+
+// ─── BLOQUE D ───
+function renderD(c){
+  c.innerHTML=`
+  <div class="card">
+    <div class="card-head"><div class="card-icon">💪</div><div class="card-title">Pruebas funcionales de longevidad</div></div>
+    <div class="card-body">
+      <div class="ftest">
+        <div class="ftest-head">
+          <div>
+            <div class="ftest-name">💪 Fuerza de agarre — Dinamómetro</div>
+            <div class="ftest-ref">Hombre 35-44: óptimo 46-56 kg · Mujer 35-44: óptimo 27-33 kg</div>
+          </div>
+        </div>
+        <div class="ftest-inputs">
+          <div style="display:flex;flex-direction:column;gap:3px;flex:1">
+            <label class="fl">MANO DOMINANTE (kg)</label>
+            <input id="agarre_d" type="number" step=".1" placeholder="42" oninput="evalAgarre()"/>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;flex:1">
+            <label class="fl">MANO NO DOMINANTE (kg)</label>
+            <input id="agarre_nd" type="number" step=".1" placeholder="38" oninput="evalAgarre()"/>
+          </div>
+          <div class="ftest-result" id="agarre-res">—</div>
+        </div>
+      </div>
+
+      <div class="ftest">
+        <div class="ftest-head">
+          <div>
+            <div class="ftest-name">🚶 Velocidad de marcha — Test 4 metros</div>
+            <div class="ftest-ref">Normal: ≥ 0.8 m/s · Óptimo: ≥ 1.0 m/s · Alarma: &lt; 0.6 m/s</div>
+          </div>
+        </div>
+        <div class="ftest-inputs">
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+            <label class="fl">TIEMPO (segundos para 4 metros)</label>
+            <input id="marcha_t" type="number" step=".1" placeholder="3.8" oninput="evalMarcha()"/>
+          </div>
+          <div class="ftest-unit">seg</div>
+          <div class="ftest-result" id="marcha-res">—</div>
+          <div id="marcha-vel" style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--tx2)">—</div>
+        </div>
+      </div>
+
+      <div class="ftest">
+        <div class="ftest-head">
+          <div>
+            <div class="ftest-name">🪑 Test de sentarse y levantarse — 30 segundos</div>
+            <div class="ftest-ref">Hombre 35-44: normal ≥ 16 rep · Mujer 35-44: normal ≥ 14 rep</div>
+          </div>
+        </div>
+        <div class="ftest-inputs">
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+            <label class="fl">REPETICIONES EN 30 SEGUNDOS</label>
+            <input id="syl_reps" type="number" min="0" max="40" placeholder="18" oninput="evalSYL()"/>
+          </div>
+          <div class="ftest-unit">reps</div>
+          <div class="ftest-result" id="syl-res">—</div>
+        </div>
+      </div>
+
+      <div class="ftest">
+        <div class="ftest-head">
+          <div>
+            <div class="ftest-name">🦵 Equilibrio monopodal — Ojos cerrados</div>
+            <div class="ftest-ref">Normal 40-49 años: ≥ 9 seg · Alarma: &lt; 5 seg en &lt; 60 años</div>
+          </div>
+        </div>
+        <div class="ftest-inputs">
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+            <label class="fl">SEGUNDOS EN PIE (mejor de 2 intentos)</label>
+            <input id="equilibrio" type="number" step=".1" max="120" placeholder="14" oninput="evalEquilibrio()"/>
+          </div>
+          <div class="ftest-unit">seg</div>
+          <div class="ftest-result" id="eq-res">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">💓</div><div class="card-title">ECG</div><div class="card-opt">MÉDICO</div></div>
+    <div class="card-body">
+      <div class="grid g3" style="margin-bottom:12px">
+        <div class="fg"><label class="fl">RITMO</label>
+          <select id="ecg_ritmo">
+            <option value="">—</option>
+            <option>Sinusal normal</option><option>Taquicardia sinusal</option>
+            <option>Bradicardia sinusal</option><option>Fibrilación auricular</option>
+            <option>Flutter auricular</option><option>Bloqueo AV 1°</option>
+            <option>Bloqueo AV 2°</option><option>BRDHH</option><option>BRDHI</option><option>Otro</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">FC EN ECG (lpm)</label><input id="ecg_fc" type="number" placeholder="72"/></div>
+        <div class="fg"><label class="fl">QTc (ms)</label><input id="ecg_qtc" type="number" placeholder="420"/></div>
+      </div>
+      <div class="fg"><label class="fl">INTERPRETACIÓN MÉDICA COMPLETA</label>
+        <textarea id="ecg_interp" placeholder="Ritmo sinusal regular, eje normal, sin alteraciones del ST-T, sin hipertrofia ventricular..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🧠</div><div class="card-title">Test cognitivo breve — Mini-Cog</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="info-box">Solo aplicar cuando hay indicación clínica (queja de memoria, sospecha de deterioro, edad &gt; 65 años o factores de riesgo). No en cada visita de rutina.</div>
+      <div class="grid g2">
+        <div class="fg"><label class="fl">PALABRAS RECORDADAS (0-3)</label>
+          <select id="minicog_palabras">
+            <option value="">No aplicado</option>
+            <option>0 palabras</option><option>1 palabra</option>
+            <option>2 palabras</option><option>3 palabras ✓</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">RELOJ (dibujo)</label>
+          <select id="minicog_reloj">
+            <option value="">No aplicado</option>
+            <option>Normal ✓</option><option>Anormal</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function evalAgarre(){
+  const d=parseFloat(document.getElementById('agarre_d')?.value);
+  const r=document.getElementById('agarre-res');
+  if(!r||!d) return;
+  if(d>=46){r.textContent='🟢 Óptimo';r.className='ftest-result ok';}
+  else if(d>=35){r.textContent='🟡 Normal';r.className='ftest-result warn';}
+  else{r.textContent='🔴 Bajo';r.className='ftest-result bad';}
+}
+function evalMarcha(){
+  const t=parseFloat(document.getElementById('marcha_t')?.value);
+  const r=document.getElementById('marcha-res');
+  const v=document.getElementById('marcha-vel');
+  if(!r||!t) return;
+  const vel=(4/t).toFixed(2);
+  if(v) v.textContent=vel+' m/s';
+  if(parseFloat(vel)>=1.0){r.textContent='🟢 Óptimo';r.className='ftest-result ok';}
+  else if(parseFloat(vel)>=0.8){r.textContent='🟡 Normal';r.className='ftest-result warn';}
+  else{r.textContent='🔴 Alerta';r.className='ftest-result bad';}
+}
+function evalSYL(){
+  const n=parseInt(document.getElementById('syl_reps')?.value);
+  const r=document.getElementById('syl-res');
+  if(!r||!n) return;
+  if(n>=16){r.textContent='🟢 Óptimo';r.className='ftest-result ok';}
+  else if(n>=12){r.textContent='🟡 Normal';r.className='ftest-result warn';}
+  else{r.textContent='🔴 Sarcopenia posible';r.className='ftest-result bad';}
+}
+function evalEquilibrio(){
+  const n=parseFloat(document.getElementById('equilibrio')?.value);
+  const r=document.getElementById('eq-res');
+  if(!r||!n) return;
+  if(n>=10){r.textContent='🟢 Óptimo';r.className='ftest-result ok';}
+  else if(n>=5){r.textContent='🟡 Borderline';r.className='ftest-result warn';}
+  else{r.textContent='🔴 Riesgo caída';r.className='ftest-result bad';}
+}
+function updateFtestResults(){
+  evalAgarre(); evalMarcha(); evalSYL(); evalEquilibrio(); calcBMI(); calcBMIInBody();
+}
+
+// ─── BLOQUE E ───
+function renderE(c){
+  c.innerHTML=`
+  <div class="card">
+    <div class="card-head"><div class="card-icon">⚡</div><div class="card-title">Energía y sueño</div></div>
+    <div class="card-body">
+      ${[
+        {id:'energia_am',  lbl:'ENERGÍA AL DESPERTAR'},
+        {id:'energia_md',  lbl:'ENERGÍA A MEDIODÍA'},
+        {id:'energia_pm',  lbl:'ENERGÍA AL FINAL DEL DÍA'},
+      ].map(s=>`
+        <div class="sl-wrap" style="margin-bottom:14px">
+          <label class="fl" style="margin-bottom:6px;display:block">${s.lbl}</label>
+          <div class="sl-row">
+            <input type="range" id="${s.id}" min="1" max="10" value="6"
+              oninput="document.getElementById('${s.id}-v').textContent=this.value">
+            <span class="sl-val" id="${s.id}-v">6</span>
+          </div>
+          <div class="sl-labels"><span>1 Sin energía</span><span>10 Óptimo</span></div>
+        </div>`).join('')}
+      <div class="fdiv-lbl"><span>SUEÑO</span></div>
+      <div class="grid g3">
+        <div class="fg">
+          <label class="fl">CALIDAD DEL SUEÑO</label>
+          <div class="sl-row" style="margin-top:6px">
+            <input type="range" id="calidad_sueno" min="1" max="10" value="6"
+              oninput="document.getElementById('cs-v').textContent=this.value">
+            <span class="sl-val" id="cs-v">6</span>
+          </div>
+          <div class="sl-labels"><span>1 Muy mal</span><span>10 Perfecto</span></div>
+        </div>
+        <div class="fg"><label class="fl">HORAS DORMIDAS ANOCHE</label>
+          <input id="horas_sueno" type="number" step=".5" min="0" max="14" placeholder="7"/></div>
+        <div class="fg"><label class="fl">¿SE DESPERTÓ DESCANSADO?</label>
+          <div class="tgl-group" style="margin-top:6px">
+            <div class="tgl" data-key="descansado" data-val="si" onclick="tglGroup(this,'descansado','.desc-tgl')">Sí</div>
+            <div class="tgl desc-tgl" data-key="descansado" data-val="no" onclick="tglGroup(this,'descansado','.desc-tgl')">No</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">😊</div><div class="card-title">Estado subjetivo</div></div>
+    <div class="card-body">
+      <div class="grid g2" style="margin-bottom:16px">
+        <div class="fg">
+          <label class="fl" style="margin-bottom:8px;display:block">ESTADO DE ÁNIMO PREDOMINANTE ESTA SEMANA</label>
+          <div class="tgl-group">
+            ${['😊 Bien','😐 Estable','😰 Ansioso','😤 Irritable','😔 Triste','😶 Sin motivación'].map((m,i)=>
+              `<div class="tgl" data-key="animo" data-val="${i}" onclick="tglGroup(this,'animo','.animo-tgl animo-tgl-${i}')">${m}</div>`
+            ).join('')}
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl">LIBIDO</label>
+          <div class="sl-row" style="margin-top:6px">
+            <input type="range" id="libido" min="1" max="10" value="5"
+              oninput="document.getElementById('lib-v').textContent=this.value">
+            <span class="sl-val" id="lib-v">5</span>
+          </div>
+          <div class="sl-labels"><span>1 Ninguna</span><span>10 Alta</span></div>
+        </div>
+      </div>
+
+      <div class="fdiv-lbl"><span>DIGESTIÓN Y ORINA</span></div>
+      <div class="grid g2" style="margin-bottom:16px">
+        <div class="fg">
+          <label class="fl" style="margin-bottom:8px;display:block">DIGESTIÓN HOY</label>
+          <div class="tgl-group">
+            ${['Sin problemas ✓','Distensión','Estreñimiento','Diarrea','Reflujo'].map((d,i)=>
+              `<div class="tgl" data-key="digestion" data-val="${i}" onclick="tglGroup(this,'digestion','.dig-tgl')">${d}</div>`
+            ).join('')}
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl" style="margin-bottom:8px;display:block">COLOR DE ORINA EN LA MAÑANA</label>
+          <div class="urine-scale">
+            ${[
+              {c:'#FFF9C4',lbl:'1'},
+              {c:'#FFF176',lbl:'2'},
+              {c:'#FFEE58',lbl:'3'},
+              {c:'#FFD600',lbl:'4'},
+              {c:'#FFA000',lbl:'5'},
+              {c:'#E65100',lbl:'6'},
+              {c:'#BF360C',lbl:'7'},
+            ].map((u,i)=>`<div class="uc" id="uc${i}" style="background:${u.c};color:#555"
+              onclick="selectUrine(${i})">${u.lbl}</div>`).join('')}
+          </div>
+          <div class="uc-label"><span>Muy hidratado</span><span>Deshidratado</span></div>
+        </div>
+      </div>
+
+      <div class="fdiv-lbl"><span>DOLOR HOY</span></div>
+      <div class="grid g2">
+        <div class="fg"><label class="fl">¿TIENE ALGÚN DOLOR HOY?</label>
+          <input id="dolor_ubicacion" placeholder="Dónde (cabeza, espalda, articulaciones...)"/></div>
+        <div class="fg">
+          <label class="fl">INTENSIDAD DEL DOLOR (0 = sin dolor)</label>
+          <div class="sl-row" style="margin-top:6px">
+            <input type="range" id="dolor_int" min="0" max="10" value="0"
+              oninput="document.getElementById('dol-v').textContent=this.value">
+            <span class="sl-val" id="dol-v">0</span>
+          </div>
+          <div class="sl-labels"><span>0 Sin dolor</span><span>10 Insoportable</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🎯</div><div class="card-title">Metas del paciente</div></div>
+    <div class="card-body">
+      <div class="fg"><label class="fl">¿QUÉ LE GUSTARÍA MEJORAR EN ESTA ETAPA DEL TRATAMIENTO?</label>
+        <textarea id="metas_px" placeholder="Bajar de peso, tener más energía, dormir mejor, reducir el dolor, mejorar su rendimiento..."></textarea>
+      </div>
+    </div>
+  </div>`;
+}
+
+let urineSelected = -1;
+function selectUrine(i){
+  document.querySelectorAll('.uc').forEach((u,j)=>u.classList.toggle('sel',j===i));
+  urineSelected=i;
+  formData['orina_color']=i;
+}
+
+// ─── BLOQUE F ───
+function renderF(c){
+  c.innerHTML=`
+  <div class="note-box">Esta sección es para el médico. El paciente no la ve. Documenta solo lo que observas — no es obligatorio campo por campo.</div>
+  <div class="card">
+    <div class="card-head"><div class="card-icon">👁️</div><div class="card-title">Exploración física</div><div class="card-opt">MÉDICO</div></div>
+    <div class="card-body">
+      <div class="fg" style="margin-bottom:14px">
+        <label class="fl">INSPECCIÓN GENERAL</label>
+        <textarea id="exp_general" placeholder="Paciente en buen estado general, consciente, orientado, normohídratado..."></textarea>
+      </div>
+      <div class="grid g2" style="margin-bottom:12px">
+        <div class="fg">
+          <label class="fl">PIEL Y MUCOSAS</label>
+          <textarea id="exp_piel" style="min-height:60px" placeholder="Coloración, ictericia, palidez, acné, rosácea, manchas, turgor..."></textarea>
+        </div>
+        <div class="fg">
+          <label class="fl">OJOS</label>
+          <textarea id="exp_ojos" style="min-height:60px" placeholder="Ictericia escleral, xantelasmas, exoftalmos, conjuntivas..."></textarea>
+        </div>
+        <div class="fg">
+          <label class="fl">BOCA Y FARINGE</label>
+          <textarea id="exp_boca" style="min-height:60px" placeholder="Estado dental, lengua, amígdalas, mucosas..."></textarea>
+        </div>
+        <div class="fg">
+          <label class="fl">TIROIDES</label>
+          <textarea id="exp_tiroides" style="min-height:60px" placeholder="Tamaño, consistencia, nódulos palpables, bocio..."></textarea>
+        </div>
+        <div class="fg">
+          <label class="fl">ABDOMEN</label>
+          <textarea id="exp_abd" style="min-height:60px" placeholder="Hepatomegalia, esplenomegalia, masas, dolor a la palpación..."></textarea>
+        </div>
+        <div class="fg">
+          <label class="fl">NEUROLÓGICO Y MUSCULOESQUELÉTICO</label>
+          <textarea id="exp_neuro" style="min-height:60px" placeholder="Temblor, marcha, coordinación, reflejos, fuerza simétrica..."></textarea>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">OTROS HALLAZGOS RELEVANTES</label>
+        <textarea id="exp_otros" placeholder="Cualquier hallazgo adicional que el médico considere importante documentar..."></textarea>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── BLOQUE G — SEMÁFORO ───
+const LAB_RANGES = {
+  // [clinLow, optLow, optHigh, clinHigh, unit, label]
+  glucosa:    [60, 70, 90, 126, 'mg/dL', 'Glucosa en ayuno'],
+  hba1c:      [0,  0,  5.4, 6.5,  '%',     'HbA1c'],
+  insulina:   [0,  2,  8,   25,   'μU/mL', 'Insulina basal'],
+  homa:       [0,  0,  1.5, 2.9,  '',      'HOMA-IR'],
+  alt:        [0,  0,  25,  40,   'U/L',   'ALT'],
+  ast:        [0,  0,  25,  40,   'U/L',   'AST'],
+  col_total:  [0,  0,  180, 200,  'mg/dL', 'Colesterol total'],
+  ldl:        [0,  0,  100, 130,  'mg/dL', 'LDL-C'],
+  hdl_m:      [35, 50,  999, 999, 'mg/dL', 'HDL-C (hombre)'],
+  hdl_f:      [45, 55,  999, 999, 'mg/dL', 'HDL-C (mujer)'],
+  tg:         [0,  0,  100, 150,  'mg/dL', 'Triglicéridos'],
+  pcr:        [0,  0,  0.5, 1.0,  'mg/L',  'PCR ultrasensible'],
+  tsh:        [0.3, 1.0, 2.0, 4.5,'mIU/L', 'TSH'],
+  t4l:        [0.8, 1.0, 1.5, 1.8,'ng/dL', 'T4 libre'],
+  t3l:        [2.0, 3.0, 4.0, 4.4,'pg/mL', 'T3 libre'],
+  cortisol:   [5,   10, 18,  22,  'μg/dL', 'Cortisol matutino'],
+  tt_m:       [200, 600, 900, 1200,'ng/dL', 'Testosterona total (hombre)'],
+  tt_f:       [10,  70,  150, 200, 'ng/dL', 'Testosterona total (mujer)'],
+  dheas:      [50,  200, 400, 800, 'μg/dL', 'DHEA-S'],
+  igf1:       [50,  150, 250, 400, 'ng/mL', 'IGF-1'],
+  vitd:       [10,  50,  80,  100, 'ng/mL', 'Vitamina D 25-OH'],
+  hcy:        [0,   0,   9,   15,  'μmol/L','Homocisteína'],
+  creat:      [0.5, 0.7, 1.1, 1.3, 'mg/dL', 'Creatinina'],
+  hgb_m:      [12,  14,  17,  18,  'g/dL',  'Hemoglobina (hombre)'],
+  hgb_f:      [11,  13,  15,  16,  'g/dL',  'Hemoglobina (mujer)'],
+  apob:       [0,   0,   80,  100, 'mg/dL', 'ApoB'],
+  lpa:        [0,   0,   30,  50,  'mg/dL', 'Lp(a)'],
+  magnesio:   [1.6, 2.0, 2.6, 2.6, 'mg/dL', 'Magnesio sérico'],
+};
+
+function semColor(key, val){
+  const r = LAB_RANGES[key];
+  if(!r) return 'empty';
+  const v = parseFloat(val);
+  if(isNaN(v)) return 'empty';
+  // Red: outside clinical range
+  if(v < r[0] || v > r[3]) return 'red';
+  // Green: inside optimal range
+  if(v >= r[1] && v <= r[2]) return 'green';
+  // Yellow: clinical but not optimal
+  return 'yellow';
+}
+
+function semMsg(key, val){
+  const r = LAB_RANGES[key];
+  if(!r) return '';
+  const v = parseFloat(val);
+  if(isNaN(v)) return '';
+  const color = semColor(key, val);
+  if(color==='red'){
+    if(v < r[0]) return `🔴 Por debajo del rango clínico (< ${r[0]} ${r[4]})`;
+    return `🔴 Fuera de rango clínico (> ${r[3]} ${r[4]})`;
+  }
+  if(color==='green') return `🟢 En rango de optimización (${r[1]}–${r[2]} ${r[4]})`;
+  if(color==='yellow'){
+    if(v < r[1]) return `🟡 Clínicamente normal pero subóptimo — óptimo: ${r[1]}–${r[2]} ${r[4]}`;
+    return `🟡 Clínicamente normal pero subóptimo — óptimo: ${r[1]}–${r[2]} ${r[4]}`;
+  }
+  return '';
+}
+
+function makeLab(key, placeholder){
+  const r = LAB_RANGES[key];
+  if(!r) return '';
+  return `
+    <div class="lab-row" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 120px 36px;gap:8px;align-items:center;margin-bottom:8px">
+      <label class="fl">${r[5]}</label>
+      <div class="lab-input-wrap">
+        <input id="lab_${key}" type="number" step="any" placeholder="${placeholder}"
+          oninput="updateSem('${key}')">
+        <span class="lab-unit">${r[4]}</span>
+      </div>
+      <div class="semaforo empty" id="sem_${key}" onclick="toggleDetail('${key}')">—</div>
+    </div>
+    <div class="lab-detail" id="det_${key}"></div>`;
+}
+
+function updateSem(key){
+  const val = document.getElementById(`lab_${key}`)?.value;
+  const sem = document.getElementById(`sem_${key}`);
+  const det = document.getElementById(`det_${key}`);
+  if(!sem) return;
+  const color = semColor(key, val);
+  const emojis = {red:'🔴', yellow:'🟡', green:'🟢', empty:'—'};
+  sem.className = `semaforo ${color}`;
+  sem.textContent = emojis[color]||'—';
+  if(det){
+    const msg = semMsg(key, val);
+    det.textContent = msg;
+    det.className = `lab-detail ${color}-detail ${msg?'show':''}`;
+  }
+}
+
+function toggleDetail(key){
+  const det = document.getElementById(`det_${key}`);
+  if(det && det.textContent) det.classList.toggle('show');
+}
+
+function renderG(c){
+  c.innerHTML=`
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🔬</div><div class="card-title">Estudios de laboratorio</div></div>
+    <div class="card-body">
+      <div class="upload-zone" style="margin-bottom:16px">
+        <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleLabFile(this)">
+        <div class="uz-icon">📋</div>
+        <div class="uz-text">Arrastra o haz clic — APEX lee el PDF y extrae todos los valores con el semáforo automáticamente</div>
+        <div class="uz-sub">PDF · JPG · PNG — puedes subir varios archivos</div>
+      </div>
+      <div id="lab-file-tags"></div>
+      <div class="info-box" style="margin-top:4px">
+        Al analizar con APEX, los valores extraídos del laboratorio se mostrarán con el semáforo tricolor:<br>
+        🔴 Fuera de rango clínico &nbsp;·&nbsp; 🟡 Normal pero subóptimo &nbsp;·&nbsp; 🟢 Rango de optimización
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-icon">🩻</div><div class="card-title">Estudios de imagen</div><div class="card-opt">OPCIONAL</div></div>
+    <div class="card-body">
+      <div class="upload-zone" style="margin-bottom:14px">
+        <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.dcm" onchange="handleImgFile(this)">
+        <div class="uz-icon">🩻</div>
+        <div class="uz-text">RX · TAC · RMN · Ultrasonido · Ecocardiograma</div>
+        <div class="uz-sub">PDF · JPG · PNG · DICOM</div>
+      </div>
+      <div id="img-file-tags"></div>
+      <div class="fg" style="margin-top:12px">
+        <label class="fl">INTERPRETACIÓN MÉDICA DE LOS ESTUDIOS DE IMAGEN</label>
+        <textarea id="img_interp" placeholder="El médico describe aquí lo que observa en los estudios de imagen — RX, TAC, ultrasonido, ECO. APEX utiliza esta descripción clínica para el análisis."></textarea>
+      </div>
+    </div>
+  </div>`;
+}
+
+function handleLabFile(input){
+  const tags = document.getElementById('lab-file-tags');
+  if(!tags) return;
+  [...input.files].forEach(f=>{
+    tags.innerHTML += `<span class="uploaded-tag">📄 ${f.name}</span> `;
+  });
+}
+function handleImgFile(input){
+  const tags = document.getElementById('img-file-tags');
+  if(!tags) return;
+  [...input.files].forEach(f=>{
+    tags.innerHTML += `<span class="uploaded-tag">🩻 ${f.name}</span> `;
+  });
+}
+
+function handleInBodyFile(input){
+  const tag = document.getElementById('inbody-file-tag');
+  if(!tag || !input.files[0]) return;
+  tag.innerHTML = `<span class="uploaded-tag">📊 ${input.files[0].name}</span>`;
+}
+
+// ─── Finish ───
+function finishVisit(){
+  saveData();
+  document.getElementById('steps-container').style.display='none';
+  document.getElementById('progress-wrap').style.display='none';
+  document.getElementById('s-done').style.display='block';
+  document.getElementById('bbar').style.display='none';
+}
+
+function irAnalisis(){
+  window.location = 'apex-analisis.html';
+}
+
+// ─── Init ───
+renderStep();
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+# Environment
+.env.local
+.env.*.local
+.env
+.env.*
+
+# Node
+node_modules/
+.npm
+npm-debug.log
+yarn-error.log
+
+# Python
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Next.js
+.next/
+out/
+.vercel
+
+# Database
+*.db
+*.sqlite

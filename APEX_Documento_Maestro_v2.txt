@@ -1,0 +1,364 @@
+APEX
+Plataforma de Inteligencia Clinica
+Documento Maestro de Producto  v2.0
+Mayo 2026  |  Confidencial
+
+1. Resumen Ejecutivo
+APEX es una plataforma SaaS de inteligencia clinica disenada exclusivamente para medicos. No es un chatbot con RAG. Es un sistema completo de gestion de pacientes potenciado con IA: CRM medico + expediente clinico + motor de diagnostico + sistema de protocolos, todo integrado en una sola plataforma.
+
+El medico promedio trata el sintoma presente. El buen medico va un paso atras y busca la causa. APEX le da a cualquier medico la capacidad de ir hasta la raiz del problema y proyectar el futuro de salud de su paciente a 10, 15 o 20 anos. Sin cambiar su forma de trabajar, solo yendo mas alla.
+
+APEX no reemplaza al medico. Es un copiloto clinico. La decision final siempre es del medico.
+
+1.1 Lo que APEX es realmente
+
+
+1.2 Los tres ejes clinicos
+
+
+1.3 Filosofia de diseno
+Menos texto, mas visual. Mostrar, no solo explicar.
+APEX habla en primera persona: 'encontre', 'me di cuenta', 'hice una busqueda'.
+Tono profesional y conciso. Como un colega muy preparado, no como un paper academico.
+La bibliografía va integrada dentro del razonamiento, no al final como respaldo defensivo.
+El medico siempre tiene la ultima palabra. APEX propone, el medico decide.
+El sistema admite cuando no sabe algo. Busca y avisa de donde viene la informacion.
+2. Menu Principal y Navegacion
+Al iniciar sesion, el medico ve una pantalla de bienvenida personalizada. Simple, directa, sin sobrecarga de informacion.
+
+2.1 Pantalla principal
+Encabezado: 'Bienvenido Dr. [Nombre]' con foto de perfil y logotipo de la clinica del medico (no el logo de APEX). Subtitulo: 'En que vamos a trabajar hoy?'
+
+
+
+El logo de APEX no aparece en ningun documento que el paciente reciba. APEX es B2B e invisible para el paciente. El credito es del medico.
+
+2.2 Chat flotante APEX (pantalla principal unicamente)
+Disponible exclusivamente en la pantalla principal, no en el resto del sistema.
+Sin memoria: cada sesion se borra al cerrar. El medico lo sabe por un indicador visible de 'sesion sin memoria'.
+Cargado con todo el motor de IA, RAG y prompt especializado.
+Acepta texto, imagenes y archivos PDF.
+Sustituye el uso de ChatGPT para preguntas clinicas generales. No esta asociado a ningun paciente.
+3. Ficha del Paciente
+Al buscar y abrir un paciente registrado, la pantalla muestra todo lo relevante antes de que el medico entre al consultorio. Disenada para los 2 minutos previos a la consulta.
+
+3.1 Vista rapida (siempre visible)
+Resumen generado por IA. Maximo 4-6 lineas. Se actualiza automaticamente con cada cambio en el expediente: nueva visita, nota nueva o edicion de datos.
+
+Ejemplo: 'Pedro, 54 anos. Lleva 8 meses en seguimiento por resistencia a la insulina e hipertension. Ultima visita: 14 de marzo. Se ajusto metformina a 1000mg. Pendiente resultado de polisomnografia. Reporto mejora en energia y bajó 3kg desde la primera visita.'
+
+3.2 Reporte completo (bajo demanda)
+Boton 'Ver reporte completo'. Genera graficas de tendencia de biomarcadores, composicion corporal, fuerza, evolucion de diagnosticos y protocolos. El medico lo abre cuando lo necesita, no en cada consulta.
+
+3.3 Acciones disponibles en la ficha
+
+
+El APEX Chat dentro del expediente SI tiene memoria y SI se guarda. Es completamente distinto al chat flotante de la pantalla principal que no tiene memoria. Deben diferenciarse visualmente de manera clara.
+4. Registro de Nuevo Paciente
+El registro inicial se hace una sola vez. Es el interrogatorio completo. A partir de aqui, cada visita acumula informacion sobre esta base. Disenado para ser llenado por el medico o su asistente durante la consulta, no por el paciente.
+
+4.1 Bloque 1 — Identificacion y contacto
+Nombre completo, fecha de nacimiento, sexo biologico, genero (opcional), ocupacion.
+Correo electronico, celular.
+Persona de contacto de emergencia: nombre, celular, correo electronico.
+ID unico generado automaticamente por el sistema.
+
+4.2 Bloque 2 — Como llego
+Captura el journey completo del paciente, no solo la fuente inicial. Importante para medir el impacto real del marketing digital.
+
+Como nos conocio: recomendacion de otro paciente, recomendacion de otro medico, redes sociales, busqueda en internet, pagina web, Google Maps, publicidad pagada, otro.
+Si fue recomendacion: quien lo recomendo (nombre).
+Antes de venir: reviso redes sociales? reviso pagina web? busco en Google Maps? (Si/No por cada uno).
+El marketing digital sirve para acabar de convencer. Un paciente puede llegar recomendado pero haber revisado redes, pagina web y Google Maps antes de decidir. Todos esos puntos de contacto importan.
+
+4.3 Bloque 3 — Antecedentes heredofamiliares
+Padre, madre, abuelos paternos y maternos, hermanos.
+Por cada familiar: enfermedades cronicas relevantes (diabetes, hipertension, cancer, cardiopatia, demencia, enfermedad autoinmune, depresion/ansiedad, obesidad).
+Causa de muerte si aplica.
+
+4.4 Bloque 4 — Antecedentes personales patologicos
+Enfermedades cronicas diagnosticadas con ano de diagnostico.
+Hospitalizaciones previas con motivo.
+Cirugias con ano aproximado.
+Fracturas y traumatismos relevantes.
+Transfusiones.
+Alergias: medicamentos, alimentos, ambientales.
+Enfermedades de la infancia relevantes (fiebre reumatica, meningitis, etc.).
+
+4.5 Bloque 5 — Antecedentes personales no patologicos
+Tabaquismo: nunca / exfumador desde cuando / activo cuantos al dia.
+Alcohol: nunca / ocasional / frecuente / diario. Que tipo.
+Otras sustancias: campo abierto.
+Actividad fisica actual: tipo, frecuencia, intensidad.
+Horas de sueno habituales.
+Nivel de estres percibido (escala 1-10).
+Escolaridad.
+
+4.6 Bloque 6 — Historia reproductiva (condicional por sexo)
+Mujeres: edad de menarca, ciclos regulares, embarazos, partos, abortos, menopausia, metodo anticonceptivo actual.
+Hombres: disfuncion erectil conocida, uso previo de testosterona exogena.
+
+4.7 Bloque 7 — Medicamentos actuales reales
+No los que deberia estar tomando. Los que realmente toma, con que frecuencia real los toma y desde cuando. Campo de busqueda por nombre de medicamento + campo libre.
+5. Datos Capturados en Cada Visita
+Estos datos se registran en cada consulta. Son el nucleo del seguimiento longitudinal. Si no se puede hacer alguna medicion en una visita, el sistema usa los datos de la visita anterior y lo indica.
+
+5.1 Bloque A — Motivo de la visita
+Que lo trae hoy (campo libre).
+Intensidad del malestar principal escala 1-10.
+Desde cuando presenta esto. Es la primera vez?
+
+5.2 Bloque B — Signos vitales
+
+
+5.3 Bloque C — Composicion corporal
+Peso (kg), talla (primera visita, actualizar si cambia), IMC calculado automaticamente.
+Circunferencias: abdominal, cintura, cadera, cuello, biceps (brazo dominante), muneca (para indice de complexion).
+Si hay InBody o bioimpedancia: porcentaje de grasa, masa muscular, agua corporal, grasa visceral.
+Si no hay InBody: el sistema trabaja con las circunferencias disponibles.
+
+5.4 Bloque D — Pruebas funcionales y de longevidad
+Rapidas, sin equipo especial, con alto valor predictivo. Se hacen en cada visita si es posible. Si no, se usan los datos anteriores.
+
+
+
+5.5 Bloque E — Reporte subjetivo del paciente
+Lo que el paciente siente. Captura rapida con escalas visuales o sliders.
+
+Energia al despertar (1-10), a mediodia (1-10), al final del dia (1-10).
+Calidad del sueno (1-10), horas dormidas, se despierta descansado (Si/No).
+Estado de animo predominante esta semana: estable, ansioso, irritable, triste, sin motivacion, bien.
+Libido (1-10).
+Digestion: sin problemas, distension, estrenimiento, diarrea, reflujo.
+Color de orina en la manana: escala visual de colores del amarillo palido al naranja oscuro.
+Dolor hoy: donde, intensidad 1-10.
+Metas del paciente: que le gustaria mejorar (energia, bajar de peso, dormir mejor, menos dolor, rendimiento).
+
+5.6 Bloque F — Observaciones clinicas del medico
+Lo que solo el ojo experto puede detectar. No obligatorio campo por campo. El medico documenta lo que considera relevante.
+
+Inspeccion general (campo libre).
+Piel y mucosas: coloracion, ictericia, palidez, acne, rosacea, manchas, turgencia.
+Ojos: ictericia escleral, xantelasmas, exoftalmos.
+Boca: estado dental, lengua, faringe.
+Tiroides: palpacion, tamano, nodulos.
+Abdomen: hepatomegalia, esplenomegalia, masas.
+Neurologico: temblor, marcha, coordinacion, reflejos.
+Campo libre adicional para cualquier hallazgo.
+
+5.7 Bloque G — Estudios de laboratorio con semaforo tricolor
+El sistema acepta PDF o foto del reporte. Extrae los valores automaticamente con sus unidades de referencia.
+
+
+
+Los rangos del laboratorio definen el rojo y el amarillo. Los libros del RAG definen el verde. Dos fuentes distintas, tres colores. El sistema nunca inventa rangos.
+
+Ejemplo: Testosterona total en hombre de 50 anos.
+Rojo: menos de 300 ng/dL — fuera de rango clinico.
+Amarillo: 300-599 ng/dL — clinicamente aceptable, suboptimo.
+Verde: 600-900 ng/dL — rango de optimizacion para su edad.
+
+Un medico tradicional ve 310 y dice 'esta normal'. APEX ve 310 y dice: 'esta dentro del rango clinico pero lejos de la optimizacion para su edad. Esto puede estar contribuyendo a fatiga, perdida de masa muscular y resistencia a la insulina.' Ese es el valor diferencial de APEX.
+6. Motor de Analisis Clinico
+Al dar 'Siguiente' en la captura de la visita, el sistema ejecuta su analisis. El medico ve una pantalla de progreso. El proceso toma entre 30 y 90 segundos.
+
+6.1 Principio fundamental
+Si el sistema no tiene suficientes datos para dar un diagnostico, no lo da. Con solo dos o tres datos no se puede diagnosticar. El sistema lo dice claramente y explica que datos adicionales necesitaria para un analisis de mayor calidad.
+
+6.2 Proceso interno del analisis
+Normalizacion de datos: todos los parametros de la visita se estructuran en formato estandar.
+Analisis de correlaciones: el sistema cruza todos los parametros entre si buscando patrones.
+Consulta al RAG: busca en la base de conocimiento (libros cargados) los patrones identificados.
+Deep Research en paralelo: busca en PubMed, guidelines actualizados y literatura de los ultimos 3 anos.
+Sintesis: une hallazgos del RAG y deep research en una respuesta cohesionada con bibliografía.
+Filtro anti-alucinaciones: una segunda IA verifica que cada afirmacion tenga respaldo bibliografico. Si no lo tiene, se elimina o se marca como 'evidencia insuficiente'. Para categorias sin RAG (ej. herbolaria), el filtro es mas flexible pero sigue activo.
+Clasificacion por nivel de evidencia.
+Entrega de respuesta al medico.
+
+6.3 Flujo de presentacion al medico
+El sistema presenta primero el diagnostico, el medico interactua, y solo despues de aceptar el diagnostico se presentan los protocolos. La prioridad siempre es estabilizar antes de optimizar.
+
+
+
+6.4 Tono y voz del sistema
+Primera persona: 'encontre', 'me di cuenta que', 'hice una busqueda'.
+Conciso y profesional. Sin relleno ni frases de cortesia innecesarias.
+Bibliografía integrada en el razonamiento, no al final. 'Segun el estudio de Somers et al. en JACC 2008, cada episodio de apnea genera una descarga adrenergica que...'
+Cuando no sabe algo, lo dice y busca. 'Esta categoria no esta en mi base de conocimientos. Voy a usar deep research. La informacion puede tener menor nivel de evidencia, se lo indico en cada punto.'
+Cuando el medico hace override, el sistema lo acepta con respeto. Puede senalar discrepancias con datos, pero nunca es condescendiente.
+
+6.5 Estudios sugeridos — tres niveles
+
+
+6.6 Cuatro capas de protocolo
+
+
+6.7 Regla de clasificacion: cada item aparece una sola vez
+Un medicamento, suplemento o intervencion aparece en una sola capa, la que corresponde a su nivel de evidencia principal. Si tiene multiples indicaciones relevantes para el caso, se explican todas en esa misma entrada.
+
+Ejemplo correcto: Metformina aparece una sola vez en Capa 1 (Protocolos Internacionales). Su entrada incluye: indicacion principal (prediabetes, ADA 2023) + uso offlabel con evidencia (activacion AMPK, efecto anti-envejecimiento, estudio TAME en curso). No aparece en experimental aunque tenga usos emergentes.
+
+6.8 Nivel de evidencia por item
+
+
+6.9 Protocolo experimental — presentacion especial
+Para cada item experimental el sistema muestra: nombre, para que le ayudaria en este caso, nivel de seguridad en estrellas (1-5) y nivel de confianza en la evidencia disponible. No es una ficha tecnica completa, es una referencia rapida para que el medico decida si profundizar.
+
+Ejemplo: BPC-157 — 5 estrellas de seguridad (miles de reportes, ampliamente usado, sin efectos adversos graves documentados). 3 estrellas de evidencia (evidencia preclínica solida, estudios en humanos limitados). Ayudaria en: reduccion de inflamacion vascular cronica en este caso.
+
+Items con reporte de muertes o accidentes graves no se mencionan. El sistema solo incluye lo que tiene perfil de seguridad documentado.
+7. Guardado y Documentos para el Paciente
+
+7.1 Lo que se guarda al cerrar la visita
+Diagnostico sugerido por APEX.
+Decision del medico: acepto o corrigio. Si corrigio, el diagnostico del medico se guarda junto al del sistema.
+Protocolo sugerido por APEX.
+Decision del medico sobre el protocolo: acepto, modifico (que cambio exactamente), o hizo override completo.
+Estudios solicitados con su nivel de urgencia.
+Notas adicionales del medico.
+Resumen de la sesion del APEX Chat generado por IA.
+Fecha de proxima visita sugerida.
+
+Guardar tanto la propuesta del sistema como la decision del medico permite comparar en el tiempo. Cuanto difieren los diagnosticos? En que areas hace mas overrides este medico? Eso es aprendizaje continuo para APEX y para el medico.
+
+7.2 Tres documentos imprimibles
+
+
+7.3 Opciones de entrega al paciente
+Imprimir receta medica (Hoja 1).
+Imprimir reporte del paciente (Hoja 2) — con o sin protocolo de optimizacion, el medico elige.
+Imprimir solicitud de estudios (Hoja 3).
+Enviar reporte por correo electronico al paciente.
+
+El reporte del paciente (Hoja 2) es marketing sin serlo. El paciente lo fotografía y lo comparte. 'Mira todo lo que me encontro mi doctor.' Vale mas que cualquier anuncio.
+
+7.4 Pagina web personalizada del paciente (fase futura)
+Una pagina web generada por visita con: medicamentos y horarios, guia de alimentacion, guia de ejercicio con imagenes, reporte completo. Se actualiza con cada visita. Acceso exclusivo del paciente con su link unico.
+8. Estadisticas — Inteligencia de la Practica
+Modulo de analytics accesible desde el menu principal. Dos categorias: inteligencia clinica e inteligencia de negocio. Default: reporte estandar ya armado por APEX. Opcional: el medico personaliza que quiere ver.
+
+8.1 Inteligencia Clinica
+Diagnosticos mas frecuentes en la practica.
+Sintomas mas reportados por los pacientes.
+Medicamentos mas recetados con dosis promedio.
+Suplementos mas prescritos.
+Tratamientos con mayor impacto: que protocolos han movido mas la aguja en biomarcadores.
+Que no ha funcionado: tratamientos con poco o nulo impacto documentado.
+Distribucion por sexo y rango de edad.
+Biomarcadores fuera de rango mas comunes en la base de pacientes.
+
+8.2 Inteligencia de Negocio
+Pacientes nuevos vs. continuidad por periodo.
+Tasa de retencion: cuantos regresaron, cuantos no.
+Como llegaron los pacientes: distribucion por fuente.
+Si revisaron redes sociales o pagina web antes de venir.
+Quien ha referido mas pacientes (medicos o pacientes).
+Volumen de consultas por periodo.
+
+8.3 Data de APEX (anonimizada)
+APEX recolecta datos de uso completamente anonimizados. Nunca nombres ni datos personales de pacientes. Esta data es separada desde el origen de la base de datos del medico.
+
+Tasa de aceptacion de diagnosticos del sistema vs. overrides.
+Magnitud de los overrides: cambios pequenos (ajuste de dosis) vs. cambios grandes (diagnostico completamente diferente).
+Que funciones usa cada medico y con que frecuencia.
+Sintomas y diagnosticos mas comunes en la plataforma (agregados).
+Categorias de protocolo mas solicitadas.
+Frecuencia de preguntas al sistema: el medico aprende o solo usa APEX como ChatGPT?
+
+Esta data le dice a APEX donde mejorar el producto, donde reforzar el RAG y que tan bien esta diagnosticando el sistema. Es el activo mas valioso de la empresa a largo plazo.
+9. Privacidad y Arquitectura de Datos
+
+9.1 Dos bases de datos completamente separadas
+
+
+9.2 Cumplimiento legal Mexico
+Ley Federal de Proteccion de Datos Personales en Posesion de los Particulares (LFPDPPP).
+NOM-168-SSA1-1998 del Expediente Clinico.
+NOM-004-SSA3-2012.
+Cifrado AES-256 en reposo, TLS 1.3 en transito.
+El medico es el controlador de datos de sus pacientes. APEX es el procesador.
+El medico puede exportar y eliminar todos los datos de un paciente en cualquier momento.
+
+9.3 Experimentales y marco legal
+COFEPRIS no ha aprobado peptidos ni la mayoria de protocolos experimentales para uso general en Mexico. La excepcion existe para ensayos clinicos, no para practica regular.
+
+APEX informa sobre opciones experimentales. No prescribe. Nunca por escrito.
+Lo que el medico decida aplicar en su consultorio es su responsabilidad profesional y legal.
+El sistema nunca genera un documento imprimible con contenido experimental.
+10. Base de Conocimiento (RAG)
+
+10.1 Estructura del RAG
+
+
+10.2 Deep Research en tiempo real
+Busca en PubMed estudios de los ultimos 3 anos relacionados con el perfil del paciente.
+Revisa guidelines actualizados de sociedades medicas internacionales.
+Se prioriza cuando el caso tiene caracteristicas poco comunes o cuando una categoria no esta en el RAG.
+Sus resultados pasan por el mismo filtro anti-alucinaciones que el RAG, con criterio ajustado segun la fuente.
+11. Modulo de Soporte — Contactar APEX
+
+11.1 Pagina de ayuda
+Videos tutoriales del sistema.
+Agente IA con RAG de conocimiento de la plataforma: manuales, casos de uso, como hacer cada cosa.
+El agente puede dar tutoriales paso a paso con capturas de pantalla.
+El agente resuelve el objetivo del 80% de los casos sin necesidad de humano.
+
+11.2 Canales de contacto humano
+Escribir por WhatsApp.
+Solicitar llamada.
+Atencion por correo electronico.
+Al escalar, se genera un ticket automaticamente con el contexto de la conversacion con el agente. El agente humano retoma sin que el medico repita lo que ya explico.
+12. Arquitectura Tecnica Recomendada
+
+12.1 Stack tecnologico
+
+
+12.2 Modelo multi-tenant
+Multiples medicos/clinicas usando la misma plataforma, completamente aislados. Un medico nunca puede ver los datos de los pacientes de otro medico. Row Level Security en base de datos garantiza esto a nivel de arquitectura.
+13. Roadmap de Desarrollo
+
+13.1 Fase 0 — Fundamentos (antes de escribir codigo)
+Definir los campos exactos del interrogatorio y la visita con medicos reales.
+Escribir el System Prompt principal del modelo clinico.
+Seleccionar y cargar los primeros libros del RAG.
+Definir rangos de optimizacion (verde del semaforo) por biomarcador, sexo y edad con medico experto.
+Conseguir 3-5 medicos piloto dispuestos a usar el sistema desde beta.
+Definir niveles de suscripcion y modelo de precios.
+
+13.2 Fase 1 — MVP (8-12 semanas)
+Auth: registro y login de medicos.
+Registro de nuevo paciente: bloques 1 al 7.
+Datos por visita: bloques A al G con semaforo.
+Motor de analisis: RAG inicial + Claude. Diagnostico en tres capas.
+Protocolo en capas 1 y 2 activas.
+Guardado de expediente con registro de aceptacion/override.
+Ficha del paciente con vista rapida IA.
+Tres documentos imprimibles.
+
+13.3 Fase 2 — Producto completo (post-MVP)
+Deep Research en tiempo real.
+Chat flotante en pantalla principal.
+APEX Chat dentro del expediente con resúmenes de sesion.
+Modulo de Estadisticas completo.
+Modulo de Soporte con agente IA.
+Capas 3 y 4 del protocolo (herbolaria y experimental).
+Reporte completo del paciente bajo demanda con graficas.
+
+13.4 Fase 3 — Escala
+Pagina web personalizada por paciente (con medicamentos, dieta, ejercicio, reporte).
+App movil iOS y Android.
+Integracion con laboratorios (recepcion automatica de resultados).
+Integracion con wearables (Apple Watch, Oura, Garmin).
+Vista multi-medico para clinicas y hospitales.
+Expediente compartido entre medicos del mismo tenant (con consentimiento).
+14. Modelo de Negocio
+
+14.1 Precios sugeridos
+
+
+14.2 Posicionamiento competitivo
+El hueco de mercado que ocupa APEX es unico: plataforma B2B para medicos, en espanol, que integra medicina convencional + funcional + longevidad, con gestion de expedientes y motor de diagnostico con IA. No existe este producto en Latinoamerica.
+
+
+
+APEX  |  Documento Maestro v2.0  |  Mayo 2026  |  Confidencial

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mi Clínica — APEX</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070a0e;--bg2:#0c1118;--bg3:#111820;--bg4:#161f28;--b1:#1e2d3d;--b2:#2a3f54;--b3:#3a5570;--acc:#00e5a0;--acc2:#0ea5e9;--acc3:#f97316;--acc4:#a78bfa;--tx:#dde6ef;--tx2:#7a95aa;--tx3:#3d5870;--card:#0d1520;--card2:#101c28;--hdr-bg:rgba(7,10,14,.97);--grid-color:rgba(0,229,160,.016);}
+html[data-theme="light"]{--bg:#f0f4f8;--bg2:#e8edf4;--bg3:#dde4ee;--bg4:#d2dbe8;--b1:#c2cfe0;--b2:#9bb0c8;--b3:#6b8caa;--acc:#00b87a;--acc2:#0278c0;--acc3:#e06400;--acc4:#7c5cbf;--tx:#0c1f2e;--tx2:#3d5870;--tx3:#8aa5bd;--card:#ffffff;--card2:#f5f8fc;--hdr-bg:rgba(255,255,255,.97);--grid-color:rgba(0,150,100,.025);}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;transition:background .3s,color .25s;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(var(--grid-color) 1px,transparent 1px),linear-gradient(90deg,var(--grid-color) 1px,transparent 1px);background-size:48px 48px;}
+*{transition:background-color .3s,border-color .3s,color .25s;}
+
+header{position:fixed;top:0;left:0;right:0;height:58px;z-index:200;background:var(--hdr-bg);border-bottom:1px solid var(--b1);backdrop-filter:blur(24px);display:flex;align-items:center;padding:0 24px;gap:10px;}
+.h-back{display:flex;align-items:center;gap:7px;padding:6px 12px;background:var(--bg3);border:1px solid var(--b1);border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;color:var(--tx2);text-decoration:none;transition:all .15s;}
+.h-back:hover{border-color:var(--b2);color:var(--tx);}
+.h-logo{font-size:17px;font-weight:800;color:var(--acc);letter-spacing:1px;display:flex;align-items:center;gap:7px;}
+.h-plan{font-family:'JetBrains Mono';font-size:9px;letter-spacing:3px;color:var(--acc2);background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.2);padding:2px 7px;border-radius:3px;}
+.h-sp{flex:1;}
+.h-ic{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--b1);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
+.h-div{width:1px;height:22px;background:var(--b1);}
+.h-doc{display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 8px;border-radius:8px;}
+.h-av{width:34px;height:34px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;border:2px solid rgba(0,229,160,.3);}
+.h-name{font-size:13px;font-weight:600;text-align:right;}
+.h-role{font-family:'JetBrains Mono';font-size:10px;color:var(--tx3);text-align:right;}
+
+#s-main{display:none;position:fixed;inset:0;top:58px;overflow-y:auto;overflow-x:hidden;opacity:0;transition:opacity .7s;}
+#s-main.show{display:block;opacity:1;}
+#s-main::-webkit-scrollbar{width:3px;}
+#s-main::-webkit-scrollbar-thumb{background:var(--b2);}
+.page-inner{max-width:1200px;margin:0 auto;padding:24px;}
+
+.clinic-header{margin-bottom:32px;}
+.ch-title{font-size:28px;font-weight:800;margin-bottom:8px;}
+.ch-sub{font-size:14px;color:var(--tx2);}
+
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px;}
+.metric-card{background:var(--card2);border:1px solid var(--b1);border-radius:10px;padding:16px;position:relative;overflow:hidden;}
+.metric-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--acc);}
+.metric-card.alt::before{background:var(--acc2);}
+.metric-card.alt2::before{background:var(--acc4);}
+.metric-label{font-family:'JetBrains Mono';font-size:11px;color:var(--tx2);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;}
+.metric-value{font-size:28px;font-weight:800;color:var(--acc);margin-bottom:4px;}
+.metric-card.alt .metric-value{color:var(--acc2);}
+.metric-card.alt2 .metric-value{color:var(--acc4);}
+.metric-detail{font-size:12px;color:var(--tx3);}
+
+.section{margin-bottom:32px;}
+.section-title{font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.section-title::before{content:'';width:4px;height:20px;background:var(--acc);border-radius:2px;}
+
+.data-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px;}
+@media(max-width:768px){.data-grid{grid-template-columns:1fr;}}
+
+.chart-card{background:var(--card2);border:1px solid var(--b1);border-radius:10px;padding:20px;}
+.chart-title{font-size:14px;font-weight:700;margin-bottom:14px;}
+
+.bar-item{margin-bottom:12px;}
+.bar-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;}
+.bar-label-name{font-weight:600;}
+.bar-label-pct{color:var(--tx2);}
+.bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:3px;transition:width .3s;}
+
+.top10-container{background:var(--card2);border:1px solid var(--b1);border-radius:10px;padding:20px;}
+.top10-list{display:flex;flex-direction:column;gap:10px;}
+.top10-item{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:12px;display:flex;align-items:center;gap:12px;}
+.top10-num{width:32px;height:32px;border-radius:50%;background:var(--acc);color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;}
+.top10-info{flex:1;}
+.top10-name{font-weight:700;margin-bottom:2px;}
+.top10-stat{font-size:12px;color:var(--tx2);}
+
+.table-card{background:var(--card2);border:1px solid var(--b1);border-radius:10px;overflow:hidden;}
+.table-header{background:var(--bg3);padding:14px 16px;border-bottom:1px solid var(--b1);display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--tx2);}
+.table-row{padding:14px 16px;border-bottom:1px solid var(--b1);display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;align-items:center;font-size:13px;}
+.table-row:last-child{border-bottom:none;}
+.table-row:hover{background:rgba(0,229,160,.03);}
+.table-name{font-weight:600;}
+.table-ref{color:var(--tx2);}
+
+.source-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+.source-badge{font-size:11px;padding:4px 10px;border-radius:4px;background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);color:var(--acc);font-family:'JetBrains Mono';}
+.source-badge.social{background:rgba(14,165,233,.1);border-color:rgba(14,165,233,.2);color:var(--acc2);}
+
+.comparison-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px;}
+.comp-col{background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:12px;text-align:center;}
+.comp-year{font-family:'JetBrains Mono';font-size:11px;color:var(--tx2);margin-bottom:6px;}
+.comp-num{font-size:20px;font-weight:800;color:var(--acc);}
+.comp-change{font-size:11px;color:var(--tx3);margin-top:4px;}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="h-back" href="apex-visita.html">← Atrás</a>
+  <div class="h-logo">APEX <span class="h-plan">PRO</span></div>
+  <div class="h-sp"></div>
+  <div class="h-ic" id="theme-btn" onclick="toggleTheme()">☀️</div>
+  <div class="h-div"></div>
+  <div class="h-doc">
+    <div style="text-align:right">
+      <div class="h-name">Dr. Alejandro Juárez</div>
+      <div class="h-role">Medicina Funcional · Pro</div>
+    </div>
+    <div class="h-av">AJ</div>
+  </div>
+</header>
+
+<div id="s-main">
+<div class="page-inner">
+  <div class="clinic-header">
+    <div class="ch-title">🏥 Mi Clínica</div>
+    <div class="ch-sub">Dashboard de tu práctica · Datos actualizados a hoy</div>
+  </div>
+
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-label">Pacientes en DB</div>
+      <div class="metric-value">847</div>
+      <div class="metric-detail">Base de datos activa</div>
+    </div>
+    <div class="metric-card alt">
+      <div class="metric-label">Esta semana</div>
+      <div class="metric-value">12</div>
+      <div class="metric-detail">Consultas realizadas</div>
+    </div>
+    <div class="metric-card alt2">
+      <div class="metric-label">Este mes</div>
+      <div class="metric-value">48</div>
+      <div class="metric-detail">+8% vs mes pasado</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Este año</div>
+      <div class="metric-value">487</div>
+      <div class="metric-detail">+34% vs 2024</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Comparativa Anual</div>
+    <div class="data-grid">
+      <div class="chart-card">
+        <div class="chart-title">Consultas por año</div>
+        <div class="comparison-bar">
+          <div class="comp-col">
+            <div class="comp-year">2024</div>
+            <div class="comp-num">363</div>
+            <div class="comp-change">—</div>
+          </div>
+          <div class="comp-col">
+            <div class="comp-year">2025</div>
+            <div class="comp-num">487</div>
+            <div class="comp-change">+34%</div>
+          </div>
+          <div class="comp-col">
+            <div class="comp-year">2026 (Proyec.)</div>
+            <div class="comp-num">652</div>
+            <div class="comp-change">+34% est.</div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Distribución de pacientes nuevos</div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Recomendados por médicos</span><span class="bar-label-pct">42%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:42%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Marketing APEX + sitio web</span><span class="bar-label-pct">28%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:28%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Redes sociales (Instagram/TikTok)</span><span class="bar-label-pct">18%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:18%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Google / Búsqueda local</span><span class="bar-label-pct">12%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:12%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Origen de Pacientes</div>
+    <div class="chart-card">
+      <div class="chart-title">¿De dónde se enteraron de tu trabajo?</div>
+      <div style="margin-top:16px;">
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Vieron tu marketing/contenido antes</span><span class="bar-label-pct">58%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:58%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Recomendados por otro médico/colega</span><span class="bar-label-pct">35%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:35%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Referido por paciente anterior</span><span class="bar-label-pct">7%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:7%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Médicos que refieren pacientes</div>
+    <div class="table-card">
+      <div class="table-header">
+        <div>Médico / Referidor</div>
+        <div>Pacientes</div>
+        <div>Especialidad</div>
+      </div>
+      <div class="table-row">
+        <div class="table-name">Dra. Sandra Rodríguez</div>
+        <div>12</div>
+        <div class="table-ref">Cardiología</div>
+      </div>
+      <div class="table-row">
+        <div class="table-name">Dr. Miguel Estrada</div>
+        <div>8</div>
+        <div class="table-ref">Medicina Interna</div>
+      </div>
+      <div class="table-row">
+        <div class="table-name">Dra. Patricia López</div>
+        <div>6</div>
+        <div class="table-ref">Endocrinología</div>
+      </div>
+      <div class="table-row">
+        <div class="table-name">Dr. Fernando Gómez</div>
+        <div>5</div>
+        <div class="table-ref">Urología</div>
+      </div>
+      <div class="table-row">
+        <div class="table-name">Clínica Salud Integral</div>
+        <div>4</div>
+        <div class="table-ref">Multidisciplinario</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Redes Sociales y Canales</div>
+    <div class="chart-card">
+      <div class="chart-title">Canales donde pacientes te descubren</div>
+      <div style="margin-top:16px;">
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Instagram (@alejandro.medicina.funcional)</span><span class="bar-label-pct">34%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:34%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">TikTok (@drajuarez)</span><span class="bar-label-pct">22%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:22%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Blog personal / Sitio web</span><span class="bar-label-pct">18%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:18%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">Podcast "Medicina del Futuro"</span><span class="bar-label-pct">12%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:12%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-label"><span class="bar-label-name">LinkedIn (Artículos)</span><span class="bar-label-pct">14%</span></div>
+          <div class="bar"><div class="bar-fill" style="width:14%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Diagnósticos Top 10</div>
+    <div class="top10-container">
+      <div class="top10-list">
+        <div class="top10-item">
+          <div class="top10-num">1</div>
+          <div class="top10-info">
+            <div class="top10-name">Síndrome Metabólico + Resistencia Insulínica</div>
+            <div class="top10-stat">142 pacientes · 29% de base · ↑12% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">2</div>
+          <div class="top10-info">
+            <div class="top10-name">Fatiga Crónica + Burnout</div>
+            <div class="top10-stat">118 pacientes · 24% de base · ↑18% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">3</div>
+          <div class="top10-info">
+            <div class="top10-name">Hipertensión Esencial + Disfunción Endotelial</div>
+            <div class="top10-stat">94 pacientes · 19% de base · ↑8% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">4</div>
+          <div class="top10-info">
+            <div class="top10-name">Inflamación Sistémica + Autoinmunidad Subclínica</div>
+            <div class="top10-stat">72 pacientes · 15% de base · ↑22% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">5</div>
+          <div class="top10-info">
+            <div class="top10-name">Disfunción Tiroidea (Hipotiroidismo Subclínico)</div>
+            <div class="top10-stat">58 pacientes · 12% de base · ↑5% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">6</div>
+          <div class="top10-info">
+            <div class="top10-name">Problemas de Sueño + Alteración del Ritmo Circadiano</div>
+            <div class="top10-stat">48 pacientes · 10% de base · ↑28% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">7</div>
+          <div class="top10-info">
+            <div class="top10-name">Disbiosis Intestinal + Síndrome de Permeabilidad</div>
+            <div class="top10-stat">42 pacientes · 9% de base · ↑14% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">8</div>
+          <div class="top10-info">
+            <div class="top10-name">Baja Testosterona + Hipogonadismo Funcional</div>
+            <div class="top10-stat">36 pacientes · 7% de base · ↑16% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">9</div>
+          <div class="top10-info">
+            <div class="top10-name">Deficiencias Nutricionales Múltiples</div>
+            <div class="top10-stat">31 pacientes · 6% de base · ↑9% vs año pasado</div>
+          </div>
+        </div>
+        <div class="top10-item">
+          <div class="top10-num">10</div>
+          <div class="top10-info">
+            <div class="top10-name">Migrañas Crónicas + Sensibilidad Química Múltiple</div>
+            <div class="top10-stat">28 pacientes · 6% de base · ↑11% vs año pasado</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Medicamentos Más Recetados</div>
+    <div class="data-grid">
+      <div class="table-card">
+        <div class="table-header">
+          <div>Medicamento / Suplemento</div>
+          <div>Veces</div>
+          <div>% Pacientes</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Metformina 500mg</div>
+          <div>189</div>
+          <div class="table-ref">38.8%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Vitamina D3 5000IU</div>
+          <div>167</div>
+          <div class="table-ref">34.3%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Ashwagandha KSM-66 300mg</div>
+          <div>144</div>
+          <div class="table-ref">29.6%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Magnesio Glicinato 400mg</div>
+          <div>138</div>
+          <div class="table-ref">28.3%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Omega-3 2000mg</div>
+          <div>132</div>
+          <div class="table-ref">27.1%</div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div>Medicamento / Suplemento</div>
+          <div>Veces</div>
+          <div>% Pacientes</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Berberina 500mg</div>
+          <div>118</div>
+          <div class="table-ref">24.2%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Lisinopril 10mg (ACE inhibitor)</div>
+          <div>96</div>
+          <div class="table-ref">19.7%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Levothyroxine 75mcg</div>
+          <div>84</div>
+          <div class="table-ref">17.3%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Zinc Picolinato 25mg</div>
+          <div>76</div>
+          <div class="table-ref">15.6%</div>
+        </div>
+        <div class="table-row">
+          <div class="table-name">Probióticos Multiespecie</div>
+          <div>68</div>
+          <div class="table-ref">13.9%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+let darkMode = localStorage.getItem('apex-theme') !== 'light';
+function applyTheme(){document.documentElement.setAttribute('data-theme',darkMode?'dark':'light');document.getElementById('theme-btn').textContent=darkMode?'☀️':'🌙';}
+function toggleTheme(){darkMode=!darkMode;localStorage.setItem('apex-theme',darkMode?'dark':'light');applyTheme();}
+applyTheme();
+
+function showMain(){const mn=document.getElementById('s-main');mn.classList.add('show');}
+window.addEventListener('load',()=>setTimeout(showMain,100));
+</script>
+</body>
+</html>
