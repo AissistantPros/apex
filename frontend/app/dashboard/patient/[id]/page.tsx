@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
+import NoteThread, { Note } from '@/app/components/NoteThread';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -19,9 +20,7 @@ export default function PatientPage() {
   const [tab, setTab] = useState<'ficha' | 'visitas'>('ficha');
   const [showDanger, setShowDanger] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [notes, setNotes] = useState({ reception: '', nurse: '', doctor: '' });
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [notesSaved, setNotesSaved] = useState(false);
+  const [patientNotes, setPatientNotes] = useState<Note[]>([]);
 
   useEffect(() => {
     getUser().then(u => {
@@ -40,11 +39,12 @@ export default function PatientPage() {
       const vData = await vRes.json();
       setPatient(pData);
       setVisits(vData.visits || []);
-      setNotes({
-        reception: pData.notes_reception || '',
-        nurse: pData.notes_nurse || '',
-        doctor: pData.notes_doctor || '',
-      });
+      // Cargar notas del hilo
+      try {
+        const nRes = await fetch(`${BACKEND()}/patients/${patientId}/notes`);
+        const nData = await nRes.json();
+        setPatientNotes(nData.notes || []);
+      } catch (_) {}
     } catch (e) {
       console.error(e);
     } finally {
@@ -52,26 +52,6 @@ export default function PatientPage() {
     }
   };
 
-  const saveNotes = async () => {
-    setSavingNotes(true);
-    try {
-      await fetch(`${BACKEND()}/patients/${patientId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          notes_reception: notes.reception,
-          notes_nurse: notes.nurse,
-          notes_doctor: notes.doctor,
-        }),
-      });
-      setNotesSaved(true);
-      setTimeout(() => setNotesSaved(false), 3000);
-    } catch (e) {
-      alert('Error al guardar notas');
-    } finally {
-      setSavingNotes(false);
-    }
-  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -138,6 +118,27 @@ export default function PatientPage() {
             </button>
           </div>
         </div>
+
+        {/* Banner registro pendiente */}
+        {patient.registration_phase && patient.registration_phase !== 'complete' && (
+          <div className="mb-6 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-2xl px-5 py-4 flex items-center gap-4">
+            <span className="text-2xl">⏳</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-[#f59e0b]">Registro pendiente de completar</p>
+              <p className="text-xs text-[#7a95aa] mt-0.5">
+                {patient.registration_phase === 'reception'
+                  ? 'La sección de Enfermería y Médico están pendientes.'
+                  : 'La sección del Médico está pendiente.'}
+              </p>
+            </div>
+            <button
+              onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=${patient.registration_phase === 'reception' ? 2 : 3}`)}
+              className="px-4 py-2 bg-[#f59e0b] text-black text-xs font-bold rounded-xl hover:opacity-90 transition flex-shrink-0"
+            >
+              Continuar →
+            </button>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
@@ -216,26 +217,20 @@ export default function PatientPage() {
               </Grid>
             </Section>
 
-            {/* Notas del equipo — editables */}
+            {/* Notas del equipo — hilo con timestamps */}
             <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-[#dde6ef] flex items-center gap-2">
-                  📝 Notas del equipo
-                </h3>
-                <button onClick={saveNotes} disabled={savingNotes}
-                  className="px-4 py-1.5 text-xs font-bold rounded-lg transition"
-                  style={{ background: notesSaved ? '#00e5a0' : '#0ea5e9', color: '#000' }}>
-                  {savingNotes ? 'Guardando...' : notesSaved ? '✓ Guardado' : 'Guardar notas'}
-                </button>
-              </div>
-              <div className="space-y-4">
-                <NoteInput role="Recepción" icon="🟦" color="#0ea5e9"
-                  value={notes.reception} onChange={v => setNotes(n => ({ ...n, reception: v }))} />
-                <NoteInput role="Enfermería" icon="🟧" color="#f97316"
-                  value={notes.nurse} onChange={v => setNotes(n => ({ ...n, nurse: v }))} />
-                <NoteInput role="Médico" icon="🟣" color="#a78bfa"
-                  value={notes.doctor} onChange={v => setNotes(n => ({ ...n, doctor: v }))} />
-              </div>
+              <h3 className="text-sm font-semibold text-[#dde6ef] flex items-center gap-2 mb-4">
+                📝 Notas del equipo
+                <span className="text-xs font-mono text-[#3d5870] font-normal">
+                  {patientNotes.length > 0 ? `${patientNotes.length} nota${patientNotes.length > 1 ? 's' : ''}` : ''}
+                </span>
+              </h3>
+              <NoteThread
+                patientId={patientId}
+                notes={patientNotes}
+                onNoteAdded={n => setPatientNotes(prev => [...prev, n])}
+                onNoteDeleted={id => setPatientNotes(prev => prev.filter(n => n.id !== id))}
+              />
             </div>
 
             {/* Zona de peligro */}
@@ -320,23 +315,6 @@ const Info = ({ label, value }: { label: string; value?: string | null }) => (
       <p className="text-sm text-[#dde6ef]">{value}</p>
     </div>
   ) : null
-);
-
-const NoteInput = ({ role, icon, color, value, onChange }: {
-  role: string; icon: string; color: string; value: string; onChange: (v: string) => void;
-}) => (
-  <div className="rounded-xl border p-4" style={{ borderColor: color + '33', background: color + '08' }}>
-    <p className="text-xs font-mono mb-2 uppercase tracking-wider" style={{ color }}>
-      {icon} Notas de {role}
-    </p>
-    <textarea
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      rows={3}
-      placeholder={`Escribir notas de ${role.toLowerCase()}...`}
-      className="w-full bg-transparent text-sm text-[#dde6ef] placeholder-[#3d5870] outline-none resize-none"
-    />
-  </div>
 );
 
 const VisitCard = ({ visit, index, onClick }: { visit: any; index: number; onClick: () => void }) => {

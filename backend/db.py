@@ -66,6 +66,32 @@ def upsert_doctor_profile(doctor_id: str, data: dict) -> dict:
     result = supabase.table("doctor_profiles").upsert(data).execute()
     return result.data[0] if result.data else None
 
+def add_patient_note(patient_id: str, visit_id: str | None, author_role: str, author_name: str, content: str) -> dict:
+    """Agrega una nota con timestamp y autor"""
+    import uuid
+    from datetime import datetime
+    data = {
+        "id": uuid.uuid4().hex,
+        "patient_id": patient_id,
+        "visit_id": visit_id,
+        "author_role": author_role,
+        "author_name": author_name,
+        "content": content,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    result = supabase.table("patient_notes").insert(data).execute()
+    return result.data[0] if result.data else None
+
+def get_patient_notes(patient_id: str) -> list:
+    """Lista todas las notas de un paciente, en orden cronológico"""
+    result = supabase.table("patient_notes").select("*").eq("patient_id", patient_id).order("created_at", desc=False).execute()
+    return result.data if result.data else []
+
+def delete_patient_note(note_id: str) -> bool:
+    """Elimina una nota por ID"""
+    supabase.table("patient_notes").delete().eq("id", note_id).execute()
+    return True
+
 def insert_analysis(analysis_data: dict) -> dict:
     """Inserta un análisis"""
     result = supabase.table("analyses").insert(analysis_data).execute()

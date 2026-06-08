@@ -9,6 +9,9 @@ from db import (
     list_patient_visits,
     get_doctor_profile,
     upsert_doctor_profile,
+    add_patient_note,
+    get_patient_notes,
+    delete_patient_note,
 )
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -155,6 +158,47 @@ async def get_patient_visits(
             "visits": visits,
         }
 
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.get("/{patient_id}/notes")
+async def get_notes(patient_id: str, authorization: Optional[str] = Header(None)):
+    """Listar todas las notas de un paciente"""
+    try:
+        notes = get_patient_notes(patient_id)
+        return {"notes": notes}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/{patient_id}/notes")
+async def create_note(patient_id: str, data: dict, authorization: Optional[str] = Header(None)):
+    """Agregar nota con autor y timestamp"""
+    try:
+        content = data.get("content", "").strip()
+        if not content:
+            raise HTTPException(400, "El contenido de la nota no puede estar vacío")
+        note = add_patient_note(
+            patient_id=patient_id,
+            visit_id=data.get("visit_id"),
+            author_role=data.get("author_role", "doctor"),
+            author_name=data.get("author_name", ""),
+            content=content,
+        )
+        return note
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.delete("/{patient_id}/notes/{note_id}")
+async def remove_note(patient_id: str, note_id: str, authorization: Optional[str] = Header(None)):
+    """Eliminar una nota"""
+    try:
+        delete_patient_note(note_id)
+        return {"deleted": True, "id": note_id}
     except Exception as e:
         raise HTTPException(500, str(e))
 
