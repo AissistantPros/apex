@@ -230,7 +230,7 @@ export default function FlowPage() {
         phases_completed: ['receptionist', 'nurse', 'doctor'],
       };
 
-      const res = await fetch(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000/patients/', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user?.id}` },
         body: JSON.stringify(payload),

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from anthropic import Anthropic
-from db import insert_analysis, get_analysis, update_analysis
+from db import insert_analysis, get_analysis, update_analysis, get_visit, get_patient
 
 from services.system_prompt import (
     get_traditional_diagnosis_prompt,
@@ -103,11 +103,20 @@ async def run_traditional(
 ):
     """Genera el diagnóstico de medicina tradicional."""
     try:
+        # Cargar visita y paciente completos desde Supabase
+        visit_record = get_visit(visit_id) or {}
+        patient_id = patient_data.get("patient_id") or visit_record.get("patient_id", "")
+        patient_record = get_patient(patient_id) if patient_id else {}
+
+        # Mezclar lo que venga del frontend con lo de Supabase (Supabase tiene precedencia)
+        full_patient = {**patient_data, **patient_record}
+        full_visit = visit_record
+
         # Crear registro en Supabase
         analysis_record = {
             "id": f"analysis_{visit_id}",
             "visit_id": visit_id,
-            "patient_id": patient_data.get("patient_id", ""),
+            "patient_id": patient_id,
             "doctor_id": doctor_id,
             "status": "in_progress",
             "chat_history": [],
@@ -117,7 +126,7 @@ async def run_traditional(
 
         insert_analysis(analysis_record)
 
-        prompt = get_traditional_diagnosis_prompt(patient_data)
+        prompt = get_traditional_diagnosis_prompt(full_patient, full_visit)
         diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
 
         val_prompt = get_secondary_validation_prompt(diagnosis)
@@ -147,8 +156,10 @@ async def run_functional(
         if not analysis:
             raise HTTPException(404, "Análisis no encontrado")
 
-        patient_data = {"patient_id": analysis.get("patient_id")}
-        
+        visit_record = get_visit(visit_id) or {}
+        patient_id = analysis.get("patient_id")
+        patient_data = get_patient(patient_id) if patient_id else {}
+
         doctor_context = build_doctor_context(
             body.ai_traditional_original,
             body.doctor_traditional,
@@ -159,6 +170,7 @@ async def run_functional(
         prompt = get_functional_medicine_prompt(
             patient_data,
             body.doctor_traditional,
+            visit_data=visit_record,
             extra_context=doctor_context + chat_snippet
         )
         diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
@@ -190,7 +202,9 @@ async def run_longevity(
         if not analysis:
             raise HTTPException(404, "Análisis no encontrado")
 
-        patient_data = {"patient_id": analysis.get("patient_id")}
+        visit_record = get_visit(visit_id) or {}
+        patient_id = analysis.get("patient_id")
+        patient_data = get_patient(patient_id) if patient_id else {}
 
         ctx_trad = build_doctor_context(
             body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
@@ -203,6 +217,7 @@ async def run_longevity(
         prompt = get_longevity_diagnosis_prompt(
             patient_data,
             body.doctor_functional,
+            visit_data=visit_record,
             extra_context=ctx_trad + ctx_func + chat_snippet
         )
         diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
@@ -234,7 +249,9 @@ async def run_protocol(
         if not analysis:
             raise HTTPException(404, "Análisis no encontrado")
 
-        patient_data = {"patient_id": analysis.get("patient_id")}
+        visit_record = get_visit(visit_id) or {}
+        patient_id = analysis.get("patient_id")
+        patient_data = get_patient(patient_id) if patient_id else {}
 
         diagnosis_map = {
             "traditional": body.doctor_traditional,
@@ -243,20 +260,14 @@ async def run_protocol(
         }
         diagnosis = diagnosis_map.get(body.protocol_type, body.doctor_traditional)
 
-        extra_context = f"""
-CONTEXTO DE DIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:
+        full_diagnosis = f"""{diagnosis}
 
-DIAGNÓSTICO TRADICIONAL:
-{body.doctor_traditional}
+DIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:
+• Tradicional: {body.doctor_traditional}
+• Funcional: {body.doctor_functional}
+• Longevidad: {body.doctor_longevity}"""
 
-DIAGNÓSTICO FUNCIONAL:
-{body.doctor_functional}
-
-DIAGNÓSTICO LONGEVIDAD:
-{body.doctor_longevity}
-"""
-
-        prompt = get_protocol_prompt(patient_data, diagnosis + "\n\n" + extra_context, body.protocol_type)
+        prompt = get_protocol_prompt(patient_data, full_diagnosis, body.protocol_type, visit_data=visit_record)
         protocol = call_claude(prompt, model=MODEL_DIAGNOSE)
 
         return {

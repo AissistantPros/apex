@@ -1,293 +1,645 @@
 """
 Sistema de Prompts Clínicos para APEX
-Tres niveles de análisis: Medicina Tradicional → Funcional → Longevidad
+Cada campo viene etiquetado con su pregunta original del formulario,
+para que la IA entienda exactamente qué significa cada respuesta.
 """
 
-def get_traditional_diagnosis_prompt(patient_data: dict) -> str:
-    """
-    Prompt para diagnóstico de medicina tradicional.
-    Respuesta: Diagnóstico basado en especialidades, síntomas, laboratorios.
-    """
-    return f"""Eres un médico de medicina interna altamente experimentado analizando un caso clínico completo.
+from datetime import date
 
-DATOS DEL PACIENTE:
-- Nombre: {patient_data.get('full_name', 'N/A')}
-- Edad: {patient_data.get('age', 'N/A')} años
-- Sexo: {patient_data.get('sex', 'N/A')}
-- Ocupación: {patient_data.get('occupation', 'N/A')}
+
+def _edad(patient: dict) -> str:
+    dob = patient.get("date_of_birth") or patient.get("birth_date") or patient.get("dob")
+    if not dob:
+        return patient.get("age", "N/D")
+    try:
+        nacimiento = date.fromisoformat(str(dob)[:10])
+        años = (date.today() - nacimiento).days // 365
+        return f"{años} años (nacido el {nacimiento.strftime('%d/%m/%Y')})"
+    except Exception:
+        return str(dob)
+
+
+def _fmt_meds(meds) -> str:
+    if not meds:
+        return "No registra medicamentos actuales"
+    if isinstance(meds, str):
+        return meds
+    lines = []
+    for m in meds:
+        if isinstance(m, dict):
+            nombre = m.get("nombre", "?")
+            dosis = m.get("dosis", "?")
+            freq = m.get("frecuencia", "?")
+            adherencia = m.get("adherencia", "?")
+            desde = m.get("desde", "?")
+            lines.append(
+                f"  • {nombre} {dosis} — frecuencia real: {freq} — "
+                f"adherencia declarada: {adherencia} — desde: {desde}"
+            )
+        else:
+            lines.append(f"  • {m}")
+    return "\n".join(lines)
+
+
+def _fmt_familia(fam) -> str:
+    if not fam:
+        return "Sin datos registrados"
+    if isinstance(fam, str):
+        return fam
+
+    # Puede llegar como dict {padre:{...}, madre:{...}, hermanos:{...}}
+    # o como lista [{familiar:..., enfermedades:...}]
+    lines = []
+    if isinstance(fam, dict):
+        for pariente, datos in fam.items():
+            if not isinstance(datos, dict):
+                continue
+            enf = []
+            for e in ["diabetes", "hipertension", "cancer", "cardiopatia"]:
+                if datos.get(e):
+                    enf.append(e.capitalize())
+            if datos.get("otra"):
+                enf.append(datos["otra"])
+            estado = "Vive" if datos.get("vivo", True) else "Falleció"
+            if not datos.get("vivo", True):
+                causa = datos.get("causa_muerte", "")
+                edad_m = datos.get("edad_muerte", "")
+                estado += f" (causa: {causa}, a los {edad_m} años)" if causa else ""
+            enf_str = ", ".join(enf) if enf else "Sin enfermedades registradas"
+            lines.append(f"  • {pariente.capitalize()}: {enf_str} — {estado}")
+    elif isinstance(fam, list):
+        for item in fam:
+            lines.append(f"  • {item}")
+    return "\n".join(lines) if lines else "Sin datos registrados"
+
+
+def _fmt_fuentes(patient: dict) -> str:
+    fuentes = patient.get("sources_of_contact") or patient.get("source_of_contact") or []
+    if isinstance(fuentes, list) and fuentes:
+        return ", ".join(fuentes)
+    return "No especificado"
+
+
+def build_patient_context(patient: dict) -> str:
+    """
+    Construye el bloque de contexto completo del paciente (datos de registro)
+    con etiquetas que explican qué pregunta se hizo para obtener cada dato.
+    """
+    sexo = patient.get("sexo_biologico") or patient.get("sex") or "No especificado"
+    genero = patient.get("genero_identidad") or ""
+    genero_str = f" / Género con que se identifica: {genero}" if genero else ""
+
+    smoking = patient.get("smoking_status") or "No registrado"
+    smoking_detail = ""
+    if smoking in ("Fumador activo", "Exfumador"):
+        count = patient.get("smoking_count", "?")
+        since = patient.get("smoking_since", "?")
+        until = patient.get("smoking_until", "")
+        smoking_detail = f" — {count} cigarros/día, desde {since}"
+        if until:
+            smoking_detail += f", dejó en {until}"
+
+    alcohol = patient.get("alcohol_status") or "No registrado"
+    alcohol_detail = ""
+    if alcohol and alcohol != "Nunca":
+        tipo = patient.get("alcohol_type", "")
+        cantidad = patient.get("alcohol_amount", "")
+        if tipo or cantidad:
+            alcohol_detail = f" — tipo: {tipo}, cantidad: {cantidad}"
+
+    # Reproductiva
+    repro_lines = []
+    if sexo == "Femenino":
+        repro_lines.append("  REPRODUCTIVA FEMENINA:")
+        repro_lines.append(f"  • Edad de menarca (primera menstruación): {patient.get('menarca_age', 'N/D')}")
+        repro_lines.append(f"  • Ciclos menstruales: {patient.get('ciclos_regulares', 'N/D')}")
+        repro_lines.append(f"  • Número de embarazos: {patient.get('pregnancies', 'N/D')}")
+        repro_lines.append(f"  • Partos / cesáreas: {patient.get('births', 'N/D')}")
+        repro_lines.append(f"  • Abortos: {patient.get('miscarriages', 'N/D')}")
+        meno_tipo = patient.get("menopausal_tipo") or ""
+        meno_edad = patient.get("menopausal_age") or ""
+        if meno_tipo:
+            repro_lines.append(f"  • Menopausia: {meno_tipo}" + (f", a los {meno_edad} años" if meno_edad else ""))
+        else:
+            repro_lines.append("  • Menopausia: No aplica / aún activa")
+        repro_lines.append(f"  • Método anticonceptivo actual: {patient.get('contraceptive', 'No especificado')}")
+        repro_lines.append(f"  • Último Papanicolaou (año): {patient.get('pap_ultimo', 'N/D')}")
+        repro_lines.append(f"  • Última mastografía (año): {patient.get('masto_ultima', 'N/D')}")
+        repro_lines.append(f"  • Última colposcopía (año): {patient.get('colpo_ultima', 'N/D')}")
+    elif sexo == "Masculino":
+        repro_lines.append("  REPRODUCTIVA MASCULINA:")
+        ed = patient.get("erectile_dysfunction") or "No preguntado"
+        repro_lines.append(f"  • Disfunción eréctil (opciones: No refiere / Ocasional / Frecuente / Siempre): {ed}")
+        test_uso = patient.get("testosterone_use") or "No"
+        repro_lines.append(f"  • Uso de testosterona exógena (opciones: No / En el pasado / Actualmente): {test_uso}")
+        if test_uso in ("En el pasado", "Actualmente"):
+            repro_lines.append(f"    Detalle testosterona: {patient.get('testosterone_detalle', 'Sin detalle')}")
+        repro_lines.append(f"  • Número de hijos: {patient.get('children', 'N/D')}")
+        repro_lines.append(f"  • Último PSA (año): {patient.get('psa_ultimo', 'N/D')}")
+        repro_lines.append(f"  • Resultado PSA (ng/mL): {patient.get('psa_valor', 'N/D')}")
+
+    repro_str = "\n".join(repro_lines) if repro_lines else "  No aplica"
+
+    libido_basal = patient.get("libido_basal", "N/D")
+    libido_nota = "(escala 1–10, en condiciones normales — no el día de hoy)"
+
+    return f"""
+══════════════════════════════════════════════════
+DATOS DEL PACIENTE — REGISTRO CLÍNICO INICIAL
+══════════════════════════════════════════════════
+
+IDENTIFICACIÓN:
+  • Nombre completo: {patient.get('full_name') or f"{patient.get('first_name','')} {patient.get('last_name','')}".strip() or 'N/D'}
+  • Fecha de nacimiento / Edad: {_edad(patient)}
+  • Sexo biológico de nacimiento: {sexo}{genero_str}
+  • Ocupación: {patient.get('occupation', 'No especificada')}
+  • Ciudad / Estado: {patient.get('city', 'No especificada')}
+
+ANTECEDENTES HEREDOFAMILIARES
+(enfermedades conocidas en familia directa):
+{_fmt_familia(patient.get('family_history_table') or patient.get('family_history'))}
 
 ANTECEDENTES PERSONALES PATOLÓGICOS:
-{patient_data.get('chronic_diseases', 'Sin datos')}
+  • Enfermedades crónicas diagnosticadas: {patient.get('chronic_diseases', 'No refiere')}
+  • Cirugías previas (nombre y año): {patient.get('surgeries', 'No refiere')}
+  • Hospitalizaciones previas: {patient.get('hospitalizations', 'No refiere')}
+  • Fracturas / traumatismos: {patient.get('fractures', 'No refiere')}
+  • Transfusiones: {patient.get('transfusions', 'No refiere')}
+  • Enfermedades relevantes de la infancia: {patient.get('childhood_diseases', 'No refiere')}
 
-ANTECEDENTES HEREDOFAMILIARES:
-{patient_data.get('family_history', 'Sin datos')}
+ALERGIAS CONOCIDAS:
+  • Alergias a medicamentos: {patient.get('allergies_medications', 'No refiere')}
+  • Alergias a alimentos: {patient.get('allergies_foods', 'No refiere')}
+  • Alergias ambientales u otras: {patient.get('allergies_environmental', 'No refiere')}
 
-ALERGIAS:
-- Medicamentos: {patient_data.get('allergies_medications', 'No refiere')}
-- Alimentos: {patient_data.get('allergies_foods', 'No refiere')}
-- Ambientales: {patient_data.get('allergies_environmental', 'No refiere')}
+MEDICAMENTOS ACTUALES
+(los que el paciente realmente toma, con adherencia real):
+{_fmt_meds(patient.get('medications'))}
+  Observaciones adicionales (automedicación, remedios caseros, herbolaria):
+  {patient.get('med_notas', 'Ninguna')}
 
 HÁBITOS:
-- Tabaquismo: {patient_data.get('smoking_status', 'No refiere')}
-- Alcohol: {patient_data.get('alcohol_status', 'No especifica')}
-- Actividad física: {patient_data.get('physical_activity', 'No especifica')}
-- Estrés: {patient_data.get('stress_level', 'N/A')}/10
+  • Tabaquismo (opciones: Nunca fumó / Exfumador / Fumador activo): {smoking}{smoking_detail}
+  • Alcohol (opciones: Nunca / Ocasional / Frecuente / Diario): {alcohol}{alcohol_detail}
+  • Sustancias recreativas o de uso regular (confidencial, solo médico):
+    {patient.get('sust_recreativas', 'No refiere') or 'No refiere'}
 
-DATOS VITALES Y ANTROPOMÉTRICOS:
-- Presión arterial: {patient_data.get('blood_pressure', 'N/A')}
-- Frecuencia cardíaca: {patient_data.get('heart_rate', 'N/A')} lpm
-- Peso: {patient_data.get('weight', 'N/A')} kg
-- Talla: {patient_data.get('height', 'N/A')} m
-- IMC: {patient_data.get('bmi', 'N/A')}
+HISTORIA REPRODUCTIVA Y SEXUAL:
+{repro_str}
+  • Libido en condiciones normales {libido_nota}: {libido_basal}/10
+  • Notas de salud sexual (ETS previas, disfunciones, preocupaciones):
+    {patient.get('salud_sexual_notas', 'Sin notas') or 'Sin notas'}
 
-LABORATORIOS Y EXÁMENES:
-{patient_data.get('lab_results', 'Sin datos')}
-
-MOTIVO DE CONSULTA:
-{patient_data.get('chief_complaint', 'Evaluación general')}
-
-TAREA:
-1. Realiza un diagnóstico completo desde la perspectiva de medicina tradicional/especializada
-2. Considera diagnósticos diferenciales relevantes
-3. Justifica cada hallazgo con la evidencia clínica disponible
-4. Sugiere estudios adicionales si es necesario
-5. Presenta en formato: DIAGNÓSTICO PRINCIPAL → DIAGNÓSTICOS DIFERENCIALES → JUSTIFICACIÓN CLÍNICA
-
-Responde SOLO con el análisis clínico, sin explicaciones adicionales."""
+SALUD MENTAL (confidencial):
+  • Diagnósticos psiquiátricos previos o actuales: {patient.get('dx_psiquiatrico', 'No refiere') or 'No refiere'}
+  • Medicamentos psiquiátricos actuales o previos: {patient.get('med_psiquiatrica', 'No refiere') or 'No refiere'}
+  • Eventos traumáticos relevantes (mencionados espontáneamente): {patient.get('trauma_relevante', 'No refiere') or 'No refiere'}
+""".strip()
 
 
-def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str, extra_context: str = "") -> str:
+def build_visit_context(visit: dict) -> str:
     """
-    Prompt para diagnóstico de medicina funcional.
-    Enfoque: ¿Cuál es la raíz del problema? No solo el síntoma.
+    Construye el bloque de contexto completo de la visita actual
+    con etiquetas que explican qué se midió / preguntó.
     """
+    # Presión arterial
+    pad = f"{visit.get('pa_der_sistolica','?')}/{visit.get('pa_der_diastolica','?')}"
+    pai = f"{visit.get('pa_izq_sistolica','?')}/{visit.get('pa_izq_diastolica','?')}"
+    brazo = visit.get("pa_dominant_arm") or visit.get("pa_brazo_mayor") or "No especificado"
+
+    # IMC calculado
+    peso = visit.get("weight") or visit.get("peso")
+    talla = visit.get("height") or visit.get("talla")
+    imc_str = "N/D"
+    if peso and talla:
+        try:
+            h = float(talla) / 100 if float(talla) > 10 else float(talla)
+            imc_val = float(peso) / (h * h)
+            imc_str = f"{imc_val:.1f}"
+        except Exception:
+            imc_str = "N/D"
+
+    # Glucosa
+    glucosa = visit.get("glucose") or visit.get("glucosa") or "N/D"
+    glucosa_ayuno = visit.get("glucose_fasting_hours") or visit.get("glucosa_ayuno") or "N/D"
+    glucosa_str = f"{glucosa} mg/dL"
+    if glucosa_ayuno and glucosa_ayuno != "N/D":
+        glucosa_str += f" (horas en ayuno al momento de la medición: {glucosa_ayuno}h)"
+
+    # ECG
+    ecg = visit.get("ecg_done") or visit.get("ecg_realizado")
+    ecg_str = "No realizado"
+    if ecg:
+        interp = visit.get("ecg_interpretation") or visit.get("ecg_interpretacion") or "Sin interpretación registrada"
+        ecg_str = f"Realizado — interpretación: {interp}"
+
+    # Composición
+    inbody_lines = []
+    if visit.get("inbody_fat_pct") or visit.get("inbody_grasa"):
+        inbody_lines.append(f"  • % grasa corporal (InBody): {visit.get('inbody_fat_pct') or visit.get('inbody_grasa')}%")
+    if visit.get("inbody_muscle_kg") or visit.get("inbody_musculo"):
+        inbody_lines.append(f"  • Masa muscular en kg (InBody): {visit.get('inbody_muscle_kg') or visit.get('inbody_musculo')} kg")
+    if visit.get("inbody_water_pct") or visit.get("inbody_agua"):
+        inbody_lines.append(f"  • % agua corporal (InBody): {visit.get('inbody_water_pct') or visit.get('inbody_agua')}%")
+    if visit.get("inbody_visceral") or visit.get("inbody_visceral"):
+        inbody_lines.append(f"  • Grasa visceral (InBody, escala 1-20): {visit.get('inbody_visceral')}")
+    inbody_str = "\n".join(inbody_lines) if inbody_lines else "  No realizado / no disponible"
+
+    # Actividad física
+    act_tipo = visit.get("activity_type") or visit.get("actividad_tipo") or "No especificado"
+    act_freq = visit.get("activity_frequency") or visit.get("actividad_frecuencia") or "No especificado"
+    act_int = visit.get("activity_intensity") or visit.get("actividad_intensidad") or "No especificado"
+
+    # Pruebas funcionales
+    agarre_der = visit.get("grip_right") or visit.get("agarre_der") or "N/D"
+    agarre_izq = visit.get("grip_left") or visit.get("agarre_izq") or "N/D"
+    marcha = visit.get("walk_4m_seconds") or visit.get("marcha_seg") or "N/D"
+    syl = visit.get("sit_stand_30s") or visit.get("syl_reps") or "N/D"
+    equilibrio = visit.get("balance_seconds") or visit.get("equilibrio_seg") or "N/D"
+    vo2max = visit.get("vo2max") or "N/D"
+
+    # Subjetivo
+    animo = visit.get("mood") or visit.get("animo") or []
+    animo_str = ", ".join(animo) if isinstance(animo, list) else str(animo)
+    digestion = visit.get("digestion") or []
+    digestion_str = ", ".join(digestion) if isinstance(digestion, list) else str(digestion)
+
+    orina = visit.get("urine_color") or visit.get("orina_color") or "No registrado"
+
+    dolor = visit.get("pain_today") or visit.get("dolor_hoy") or False
+    dolor_str = "No"
+    if dolor:
+        dolor_ubi = visit.get("pain_location") or visit.get("dolor_ubicacion") or "No especificado"
+        dolor_int = visit.get("pain_intensity") or visit.get("dolor_intensidad") or "N/D"
+        dolor_str = f"Sí — ubicación: {dolor_ubi}, intensidad declarada: {dolor_int}/10"
+
+    # Cognitivo
+    cog = visit.get("minicog_done") or visit.get("cognitivo_realizado") or False
+    cog_str = "No realizado"
+    if cog:
+        palabras = visit.get("minicog_words") or visit.get("cognitivo_palabras") or "N/D"
+        reloj = visit.get("minicog_clock") or visit.get("cognitivo_reloj") or "N/D"
+        notas_cog = visit.get("minicog_notes") or visit.get("cognitivo_notas") or ""
+        cog_str = f"Realizado — palabras recordadas (de 3): {palabras}, reloj: {reloj}"
+        if notas_cog:
+            cog_str += f", notas: {notas_cog}"
+
+    # Motivo
+    primera_vez = visit.get("first_time") or visit.get("motivo_primera_vez") or "N/D"
+    # opciones: 'si' = primera vez, 'no' = ya había presentado esto, 'episodios' = recurrente
+    primera_vez_label = {
+        "si": "Sí, primera vez que presenta esto",
+        "no": "No, ya lo había presentado antes",
+        "episodios": "Problema recurrente / por episodios",
+    }.get(str(primera_vez).lower(), primera_vez)
+
+    return f"""
+══════════════════════════════════════════════════
+DATOS DE LA VISITA ACTUAL
+══════════════════════════════════════════════════
+
+── MOTIVO DE CONSULTA ──
+  • Motivo principal de la visita (texto libre del médico): {visit.get('visit_reason') or visit.get('motivo_visita') or 'No especificado'}
+  • Intensidad del malestar que trae hoy (escala 1–10, autoevaluado por el paciente): {visit.get('discomfort_intensity') or visit.get('motivo_intensidad') or 'N/D'}/10
+  • ¿Desde cuándo tiene este problema / síntoma?: {visit.get('symptom_since') or visit.get('motivo_desde') or 'N/D'}
+  • ¿Es la primera vez que presenta esto?: {primera_vez_label}
+  • Cambios en medicamentos recientes (antes de esta visita): {visit.get('medication_changes') or visit.get('cambios_meds') or 'Ninguno'}
+  • Metas u objetivos del paciente para esta consulta: {visit.get('patient_goals') or visit.get('metas_paciente') or 'No especificado'}
+
+── SIGNOS VITALES ──
+  • Presión arterial brazo DERECHO (sistólica/diastólica mmHg): {pad}
+  • Presión arterial brazo IZQUIERDO (sistólica/diastólica mmHg): {pai}
+  • Brazo con PA más alta (brazo dominante clínico): {brazo}
+  • Frecuencia cardíaca (lpm): {visit.get('heart_rate') or visit.get('fc') or 'N/D'}
+  • Temperatura corporal (°C): {visit.get('temperature') or visit.get('temperatura') or 'N/D'}
+  • Saturación de oxígeno SpO2 (%): {visit.get('spo2') or 'N/D'}
+  • Glucosa capilar: {glucosa_str}
+  • ECG: {ecg_str}
+
+── COMPOSICIÓN CORPORAL ──
+  • Peso (kg): {peso or 'N/D'}
+  • Talla (cm): {talla or 'N/D'}
+  • IMC calculado: {imc_str} kg/m²
+  • Circunferencia abdominal (cm): {visit.get('circ_abdominal') or 'N/D'}
+  • Circunferencia de cintura (cm): {visit.get('circ_waist') or visit.get('circ_cintura') or 'N/D'}
+  • Circunferencia de cadera (cm): {visit.get('circ_hip') or visit.get('circ_cadera') or 'N/D'}
+  • Circunferencia de cuello (cm): {visit.get('circ_neck') or visit.get('circ_cuello') or 'N/D'}
+  • Circunferencia de bíceps (cm): {visit.get('circ_biceps') or 'N/D'}
+  • Circunferencia de muñeca (cm): {visit.get('circ_wrist') or visit.get('circ_muneca') or 'N/D'}
+  Análisis de composición corporal (InBody o similar):
+{inbody_str}
+  Actividad física habitual del paciente:
+  • Tipo de actividad: {act_tipo}
+  • Frecuencia semanal: {act_freq}
+  • Intensidad percibida: {act_int}
+
+── PRUEBAS FUNCIONALES ──
+  • Fuerza de agarre mano DERECHA (dinamometría, kg): {agarre_der}
+  • Fuerza de agarre mano IZQUIERDA (dinamometría, kg): {agarre_izq}
+  • Velocidad de marcha — test de 4 metros (segundos): {marcha}
+    (referencia: <4 segundos = normal; 4–6.7 s = lento; >6.7 s = alerta sarcopenia)
+  • Levantarse y sentarse en 30 segundos (repeticiones): {syl}
+    (referencia hombres: >14 = normal; mujeres: >12 = normal, varía por edad)
+  • Equilibrio en un pie con ojos abiertos (segundos): {equilibrio}
+    (referencia: <10 segundos en menores de 60 años = alerta de riesgo de caída)
+  • VO2max estimado (ml/kg/min): {vo2max}
+
+── REPORTE SUBJETIVO (autoevaluado por el paciente) ──
+  • Nivel de energía en la MAÑANA (escala 1–10): {visit.get('energy_morning') or visit.get('energia_manana') or 'N/D'}/10
+  • Nivel de energía al MEDIODÍA (escala 1–10): {visit.get('energy_noon') or visit.get('energia_mediodia') or 'N/D'}/10
+  • Nivel de energía en la TARDE (escala 1–10): {visit.get('energy_evening') or visit.get('energia_tarde') or 'N/D'}/10
+  • Calidad del sueño (escala 1–10): {visit.get('sleep_quality') or visit.get('sueno_calidad') or 'N/D'}/10
+  • Horas de sueño por noche: {visit.get('sleep_hours') or visit.get('sueno_horas') or 'N/D'} h
+  • ¿Se despierta descansado? (opciones: Siempre / A veces / Rara vez / Nunca): {visit.get('wakes_rested') or visit.get('sueno_reparador') or 'N/D'}
+  • Estado de ánimo actual (múltiple selección, opciones: Estable / Ansioso / Irritable / Triste / Sin motivación / Bien / Otro): {animo_str or 'No especificado'}
+  • Libido HOY, en este momento (escala 1–10, diferente del basal en registro): {visit.get('libido') or visit.get('libido_hoy') or 'N/D'}/10
+  • Digestión (múltiple selección, opciones: Sin problemas / Distensión / Estreñimiento / Diarrea / Reflujo / Náuseas / Otro): {digestion_str or 'No especificado'}
+  • Color de orina (escala visual, del más pálido al más oscuro): {orina}
+    (muy pálido = bien hidratado; naranja oscuro = deshidratación severa / revisar hematuria)
+  • ¿Tiene dolor físico hoy?: {dolor_str}
+
+── EXPLORACIÓN CLÍNICA (realizada por el médico) ──
+  • Inspección general: {visit.get('general_inspection') or visit.get('exp_general') or 'No registrada'}
+  • Hallazgos en piel: {visit.get('skin_findings') or visit.get('exp_piel') or 'Sin hallazgos'}
+  • Hallazgos oculares: {visit.get('eye_findings') or visit.get('exp_ojos') or 'Sin hallazgos'}
+  • Hallazgos en boca / orofaringe: {visit.get('mouth_findings') or visit.get('exp_boca') or 'Sin hallazgos'}
+  • Hallazgos en tiroides: {visit.get('thyroid_findings') or visit.get('exp_tiroides') or 'Sin hallazgos'}
+  • Hallazgos abdominales: {visit.get('abdomen_findings') or visit.get('exp_abdomen') or 'Sin hallazgos'}
+  • Hallazgos neurológicos: {visit.get('neuro_findings') or visit.get('exp_neurologico') or 'Sin hallazgos'}
+  • Otros hallazgos clínicos: {visit.get('other_findings') or visit.get('exp_otros') or 'Ninguno'}
+  • Imagen (tipo de estudio): {visit.get('imaging_type') or visit.get('img_tipo') or 'No realizado'}
+  • Interpretación de imagen: {visit.get('imaging_findings') or visit.get('img_interpretacion') or 'N/A'}
+  • Mini-Cog (tamizaje cognitivo breve): {cog_str}
+
+── LABORATORIOS ──
+  • Notas / resultados clave de laboratorios: {visit.get('labs_notes') or visit.get('lab_notas') or 'No se ingresaron laboratorios en esta visita'}
+  • URL de PDF de laboratorios: {visit.get('labs_pdf_url') or 'No adjuntado'}
+""".strip()
+
+
+# ─────────────────────────────────────────────────────────
+# PROMPTS DE ANÁLISIS
+# ─────────────────────────────────────────────────────────
+
+def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None) -> str:
+    patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+
+    return f"""Eres un médico internista y especialista clínico con 20 años de experiencia.
+Vas a analizar un caso clínico completo desde la perspectiva de la MEDICINA TRADICIONAL / CONVENCIONAL.
+
+Tu tarea es hacer lo que haría el mejor internista del mundo:
+identificar diagnósticos sólidos basados en la evidencia clínica disponible,
+proponer diagnósticos diferenciales y justificar cada conclusión.
+
+{patient_ctx}
+
+{visit_ctx}
+
+INSTRUCCIONES:
+1. Analiza la totalidad de los datos anteriores.
+2. Considera la interacción entre antecedentes, hábitos, signos vitales, composición corporal,
+   pruebas funcionales, reporte subjetivo, exploración y laboratorios.
+3. Identifica el DIAGNÓSTICO PRINCIPAL más probable.
+4. Lista DIAGNÓSTICOS DIFERENCIALES ordenados por probabilidad.
+5. Para cada diagnóstico, justifica con los datos clínicos concretos del paciente.
+6. Señala qué estudios adicionales confirmarían o descartan cada diagnóstico.
+7. Identifica ALERTAS CLÍNICAS inmediatas si las hay (datos que requieren atención urgente).
+
+FORMATO DE RESPUESTA:
+═══ DIAGNÓSTICO PRINCIPAL ═══
+[diagnóstico con CIE-10 si aplica]
+Justificación: [basada en datos específicos del paciente]
+
+═══ DIAGNÓSTICOS DIFERENCIALES ═══
+1. [diagnóstico] — [probabilidad: alta/media/baja] — [datos que lo sustentan]
+2. [diagnóstico] — ...
+3. [diagnóstico] — ...
+
+═══ ESTUDIOS SUGERIDOS ═══
+• URGENTE: [si aplica]
+• DESEADO: [estudios que confirmarían el diagnóstico principal]
+• COMPLEMENTARIO: [estudios adicionales de valor]
+
+═══ ALERTAS CLÍNICAS ═══
+[Si hay datos que requieren atención inmediata, o "Sin alertas inmediatas"]
+
+Responde solo con el análisis clínico. Sin introducciones ni despedidas."""
+
+
+def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str,
+                                   visit_data: dict = None, extra_context: str = "") -> str:
+    patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+
     return f"""Eres un médico especializado en Medicina Funcional e Integrativa.
-Tu objetivo es identificar LA RAÍZ del problema, no solo los síntomas.
+Tu enfoque: NO solo tratar síntomas, sino encontrar LA RAÍZ del problema.
+
 {extra_context}
-DIAGNÓSTICO TRADICIONAL (versión final confirmada por el médico):
+
+{patient_ctx}
+
+{visit_ctx}
+
+DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante):
 {traditional_diagnosis}
 
-DATOS DEL PACIENTE:
-- Edad: {patient_data.get('age', 'N/A')} años
-- Sexo: {patient_data.get('sexo_biologico', patient_data.get('sex', 'N/A'))}
+INSTRUCCIONES:
+Basándote en TODOS los datos del paciente — incluyendo hábitos, sueño, energía,
+digestión, estado de ánimo, composición corporal y antecedentes —
+identifica qué sistemas están disfuncionando y por qué.
 
-ANTECEDENTES COMPLETOS:
-{patient_data.get('full_history', 'Ver arriba')}
+1. ¿Cuál es la RAÍZ del problema? (no el síntoma, sino la causa de la causa)
+2. Construye la CASCADA DE CAUSALIDAD:
+   Evento/factor inicial → disfunción A → disfunción B → síntoma observable
+3. Identifica los sistemas desregulados:
+   - Digestivo / Microbioma
+   - Inflamatorio / Inmunológico
+   - Hormonal / Endócrino
+   - Neurológico / Cognitivo
+   - Mitocondrial / Energético
+   - Vascular / Circulatorio
+4. Señala los FACTORES PERPETUANTES (lo que mantiene el problema activo):
+   estrés, sueño, dieta, tóxinas, sedentarismo, emociones, etc.
 
-TAREA:
-1. Analiza HOY LA RAÍZ del problema
-   - ¿Qué sistemas están desregulados? (intestinal, inflamatorio, hormonal, neurológico, energético)
-   - ¿Cuál es la secuencia de eventos que causó la enfermedad?
+FORMATO:
+═══ RAÍZ DEL PROBLEMA ═══
+[descripción clara y concisa]
 
-2. Crea una CASCADA de causalidad:
-   Evento inicial → Factor A → Factor B → Factor C → Síntoma observable
+═══ CASCADA DE CAUSALIDAD ═══
+[factor inicial] → [A] → [B] → [C] → [síntoma]
 
-   Ejemplo: Intestino permeable → Inflamación crónica → Disbiosis → Depresión + Fatiga
+═══ SISTEMAS DESREGULADOS ═══
+1. [Sistema] — Mecanismo: [explicación] — Evidencia del paciente: [dato específico]
+2. [Sistema] — ...
 
-3. Identifica las 3-5 disfunciones fundamentales en estos sistemas:
-   - Digestivo/Microbioma
-   - Inflamatorio/Inmunológico
-   - Hormonal/Endócrino
-   - Neurológico/Cognitivo
-   - Mitocondrial/Energético
-   - Vascular/Circulatorio
+═══ FACTORES PERPETUANTES ═══
+• [factor] — cómo contribuye al problema
+• ...
 
-4. Para cada disfunción, proporciona:
-   - Mecanismo subyacente
-   - Cómo conecta con los síntomas
-   - Factores perpetuantes (estrés, dieta, sueño, tóxinas)
-
-Formato de respuesta:
-RAÍZ DEL PROBLEMA:
-[descripción clara]
-
-CASCADA DE CAUSALIDAD:
-[evento inicial] → [A] → [B] → [C] → [síntoma]
-
-SISTEMAS DESREGULADOS:
-1. [Sistema] - Mecanismo
-2. [Sistema] - Mecanismo
-3. [Sistema] - Mecanismo
-
-FACTORES PERPETUANTES:
-[lista con justificación]"""
+═══ CONEXIÓN CON DIAGNÓSTICO TRADICIONAL ═══
+[cómo se complementan ambas perspectivas]"""
 
 
-def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str, extra_context: str = "") -> str:
-    """
-    Prompt para diagnóstico de Longevidad/Biohacking.
-    Enfoque: ¿Cuál es la edad biológica? ¿Cómo optimizar para vivir más y mejor?
-    """
-    return f"""Eres un especialista en Medicina de Longevidad y Biohacking.
-Tu objetivo es calcular edad biológica y proponer optimizaciones.
+def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str,
+                                   visit_data: dict = None, extra_context: str = "") -> str:
+    patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+
+    return f"""Eres un especialista en Medicina de Longevidad, Biohacking y Envejecimiento Saludable.
+Tu objetivo: calcular la edad biológica del paciente y proponer un plan de optimización.
+
 {extra_context}
-DIAGNÓSTICO FUNCIONAL (versión final confirmada por el médico):
+
+{patient_ctx}
+
+{visit_ctx}
+
+DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante):
 {functional_diagnosis}
 
-DATOS DEL PACIENTE:
-- Edad cronológica: {patient_data.get('age', 'N/A')} años
-- Sexo: {patient_data.get('sexo_biologico', patient_data.get('sex', 'N/A'))}
-- IMC: {patient_data.get('bmi', 'N/A')}
-- Actividad física: {patient_data.get('physical_activity', 'No especificado')}
-- Estrés: {patient_data.get('stress_level', 'N/A')}/10
-- Sueño: {patient_data.get('sleep_hours', 'N/A')} horas/noche
+INSTRUCCIONES:
 
-DATOS REPRODUCTIVOS:
-{patient_data.get('reproductive_data', 'No especificado')}
-
-LABORATORIOS CLAVE PARA LONGEVIDAD:
-{patient_data.get('longevity_labs', 'Sin datos')}
-
-TAREA:
-
-1. ESTIMA LA EDAD BIOLÓGICA:
-   Usa biomarcadores disponibles:
-   - Glucosa y HbA1c (metabolismo glucémico)
-   - HDL/Colesterol (perfil lipídico)
-   - Inflamación (PCR ultrasensible, homocisteína)
+1. ESTIMA LA EDAD BIOLÓGICA usando los biomarcadores disponibles:
+   - Glucosa / HbA1c (metabolismo glucémico)
+   - Perfil lipídico (HDL, LDL, triglicéridos)
+   - Inflamación (PCR, homocisteína si disponible)
    - Función renal (creatinina, GFR)
-   - Función hepática (ALT, AST, bilirrubina)
-   - Hormonas (testosterona, estrógeno, cortisol, melatonina)
-   - Mitocondria (lactato, ácido pirúvico)
+   - Función hepática (ALT, AST)
+   - Hormonas (testosterona, estrógenos, cortisol)
+   - Pruebas funcionales: fuerza de agarre, velocidad de marcha, equilibrio, VO2max
+   - Composición corporal: % grasa, masa muscular, grasa visceral
+   - Sueño y energía subjetiva
+   - Comportamientos de riesgo: tabaco, alcohol, sedentarismo
 
-   Cálculo: Edad Biológica = Edad Cronológica ± X años
-
-2. RIESGOS A 5-10 AÑOS:
-   Basándote en trayectoria actual:
+2. RIESGOS A 5-10 AÑOS (trayectoria actual):
    - Riesgo cardiovascular
-   - Riesgo metabólico (diabetes)
+   - Riesgo metabólico (diabetes, síndrome metabólico)
    - Riesgo neurodegenerativo
-   - Riesgo cáncer (por exposición)
+   - Riesgo musculoesquelético (sarcopenia, osteoporosis)
 
-   Escala: BAJO / MODERADO / ALTO
+3. POTENCIAL DE MEJORA si sigue protocolo:
+   - Reducción de edad biológica posible
+   - Mejoras en energía, cognición, composición corporal
+   - Reducción de riesgos específicos
 
-3. OPTIMIZACIONES POSIBLES:
-   Si el paciente CAMBIARA según protocolo:
-   - Reducción de edad biológica esperada: X años en 2 años
-   - Mejora energía/cognición: X% en 3 meses
-   - Reducción riesgo cardiovascular: X%
+FORMATO:
+═══ EDAD BIOLÓGICA ESTIMADA ═══
+[X] años (vs edad cronológica de [Y] años = [+/-Z] años)
+Biomarcadores usados para el cálculo: [lista con valores]
 
-4. ESTADO ACTUAL vs OPTIMIZADO:
-   Crea tabla comparativa:
+═══ RIESGOS A 5-10 AÑOS ═══
+• Cardiovascular: BAJO / MODERADO / ALTO — [justificación]
+• Metabólico: BAJO / MODERADO / ALTO — [justificación]
+• Neurodegenerativo: BAJO / MODERADO / ALTO — [justificación]
+• Musculoesquelético: BAJO / MODERADO / ALTO — [justificación]
 
-   | Biomarcador | Actual | Óptimo | Diferencia |
-   |-------------|--------|--------|-----------|
-   | Glucosa ayunas | XXX | YYY | +/- Z |
+═══ TABLA: ESTADO ACTUAL vs ÓPTIMO ═══
+| Biomarcador | Valor Actual | Rango Óptimo | Estado |
+|-------------|-------------|--------------|--------|
+| [parámetro] | [valor]     | [rango]      | ✓/⚠/✗ |
 
-Formato:
-EDAD BIOLÓGICA ESTIMADA: X años (±Y años vs edad cronológica)
-
-RIESGOS A 5-10 AÑOS:
-- Cardiovascular: RIESGO
-- Metabólico: RIESGO
-- Neurológico: RIESGO
-- Oncológico: RIESGO
-
-OPTIMIZACIONES POSIBLES:
-[descripción clara con métricas]
-
-ESTADO ACTUAL vs OPTIMIZADO:
-[tabla comparativa]
-
-EXPECTATIVA DE MEJORA:
-Si sigue protocolo, en 2 años: edad biológica X, energía +Y%, riesgo cardiovascular -Z%"""
+═══ POTENCIAL DE MEJORA ═══
+Si sigue protocolo en los próximos 12 meses:
+• Edad biológica: puede reducirse [X] años
+• Energía: mejora estimada de [X]%
+• Riesgo cardiovascular: reducción de [X]%
+[otros puntos específicos]"""
 
 
-def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str) -> str:
-    """
-    Prompt para generar protocolo de tratamiento.
-    diagnosis_type: 'traditional' | 'functional' | 'longevity'
-    """
+def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
+                        visit_data: dict = None) -> str:
+    patient_ctx = build_patient_context(patient_data)
+
+    alergias = patient_data.get("allergies_medications") or "No refiere"
+    meds_actuales = _fmt_meds(patient_data.get("medications"))
+
     protocol_focus = {
-        'traditional': 'medicamentos estándar y off-label con justificación por especialidad',
-        'functional': 'suplementos, nutracéuticos, modificaciones de estilo de vida, restauración de sistemas',
-        'longevity': 'péptidos, NAD+, hormonas bioidénticas, intervenciones anti-envejecimiento',
-    }.get(diagnosis_type, '')
+        "traditional": "medicamentos convencionales (incluyendo off-label con justificación científica)",
+        "functional":  "suplementos, nutracéuticos y modificaciones de estilo de vida",
+        "longevity":   "intervenciones anti-envejecimiento: péptidos, NAD+, hormonas bioidénticas, optimización metabólica",
+    }.get(diagnosis_type, "intervención terapéutica")
 
-    return f"""Eres un médico especializado en diseño de protocolos terapéuticos.
+    nivel1_label = {"traditional": "MEDICAMENTOS", "functional": "SUPLEMENTOS CLAVE", "longevity": "PÉPTIDOS / HORMONAS / NAD+"}.get(diagnosis_type, "INTERVENCIÓN PRINCIPAL")
+    nivel2_label = {"traditional": "SUPLEMENTOS COMPLEMENTARIOS", "functional": "ESTILO DE VIDA", "longevity": "NUTRACEUTICOS / ESTILO DE VIDA"}.get(diagnosis_type, "COMPLEMENTARIO")
+    nivel3_label = {"traditional": "ESTUDIOS DE SEGUIMIENTO", "functional": "MONITOREO", "longevity": "INTERVENCIONES EXPERIMENTALES (solo informativo)"}.get(diagnosis_type, "MONITOREO")
 
-DIAGNÓSTICO PREVIO:
+    return f"""Eres un médico experto en diseño de protocolos terapéuticos personalizados.
+
+DIAGNÓSTICO BASE:
 {diagnosis}
 
-DATOS DEL PACIENTE:
-- Edad: {patient_data.get('age', 'N/A')} años
-- Alergias conocidas: {patient_data.get('allergies_medications', 'No refiere')}
-- Medicamentos actuales: {patient_data.get('current_medications', 'Ninguno')}
-- Enfermedades renales/hepáticas: {patient_data.get('organ_disease', 'No')}
+CONTEXTO DEL PACIENTE:
+{patient_ctx}
+
+MEDICAMENTOS ACTUALES DEL PACIENTE (para evitar duplicaciones e interacciones):
+{meds_actuales}
+
+ALERGIAS A MEDICAMENTOS: {alergias}
 
 TAREA:
-Diseña un protocolo de 3 NIVELES para {diagnosis_type}:
+Diseña un protocolo terapéutico completo de tipo: {protocol_focus}
 
-NIVEL 1 - {('MEDICAMENTOS' if diagnosis_type == 'traditional' else 'SUPLEMENTOS' if diagnosis_type == 'functional' else 'PÉPTIDOS/HORMONAS')}:
-Lista TODOS los medicamentos/suplementos/péptidos recomendados.
-Para cada uno proporciona:
-- Nombre exacto (DCI + marca si aplica)
-- Dosis (ej: 500mg BID con alimentos)
-- Duración (ej: 12 semanas, luego evaluar)
-- Indicación específica (qué síntoma/sistema trata)
-- Justificación científica (cita estudios si es posible)
-- Efectos secundarios esperados
-- Monitoreo sugerido
-- Contraindicaciones para este paciente
+Para CADA intervención proporciona:
+- Nombre exacto (DCI + nombre comercial si aplica)
+- Dosis específica (ej: 500 mg dos veces al día con alimentos)
+- Duración (ej: 12 semanas, luego reevaluar)
+- Indicación específica (qué síntoma o sistema trata en ESTE paciente)
+- Justificación científica (mecanismo de acción relevante para el caso)
+- Efectos secundarios esperados a vigilar
+- Contraindicaciones específicas para ESTE paciente (considerando sus antecedentes y alergias)
+- Interacciones con sus medicamentos actuales
 
-NIVEL 2 - {('SUPLEMENTOS' if diagnosis_type == 'traditional' else 'LIFESTYLE' if diagnosis_type == 'functional' else 'NUTRACEUTICOS')}:
-Recomendaciones complementarias para potenciar el Nivel 1.
-
-NIVEL 3 - {('INVESTIGACIONALES' if diagnosis_type != 'traditional' else 'OPTIMIZACIONES')}:
-[Solo para Longevidad: péptidos, hormonas experimentales - SOLO INFORMATIVO, NO VA EN RECETA]
-
-Formato final:
+FORMATO:
 ══ PROTOCOLO {diagnosis_type.upper()} ══
 
-NIVEL 1:
-1. [Medicamento/Suplemento]
-   - Dosis:
-   - Duración:
-   - Indicación:
-   - Justificación:
+{nivel1_label}:
+1. [Nombre]
+   • Dosis:
+   • Duración:
+   • Indicación en este paciente:
+   • Mecanismo:
+   • Efectos secundarios:
+   • Contraindicaciones específicas:
+   • Interacciones:
 
-NIVEL 2:
-[lista]
+{nivel2_label}:
+[lista con mismos campos relevantes]
 
-NIVEL 3:
-[solo información, NO para prescribir]
+{nivel3_label}:
+[estudios de control / monitoreo sugerido]
 
 MONITOREO GENERAL:
-- Examen seguimiento en: X semanas
-- Labs de control: [lista]
-- Criterios de éxito: [métricas]"""
+• Próxima revisión en: [tiempo]
+• Laboratorios de control: [lista]
+• Criterios de éxito: [métricas concretas]
+• Señales de alarma: [cuándo regresar antes]"""
 
 
 def get_secondary_validation_prompt(diagnosis: str) -> str:
-    """
-    Prompt para validación anti-alucinaciones.
-    LLM secundario verifica que diagnóstico es válido y basado en evidencia.
-    """
-    return f"""Eres un validador de diagnósticos médicos especializado en identificar hallazgos válidos vs alucinaciones.
+    return f"""Eres un validador médico especializado en control de calidad clínico.
+Tu función: verificar que el diagnóstico propuesto está justificado por los datos clínicos
+y no contiene afirmaciones sin evidencia ("alucinaciones clínicas").
 
 DIAGNÓSTICO A VALIDAR:
 {diagnosis}
 
 TAREA:
-1. Lee cuidadosamente el diagnóstico anterior
-2. Identifica CADA AFIRMACIÓN clínica
-3. Para cada una, determina:
-   - ¿Es una conclusión válida basada en los datos del paciente?
-   - ¿Requiere evidencia adicional?
-   - ¿Es especulación sin soporte?
+1. Lee cada afirmación clínica del diagnóstico.
+2. Clasifica cada una:
+   ✓ VÁLIDO: conclusión directamente justificada por datos del paciente
+   ⚠ POSIBLE: plausible pero requiere más evidencia para confirmar
+   ✗ SIN SOPORTE: afirmación que no tiene respaldo en los datos disponibles
 
-4. Señala problemas:
-   - HALLAZGO VÁLIDO ✓: justificado por datos
-   - REQUIERE EVIDENCIA ⚠: probable pero no confirmado
-   - ALUCINACIÓN ✗: sin soporte en datos
+3. Proporciona el diagnóstico corregido eliminando o suavizando lo que no tiene soporte.
 
-5. Proporciona correcciones si es necesario
-
-Formato:
+FORMATO:
 VALIDACIÓN:
-✓ [hallazgo válido]
-⚠ [requiere evidencia] → Recomendación: [qué dato falta]
-✗ [alucinación] → Eliminar o reformular como "posible"
+✓ [afirmación válida] — dato que la sustenta: [...]
+⚠ [afirmación posible] → Se necesita: [qué dato confirmaría esto]
+✗ [afirmación sin soporte] → Reformular como "posible" o eliminar
 
-DIAGNÓSTICO CORREGIDO:
-[versión validada del diagnóstico original]"""
+DIAGNÓSTICO VALIDADO:
+[versión corregida y validada del diagnóstico original]
+
+CALIDAD GENERAL: [ALTA / MEDIA / BAJA] — [razón en una línea]"""

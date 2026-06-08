@@ -75,7 +75,7 @@ export default function ReceptionistPage() {
 
     setSaving(true);
     try {
-      const response = await fetch(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000/patients/', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
