@@ -87,7 +87,7 @@ export default function AnalysisPage() {
   // Modo edición
   const [editMode, setEditMode] = useState(false);
 
-  const apiBase = 'http://localhost:8000';
+  const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
   const authHeader = { Authorization: `Bearer ${user?.id}`, 'Content-Type': 'application/json' };
 
   useEffect(() => {

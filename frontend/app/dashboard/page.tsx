@@ -27,7 +27,7 @@ export default function DashboardPage() {
 
   const fetchPatients = async () => {
     try {
-      const response = await fetch('http://localhost:8000/patients?limit=20', {
+      const response = await fetch(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000/patients?limit=20', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

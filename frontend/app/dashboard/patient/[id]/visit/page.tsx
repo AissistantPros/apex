@@ -164,7 +164,7 @@ export default function VisitPage() {
       else {
         setUser(u);
         // Obtener edad del paciente para interpretaciones
-        fetch(`http://localhost:8000/patients/${patientId}`, {
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients/${patientId}`, {
           headers: { Authorization: `Bearer ${u.id}` },
         }).then(r => r.json()).then(p => {
           if (p.date_of_birth || p.birth_date) {
@@ -270,7 +270,7 @@ export default function VisitPage() {
         })
       );
 
-      const res = await fetch(`http://localhost:8000/visits/${patientId}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/visits/${patientId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user?.id}` },
         body: JSON.stringify(clean),

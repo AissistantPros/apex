@@ -19,7 +19,7 @@ export default function PatientPage() {
 
   const fetchPatientData = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/patients/${patientId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients/${patientId}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -32,7 +32,7 @@ export default function PatientPage() {
 
   const fetchVisits = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/visits/${patientId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/visits/${patientId}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
