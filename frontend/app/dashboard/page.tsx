@@ -58,7 +58,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Acciones rápidas */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-12">
           <ActionCard
             icon="👤"
             title="Nuevo Paciente"
@@ -74,11 +74,32 @@ export default function DashboardPage() {
             onClick={() => router.push('/dashboard/patients')}
           />
           <ActionCard
+            icon="🏥"
+            title="Mi Clínica"
+            desc="Configuración y datos de tu clínica"
+            color="#f97316"
+            onClick={() => router.push('/dashboard/clinic')}
+          />
+          <ActionCard
             icon="🩺"
             title="Staff"
             desc="Gestionar recepcionistas y enfermeras"
             color="#a78bfa"
             onClick={() => router.push('/dashboard/staff')}
+          />
+          <ActionCard
+            icon="📊"
+            title="Estadísticas"
+            desc="Métricas y análisis de tu práctica"
+            color="#0ea5e9"
+            onClick={() => router.push('/dashboard/stats')}
+          />
+          <ActionCard
+            icon="❓"
+            title="Ayuda"
+            desc="Tutoriales y soporte técnico"
+            color="#f59e0b"
+            onClick={() => router.push('/dashboard/help')}
           />
         </div>
 
