@@ -20,6 +20,12 @@ def insert_patient(patient_data: dict) -> dict:
     result = supabase.table("patients").insert(patient_data).execute()
     return result.data[0] if result.data else None
 
+def list_patients(doctor_id: str = None, limit: int = 50) -> list:
+    """Lista todos los pacientes"""
+    query = supabase.table("patients").select("id, full_name, first_name, last_name, date_of_birth, birth_date, email, phone, created_at").order("created_at", desc=True).limit(limit)
+    result = query.execute()
+    return result.data if result.data else []
+
 def get_patient(patient_id: str) -> dict:
     """Obtiene un paciente por ID"""
     result = supabase.table("patients").select("*").eq("id", patient_id).execute()

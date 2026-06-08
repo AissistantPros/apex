@@ -5,6 +5,7 @@ from db import (
     insert_patient,
     get_patient,
     update_patient,
+    list_patients,
     list_patient_visits,
 )
 
@@ -36,6 +37,22 @@ def generate_patient_id(first_name: str, last_name: str, birth_date: str) -> str
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
     """Extrae doctor_id del header"""
     return "550e8400-e29b-41d4-a716-446655440000"
+
+
+@router.get("/")
+async def get_all_patients(
+    limit: int = 50,
+    authorization: Optional[str] = Header(None),
+):
+    """Listar todos los pacientes"""
+    try:
+        patients = list_patients(limit=limit)
+        return {
+            "total": len(patients),
+            "patients": patients,
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @router.post("/")
