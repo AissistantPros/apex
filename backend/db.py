@@ -56,6 +56,16 @@ def update_visit(visit_id: str, data: dict) -> dict:
     result = supabase.table("visits").update(data).eq("id", visit_id).execute()
     return result.data[0] if result.data else None
 
+def get_doctor_profile(doctor_id: str) -> dict:
+    result = supabase.table("doctor_profiles").select("*").eq("id", doctor_id).execute()
+    return result.data[0] if result.data else None
+
+def upsert_doctor_profile(doctor_id: str, data: dict) -> dict:
+    data["id"] = doctor_id
+    data["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
+    result = supabase.table("doctor_profiles").upsert(data).execute()
+    return result.data[0] if result.data else None
+
 def insert_analysis(analysis_data: dict) -> dict:
     """Inserta un análisis"""
     result = supabase.table("analyses").insert(analysis_data).execute()

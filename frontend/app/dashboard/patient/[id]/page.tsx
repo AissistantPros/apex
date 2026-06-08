@@ -19,6 +19,9 @@ export default function PatientPage() {
   const [tab, setTab] = useState<'ficha' | 'visitas'>('ficha');
   const [showDanger, setShowDanger] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [notes, setNotes] = useState({ reception: '', nurse: '', doctor: '' });
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
 
   useEffect(() => {
     getUser().then(u => {
@@ -37,10 +40,36 @@ export default function PatientPage() {
       const vData = await vRes.json();
       setPatient(pData);
       setVisits(vData.visits || []);
+      setNotes({
+        reception: pData.notes_reception || '',
+        nurse: pData.notes_nurse || '',
+        doctor: pData.notes_doctor || '',
+      });
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveNotes = async () => {
+    setSavingNotes(true);
+    try {
+      await fetch(`${BACKEND()}/patients/${patientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes_reception: notes.reception,
+          notes_nurse: notes.nurse,
+          notes_doctor: notes.doctor,
+        }),
+      });
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 3000);
+    } catch (e) {
+      alert('Error al guardar notas');
+    } finally {
+      setSavingNotes(false);
     }
   };
 
@@ -187,14 +216,27 @@ export default function PatientPage() {
               </Grid>
             </Section>
 
-            {/* Notas del equipo */}
-            <Section title="Notas del equipo" icon="📝">
-              <div className="space-y-4">
-                <NoteBlock role="Recepción" icon="🟦" color="#0ea5e9" note={patient.notes_reception} />
-                <NoteBlock role="Enfermería" icon="🟧" color="#f97316" note={patient.notes_nurse} />
-                <NoteBlock role="Médico" icon="🟣" color="#a78bfa" note={patient.notes_doctor} />
+            {/* Notas del equipo — editables */}
+            <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-[#dde6ef] flex items-center gap-2">
+                  📝 Notas del equipo
+                </h3>
+                <button onClick={saveNotes} disabled={savingNotes}
+                  className="px-4 py-1.5 text-xs font-bold rounded-lg transition"
+                  style={{ background: notesSaved ? '#00e5a0' : '#0ea5e9', color: '#000' }}>
+                  {savingNotes ? 'Guardando...' : notesSaved ? '✓ Guardado' : 'Guardar notas'}
+                </button>
               </div>
-            </Section>
+              <div className="space-y-4">
+                <NoteInput role="Recepción" icon="🟦" color="#0ea5e9"
+                  value={notes.reception} onChange={v => setNotes(n => ({ ...n, reception: v }))} />
+                <NoteInput role="Enfermería" icon="🟧" color="#f97316"
+                  value={notes.nurse} onChange={v => setNotes(n => ({ ...n, nurse: v }))} />
+                <NoteInput role="Médico" icon="🟣" color="#a78bfa"
+                  value={notes.doctor} onChange={v => setNotes(n => ({ ...n, doctor: v }))} />
+              </div>
+            </div>
 
             {/* Zona de peligro */}
             <div className="mt-8 border border-[#f43f5e]/30 rounded-2xl p-5 bg-[#f43f5e]/5">
@@ -280,14 +322,20 @@ const Info = ({ label, value }: { label: string; value?: string | null }) => (
   ) : null
 );
 
-const NoteBlock = ({ role, icon, color, note }: { role: string; icon: string; color: string; note?: string }) => (
+const NoteInput = ({ role, icon, color, value, onChange }: {
+  role: string; icon: string; color: string; value: string; onChange: (v: string) => void;
+}) => (
   <div className="rounded-xl border p-4" style={{ borderColor: color + '33', background: color + '08' }}>
     <p className="text-xs font-mono mb-2 uppercase tracking-wider" style={{ color }}>
       {icon} Notas de {role}
     </p>
-    <p className="text-sm text-[#7a95aa] italic">
-      {note || `Sin notas de ${role.toLowerCase()} registradas.`}
-    </p>
+    <textarea
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      rows={3}
+      placeholder={`Escribir notas de ${role.toLowerCase()}...`}
+      className="w-full bg-transparent text-sm text-[#dde6ef] placeholder-[#3d5870] outline-none resize-none"
+    />
   </div>
 );
 

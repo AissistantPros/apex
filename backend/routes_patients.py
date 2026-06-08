@@ -7,6 +7,8 @@ from db import (
     update_patient,
     list_patients,
     list_patient_visits,
+    get_doctor_profile,
+    upsert_doctor_profile,
 )
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -155,3 +157,34 @@ async def get_patient_visits(
 
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+@router.delete("/{patient_id}")
+async def delete_patient(
+    patient_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Eliminar paciente permanentemente"""
+    try:
+        from db import supabase
+        supabase.table("patients").delete().eq("id", patient_id).execute()
+        return {"deleted": True, "id": patient_id}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Doctor profile ──────────────────────────────────────
+
+doctor_profile_router = APIRouter(prefix="/doctor", tags=["doctor"])
+
+@doctor_profile_router.get("/profile")
+async def get_profile(authorization: Optional[str] = Header(None)):
+    doctor_id = "550e8400-e29b-41d4-a716-446655440000"
+    profile = get_doctor_profile(doctor_id) or {}
+    return profile
+
+@doctor_profile_router.put("/profile")
+async def save_profile(data: dict, authorization: Optional[str] = Header(None)):
+    doctor_id = "550e8400-e29b-41d4-a716-446655440000"
+    result = upsert_doctor_profile(doctor_id, data)
+    return result or {"ok": True}

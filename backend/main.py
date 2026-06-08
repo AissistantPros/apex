@@ -8,7 +8,7 @@ load_dotenv('.env.local')
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from routes_patients import router as patients_router
+from routes_patients import router as patients_router, doctor_profile_router
 from routes_visits import router as visits_router
 from routes_analysis import router as analysis_router
 
@@ -51,6 +51,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
 
 # Include routers
 app.include_router(patients_router)
+app.include_router(doctor_profile_router)
 app.include_router(visits_router)
 app.include_router(analysis_router)
 
