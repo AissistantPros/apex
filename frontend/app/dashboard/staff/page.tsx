@@ -1,0 +1,34 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getUser } from '@/app/lib/auth';
+import TopNav from '@/app/components/TopNav';
+
+export default function StaffPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    getUser().then(u => { if (!u) router.push('/auth/login'); else setUser(u); });
+  }, []);
+
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Doctor';
+
+  return (
+    <div className="min-h-screen bg-[#070a0e]">
+      <TopNav userName={userName} />
+      <main className="pt-16 max-w-4xl mx-auto px-6 py-10">
+        <h1 className="text-2xl font-serif font-semibold text-[#dde6ef] mb-2">🩺 Gestión de Staff</h1>
+        <p className="text-[#7a95aa] mb-8">Administra los permisos de tu equipo de trabajo.</p>
+        <div className="bg-[#0d1520] border border-[#a78bfa]/30 rounded-2xl p-10 text-center">
+          <p className="text-5xl mb-4">🚧</p>
+          <p className="text-[#dde6ef] text-lg font-semibold mb-2">Próximamente</p>
+          <p className="text-[#7a95aa] text-sm max-w-md mx-auto">
+            Aquí podrás dar de alta recepcionistas y enfermeras, asignar permisos
+            y controlar el acceso de cada miembro de tu equipo.
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}

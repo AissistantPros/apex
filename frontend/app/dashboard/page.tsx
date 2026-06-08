@@ -2,200 +2,174 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getUser, signOut } from '@/app/lib/auth';
+import { getUser } from '@/app/lib/auth';
+import TopNav from '@/app/components/TopNav';
 import type { User } from '@supabase/supabase-js';
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [patients, setPatients] = useState<any[]>([]);
+  const [recentPatients, setRecentPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkUser = async () => {
-      const currentUser = await getUser();
-      if (!currentUser) {
-        router.push('/auth/login');
-      } else {
-        setUser(currentUser);
-        fetchPatients();
-      }
-    };
-    checkUser();
+    getUser().then(u => {
+      if (!u) router.push('/auth/login');
+      else { setUser(u); fetchRecent(); }
+    });
   }, [router]);
 
-  const fetchPatients = async () => {
+  const fetchRecent = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients?limit=20`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients?limit=5`, {
+        headers: { 'Content-Type': 'application/json' },
       });
-      const data = await response.json();
-      setPatients(data.patients || []);
-    } catch (error) {
-      console.error('Error fetching patients:', error);
+      const data = await res.json();
+      setRecentPatients(data.patients || []);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredPatients = patients.filter(p =>
-    (p.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Doctor';
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-screen bg-[#070a0e] text-[#dde6ef]">
+      Cargando...
+    </div>
   );
 
-  const handleLogout = async () => {
-    await signOut();
-    router.push('/auth/login');
-  };
-
-  if (loading) return <div className="flex items-center justify-center h-screen">Cargando...</div>;
-
   return (
-    <div className="h-screen bg-[#070a0e] flex flex-col">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-14 z-50 bg-[rgba(7,10,14,.97)] border-b border-[#1e2d3d] backdrop-blur-2xl flex items-center px-6 gap-2.5">
-        <div className="flex items-center gap-2">
-          <div className="text-base font-black text-[#00e5a0] tracking-wider">
-            APEX
-          </div>
-          <span className="font-mono text-xs bg-[rgba(14,165,233,.1)] border border-[rgba(14,165,233,.2)] px-1.5 py-0.5 rounded text-[#0ea5e9]">
-            PRO
-          </span>
+    <div className="min-h-screen bg-[#070a0e]">
+      <TopNav userName={userName} />
+
+      <main className="pt-16 max-w-5xl mx-auto px-6 py-10">
+
+        {/* Bienvenida */}
+        <div className="mb-10">
+          <h1 className="text-3xl font-serif font-semibold text-[#dde6ef] mb-1">
+            Buenos días, Dr. {userName} 👋
+          </h1>
+          <p className="text-[#7a95aa] text-base">
+            ¿Con quién vas a trabajar hoy?
+          </p>
         </div>
 
-        <div className="flex-1" />
-
-        {/* Doctor Info */}
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold text-[#dde6ef]">
-              Dr. {user?.user_metadata?.full_name || 'Doctor'}
-            </p>
-            <p className="font-mono text-xs text-[#3d5870]">médico</p>
-          </div>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-xs font-bold text-black border-2 border-[rgba(0,229,160,.3)]">
-            {user?.email?.[0].toUpperCase() || 'D'}
-          </div>
+        {/* Acciones rápidas */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+          <ActionCard
+            icon="👤"
+            title="Nuevo Paciente"
+            desc="Registrar un paciente nuevo en el sistema"
+            color="#00e5a0"
+            onClick={() => router.push('/dashboard/new-patient')}
+          />
+          <ActionCard
+            icon="👥"
+            title="Ver Pacientes"
+            desc="Lista completa de todos tus pacientes"
+            color="#0ea5e9"
+            onClick={() => router.push('/dashboard/patients')}
+          />
+          <ActionCard
+            icon="🩺"
+            title="Staff"
+            desc="Gestionar recepcionistas y enfermeras"
+            color="#a78bfa"
+            onClick={() => router.push('/dashboard/staff')}
+          />
         </div>
 
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          className="ml-4 px-3 py-1 rounded text-xs font-mono text-[#7a95aa] hover:text-[#dde6ef] transition"
-        >
-          Salir
-        </button>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-hidden pt-14 pb-0 flex flex-col">
-        <div className="flex-1 overflow-y-auto flex justify-center">
-          <div className="w-full max-w-4xl px-6 py-8">
-            {/* Welcome Section */}
-            <div className="mb-10">
-              <h1 className="text-3xl font-serif font-semibold text-[#dde6ef] mb-1">
-                ¿En qué vamos a trabajar hoy?
-              </h1>
-              <p className="text-[#7a95aa]">
-                Gestiona tus pacientes, analiza datos y genera protocolos personalizados
+        {/* Pacientes recientes */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[#dde6ef]">
+                📋 Actividad reciente
+              </h2>
+              <p className="text-xs text-[#3d5870] mt-0.5">
+                Pacientes con cambios o actualizaciones recientes
               </p>
             </div>
+            <button
+              onClick={() => router.push('/dashboard/patients')}
+              className="text-sm text-[#0ea5e9] hover:underline font-mono"
+            >
+              Ver todos →
+            </button>
+          </div>
 
-            {/* Search Bar */}
-            <div className="mb-10">
-              <input
-                type="text"
-                placeholder="Buscar paciente por nombre, apellido o ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-3 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] placeholder-[#3d5870] outline-none focus:border-[#00e5a0] focus:shadow-[0_0_0_3px_rgba(0,229,160,.08)]"
-              />
-            </div>
-
-            {/* Quick Actions Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Nuevo Paciente */}
-              <button
-                onClick={() => router.push('/dashboard/new-patient')}
-                className="p-6 bg-[#0d1520] border border-[#1e2d3d] rounded-lg hover:border-[#00e5a0] hover:shadow-lg transition-all group"
-              >
-                <div className="text-3xl mb-3 group-hover:scale-110 transition">👤</div>
-                <h3 className="font-semibold text-[#dde6ef] mb-1">Nuevo Paciente</h3>
-                <p className="text-xs text-[#7a95aa]">Registra un nuevo paciente en el sistema</p>
-              </button>
-
-              {/* Estadísticas */}
-              <button
-                onClick={() => router.push('/dashboard/stats')}
-                className="p-6 bg-[#0d1520] border border-[#1e2d3d] rounded-lg hover:border-[#0ea5e9] hover:shadow-lg transition-all group"
-              >
-                <div className="text-3xl mb-3 group-hover:scale-110 transition">📊</div>
-                <h3 className="font-semibold text-[#dde6ef] mb-1">Estadísticas</h3>
-                <p className="text-xs text-[#7a95aa]">Ve tus métricas y análisis clínicos</p>
-              </button>
-
-              {/* Ayuda */}
-              <button
-                onClick={() => router.push('/dashboard/help')}
-                className="p-6 bg-[#0d1520] border border-[#1e2d3d] rounded-lg hover:border-[#f97316] hover:shadow-lg transition-all group"
-              >
-                <div className="text-3xl mb-3 group-hover:scale-110 transition">❓</div>
-                <h3 className="font-semibold text-[#dde6ef] mb-1">Ayuda</h3>
-                <p className="text-xs text-[#7a95aa]">Tutoriales y soporte técnico</p>
-              </button>
-            </div>
-
-            {/* Recent Patients */}
-            <div className="mt-10">
-              <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">
-                {searchQuery ? 'Resultados de Búsqueda' : 'Pacientes Recientes'}
-              </h2>
-              <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg overflow-hidden">
-                {filteredPatients.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <p className="text-[#7a95aa]">
-                      {patients.length === 0
-                        ? 'No hay pacientes aún. Comienza creando un nuevo paciente.'
-                        : 'No hay resultados para tu búsqueda.'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-[#1e2d3d]">
-                    {filteredPatients.map((patient) => (
-                      <div
-                        key={patient.id}
-                        onClick={() => router.push(`/dashboard/patient/${patient.id}`)}
-                        className="p-4 hover:bg-[#111820] transition cursor-pointer flex items-center justify-between"
-                      >
-                        <div>
-                          <p className="font-semibold text-[#dde6ef]">{patient.full_name}</p>
-                          <div className="flex gap-3 text-xs text-[#7a95aa] mt-1">
-                            <span>ID: {patient.id}</span>
-                            {patient.email && <span>📧 {patient.email}</span>}
-                            {patient.phone && <span>📱 {patient.phone}</span>}
-                          </div>
-                        </div>
-                        <div className="text-[#00e5a0]">→</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl overflow-hidden">
+            {recentPatients.length === 0 ? (
+              <div className="p-10 text-center">
+                <p className="text-4xl mb-3">🏥</p>
+                <p className="text-[#7a95aa] text-base font-medium">No hay pacientes aún</p>
+                <p className="text-[#3d5870] text-sm mt-1">Comienza registrando a tu primer paciente</p>
+                <button
+                  onClick={() => router.push('/dashboard/new-patient')}
+                  className="mt-4 px-5 py-2.5 bg-[#00e5a0] text-black text-sm font-semibold rounded-lg hover:opacity-90 transition"
+                >
+                  + Nuevo Paciente
+                </button>
               </div>
-            </div>
+            ) : (
+              <div className="divide-y divide-[#1e2d3d]">
+                {recentPatients.map(p => (
+                  <PatientRow key={p.id} patient={p} onClick={() => router.push(`/dashboard/patient/${p.id}`)} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      </main>
 
-      {/* Floating Chat - Placeholder */}
-      <div className="fixed bottom-6 right-6 w-12 h-12 bg-[#00e5a0] rounded-full flex items-center justify-center text-black font-bold shadow-lg hover:scale-110 transition cursor-pointer">
-        💬
-      </div>
+      </main>
     </div>
   );
 }
 
+// ── Sub-componentes ──────────────────────────────────
+
+function ActionCard({ icon, title, desc, color, onClick }: {
+  icon: string; title: string; desc: string; color: string; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="p-6 bg-[#0d1520] border border-[#1e2d3d] rounded-xl hover:shadow-lg transition-all text-left group"
+      style={{ '--c': color } as any}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = color + '55')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e2d3d')}
+    >
+      <div className="text-4xl mb-3 group-hover:scale-110 transition-transform inline-block">{icon}</div>
+      <h3 className="font-bold text-[#dde6ef] text-base mb-1">{title}</h3>
+      <p className="text-xs text-[#7a95aa] leading-relaxed">{desc}</p>
+    </button>
+  );
+}
+
+function PatientRow({ patient, onClick }: { patient: any; onClick: () => void }) {
+  const initials = `${patient.first_name?.[0] || ''}${patient.last_name?.[0] || ''}`.toUpperCase();
+  const dob = patient.date_of_birth || patient.birth_date;
+  const age = dob ? Math.floor((Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)) : null;
+
+  return (
+    <div
+      onClick={onClick}
+      className="flex items-center gap-4 px-5 py-4 hover:bg-[#111820] cursor-pointer transition"
+    >
+      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+        {initials || '?'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[#dde6ef] truncate">{patient.full_name || '—'}</p>
+        <p className="text-xs text-[#7a95aa] font-mono">{patient.id}</p>
+      </div>
+      {age !== null && (
+        <span className="text-xs text-[#3d5870] hidden sm:block">{age} años</span>
+      )}
+      <span className="text-[#3d5870] text-lg">›</span>
+    </div>
+  );
+}
