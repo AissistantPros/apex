@@ -1,74 +1,98 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
-from uuid import UUID, uuid4
+from uuid import uuid4
 from datetime import datetime
-from models_visits import VisitCreate, VisitResponse, VisitListResponse
+from db import (
+    insert_visit,
+    get_visit,
+    update_visit,
+    list_patient_visits,
+)
 
 router = APIRouter(prefix="/visits", tags=["visits"])
 
-# In-memory storage
-visits_db = {}
-
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
-    """Extract doctor_id from JWT token"""
-    if not authorization:
-        return "550e8400-e29b-41d4-a716-446655440000"
-    if authorization.startswith("Bearer "):
-        return "550e8400-e29b-41d4-a716-446655440000"
+    """Extrae doctor_id del header"""
     return "550e8400-e29b-41d4-a716-446655440000"
 
 
-@router.post("/{patient_id}", response_model=VisitResponse)
+@router.post("/{patient_id}")
 async def create_visit(
-    patient_id: UUID,
-    visit: VisitCreate,
-    doctor_id: str = Depends(get_doctor_id),
+    patient_id: str,
+    visit_data: dict,
+    doctor_id: str = None,
 ):
     """Crear nueva visita para paciente"""
+    try:
+        if not doctor_id:
+            doctor_id = await get_doctor_id()
 
-    visit_id = uuid4()
-    visit_data = {
-        "id": visit_id,
-        "patient_id": patient_id,
-        "doctor_id": doctor_id,
-        **visit.dict(exclude_unset=True),
-        "created_at": datetime.now(),
-        "updated_at": datetime.now(),
-    }
-    visits_db[str(visit_id)] = visit_data
+        visit_id = str(uuid4())
 
-    return VisitResponse(**visit_data)
+        save_data = {
+            "id": visit_id,
+            "patient_id": patient_id,
+            "doctor_id": doctor_id,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            **visit_data,
+        }
+
+        result = insert_visit(save_data)
+
+        if not result:
+            raise HTTPException(500, "Error al guardar visita")
+
+        return {
+            "id": result.get("id"),
+            "patient_id": result.get("patient_id"),
+            "created_at": result.get("created_at"),
+        }
+
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
-@router.get("/{patient_id}", response_model=VisitListResponse)
+@router.get("/{patient_id}")
 async def list_patient_visits(
-    patient_id: UUID,
-    doctor_id: str = Depends(get_doctor_id),
+    patient_id: str,
+    doctor_id: str = None,
 ):
     """Listar visitas de un paciente"""
+    try:
+        if not doctor_id:
+            doctor_id = await get_doctor_id()
 
-    all_visits = [
-        v for v in visits_db.values()
-        if v["patient_id"] == patient_id and v["doctor_id"] == doctor_id
-    ]
-    all_visits.sort(key=lambda v: v.get("created_at"), reverse=True)
+        visits = list_patient_visits(patient_id)
 
-    return {
-        "total": len(all_visits),
-        "visits": [VisitResponse(**v) for v in all_visits],
-    }
+        return {
+            "total": len(visits),
+            "visits": visits,
+        }
+
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
-@router.get("/{visit_id}/detail", response_model=VisitResponse)
-async def get_visit(
-    visit_id: UUID,
-    doctor_id: str = Depends(get_doctor_id),
+@router.get("/{visit_id}/detail")
+async def get_visit_detail(
+    visit_id: str,
+    doctor_id: str = None,
 ):
     """Obtener detalles de una visita"""
+    try:
+        if not doctor_id:
+            doctor_id = await get_doctor_id()
 
-    visit = visits_db.get(str(visit_id))
-    if not visit or visit["doctor_id"] != doctor_id:
-        raise HTTPException(status_code=404, detail="Visit not found")
+        visit = get_visit(visit_id)
 
-    return VisitResponse(**visit)
+        if not visit:
+            raise HTTPException(404, "Visita no encontrada")
+
+        return visit
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))

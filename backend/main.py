@@ -1,14 +1,16 @@
-from fastapi import FastAPI, HTTPException, Header
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
 from typing import Optional
 from dotenv import load_dotenv
+
+# LOAD ENV VARIABLES FIRST (before any other imports)
+load_dotenv('.env.local')
+
+from fastapi import FastAPI, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from routes_patients import router as patients_router
 from routes_visits import router as visits_router
 from routes_analysis import router as analysis_router
-
-load_dotenv('.env.local')
 
 app = FastAPI(title="APEX Backend", version="0.1.0")
 

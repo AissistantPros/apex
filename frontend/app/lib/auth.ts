@@ -1,44 +1,68 @@
-import { supabase } from './supabase';
 import { Session, User } from '@supabase/supabase-js';
 
+// Mock Auth para MVP (sin Supabase)
+const MOCK_USERS: Record<string, any> = {};
+
 export async function signUp(email: string, password: string, fullName: string) {
-  const { data, error } = await supabase.auth.signUp({
+  if (!email || !password) {
+    return { data: null, error: { message: 'Email y contraseña requeridos' } };
+  }
+
+  MOCK_USERS[email] = { email, password, fullName };
+  const mockUser = {
+    id: 'user-' + Math.random().toString(36).substr(2, 9),
     email,
-    password,
-    options: {
-      data: {
-        full_name: fullName,
-      },
-    },
-  });
-  return { data, error };
+    user_metadata: { full_name: fullName },
+  };
+
+  const mockSession = {
+    access_token: 'mock-token-' + Math.random().toString(36).substr(2, 9),
+    user: mockUser,
+  };
+
+  localStorage.setItem('mock_session', JSON.stringify(mockSession));
+  return { data: { user: mockUser, session: mockSession }, error: null };
 }
 
 export async function signIn(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({
+  if (!email || !password) {
+    return { data: null, error: { message: 'Email y contraseña requeridos' } };
+  }
+
+  // Aceptar cualquier email/password para MVP
+  const mockUser = {
+    id: 'user-' + Math.random().toString(36).substr(2, 9),
     email,
-    password,
-  });
-  return { data, error };
+    user_metadata: { full_name: email.split('@')[0] },
+  };
+
+  const mockSession = {
+    access_token: 'mock-token-' + Math.random().toString(36).substr(2, 9),
+    user: mockUser,
+  };
+
+  localStorage.setItem('mock_session', JSON.stringify(mockSession));
+  return { data: { user: mockUser, session: mockSession }, error: null };
 }
 
 export async function signOut() {
-  const { error } = await supabase.auth.signOut();
-  return { error };
+  localStorage.removeItem('mock_session');
+  return { error: null };
 }
 
 export async function getSession(): Promise<Session | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session;
+  const session = localStorage.getItem('mock_session');
+  return session ? JSON.parse(session) : null;
 }
 
 export async function getUser(): Promise<User | null> {
-  const { data } = await supabase.auth.getUser();
-  return data.user;
+  const session = await getSession();
+  return session?.user || null;
 }
 
 export function onAuthStateChange(callback: (session: Session | null) => void) {
-  return supabase.auth.onAuthStateChange((_event, session) => {
-    callback(session);
-  });
+  // Para MVP, solo revisar localStorage
+  const session = localStorage.getItem('mock_session');
+  callback(session ? JSON.parse(session) : null);
+  return { data: { subscription: { unsubscribe: () => {} } } };
 }

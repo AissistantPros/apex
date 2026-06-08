@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Any
 from datetime import date, datetime
 from uuid import UUID
 
@@ -9,9 +9,10 @@ from uuid import UUID
 
 class PatientStage1Create(BaseModel):
     """Recepcionista: Datos generales del paciente"""
+    model_config = {"extra": "allow"}
     full_name: str
-    birth_date: Optional[date] = None
-    sex: Optional[str] = None  # 'M', 'F'
+    birth_date: Optional[Any] = None
+    sex: Optional[str] = None
     occupation: Optional[str] = None
     photo_url: Optional[str] = None
     email: Optional[str] = None
@@ -22,20 +23,18 @@ class PatientStage1Create(BaseModel):
     emergency_contact_relationship: Optional[str] = None
     source_of_contact: Optional[str] = None
     referred_by: Optional[str] = None
-    reviewed_social_media: bool = False
-    reviewed_website: bool = False
-    reviewed_google_maps: bool = False
+    reviewed_social_media: Any = False
+    reviewed_website: Any = False
+    reviewed_google_maps: Any = False
 
 
 class PatientStage1Response(PatientStage1Create):
     """Response con ID del paciente"""
-    id: UUID
-    doctor_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "allow", "from_attributes": True}
+    id: str
+    doctor_id: str
+    created_at: Any
+    updated_at: Any
 
 
 # ==========================================
@@ -44,21 +43,23 @@ class PatientStage1Response(PatientStage1Create):
 
 class FamilyHistoryCreate(BaseModel):
     """Antecedentes familiares"""
-    family_member: str  # father, mother, paternal_grandfather, etc.
-    has_diabetes: bool = False
-    has_hypertension: bool = False
-    has_cancer: bool = False
-    has_heart_disease: bool = False
-    has_dementia: bool = False
-    has_autoimmune: bool = False
-    has_depression: bool = False
-    has_obesity: bool = False
+    model_config = {"extra": "allow"}
+    family_member: str
+    has_diabetes: Any = False
+    has_hypertension: Any = False
+    has_cancer: Any = False
+    has_heart_disease: Any = False
+    has_dementia: Any = False
+    has_autoimmune: Any = False
+    has_depression: Any = False
+    has_obesity: Any = False
     cause_of_death: Optional[str] = None
     notes: Optional[str] = None
 
 
 class PastMedicalHistoryCreate(BaseModel):
     """Antecedentes personales patológicos"""
+    model_config = {"extra": "allow"}
     chronic_diseases: Optional[str] = None
     chronic_diseases_notes: Optional[str] = None
     hospitalizations: Optional[str] = None
@@ -66,9 +67,9 @@ class PastMedicalHistoryCreate(BaseModel):
     surgeries_notes: Optional[str] = None
     fractures: Optional[str] = None
     fractures_notes: Optional[str] = None
-    transfusions: bool = False
+    transfusions: Any = False
     transfusions_notes: Optional[str] = None
-    allergies: Optional[str] = None  # JSON string
+    allergies: Optional[str] = None
     childhood_diseases: Optional[str] = None
 
 
@@ -95,26 +96,42 @@ class PatientStage2Response(BaseModel):
 
 class PrivateInfoCreate(BaseModel):
     """Datos privados y datos médicos iniciales"""
-    smoking_status: Optional[str] = None  # never, former, active
-    smoking_count_per_day: Optional[int] = None
-    smoking_since_year: Optional[int] = None
-    alcohol_frequency: Optional[str] = None  # never, occasional, frequent, daily
+    model_config = {"extra": "allow"}
+    smoking_status: Optional[str] = None
+    smoking_count_per_day: Optional[Any] = None
+    smoking_count: Optional[str] = None
+    smoking_since_year: Optional[Any] = None
+    smoking_since: Optional[str] = None
+    alcohol_frequency: Optional[str] = None
+    alcohol_status: Optional[str] = None
     alcohol_type: Optional[str] = None
     recreational_drugs: Optional[str] = None
     physical_activity_type: Optional[str] = None
     physical_activity_frequency: Optional[str] = None
     physical_activity_intensity: Optional[str] = None
-    sleep_hours: Optional[float] = None
-    stress_level: Optional[int] = Field(None, ge=1, le=10)
-    menarche_age: Optional[int] = None
-    menstrual_cycles_regular: Optional[bool] = None
-    pregnancies_count: Optional[int] = None
-    births_count: Optional[int] = None
-    miscarriages_count: Optional[int] = None
-    menopausal: Optional[bool] = None
+    physical_activity: Optional[str] = None
+    sleep_hours: Optional[Any] = None
+    stress_level: Optional[Any] = None
+    menarche_age: Optional[Any] = None
+    menarca_age: Optional[str] = None
+    menstrual_cycles_regular: Optional[Any] = None
+    menstrual_cycles: Optional[str] = None
+    pregnancies_count: Optional[Any] = None
+    pregnancies: Optional[str] = None
+    births_count: Optional[Any] = None
+    births: Optional[str] = None
+    miscarriages_count: Optional[Any] = None
+    miscarriages: Optional[str] = None
+    menopausal: Optional[Any] = None
+    menopausal_age: Optional[str] = None
     contraceptive_method: Optional[str] = None
-    erectile_dysfunction: Optional[bool] = None
-    previous_testosterone_use: Optional[bool] = None
+    contraceptive: Optional[str] = None
+    reproductivity_sex: Optional[str] = None
+    erectile_dysfunction: Optional[str] = None
+    testosterone_use: Optional[str] = None
+    previous_testosterone_use: Optional[Any] = None
+    children: Optional[str] = None
+    psa: Optional[str] = None
 
 
 class PatientStage3Response(BaseModel):
@@ -128,7 +145,7 @@ class PatientStage3Response(BaseModel):
 
 class PatientSearchResponse(BaseModel):
     """Response para búsqueda de pacientes"""
-    id: UUID
+    id: str  # Cambiar a str para ID legible
     full_name: str
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -139,3 +156,69 @@ class PatientListResponse(BaseModel):
     """Response para listar pacientes"""
     total: int
     patients: list[PatientSearchResponse]
+
+
+class PatientCompleteCreate(BaseModel):
+    """Crear paciente completo con todas las fases de una vez"""
+    model_config = {"extra": "allow"}
+    # FASE 1: Recepcionista
+    first_name: str
+    last_name: str
+    full_name: str
+    date_of_birth: Optional[Any] = None
+    birth_date: Optional[Any] = None
+    sex: Optional[str] = None
+    occupation: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_email: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    source_of_contact: Optional[str] = None
+    referred_by: Optional[str] = None
+    reviewed_social_media: Any = False
+    reviewed_website: Any = False
+    reviewed_google_maps: Any = False
+
+    # FASE 2: Enfermera
+    family_history: Optional[str] = None
+    chronic_diseases: Optional[str] = None
+    surgeries: Optional[str] = None
+    hospitalizations: Optional[str] = None
+    fractures: Optional[str] = None
+    allergies_medications: Optional[str] = None
+    allergies_foods: Optional[str] = None
+    allergies_environmental: Optional[str] = None
+    transfusions: Optional[str] = None
+    childhood_diseases: Optional[str] = None
+
+    # FASE 3: Doctor
+    smoking_status: Optional[str] = None
+    smoking_count: Optional[str] = None
+    smoking_since: Optional[str] = None
+    alcohol_status: Optional[str] = None
+    alcohol_type: Optional[str] = None
+    recreational_drugs: Optional[str] = None
+    physical_activity: Optional[str] = None
+    stress_level: Optional[Any] = None
+    reproductivity_sex: Optional[str] = None
+
+    # Ginecológico (si reproductivity_sex == 'Femenino')
+    menarca_age: Optional[str] = None
+    menstrual_cycles: Optional[str] = None
+    pregnancies: Optional[str] = None
+    births: Optional[str] = None
+    miscarriages: Optional[str] = None
+    menopausal: Any = False
+    menopausal_age: Optional[str] = None
+    contraceptive: Optional[str] = None
+
+    # Masculino (si reproductivity_sex == 'Masculino')
+    erectile_dysfunction: Optional[str] = None
+    testosterone_use: Optional[str] = None
+    children: Optional[str] = None
+    psa: Optional[str] = None
+
+    # Control de fases
+    phases_completed: Any = []

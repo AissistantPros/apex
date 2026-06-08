@@ -9,6 +9,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,11 +19,34 @@ export default function DashboardPage() {
         router.push('/auth/login');
       } else {
         setUser(currentUser);
-        setLoading(false);
+        fetchPatients();
       }
     };
     checkUser();
   }, [router]);
+
+  const fetchPatients = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/patients?limit=20', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await response.json();
+      setPatients(data.patients || []);
+    } catch (error) {
+      console.error('Error fetching patients:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredPatients = patients.filter(p =>
+    (p.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const handleLogout = async () => {
     await signOut();
@@ -126,11 +150,41 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Recent Patients - Placeholder */}
+            {/* Recent Patients */}
             <div className="mt-10">
-              <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">Pacientes Recientes</h2>
-              <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-8 text-center">
-                <p className="text-[#7a95aa]">No hay pacientes aún. Comienza creando un nuevo paciente.</p>
+              <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">
+                {searchQuery ? 'Resultados de Búsqueda' : 'Pacientes Recientes'}
+              </h2>
+              <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg overflow-hidden">
+                {filteredPatients.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-[#7a95aa]">
+                      {patients.length === 0
+                        ? 'No hay pacientes aún. Comienza creando un nuevo paciente.'
+                        : 'No hay resultados para tu búsqueda.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[#1e2d3d]">
+                    {filteredPatients.map((patient) => (
+                      <div
+                        key={patient.id}
+                        onClick={() => router.push(`/dashboard/patient/${patient.id}`)}
+                        className="p-4 hover:bg-[#111820] transition cursor-pointer flex items-center justify-between"
+                      >
+                        <div>
+                          <p className="font-semibold text-[#dde6ef]">{patient.full_name}</p>
+                          <div className="flex gap-3 text-xs text-[#7a95aa] mt-1">
+                            <span>ID: {patient.id}</span>
+                            {patient.email && <span>📧 {patient.email}</span>}
+                            {patient.phone && <span>📱 {patient.phone}</span>}
+                          </div>
+                        </div>
+                        <div className="text-[#00e5a0]">→</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

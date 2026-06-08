@@ -1,101 +1,340 @@
+"""
+Análisis clínico — flujo secuencial con input del médico entre cada paso.
+El médico es el jefe. La IA propone, el médico decide.
+Cada paso recibe la versión CONFIRMADA por el médico del paso anterior.
+"""
+
 from fastapi import APIRouter, HTTPException, Depends, Header
+from pydantic import BaseModel
 from typing import Optional
-from uuid import UUID
-import os
+from datetime import datetime
 from anthropic import Anthropic
+from db import insert_analysis, get_analysis, update_analysis
 
-router = APIRouter(prefix="/analysis", tags=["analysis"])
+from services.system_prompt import (
+    get_traditional_diagnosis_prompt,
+    get_functional_medicine_prompt,
+    get_longevity_diagnosis_prompt,
+    get_protocol_prompt,
+    get_secondary_validation_prompt,
+)
 
+router = APIRouter(prefix="/analyze", tags=["analysis"])
 client = Anthropic()
 
-SYSTEM_PROMPT = """Eres un médico especialista en medicina funcional y longevidad.
-Analiza los datos clínicos del paciente y proporciona:
-
-1. DIAGNÓSTICO (medicina tradicional)
-2. DIAGNÓSTICO (medicina funcional - raíz del problema)
-3. DIAGNÓSTICO (longevidad - edad biológica estimada)
-4. PROTOCOLO recomendado
-
-Sé conciso, profesional y basado en evidencia.
-Usa primera persona: "encontré", "me di cuenta que"."""
+# Modelos por tarea (costo vs calidad)
+MODEL_DIAGNOSE  = "claude-sonnet-4-5"
+MODEL_VALIDATE  = "claude-haiku-4-5"
+MODEL_CHAT      = "claude-haiku-4-5"
 
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
     return "550e8400-e29b-41d4-a716-446655440000"
 
 
-@router.post("/{visit_id}")
-async def analyze_visit(
-    visit_id: UUID,
-    visit_data: dict,
-    doctor_id: str = Depends(get_doctor_id),
-):
-    """Analizar visita con Claude API"""
+class FunctionalRequest(BaseModel):
+    doctor_traditional: str
+    ai_traditional_original: str = ""
 
-    try:
-        # Preparar datos para Claude
-        prompt = f"""
-Paciente: {visit_data.get('visit_reason')}
 
-SIGNOS VITALES:
-- PA: {visit_data.get('pa_right')}/{visit_data.get('pa_left')} mmHg
-- FC: {visit_data.get('heart_rate')} lpm
-- Glucosa: {visit_data.get('glucose')} mg/dL
-- SpO2: {visit_data.get('spo2')}%
+class LongevityRequest(BaseModel):
+    doctor_traditional: str
+    doctor_functional: str
+    ai_traditional_original: str = ""
+    ai_functional_original: str = ""
 
-COMPOSICIÓN:
-- Peso: {visit_data.get('weight')} kg
-- Altura: {visit_data.get('height')} m
 
-SUBJETIVO:
-- Energía: {visit_data.get('energy_morning')}/10
-- Sueño: {visit_data.get('sleep_quality')}/10
-- Ánimo: {visit_data.get('mood')}
+class ProtocolRequest(BaseModel):
+    protocol_type: str
+    doctor_traditional: str
+    doctor_functional: str
+    doctor_longevity: str
+    ai_traditional_original: str = ""
+    ai_functional_original: str = ""
+    ai_longevity_original: str = ""
 
-Proporciona análisis clínico completo.
+
+class ChatRequest(BaseModel):
+    question: str
+    current_diagnosis: str
+
+
+def build_doctor_context(ai_original: str, doctor_version: str, label: str) -> str:
+    """Genera texto de contexto explicando qué cambió el médico vs lo que propuso la IA."""
+    if not ai_original or ai_original.strip() == doctor_version.strip():
+        return f"\n{label} (aceptado sin cambios por el médico):\n{doctor_version}"
+    return f"""
+{label}:
+- Lo que la IA propuso: {ai_original[:600]}{'...' if len(ai_original) > 600 else ''}
+- Lo que el MÉDICO confirmó (versión final, puede tener cambios): {doctor_version}
+NOTA: Si hay diferencias, el médico tiene razón. Su versión es la verdad clínica para este paciente.
 """
 
-        # Llamar a Claude
-        message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-        )
 
-        analysis_text = message.content[0].text
+def _chat_snippet(history: list, max_turns: int = 6) -> str:
+    """Extrae los últimos N turnos del chat para incluir como contexto."""
+    if not history:
+        return ""
+    recent = history[-max_turns * 2:]
+    lines = []
+    for msg in recent:
+        role = "Médico" if msg["role"] == "user" else "IA"
+        lines.append(f"  {role}: {msg['content'][:200]}{'...' if len(msg['content']) > 200 else ''}")
+    return "\n\nCONVERSACIÓN RECIENTE CON EL MÉDICO:\n" + "\n".join(lines)
+
+
+def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000) -> str:
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system:
+        kwargs["system"] = system
+    response = client.messages.create(**kwargs)
+    return response.content[0].text
+
+
+@router.post("/{visit_id}/traditional")
+async def run_traditional(
+    visit_id: str,
+    patient_data: dict,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Genera el diagnóstico de medicina tradicional."""
+    try:
+        # Crear registro en Supabase
+        analysis_record = {
+            "id": f"analysis_{visit_id}",
+            "visit_id": visit_id,
+            "patient_id": patient_data.get("patient_id", ""),
+            "doctor_id": doctor_id,
+            "status": "in_progress",
+            "chat_history": [],
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+        insert_analysis(analysis_record)
+
+        prompt = get_traditional_diagnosis_prompt(patient_data)
+        diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
+
+        val_prompt = get_secondary_validation_prompt(diagnosis)
+        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
 
         return {
-            "status": "success",
-            "visit_id": str(visit_id),
-            "analysis": analysis_text,
-            "diagnosis_traditional": "Ver análisis completo",
-            "diagnosis_functional": "Ver análisis completo",
-            "diagnosis_longevity": "Ver análisis completo",
-            "protocol": "Ver análisis completo",
+            "visit_id": visit_id,
+            "step": "traditional",
+            "diagnosis": diagnosis,
+            "validation": validation,
         }
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"[ERROR] {str(e)}")
+        raise HTTPException(500, str(e))
 
 
-@router.post("/{visit_id}/pdf")
-async def generate_pdfs(
-    visit_id: UUID,
-    pdf_type: str,  # "recipe", "report", "studies"
+@router.post("/{visit_id}/functional")
+async def run_functional(
+    visit_id: str,
+    body: FunctionalRequest,
     doctor_id: str = Depends(get_doctor_id),
 ):
-    """Generar PDFs: receta, reporte, solicitud estudios"""
+    """Genera el diagnóstico funcional."""
+    try:
+        analysis = get_analysis(visit_id)
+        if not analysis:
+            raise HTTPException(404, "Análisis no encontrado")
 
-    pdf_content = {
-        "recipe": "RECETA MÉDICA\n\nPaciente: [nombre]\nFecha: [fecha]\n\nMedicamentos: [protocolo]",
-        "report": "REPORTE DEL PACIENTE\n\nDiagnóstico: [diagnóstico]\nEdad Biológica: [edad]\n\nProtocolo: [protocolo]",
-        "studies": "SOLICITUD DE ESTUDIOS\n\nEstudios Recomendados:\n- [estudio 1]\n- [estudio 2]",
-    }
+        patient_data = {"patient_id": analysis.get("patient_id")}
+        
+        doctor_context = build_doctor_context(
+            body.ai_traditional_original,
+            body.doctor_traditional,
+            "DIAGNÓSTICO TRADICIONAL"
+        )
+        chat_snippet = _chat_snippet(analysis.get("chat_history", []))
 
-    return {
-        "status": "success",
-        "pdf_type": pdf_type,
-        "content": pdf_content.get(pdf_type, "PDF no disponible"),
-        "download_url": f"http://localhost:8000/download/{visit_id}/{pdf_type}.pdf",
-    }
+        prompt = get_functional_medicine_prompt(
+            patient_data,
+            body.doctor_traditional,
+            extra_context=doctor_context + chat_snippet
+        )
+        diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
+
+        val_prompt = get_secondary_validation_prompt(diagnosis)
+        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+
+        return {
+            "visit_id": visit_id,
+            "step": "functional",
+            "diagnosis": diagnosis,
+            "validation": validation,
+        }
+
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+        raise HTTPException(500, str(e))
+
+
+@router.post("/{visit_id}/longevity")
+async def run_longevity(
+    visit_id: str,
+    body: LongevityRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Genera el diagnóstico de longevidad."""
+    try:
+        analysis = get_analysis(visit_id)
+        if not analysis:
+            raise HTTPException(404, "Análisis no encontrado")
+
+        patient_data = {"patient_id": analysis.get("patient_id")}
+
+        ctx_trad = build_doctor_context(
+            body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
+        )
+        ctx_func = build_doctor_context(
+            body.ai_functional_original, body.doctor_functional, "DIAGNÓSTICO FUNCIONAL"
+        )
+        chat_snippet = _chat_snippet(analysis.get("chat_history", []))
+
+        prompt = get_longevity_diagnosis_prompt(
+            patient_data,
+            body.doctor_functional,
+            extra_context=ctx_trad + ctx_func + chat_snippet
+        )
+        diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
+
+        val_prompt = get_secondary_validation_prompt(diagnosis)
+        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+
+        return {
+            "visit_id": visit_id,
+            "step": "longevity",
+            "diagnosis": diagnosis,
+            "validation": validation,
+        }
+
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+        raise HTTPException(500, str(e))
+
+
+@router.post("/{visit_id}/protocol")
+async def run_protocol(
+    visit_id: str,
+    body: ProtocolRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Genera el protocolo."""
+    try:
+        analysis = get_analysis(visit_id)
+        if not analysis:
+            raise HTTPException(404, "Análisis no encontrado")
+
+        patient_data = {"patient_id": analysis.get("patient_id")}
+
+        diagnosis_map = {
+            "traditional": body.doctor_traditional,
+            "functional":  body.doctor_functional,
+            "longevity":   body.doctor_longevity,
+        }
+        diagnosis = diagnosis_map.get(body.protocol_type, body.doctor_traditional)
+
+        extra_context = f"""
+CONTEXTO DE DIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:
+
+DIAGNÓSTICO TRADICIONAL:
+{body.doctor_traditional}
+
+DIAGNÓSTICO FUNCIONAL:
+{body.doctor_functional}
+
+DIAGNÓSTICO LONGEVIDAD:
+{body.doctor_longevity}
+"""
+
+        prompt = get_protocol_prompt(patient_data, diagnosis + "\n\n" + extra_context, body.protocol_type)
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE)
+
+        return {
+            "visit_id": visit_id,
+            "step": f"protocol_{body.protocol_type}",
+            "protocol": protocol,
+            "protocol_type": body.protocol_type,
+        }
+
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+        raise HTTPException(500, str(e))
+
+
+@router.post("/{visit_id}/{step}/chat")
+async def chat_step(
+    visit_id: str,
+    step: str,
+    body: ChatRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Chat médico-IA sobre el diagnóstico."""
+    try:
+        analysis = get_analysis(visit_id)
+        if not analysis:
+            raise HTTPException(404, "Análisis no encontrado")
+
+        history = analysis.get("chat_history", [])
+
+        step_labels = {
+            "traditional": "Diagnóstico Tradicional",
+            "functional":  "Diagnóstico Funcional",
+            "longevity":   "Diagnóstico de Longevidad",
+        }
+
+        system = f"""Eres un asistente médico IA. Estás en el paso: {step_labels.get(step, step)}.
+El médico tiene el mando. Responde con precisión clínica."""
+
+        history.append({"role": "user", "content": body.question})
+
+        response = client.messages.create(
+            model=MODEL_CHAT,
+            max_tokens=600,
+            system=system,
+            messages=history,
+        )
+        answer = response.content[0].text
+
+        history.append({"role": "assistant", "content": answer})
+        update_analysis(visit_id, {"chat_history": history, "updated_at": datetime.utcnow().isoformat()})
+
+        return {
+            "visit_id": visit_id,
+            "step": step,
+            "question": body.question,
+            "answer": answer,
+            "turn": len(history) // 2,
+        }
+
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+        raise HTTPException(500, str(e))
+
+
+@router.post("/{visit_id}/close")
+async def close_visit(
+    visit_id: str,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Cierra la visita."""
+    try:
+        update_analysis(visit_id, {
+            "status": "closed",
+            "updated_at": datetime.utcnow().isoformat()
+        })
+        return {
+            "visit_id": visit_id,
+            "status": "closed",
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))

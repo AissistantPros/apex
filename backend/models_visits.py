@@ -1,61 +1,63 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime
 from uuid import UUID
 
 class VisitCreate(BaseModel):
     """Nueva visita - todos los 7 bloques"""
 
+    model_config = {"extra": "allow"}  # acepta cualquier campo nuevo del frontend
+
     # BLOQUE A: Motivo
     visit_reason: Optional[str] = None
-    discomfort_intensity: Optional[int] = Field(None, ge=1, le=10)
-    first_time: Optional[bool] = None
+    discomfort_intensity: Optional[Any] = None
+    first_time: Optional[Any] = None        # puede ser bool o str ('si'/'no'/'episodios')
 
     # BLOQUE B: Signos Vitales
-    pa_right: Optional[int] = None
-    pa_left: Optional[int] = None
-    heart_rate: Optional[int] = None
-    temperature: Optional[float] = None
-    spo2: Optional[int] = None
-    glucose: Optional[int] = None
-    glucose_fasting_hours: Optional[int] = None
+    pa_right: Optional[Any] = None
+    pa_left: Optional[Any] = None
+    heart_rate: Optional[Any] = None
+    temperature: Optional[Any] = None
+    spo2: Optional[Any] = None
+    glucose: Optional[Any] = None
+    glucose_fasting_hours: Optional[Any] = None
     ecg_notes: Optional[str] = None
 
     # BLOQUE C: Composición Corporal
-    weight: Optional[float] = None
-    height: Optional[float] = None
-    imc: Optional[float] = None
-    circumference_abdominal: Optional[float] = None
-    circumference_waist: Optional[float] = None
-    circumference_hip: Optional[float] = None
-    circumference_neck: Optional[float] = None
-    circumference_biceps: Optional[float] = None
-    inbody_fat_percent: Optional[float] = None
-    inbody_muscle_mass: Optional[float] = None
-    inbody_water: Optional[float] = None
-    inbody_visceral_fat: Optional[float] = None
+    weight: Optional[Any] = None
+    height: Optional[Any] = None
+    imc: Optional[Any] = None
+    circumference_abdominal: Optional[Any] = None
+    circumference_waist: Optional[Any] = None
+    circumference_hip: Optional[Any] = None
+    circumference_neck: Optional[Any] = None
+    circumference_biceps: Optional[Any] = None
+    inbody_fat_percent: Optional[Any] = None
+    inbody_muscle_mass: Optional[Any] = None
+    inbody_water: Optional[Any] = None
+    inbody_visceral_fat: Optional[Any] = None
 
     # BLOQUE D: Pruebas Funcionales
-    grip_strength_left: Optional[float] = None
-    grip_strength_right: Optional[float] = None
-    walk_speed_4m: Optional[float] = None
-    sit_stand_30s: Optional[int] = None
-    balance_monopodal_seconds: Optional[int] = None
-    vo2_max: Optional[float] = None
+    grip_strength_left: Optional[Any] = None
+    grip_strength_right: Optional[Any] = None
+    walk_speed_4m: Optional[Any] = None
+    sit_stand_30s: Optional[Any] = None
+    balance_monopodal_seconds: Optional[Any] = None
+    vo2_max: Optional[Any] = None
 
     # BLOQUE E: Reporte Subjetivo
-    energy_morning: Optional[int] = Field(None, ge=1, le=10)
-    energy_noon: Optional[int] = Field(None, ge=1, le=10)
-    energy_evening: Optional[int] = Field(None, ge=1, le=10)
-    sleep_quality: Optional[int] = Field(None, ge=1, le=10)
-    sleep_hours: Optional[float] = None
-    wakes_rested: Optional[bool] = None
-    mood: Optional[str] = None
-    libido: Optional[int] = Field(None, ge=1, le=10)
-    digestion: Optional[str] = None
+    energy_morning: Optional[Any] = None
+    energy_noon: Optional[Any] = None
+    energy_evening: Optional[Any] = None
+    sleep_quality: Optional[Any] = None
+    sleep_hours: Optional[Any] = None
+    wakes_rested: Optional[Any] = None
+    mood: Optional[Any] = None
+    libido: Optional[Any] = None
+    digestion: Optional[Any] = None
     urine_color: Optional[str] = None
     pain_location: Optional[str] = None
-    pain_intensity: Optional[int] = Field(None, ge=1, le=10)
+    pain_intensity: Optional[Any] = None
     patient_goals: Optional[str] = None
 
     # BLOQUE F: Observaciones Clínicas
@@ -74,14 +76,12 @@ class VisitCreate(BaseModel):
 
 class VisitResponse(VisitCreate):
     """Response con metadata"""
-    id: UUID
-    patient_id: UUID
-    doctor_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "allow"}
+    id: str
+    patient_id: str
+    doctor_id: str
+    created_at: Any
+    updated_at: Any
 
 
 class VisitListResponse(BaseModel):
