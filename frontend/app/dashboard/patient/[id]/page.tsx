@@ -18,8 +18,9 @@ export default function PatientPage() {
   const [visits, setVisits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'ficha' | 'visitas'>('ficha');
-  const [showDanger, setShowDanger] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [showDanger, setShowDanger]       = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting]           = useState(false);
   const [patientNotes, setPatientNotes] = useState<Note[]>([]);
 
   useEffect(() => {
@@ -54,6 +55,10 @@ export default function PatientPage() {
 
 
   const handleDelete = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);   // primer clic: pide confirmación
+      return;
+    }
     setDeleting(true);
     try {
       await fetch(`${BACKEND()}/patients/${patientId}`, { method: 'DELETE' });
@@ -61,6 +66,7 @@ export default function PatientPage() {
     } catch (e) {
       alert('Error al eliminar paciente');
       setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -244,15 +250,41 @@ export default function PatientPage() {
               {showDanger && (
                 <div className="mt-4 space-y-3">
                   <p className="text-sm text-[#7a95aa]">
-                    Estas acciones son permanentes y no se pueden deshacer.
+                    Esta acción es permanente y no se puede deshacer. Se eliminará al paciente y todas sus visitas.
                   </p>
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="px-5 py-2.5 bg-[#f43f5e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition disabled:opacity-50"
-                  >
-                    {deleting ? 'Eliminando...' : '🗑 Eliminar paciente permanentemente'}
-                  </button>
+
+                  {!confirmDelete ? (
+                    <button
+                      onClick={handleDelete}
+                      className="px-5 py-2.5 bg-[#f43f5e]/20 text-[#f43f5e] border border-[#f43f5e]/40 text-sm font-bold rounded-xl hover:bg-[#f43f5e]/30 transition"
+                    >
+                      🗑 Eliminar paciente permanentemente
+                    </button>
+                  ) : (
+                    <div className="bg-[#f43f5e]/10 border border-[#f43f5e]/50 rounded-xl p-4 space-y-3">
+                      <p className="text-sm font-bold text-[#f43f5e]">
+                        ¿Está seguro? Esta acción no se puede deshacer.
+                      </p>
+                      <p className="text-xs text-[#7a95aa]">
+                        Se eliminará permanentemente a <span className="text-[#dde6ef] font-semibold">{patient?.full_name}</span> y todas sus visitas y notas.
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleDelete}
+                          disabled={deleting}
+                          className="px-5 py-2.5 bg-[#f43f5e] text-white text-sm font-bold rounded-xl hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          {deleting ? 'Eliminando...' : 'Sí, eliminar definitivamente'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(false)}
+                          className="px-5 py-2.5 text-sm text-[#7a95aa] border border-[#1e2d3d] rounded-xl hover:border-[#7a95aa] transition"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

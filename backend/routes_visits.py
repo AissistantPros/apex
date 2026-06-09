@@ -6,7 +6,7 @@ from db import (
     insert_visit,
     get_visit,
     update_visit,
-    list_patient_visits,
+    list_patient_visits as db_list_patient_visits,
 )
 
 router = APIRouter(prefix="/visits", tags=["visits"])
@@ -76,7 +76,7 @@ async def list_patient_visits(
         if not doctor_id:
             doctor_id = await get_doctor_id()
 
-        visits = list_patient_visits(patient_id)
+        visits = db_list_patient_visits(patient_id)
 
         return {
             "total": len(visits),
