@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
@@ -134,6 +134,11 @@ function FlowPageInner() {
   const [animo,       setAnimo]       = useState<string[]>([]);
   const [digestion,   setDigestion]   = useState<string[]>([]);
   const [alcoholTipo, setAlcoholTipo] = useState<string[]>([]);  // cerveza/vino/destilados
+
+  // ── Archivos de laboratorio ───────────────────────────────────────────────
+  type LabFile = { name: string; type: string; size: number; data: string };
+  const [labFiles, setLabFiles] = useState<LabFile[]>([]);
+  const labFileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Formulario principal ─────────────────────────────────────────────────
   const [f, setF] = useState({
@@ -388,6 +393,7 @@ function FlowPageInner() {
             }));
             if (Array.isArray(v.animo_tags))    setAnimo(v.animo_tags);
             if (Array.isArray(v.digestion_tags)) setDigestion(v.digestion_tags);
+            if (Array.isArray(v.labs_files))     setLabFiles(v.labs_files);
           }
         } catch (_) {}
 
@@ -425,6 +431,23 @@ function FlowPageInner() {
   });
   const toggleMulti  = (arr: string[], set: Function, v: string) =>
     set((p: string[]) => p.includes(v) ? p.filter(x=>x!==v) : [...p,v]);
+
+  const handleLabFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`"${file.name}" supera 5 MB — adjunta un archivo más pequeño.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = ev.target?.result as string;
+        setLabFiles(prev => [...prev, { name: file.name, type: file.type, size: file.size, data }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
 
   // ── GUARDAR FASE 1 ── paciente mínimo en DB ───────────────────────────────
   const savePhase1 = async () => {
@@ -637,7 +660,9 @@ function FlowPageInner() {
             exploracion_ojos: f.exploracion_ojos, exploracion_boca: f.exploracion_boca,
             exploracion_tiroides: f.exploracion_tiroides, exploracion_abdomen: f.exploracion_abdomen,
             exploracion_extremidades: f.exploracion_extremidades, exploracion_notas: f.exploracion_notas,
-            labs_notas: f.labs_notas, dx_presuntivo: f.dx_presuntivo,
+            labs_notas: f.labs_notas,
+            labs_files: labFiles.map(lf => ({ name: lf.name, type: lf.type, size: lf.size, data: lf.data })),
+            dx_presuntivo: f.dx_presuntivo,
             status: 'complete',
           }),
         });
@@ -1377,13 +1402,13 @@ function FlowPageInner() {
                   <span className="text-[#f43f5e] text-xs font-mono ml-1">REQUERIDO</span>
                 </h2>
                 <p className="text-xs text-[#7a95aa] mb-4">El médico puede observarlo o preguntarlo. Necesario para análisis de la IA.</p>
-                <div className="flex gap-6">
-                  {['Masculino','Femenino','Intersex'].map(s => (
-                    <label key={s} className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="sexo" value={s} checked={f.sexo_biologico===s}
-                        onChange={e=>set('sexo_biologico',e.target.value)} className="w-4 h-4 accent-[#a78bfa]" />
-                      <span className="text-[#dde6ef]">{s}</span>
-                    </label>
+                <div className="flex gap-4">
+                  {[{v:'Masculino',icon:'♂'},{v:'Femenino',icon:'♀'}].map(({v:s,icon}) => (
+                    <button key={s} type="button" onClick={()=>set('sexo_biologico',s)}
+                      className="flex-1 py-3 rounded-xl text-base font-bold border transition"
+                      style={{ background: f.sexo_biologico===s?'rgba(167,139,250,.2)':'transparent', color: f.sexo_biologico===s?'#a78bfa':'#7a95aa', borderColor: f.sexo_biologico===s?'#a78bfa':'#1e2d3d' }}>
+                      {icon} {s}
+                    </button>
                   ))}
                 </div>
                 <div className="mt-4">
@@ -1564,12 +1589,25 @@ function FlowPageInner() {
                     { k:'exploracion_tiroides',     l:'CUELLO / TIROIDES / GANGLIOS' },
                     { k:'exploracion_abdomen',      l:'ABDOMEN' },
                     { k:'exploracion_extremidades', l:'EXTREMIDADES' },
-                  ].map(({k,l}) => (
-                    <Field key={k} label={l}>
-                      <input className={`${inp} ${fPurp}`} value={(f as any)[k]}
-                        onChange={e=>set(k,e.target.value)} placeholder="Hallazgos o 'sin alteraciones'..." />
-                    </Field>
-                  ))}
+                  ].map(({k,l}) => {
+                    const val = (f as any)[k] as string;
+                    const isSH = val === 'Sin hallazgos';
+                    return (
+                      <div key={k}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-mono text-[#7a95aa]">{l}</label>
+                          <button type="button"
+                            onClick={() => set(k, isSH ? '' : 'Sin hallazgos')}
+                            className="text-xs px-2.5 py-0.5 rounded-lg border transition ml-2 flex-shrink-0"
+                            style={{ background: isSH?'rgba(0,229,160,.12)':'transparent', color: isSH?'#00e5a0':'#3d5870', borderColor: isSH?'#00e5a0':'#1e2d3d' }}>
+                            {isSH ? '✓ Sin hallazgos' : '⊘ Sin hallazgos'}
+                          </button>
+                        </div>
+                        <input className={`${inp} ${fPurp}`} value={val}
+                          onChange={e=>set(k,e.target.value)} placeholder="Describir hallazgos..." />
+                      </div>
+                    );
+                  })}
                   <Field label="NOTAS ADICIONALES DE EXPLORACIÓN">
                     <textarea rows={3} className={`${inp} ${fPurp}`} value={f.exploracion_notas}
                       onChange={e=>set('exploracion_notas',e.target.value)} placeholder="Otros hallazgos relevantes..." />
@@ -1578,12 +1616,68 @@ function FlowPageInner() {
               </Card>
 
               <Card title="Laboratorios y estudios" icon="🧪" color={pc.color}>
-                <div className="space-y-3">
+                <div className="space-y-4">
+
+                  {/* Notas de labs */}
                   <Field label="LABORATORIOS RECIENTES (resultados o pendientes)">
                     <textarea rows={4} className={`${inp} ${fPurp}`} value={f.labs_notas}
                       onChange={e=>set('labs_notas',e.target.value)}
-                      placeholder="Glucosa 105, HbA1c 5.8%, TSH 2.1... o 'pendiente de resultados de laboratorio'" />
+                      placeholder="Glucosa 105, HbA1c 5.8%, TSH 2.1... o 'pendiente de resultados'" />
                   </Field>
+
+                  {/* Subida de archivos */}
+                  <div>
+                    <label className="text-xs font-mono text-[#7a95aa] mb-1.5 block">
+                      ARCHIVOS — PDF, FOTO, DOCUMENTO (máx. 5 MB c/u)
+                    </label>
+                    <div
+                      className="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition"
+                      style={{ borderColor: labFiles.length ? '#a78bfa55' : '#1e2d3d' }}
+                      onClick={() => labFileInputRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        const dt = e.dataTransfer;
+                        const fakeEvent = { target: { files: dt.files, value: '' } } as any;
+                        handleLabFiles(fakeEvent as React.ChangeEvent<HTMLInputElement>);
+                      }}>
+                      <input
+                        ref={labFileInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                        className="hidden"
+                        onChange={handleLabFiles}
+                      />
+                      <p className="text-2xl mb-1">📎</p>
+                      <p className="text-sm text-[#7a95aa] font-medium">Arrastra archivos aquí o haz clic para seleccionar</p>
+                      <p className="text-xs text-[#3d5870] mt-1">PDF · Imágenes · Word · Excel — la IA los analiza directamente</p>
+                    </div>
+
+                    {labFiles.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {labFiles.map((lf, i) => (
+                          <div key={i} className="flex items-center gap-3 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2">
+                            <span className="text-xl flex-shrink-0">
+                              {lf.type.includes('pdf') ? '📄' : lf.type.startsWith('image') ? '🖼️' : '📝'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-[#dde6ef] truncate font-medium">{lf.name}</p>
+                              <p className="text-xs text-[#3d5870]">{(lf.size / 1024).toFixed(0)} KB</p>
+                            </div>
+                            <button type="button"
+                              onClick={() => setLabFiles(p => p.filter((_,j) => j !== i))}
+                              className="text-[#f43f5e] text-lg leading-none hover:opacity-80 flex-shrink-0">
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <p className="text-xs text-[#3d5870] text-right">{labFiles.length} archivo{labFiles.length !== 1 ? 's' : ''} adjunto{labFiles.length !== 1 ? 's' : ''}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Diagnóstico presuntivo */}
                   <Field label="DIAGNÓSTICO PRESUNTIVO (para la IA)">
                     <textarea rows={3} className={`${inp} ${fPurp}`} value={f.dx_presuntivo}
                       onChange={e=>set('dx_presuntivo',e.target.value)}
