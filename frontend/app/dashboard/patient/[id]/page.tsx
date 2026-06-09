@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
@@ -28,13 +28,11 @@ export default function PatientPage() {
   const [visits,  setVisits]  = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState<'ficha' | 'visitas'>('ficha');
-  const [showDanger,      setShowDanger]      = useState(false);
-  const [confirmDelete,   setConfirmDelete]   = useState(false);
-  const [deleting,        setDeleting]        = useState(false);
-  const [patientNotes,    setPatientNotes]    = useState<Note[]>([]);
-  const [showEditMenu,    setShowEditMenu]    = useState(false);
-  const [expandedVisit,   setExpandedVisit]   = useState<string | null>(null);
-  const editMenuRef = useRef<HTMLDivElement>(null);
+  const [showDanger,    setShowDanger]    = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+  const [patientNotes,  setPatientNotes]  = useState<Note[]>([]);
+  const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
 
   useEffect(() => {
     getUser().then(async u => {
@@ -42,13 +40,6 @@ export default function PatientPage() {
       setUser(u);
       loadData(u);
     });
-    // Cerrar menú de edición al click fuera
-    const handler = (e: MouseEvent) => {
-      if (editMenuRef.current && !editMenuRef.current.contains(e.target as Node))
-        setShowEditMenu(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
   }, [patientId]);
 
   const loadData = async (u?: any) => {
@@ -112,13 +103,6 @@ export default function PatientPage() {
   const initials = `${patient.first_name?.[0]||''}${patient.last_name?.[0]||''}`.toUpperCase();
   const latestVisit = visits[0] || null;
 
-  // Fases de edición
-  const EDIT_PHASES = [
-    { phase: 1, label: '🟦 Recepción',  color: '#0ea5e9', desc: 'Datos generales, contacto' },
-    { phase: 2, label: '🟨 Enfermería', color: '#f97316', desc: 'Antecedentes, signos vitales' },
-    { phase: 3, label: '🟣 Médico',     color: '#a78bfa', desc: 'Historia privada, exploración' },
-  ];
-
   return (
     <div className="min-h-screen bg-[#070a0e]">
       <TopNav userName={displayName} photoUrl={photoUrl} />
@@ -152,27 +136,12 @@ export default function PatientPage() {
             >
               + Nueva Visita
             </button>
-            {/* Dropdown editar */}
-            <div className="relative" ref={editMenuRef}>
-              <button
-                onClick={() => setShowEditMenu(v => !v)}
-                className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition flex items-center gap-1.5"
-              >
-                ✏️ Editar {showEditMenu ? '▲' : '▼'}
-              </button>
-              {showEditMenu && (
-                <div className="absolute right-0 top-full mt-2 bg-[#0d1520] border border-[#1e2d3d] rounded-xl overflow-hidden shadow-2xl z-50 w-60">
-                  {EDIT_PHASES.map(({ phase, label, color, desc }) => (
-                    <button key={phase}
-                      onClick={() => { router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=${phase}`); setShowEditMenu(false); }}
-                      className="w-full text-left px-4 py-3.5 hover:bg-[#1e2d3d] transition border-b border-[#1e2d3d] last:border-0">
-                      <p className="text-sm font-semibold" style={{ color }}>{label}</p>
-                      <p className="text-xs text-[#3d5870] mt-0.5">{desc}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=1`)}
+              className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition"
+            >
+              ✏️ Editar
+            </button>
           </div>
         </div>
 
@@ -249,8 +218,8 @@ export default function PatientPage() {
             </Section>
 
             {/* Cómo nos conoció */}
-            {(patient.sources_of_contact?.length > 0 || patient.referred_other || patient.social_network) && (
-              <Section title="¿Cómo nos conoció?" icon="🔍">
+            {(patient.sources_of_contact?.length > 0 || patient.referred_other || patient.social_network || patient.prev_redes || patient.prev_web || patient.prev_gmaps) && (
+              <Section title="¿Cómo nos conoció? / ¿Revisó antes?" icon="🔍">
                 {Array.isArray(patient.sources_of_contact) && patient.sources_of_contact.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
                     {patient.sources_of_contact.map((s: string) => (
@@ -262,6 +231,16 @@ export default function PatientPage() {
                   <Info label="Red social"          value={patient.social_network} />
                   <Info label="Especificación Otro" value={patient.referred_other} />
                 </Grid>
+                {(patient.prev_redes || patient.prev_web || patient.prev_gmaps) && (
+                  <div className="mt-3">
+                    <p className="text-xs font-mono text-[#3d5870] mb-2 uppercase tracking-wider">Revisó antes de venir</p>
+                    <div className="flex flex-wrap gap-2">
+                      {patient.prev_redes && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]">📲 Redes sociales</span>}
+                      {patient.prev_web   && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]">🌐 Página web</span>}
+                      {patient.prev_gmaps && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]">📍 Google Maps</span>}
+                    </div>
+                  </div>
+                )}
               </Section>
             )}
 
@@ -656,6 +635,20 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
                     <Info label="Visceral" value={v.inbody_visceral ? `${v.inbody_visceral}`     : undefined} />
                   </Grid>
                 </div>
+              )}
+            </VisitSection>
+          )}
+
+          {/* Actividad física */}
+          {v.actividad_si !== undefined && v.actividad_si !== null && (
+            <VisitSection title="Actividad física" icon="🏃">
+              <p className="text-sm text-[#dde6ef] mb-2">{v.actividad_si ? 'Sí realiza actividad física regularmente' : 'No realiza actividad física regular'}</p>
+              {v.actividad_si && (
+                <Grid>
+                  <Info label="Tipo de ejercicio" value={v.actividad_tipo} />
+                  <Info label="Frecuencia"         value={v.actividad_frecuencia} />
+                  <Info label="Intensidad"         value={v.actividad_intensidad} />
+                </Grid>
               )}
             </VisitSection>
           )}

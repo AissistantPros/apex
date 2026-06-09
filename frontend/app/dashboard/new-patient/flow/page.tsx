@@ -121,6 +121,8 @@ function FlowPageInner() {
   // Verificación de duplicados
   const [dupCandidates, setDupCandidates] = useState<any[]>([]);
   const [dupDismissed,  setDupDismissed]  = useState(false);
+  // Modo edición (paciente ya existente cargado desde URL)
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // ── Estado heredofamiliar ────────────────────────────────────────────────
   type FamilyRow = Record<Enfermedad, boolean> & { otra: string; vivo: boolean; causa_muerte: string; edad_muerte: string; };
@@ -238,6 +240,7 @@ function FlowPageInner() {
       const ph  = parseInt(searchParams.get('phase') || '1');
       if (pid) {
         setPatientId(pid);
+        setIsEditMode(true); // vino de "Editar" — permite saltar fases libremente
         if (ph >= 2 && ph <= 3) setPhase(ph);
 
         // ── Cargar datos del paciente desde la DB ─────────────────────────────
@@ -678,6 +681,8 @@ function FlowPageInner() {
       });
 
       // 3b: Actualizar visita con motivo + exploración
+      // Campos vacíos de exploración → "Sin hallazgos" para que la IA tenga info completa
+      const sh = (val: string) => val && val.trim() !== '' ? val.trim() : 'Sin hallazgos';
       if (visitId) {
         const vRes3 = await fetch(`${B()}/visits/${visitId}`, {
           method: 'PUT',
@@ -685,11 +690,15 @@ function FlowPageInner() {
           body: JSON.stringify({
             libido_visita: f.libido_visita,
             motivo: f.motivo, motivo_intensidad: f.motivo_intensidad,
-            exploracion_general: f.exploracion_general, exploracion_piel: f.exploracion_piel,
-            exploracion_ojos: f.exploracion_ojos, exploracion_boca: f.exploracion_boca,
-            exploracion_tiroides: f.exploracion_tiroides, exploracion_abdomen: f.exploracion_abdomen,
-            exploracion_extremidades: f.exploracion_extremidades, exploracion_notas: f.exploracion_notas,
-            labs_notas: f.labs_notas,
+            exploracion_general:      sh(f.exploracion_general),
+            exploracion_piel:         sh(f.exploracion_piel),
+            exploracion_ojos:         sh(f.exploracion_ojos),
+            exploracion_boca:         sh(f.exploracion_boca),
+            exploracion_tiroides:     sh(f.exploracion_tiroides),
+            exploracion_abdomen:      sh(f.exploracion_abdomen),
+            exploracion_extremidades: sh(f.exploracion_extremidades),
+            exploracion_notas: f.exploracion_notas || '',
+            labs_notas: f.labs_notas && f.labs_notas.trim() !== '' ? f.labs_notas : 'Sin laboratorios recientes',
             labs_files: labFiles.map(lf => ({ name: lf.name, type: lf.type, size: lf.size, data: lf.data })),
             dx_presuntivo: f.dx_presuntivo,
             status: 'complete',
@@ -701,7 +710,12 @@ function FlowPageInner() {
         }
       }
 
-      router.push(`/dashboard/patient/${patientId}`);
+      // Redirigir al análisis de IA si hay visitId, o a la ficha si no
+      if (visitId) {
+        router.push(`/dashboard/patient/${patientId}/visit/${visitId}/analysis`);
+      } else {
+        router.push(`/dashboard/patient/${patientId}`);
+      }
     } catch (e: any) {
       console.error('Fase 3 error:', e);
       alert('Error en Fase 3: ' + (e.message || String(e)));
@@ -744,15 +758,16 @@ function FlowPageInner() {
               const cfg = PHASE_CONFIG[p];
               const done = p < phase;
               const active = p === phase;
+              const canClick = p < phase || isEditMode; // en modo edición, todas accesibles
               return (
                 <button key={p}
-                  onClick={() => { if (p < phase) setPhase(p); }}
-                  disabled={p > phase}
+                  onClick={() => { if (canClick) setPhase(p); }}
+                  disabled={!canClick}
                   className="flex-1 py-2.5 rounded-lg text-xs font-bold transition-all disabled:cursor-not-allowed"
                   style={{
-                    background: active ? cfg.color : done ? cfg.color + '44' : '#1e2d3d',
-                    color: active || done ? '#000' : '#7a95aa',
-                    opacity: p > phase ? 0.5 : 1,
+                    background: active ? cfg.color : (done || isEditMode) ? cfg.color + '44' : '#1e2d3d',
+                    color: active || done || isEditMode ? '#000' : '#7a95aa',
+                    opacity: !canClick ? 0.4 : 1,
                   }}>
                   {done ? '✓ ' : ''}{p === 1 ? 'Recepción' : p === 2 ? 'Enfermería' : 'Médico'}
                 </button>

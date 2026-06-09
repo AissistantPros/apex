@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getUser } from '@/app/lib/auth';
+import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
 
 // ─────────────────────────────────────────────
@@ -67,6 +67,7 @@ export default function AnalysisPage() {
   const patient_id = params.id as string;
 
   const [user, setUser]       = useState<any>(null);
+  const [token, setToken]     = useState<string | null>(null);
   const [step, setStep]       = useState<Step>('init');
   const [patientData, setPatientData] = useState<any>(null);
   const [error, setError]     = useState('');
@@ -89,13 +90,17 @@ export default function AnalysisPage() {
   const [editMode, setEditMode] = useState(false);
 
   const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-  const authHeader = { Authorization: `Bearer ${user?.id}`, 'Content-Type': 'application/json' };
+  const authHeader = { Authorization: `Bearer ${token || ''}`, 'Content-Type': 'application/json' };
 
   useEffect(() => {
-    getUser().then(u => {
-      if (!u) router.push('/auth/login');
-      else setUser(u);
-    });
+    const init = async () => {
+      const u = await getUser();
+      if (!u) { router.push('/auth/login'); return; }
+      setUser(u);
+      const session = await getSession();
+      setToken(session?.access_token || null);
+    };
+    init();
   }, [router]);
 
   useEffect(() => {
