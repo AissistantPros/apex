@@ -17,6 +17,19 @@ from db import (
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
+# Campos de tipo date en patients — strings vacíos causan error
+DATE_PATIENT_FIELDS = {"date_of_birth", "birth_date"}
+
+def clean_patient_data(data: dict) -> dict:
+    """Convierte strings vacíos en campos date a None."""
+    cleaned = {}
+    for k, v in data.items():
+        if k in DATE_PATIENT_FIELDS and v == "":
+            cleaned[k] = None
+        else:
+            cleaned[k] = v
+    return cleaned
+
 # ─── Generar ID legible ──────────────────────────────────────────────────────
 
 def generate_patient_id(first_name: str, last_name: str, birth_date: str) -> str:
@@ -88,7 +101,7 @@ async def create_patient(
             **patient_data,
         }
 
-        result = insert_patient(save_data)
+        result = insert_patient(clean_patient_data(save_data))
 
         if not result:
             raise HTTPException(500, "Error al guardar paciente")
@@ -132,7 +145,7 @@ async def update_patient_data(
     """Actualizar datos de un paciente"""
     try:
         data["updated_at"] = datetime.utcnow().isoformat()
-        result = update_patient(patient_id, data)
+        result = update_patient(patient_id, clean_patient_data(data))
 
         if not result:
             raise HTTPException(404, "Paciente no encontrado")

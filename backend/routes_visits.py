@@ -12,6 +12,39 @@ from db import (
 
 router = APIRouter(prefix="/visits", tags=["visits"])
 
+# Campos numéricos de la tabla visits — strings vacíos se convierten a None
+NUMERIC_VISIT_FIELDS = {
+    "pa_der_sistolica","pa_der_diastolica","pa_izq_sistolica","pa_izq_diastolica",
+    "fc","temperatura","glucosa","spo2",
+    "peso","talla","imc","circ_abdominal","circ_cintura","circ_cadera",
+    "circ_cuello","circ_biceps","circ_muneca",
+    "inbody_grasa","inbody_musculo","inbody_agua","inbody_visceral",
+    "fuerza_mano_der","fuerza_mano_izq",
+    "energia_despertar","energia_tarde","energia_noche",
+    "sueno_calidad","animo_val","digestion_val",
+    "libido_visita","motivo_intensidad",
+    # columnas inglés (legado)
+    "heart_rate","temperature","glucose","weight","height",
+    "grip_right","grip_left","sleep_quality","sleep_hours","libido",
+    "discomfort_intensity",
+}
+
+def clean_visit_data(data: dict) -> dict:
+    """Convierte strings vacíos a None en campos numéricos y elimina claves desconocidas problemáticas."""
+    cleaned = {}
+    for k, v in data.items():
+        if k in NUMERIC_VISIT_FIELDS:
+            if v == "" or v is None:
+                cleaned[k] = None
+            else:
+                try:
+                    cleaned[k] = float(v)
+                except (ValueError, TypeError):
+                    cleaned[k] = None
+        else:
+            cleaned[k] = v
+    return cleaned
+
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
     """Extrae doctor_id del JWT de Supabase."""
@@ -43,7 +76,7 @@ async def create_visit(
 
         visit_id = str(uuid4())
 
-        save_data = {
+        raw_data = {
             "id": visit_id,
             "patient_id": patient_id,
             "doctor_id": doctor_id,
@@ -51,6 +84,7 @@ async def create_visit(
             "updated_at": datetime.utcnow().isoformat(),
             **visit_data,
         }
+        save_data = clean_visit_data(raw_data)
 
         result = insert_visit(save_data)
 
@@ -97,6 +131,7 @@ async def update_visit_data(
     """Actualizar datos de una visita (Fase 3: exploración médica)"""
     try:
         data["updated_at"] = datetime.utcnow().isoformat()
+        data = clean_visit_data(data)
         result = update_visit(visit_id, data)
         if not result:
             raise HTTPException(404, "Visita no encontrada")
