@@ -20,6 +20,22 @@ def insert_patient(patient_data: dict) -> dict:
     result = supabase.table("patients").insert(patient_data).execute()
     return result.data[0] if result.data else None
 
+def check_duplicate_patients(first_name: str, last_name: str, date_of_birth: str) -> list:
+    """Busca pacientes con mismo nombre y fecha de nacimiento (case-insensitive)"""
+    fn = first_name.strip().lower()
+    ln = last_name.strip().lower()
+    result = supabase.table("patients").select(
+        "id, full_name, first_name, last_name, date_of_birth, birth_date, registration_phase, created_at"
+    ).ilike("first_name", fn).ilike("last_name", ln).execute()
+    if not result.data:
+        return []
+    # Filtrar por fecha de nacimiento
+    matches = [
+        p for p in result.data
+        if (p.get("date_of_birth") or p.get("birth_date") or "").startswith(date_of_birth)
+    ]
+    return matches
+
 def list_patients(doctor_id: str = None, limit: int = 50) -> list:
     """Lista todos los pacientes"""
     query = supabase.table("patients").select("id, full_name, first_name, last_name, date_of_birth, birth_date, email, phone, created_at").order("created_at", desc=True).limit(limit)

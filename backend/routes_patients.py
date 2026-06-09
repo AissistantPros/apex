@@ -13,6 +13,7 @@ from db import (
     add_patient_note,
     get_patient_notes,
     delete_patient_note,
+    check_duplicate_patients,
 )
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -56,6 +57,21 @@ def generate_patient_id(first_name: str, last_name: str, birth_date: str) -> str
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
     """Extrae doctor_id del JWT de Supabase."""
     return get_doctor_id_from_token(authorization)
+
+
+@router.get("/check-duplicate")
+async def check_duplicate(
+    first_name: str,
+    last_name: str,
+    date_of_birth: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Verifica si ya existe un paciente con el mismo nombre y fecha de nacimiento"""
+    try:
+        matches = check_duplicate_patients(first_name, last_name, date_of_birth)
+        return {"duplicates": matches, "count": len(matches)}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @router.get("/")

@@ -118,6 +118,9 @@ function FlowPageInner() {
   const [visitId, setVisitId]     = useState<string | null>(null);
   // Notas del hilo (actualizadas en tiempo real)
   const [notes, setNotes]         = useState<Note[]>([]);
+  // Verificación de duplicados
+  const [dupCandidates, setDupCandidates] = useState<any[]>([]);
+  const [dupDismissed,  setDupDismissed]  = useState(false);
 
   // ── Estado heredofamiliar ────────────────────────────────────────────────
   type FamilyRow = Record<Enfermedad, boolean> & { otra: string; vivo: boolean; causa_muerte: string; edad_muerte: string; };
@@ -409,6 +412,28 @@ function FlowPageInner() {
     };
     init();
   }, []);
+
+  // ── Detección de duplicados en tiempo real (Fase 1) ─────────────────────
+  useEffect(() => {
+    // Solo aplica en fase 1, cuando aún no hay patientId (registro nuevo)
+    if (phase !== 1 || patientId) return;
+    const { first_name, last_name, date_of_birth } = f;
+    if (!first_name.trim() || !last_name.trim() || !date_of_birth) {
+      setDupCandidates([]);
+      return;
+    }
+    setDupDismissed(false); // reset al cambiar datos
+    const timer = setTimeout(async () => {
+      try {
+        const authH: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const params = new URLSearchParams({ first_name: first_name.trim(), last_name: last_name.trim(), date_of_birth });
+        const res = await fetch(`${B()}/patients/check-duplicate?${params}`, { headers: authH });
+        const data = await res.json();
+        setDupCandidates(data.duplicates || []);
+      } catch { /* silencioso */ }
+    }, 700); // 700ms debounce
+    return () => clearTimeout(timer);
+  }, [f.first_name, f.last_name, f.date_of_birth, phase, patientId, token]);
 
   // ── Helpers familia / medicamentos / fuentes ──────────────────────────────
   const toggleFamily = (fam: Familiar, enf: Enfermedad) =>
@@ -776,6 +801,53 @@ function FlowPageInner() {
                   </div>
                 </div>
               </Card>
+
+              {/* ── Banner: posible duplicado ── */}
+              {dupCandidates.length > 0 && !dupDismissed && (
+                <div className="bg-[#f59e0b]/10 border-2 border-[#f59e0b]/60 rounded-xl p-4 mb-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl flex-shrink-0">⚠️</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-[#f59e0b] mb-1">
+                        Paciente ya registrado con estos datos
+                      </p>
+                      <p className="text-xs text-[#7a95aa] mb-3">
+                        Encontré {dupCandidates.length === 1 ? 'un paciente' : `${dupCandidates.length} pacientes`} con el mismo nombre y fecha de nacimiento. Verifica si ya está en el sistema antes de crear un duplicado.
+                      </p>
+                      <div className="space-y-2 mb-3">
+                        {dupCandidates.map((d: any) => {
+                          const dobD = d.date_of_birth || d.birth_date;
+                          const ageD = dobD ? Math.floor((Date.now() - new Date(dobD).getTime()) / (1000*60*60*24*365.25)) : null;
+                          const phase_label = d.registration_phase === 'complete' ? '✅ Completo'
+                            : d.registration_phase === 'nursing' ? '🟨 Pendiente médico'
+                            : '🟦 Pendiente enfermería';
+                          return (
+                            <div key={d.id} className="bg-[#111820] border border-[#f59e0b]/30 rounded-lg px-3 py-2.5 flex items-center gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-[#dde6ef]">{d.full_name}</p>
+                                <p className="text-xs text-[#3d5870] font-mono">{d.id}{ageD !== null ? ` · ${ageD} años` : ''}</p>
+                                <p className="text-xs text-[#7a95aa] mt-0.5">{phase_label}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => router.push(`/dashboard/patient/${d.id}`)}
+                                className="flex-shrink-0 px-3 py-1.5 bg-[#f59e0b] text-black text-xs font-bold rounded-lg hover:opacity-90 transition">
+                                Ver ficha →
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDupDismissed(true)}
+                        className="text-xs text-[#3d5870] hover:text-[#7a95aa] underline transition">
+                        No es el mismo paciente — continuar con el registro
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <Card title="Contacto" icon="📱" color={pc.color}>
                 <div className="space-y-4">
