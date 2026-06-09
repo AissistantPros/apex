@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+import json, re
 from anthropic import Anthropic
 from db import insert_analysis, get_analysis, update_analysis, get_visit, get_patient
 
@@ -95,6 +96,41 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
     return response.content[0].text
 
 
+def extract_structured_header(raw_text: str) -> tuple[dict, str]:
+    """
+    Extrae el JSON de la primera línea y retorna (metadata, resto_del_texto).
+    metadata = {"confidence": int, "question": str|None}
+    """
+    metadata = {"confidence": 75, "question": None}
+    text = raw_text.strip()
+    # Buscar la primera línea que sea JSON válido
+    first_line_end = text.find('\n')
+    if first_line_end > 0:
+        first_line = text[:first_line_end].strip()
+        try:
+            parsed = json.loads(first_line)
+            if "confidence" in parsed:
+                metadata["confidence"] = int(parsed.get("confidence", 75))
+                q = parsed.get("question")
+                metadata["question"] = q if q and q != "null" else None
+                return metadata, text[first_line_end:].strip()
+        except Exception:
+            pass
+    # También buscar JSON inline con regex
+    m = re.search(r'\{[^}]*"confidence"\s*:\s*\d+[^}]*\}', text)
+    if m:
+        try:
+            parsed = json.loads(m.group())
+            metadata["confidence"] = int(parsed.get("confidence", 75))
+            q = parsed.get("question")
+            metadata["question"] = q if q and q != "null" else None
+            cleaned = text[:m.start()].strip() + "\n" + text[m.end():].strip()
+            return metadata, cleaned.strip()
+        except Exception:
+            pass
+    return metadata, text
+
+
 @router.post("/{visit_id}/traditional")
 async def run_traditional(
     visit_id: str,
@@ -127,7 +163,8 @@ async def run_traditional(
         insert_analysis(analysis_record)
 
         prompt = get_traditional_diagnosis_prompt(full_patient, full_visit)
-        diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        metadata, diagnosis = extract_structured_header(raw)
 
         val_prompt = get_secondary_validation_prompt(diagnosis)
         validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
@@ -137,6 +174,8 @@ async def run_traditional(
             "step": "traditional",
             "diagnosis": diagnosis,
             "validation": validation,
+            "confidence": metadata["confidence"],
+            "ai_question": metadata["question"],
         }
 
     except Exception as e:
@@ -173,7 +212,8 @@ async def run_functional(
             visit_data=visit_record,
             extra_context=doctor_context + chat_snippet
         )
-        diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        metadata, diagnosis = extract_structured_header(raw)
 
         val_prompt = get_secondary_validation_prompt(diagnosis)
         validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
@@ -183,6 +223,8 @@ async def run_functional(
             "step": "functional",
             "diagnosis": diagnosis,
             "validation": validation,
+            "confidence": metadata["confidence"],
+            "ai_question": metadata["question"],
         }
 
     except Exception as e:
@@ -220,7 +262,8 @@ async def run_longevity(
             visit_data=visit_record,
             extra_context=ctx_trad + ctx_func + chat_snippet
         )
-        diagnosis = call_claude(prompt, model=MODEL_DIAGNOSE)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        metadata, diagnosis = extract_structured_header(raw)
 
         val_prompt = get_secondary_validation_prompt(diagnosis)
         validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
@@ -230,6 +273,8 @@ async def run_longevity(
             "step": "longevity",
             "diagnosis": diagnosis,
             "validation": validation,
+            "confidence": metadata["confidence"],
+            "ai_question": metadata["question"],
         }
 
     except Exception as e:
@@ -301,10 +346,21 @@ async def chat_step(
             "traditional": "Diagnóstico Tradicional",
             "functional":  "Diagnóstico Funcional",
             "longevity":   "Diagnóstico de Longevidad",
+            "protocol_traditional": "Protocolo Tradicional",
+            "protocol_functional":  "Protocolo Funcional",
+            "protocol_longevity":   "Protocolo de Longevidad",
         }
 
-        system = f"""Eres un asistente médico IA. Estás en el paso: {step_labels.get(step, step)}.
-El médico tiene el mando. Responde con precisión clínica."""
+        system = f"""Eres APEX, asistente médico IA. Contexto actual: {step_labels.get(step, step)}.
+
+REGLAS:
+- El médico tiene al paciente enfrente. Sé breve, máximo 3-4 oraciones por respuesta.
+- Usa términos médicos — no expliques lo obvio.
+- Si el médico comparte nueva información clínica (síntomas, historia), dile concretamente si cambia el diagnóstico y cómo.
+- Si NO cambia el diagnóstico, explica por qué en 1-2 líneas.
+- Si cambia el diagnóstico, di: "Esto modifica el diagnóstico: [nuevo dx]. Te recomiendo editar el texto antes de continuar."
+- Tono: colega médico, directo, técnico pero amable.
+- Este chat es continuo — tienes contexto de toda la sesión."""
 
         history.append({"role": "user", "content": body.question})
 

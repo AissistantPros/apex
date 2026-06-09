@@ -381,50 +381,50 @@ DATOS DE LA VISITA ACTUAL
 # PROMPTS DE ANÁLISIS
 # ─────────────────────────────────────────────────────────
 
+STRUCTURED_HEADER_INSTRUCTIONS = """
+ANTES de tu análisis clínico, escribe EXACTAMENTE esta línea JSON (una sola línea):
+{"confidence": <número 0-100>, "question": "<pregunta concisa para el médico, o null si no necesitas>"}
+
+La "question" debe ser algo que el médico pueda preguntar al paciente AHORA MISMO en el consultorio
+que cambiaría o confirmaría el diagnóstico. Si no necesitas preguntar nada, pon null.
+Ejemplos de buenas preguntas: "¿Siente dolor o ardor al orinar?" / "¿El cansancio es peor por las tardes?"
+NO preguntes por labs — solo síntomas o historia que el médico pueda obtener verbalmente ahora.
+
+Después del JSON, continúa con el análisis clínico normal. Sé conciso — el médico tiene al paciente enfrente.
+Usa términos médicos, no expliques lo obvio. Máximo 400 palabras por sección.
+"""
+
+
 def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None) -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
 
-    return f"""Eres un médico internista y especialista clínico con 20 años de experiencia.
-Vas a analizar un caso clínico completo desde la perspectiva de la MEDICINA TRADICIONAL / CONVENCIONAL.
-
-Tu tarea es hacer lo que haría el mejor internista del mundo:
-identificar diagnósticos sólidos basados en la evidencia clínica disponible,
-proponer diagnósticos diferenciales y justificar cada conclusión.
+    return f"""Eres un médico internista senior. Analiza este caso clínico con precisión — el médico tratante está leyendo esto con el paciente enfrente. Sé técnico, breve y directo.
 
 {patient_ctx}
 
 {visit_ctx}
 
-INSTRUCCIONES:
-1. Analiza la totalidad de los datos anteriores.
-2. Considera la interacción entre antecedentes, hábitos, signos vitales, composición corporal,
-   pruebas funcionales, reporte subjetivo, exploración y laboratorios.
-3. Identifica el DIAGNÓSTICO PRINCIPAL más probable.
-4. Lista DIAGNÓSTICOS DIFERENCIALES ordenados por probabilidad.
-5. Para cada diagnóstico, justifica con los datos clínicos concretos del paciente.
-6. Señala qué estudios adicionales confirmarían o descartan cada diagnóstico.
-7. Identifica ALERTAS CLÍNICAS inmediatas si las hay (datos que requieren atención urgente).
+{STRUCTURED_HEADER_INSTRUCTIONS}
 
-FORMATO DE RESPUESTA:
+FORMATO DEL ANÁLISIS (después del JSON):
 ═══ DIAGNÓSTICO PRINCIPAL ═══
-[diagnóstico con CIE-10 si aplica]
-Justificación: [basada en datos específicos del paciente]
+[diagnóstico con CIE-10] — [2-3 líneas de justificación con datos concretos del paciente]
 
 ═══ DIAGNÓSTICOS DIFERENCIALES ═══
-1. [diagnóstico] — [probabilidad: alta/media/baja] — [datos que lo sustentan]
-2. [diagnóstico] — ...
-3. [diagnóstico] — ...
+1. [diagnóstico] — PROBABILIDAD: ALTA/MEDIA/BAJA — [dato clave que lo sustenta]
+2. [diagnóstico] — PROBABILIDAD: ... — [dato clave]
+3. [diagnóstico] — PROBABILIDAD: ... — [dato clave]
 
 ═══ ESTUDIOS SUGERIDOS ═══
-• URGENTE: [si aplica]
-• DESEADO: [estudios que confirmarían el diagnóstico principal]
-• COMPLEMENTARIO: [estudios adicionales de valor]
+• URGENTE: [nombre estudio] — [razón en 1 línea]
+• DESEADO: [nombre estudio] — [razón en 1 línea]
+• COMPLEMENTARIO: [nombre estudio] — [razón en 1 línea]
 
 ═══ ALERTAS CLÍNICAS ═══
-[Si hay datos que requieren atención inmediata, o "Sin alertas inmediatas"]
+[Datos que requieren atención inmediata, o "Sin alertas inmediatas"]
 
-Responde solo con el análisis clínico. Sin introducciones ni despedidas."""
+Responde solo con el JSON + análisis. Sin introducciones ni despedidas."""
 
 
 def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str,
@@ -432,8 +432,7 @@ def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: st
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
 
-    return f"""Eres un médico especializado en Medicina Funcional e Integrativa.
-Tu enfoque: NO solo tratar síntomas, sino encontrar LA RAÍZ del problema.
+    return f"""Eres un médico de medicina funcional. Identifica la raíz del problema, no solo el síntoma. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
 
@@ -444,41 +443,25 @@ Tu enfoque: NO solo tratar síntomas, sino encontrar LA RAÍZ del problema.
 DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante):
 {traditional_diagnosis}
 
-INSTRUCCIONES:
-Basándote en TODOS los datos del paciente — incluyendo hábitos, sueño, energía,
-digestión, estado de ánimo, composición corporal y antecedentes —
-identifica qué sistemas están disfuncionando y por qué.
+{STRUCTURED_HEADER_INSTRUCTIONS}
 
-1. ¿Cuál es la RAÍZ del problema? (no el síntoma, sino la causa de la causa)
-2. Construye la CASCADA DE CAUSALIDAD:
-   Evento/factor inicial → disfunción A → disfunción B → síntoma observable
-3. Identifica los sistemas desregulados:
-   - Digestivo / Microbioma
-   - Inflamatorio / Inmunológico
-   - Hormonal / Endócrino
-   - Neurológico / Cognitivo
-   - Mitocondrial / Energético
-   - Vascular / Circulatorio
-4. Señala los FACTORES PERPETUANTES (lo que mantiene el problema activo):
-   estrés, sueño, dieta, tóxinas, sedentarismo, emociones, etc.
-
-FORMATO:
+FORMATO (después del JSON):
 ═══ RAÍZ DEL PROBLEMA ═══
-[descripción clara y concisa]
+[causa raíz en 2-3 líneas con datos concretos del paciente]
 
 ═══ CASCADA DE CAUSALIDAD ═══
-[factor inicial] → [A] → [B] → [C] → [síntoma]
+[factor inicial] → [disfunción A] → [disfunción B] → [síntoma visible]
 
 ═══ SISTEMAS DESREGULADOS ═══
-1. [Sistema] — Mecanismo: [explicación] — Evidencia del paciente: [dato específico]
+1. [Sistema] — [mecanismo en 1 línea] — Evidencia: [dato del paciente]
 2. [Sistema] — ...
 
 ═══ FACTORES PERPETUANTES ═══
-• [factor] — cómo contribuye al problema
+• [factor] — [cómo contribuye, en 1 línea]
 • ...
 
-═══ CONEXIÓN CON DIAGNÓSTICO TRADICIONAL ═══
-[cómo se complementan ambas perspectivas]"""
+═══ CONEXIÓN CON DX TRADICIONAL ═══
+[1-2 líneas sobre cómo se complementan]"""
 
 
 def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str,
@@ -486,8 +469,7 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
 
-    return f"""Eres un especialista en Medicina de Longevidad, Biohacking y Envejecimiento Saludable.
-Tu objetivo: calcular la edad biológica del paciente y proponer un plan de optimización.
+    return f"""Eres especialista en medicina de longevidad. Calcula edad biológica y proyecciones. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
 
@@ -498,53 +480,27 @@ Tu objetivo: calcular la edad biológica del paciente y proponer un plan de opti
 DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante):
 {functional_diagnosis}
 
-INSTRUCCIONES:
+{STRUCTURED_HEADER_INSTRUCTIONS}
 
-1. ESTIMA LA EDAD BIOLÓGICA usando los biomarcadores disponibles:
-   - Glucosa / HbA1c (metabolismo glucémico)
-   - Perfil lipídico (HDL, LDL, triglicéridos)
-   - Inflamación (PCR, homocisteína si disponible)
-   - Función renal (creatinina, GFR)
-   - Función hepática (ALT, AST)
-   - Hormonas (testosterona, estrógenos, cortisol)
-   - Pruebas funcionales: fuerza de agarre, velocidad de marcha, equilibrio, VO2max
-   - Composición corporal: % grasa, masa muscular, grasa visceral
-   - Sueño y energía subjetiva
-   - Comportamientos de riesgo: tabaco, alcohol, sedentarismo
-
-2. RIESGOS A 5-10 AÑOS (trayectoria actual):
-   - Riesgo cardiovascular
-   - Riesgo metabólico (diabetes, síndrome metabólico)
-   - Riesgo neurodegenerativo
-   - Riesgo musculoesquelético (sarcopenia, osteoporosis)
-
-3. POTENCIAL DE MEJORA si sigue protocolo:
-   - Reducción de edad biológica posible
-   - Mejoras en energía, cognición, composición corporal
-   - Reducción de riesgos específicos
-
-FORMATO:
+FORMATO (después del JSON):
 ═══ EDAD BIOLÓGICA ESTIMADA ═══
-[X] años (vs edad cronológica de [Y] años = [+/-Z] años)
-Biomarcadores usados para el cálculo: [lista con valores]
+[X] años (cronológica: [Y] años = [+/-Z] años)
+Biomarcadores clave usados: [lista breve con valores del paciente]
 
 ═══ RIESGOS A 5-10 AÑOS ═══
-• Cardiovascular: BAJO / MODERADO / ALTO — [justificación]
-• Metabólico: BAJO / MODERADO / ALTO — [justificación]
-• Neurodegenerativo: BAJO / MODERADO / ALTO — [justificación]
-• Musculoesquelético: BAJO / MODERADO / ALTO — [justificación]
+• Cardiovascular: BAJO/MODERADO/ALTO — [1 línea de justificación]
+• Metabólico: BAJO/MODERADO/ALTO — [1 línea]
+• Neurodegenerativo: BAJO/MODERADO/ALTO — [1 línea]
+• Musculoesquelético: BAJO/MODERADO/ALTO — [1 línea]
 
-═══ TABLA: ESTADO ACTUAL vs ÓPTIMO ═══
-| Biomarcador | Valor Actual | Rango Óptimo | Estado |
-|-------------|-------------|--------------|--------|
-| [parámetro] | [valor]     | [rango]      | ✓/⚠/✗ |
+═══ ESTADO ACTUAL vs ÓPTIMO ═══
+| Parámetro | Valor actual | Rango óptimo | Estado |
+|-----------|-------------|--------------|--------|
+[máximo 6 filas, los más relevantes]
 
-═══ POTENCIAL DE MEJORA ═══
-Si sigue protocolo en los próximos 12 meses:
-• Edad biológica: puede reducirse [X] años
-• Energía: mejora estimada de [X]%
-• Riesgo cardiovascular: reducción de [X]%
-[otros puntos específicos]"""
+═══ POTENCIAL DE MEJORA (12 meses con protocolo) ═══
+• Edad biológica: -[X] años estimado
+• [2-3 mejoras concretas y cuantificadas]"""
 
 
 def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
