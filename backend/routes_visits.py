@@ -61,7 +61,9 @@ async def create_visit_root(
     patient_id = visit_data.get("patient_id")
     if not patient_id:
         raise HTTPException(400, "patient_id requerido")
-    return await create_visit(patient_id, visit_data)
+    # Pasar doctor_id ya resuelto para evitar bug de FieldInfo en llamada directa
+    doctor_id = get_doctor_id_from_token(authorization)
+    return await create_visit(patient_id, visit_data, doctor_id=doctor_id)
 
 
 @router.post("/{patient_id}")
@@ -69,11 +71,15 @@ async def create_visit(
     patient_id: str,
     visit_data: dict,
     doctor_id: str = None,
+    authorization: Optional[str] = Header(None),
 ):
     """Crear nueva visita para paciente"""
     try:
         if not doctor_id:
-            doctor_id = await get_doctor_id()
+            # Llamada directa desde FastAPI (no desde create_visit_root)
+            doctor_id = get_doctor_id_from_token(
+                authorization if isinstance(authorization, (str, type(None))) else None
+            )
 
         visit_id = str(uuid4())
 
