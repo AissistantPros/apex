@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getUser } from '@/app/lib/auth';
+import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
 import { getRole, setRole, UserRole, ROLE_LABELS } from '@/app/lib/role';
 
@@ -27,12 +27,16 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
-    getUser().then(async u => {
+    const init = async () => {
+      const u = await getUser();
       if (!u) { router.push('/auth/login'); return; }
       setUser(u);
       setActiveRole(getRole());
       try {
-        const res = await fetch(`${BACKEND()}/doctor/profile`);
+        const session = await getSession();
+        const tok = session?.access_token;
+        const headers: Record<string, string> = tok ? { Authorization: `Bearer ${tok}` } : {};
+        const res = await fetch(`${BACKEND()}/doctor/profile`, { headers });
         const data = await res.json();
         setForm({
           display_name: data.display_name || u.user_metadata?.full_name || '',
@@ -48,7 +52,8 @@ export default function ProfilePage() {
       } finally {
         setLoading(false);
       }
-    });
+    };
+    init();
   }, [router]);
 
   const set = (field: string, value: string) =>
@@ -57,9 +62,13 @@ export default function ProfilePage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const session = await getSession();
+      const tok = session?.access_token;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (tok) headers['Authorization'] = `Bearer ${tok}`;
       await fetch(`${BACKEND()}/doctor/profile`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(form),
       });
       setSaved(true);
@@ -98,7 +107,7 @@ export default function ProfilePage() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-[#dde6ef] text-lg">Dr. {displayName}</p>
+            <p className="font-bold text-[#dde6ef] text-lg">{displayName}</p>
             <p className="text-sm text-[#3d5870]">{form.clinic_name || 'Sin clínica configurada'}</p>
             <p className="text-xs text-[#3d5870] mt-1 font-mono">{form.email}</p>
           </div>

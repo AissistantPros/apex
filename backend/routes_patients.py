@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from datetime import datetime
+from auth import get_doctor_id_from_token
 from db import (
     insert_patient,
     get_patient,
@@ -40,8 +41,8 @@ def generate_patient_id(first_name: str, last_name: str, birth_date: str) -> str
 
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
-    """Extrae doctor_id del header"""
-    return "550e8400-e29b-41d4-a716-446655440000"
+    """Extrae doctor_id del JWT de Supabase."""
+    return get_doctor_id_from_token(authorization)
 
 
 @router.get("/")
@@ -223,12 +224,12 @@ doctor_profile_router = APIRouter(prefix="/doctor", tags=["doctor"])
 
 @doctor_profile_router.get("/profile")
 async def get_profile(authorization: Optional[str] = Header(None)):
-    doctor_id = "550e8400-e29b-41d4-a716-446655440000"
+    doctor_id = get_doctor_id_from_token(authorization)
     profile = get_doctor_profile(doctor_id) or {}
     return profile
 
 @doctor_profile_router.put("/profile")
 async def save_profile(data: dict, authorization: Optional[str] = Header(None)):
-    doctor_id = "550e8400-e29b-41d4-a716-446655440000"
+    doctor_id = get_doctor_id_from_token(authorization)
     result = upsert_doctor_profile(doctor_id, data)
     return result or {"ok": True}

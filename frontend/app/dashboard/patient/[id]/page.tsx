@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getUser } from '@/app/lib/auth';
+import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 
@@ -32,9 +32,12 @@ export default function PatientPage() {
 
   const loadData = async () => {
     try {
+      const session = await getSession();
+      const token = session?.access_token;
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
       const [pRes, vRes] = await Promise.all([
-        fetch(`${BACKEND()}/patients/${patientId}`),
-        fetch(`${BACKEND()}/visits/${patientId}`),
+        fetch(`${BACKEND()}/patients/${patientId}`, { headers }),
+        fetch(`${BACKEND()}/visits/${patientId}`, { headers }),
       ]);
       const pData = await pRes.json();
       const vData = await vRes.json();
@@ -42,7 +45,7 @@ export default function PatientPage() {
       setVisits(vData.visits || []);
       // Cargar notas del hilo
       try {
-        const nRes = await fetch(`${BACKEND()}/patients/${patientId}/notes`);
+        const nRes = await fetch(`${BACKEND()}/patients/${patientId}/notes`, { headers });
         const nData = await nRes.json();
         setPatientNotes(nData.notes || []);
       } catch (_) {}
@@ -61,7 +64,10 @@ export default function PatientPage() {
     }
     setDeleting(true);
     try {
-      await fetch(`${BACKEND()}/patients/${patientId}`, { method: 'DELETE' });
+      const session = await getSession();
+      const token = session?.access_token;
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      await fetch(`${BACKEND()}/patients/${patientId}`, { method: 'DELETE', headers });
       router.push('/dashboard/patients');
     } catch (e) {
       alert('Error al eliminar paciente');

@@ -128,10 +128,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Link a demo */}
-          <p className="text-center text-xs text-[#3d5870] mt-6 font-mono">
-            Demo: usa cualquier email con contraseña "password"
-          </p>
         </div>
       </div>
     </div>

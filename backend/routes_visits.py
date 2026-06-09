@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from uuid import uuid4
 from datetime import datetime
+from auth import get_doctor_id_from_token
 from db import (
     insert_visit,
     get_visit,
@@ -13,8 +14,8 @@ router = APIRouter(prefix="/visits", tags=["visits"])
 
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
-    """Extrae doctor_id del header"""
-    return "550e8400-e29b-41d4-a716-446655440000"
+    """Extrae doctor_id del JWT de Supabase."""
+    return get_doctor_id_from_token(authorization)
 
 
 @router.post("/")

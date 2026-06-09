@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { getUser } from '@/app/lib/auth';
+import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -39,9 +39,12 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
+      const session = await getSession();
+      const token = session?.access_token;
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
       const [pRes, profileRes] = await Promise.all([
-        fetch(`${BACKEND()}/patients?limit=100`),
-        fetch(`${BACKEND()}/doctor/profile`),
+        fetch(`${BACKEND()}/patients?limit=100`, { headers }),
+        fetch(`${BACKEND()}/doctor/profile`, { headers }),
       ]);
       const pData = await pRes.json();
       const profileData = await profileRes.json();
@@ -101,7 +104,7 @@ export default function DashboardPage() {
             </div>
           )}
           <h1 className="text-3xl font-serif font-bold text-[#dde6ef] mb-1">
-            Buenos días, Dr. {displayName} 👋
+            Buenos días, {displayName} 👋
           </h1>
           <p className="text-[#7a95aa]">{clinicName} — ¿Con quién trabajamos hoy?</p>
         </div>

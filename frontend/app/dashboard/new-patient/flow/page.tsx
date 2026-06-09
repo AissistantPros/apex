@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getUser } from '@/app/lib/auth';
+import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import TopNav from '@/app/components/TopNav';
 
@@ -104,6 +104,7 @@ const PHASE_CONFIG = {
 function FlowPageInner() {
   const router     = useRouter();
   const [user, setUser]     = useState<any>(null);
+  const [token, setToken]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase]   = useState(1);
   const [saving, setSaving] = useState(false);
@@ -202,9 +203,14 @@ function FlowPageInner() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    getUser().then(async u => {
+    const init = async () => {
+      const u = await getUser();
       if (!u) { router.push('/auth/login'); return; }
       setUser(u);
+      const session = await getSession();
+      const t = session?.access_token || null;
+      setToken(t);
+      const authHeader: Record<string, string> = t ? { Authorization: `Bearer ${t}` } : {};
 
       // Retomar registro de paciente existente
       const pid = searchParams.get('patient_id');
@@ -214,14 +220,15 @@ function FlowPageInner() {
         if (ph >= 2 && ph <= 3) setPhase(ph);
         // Cargar notas existentes
         try {
-          const nRes = await fetch(`${B()}/patients/${pid}/notes`);
+          const nRes = await fetch(`${B()}/patients/${pid}/notes`, { headers: authHeader });
           const nData = await nRes.json();
           setNotes(nData.notes || []);
         } catch (_) {}
       }
 
       setLoading(false);
-    });
+    };
+    init();
   }, []);
 
   // ── Helpers familia / medicamentos / fuentes ──────────────────────────────
@@ -262,9 +269,11 @@ function FlowPageInner() {
         registration_phase: 'reception',
         phases_completed: ['receptionist'],
       };
+      const authH: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) authH['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`${B()}/patients/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user?.id}` },
+        headers: authH,
         body: JSON.stringify(payload),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Error'); }
@@ -286,10 +295,12 @@ function FlowPageInner() {
       const imc = calcIMC(f.peso, f.talla);
       const age  = calcAge(f.date_of_birth);
 
+      const authH2: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) authH2['Authorization'] = `Bearer ${token}`;
       // 2a: Actualizar paciente con antecedentes
       await fetch(`${B()}/patients/${patientId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authH2,
         body: JSON.stringify({
           chronic_diseases: f.chronic_diseases, surgeries: f.surgeries,
           hospitalizations: f.hospitalizations, fractures: f.fractures,
@@ -309,7 +320,6 @@ function FlowPageInner() {
       // 2b: Crear primera visita
       const visitPayload = {
         patient_id: patientId,
-        doctor_id: '550e8400-e29b-41d4-a716-446655440000',
         visit_type: 'first_visit',
         // Signos vitales
         pa_der_sistolica: f.pa_der_sistolica, pa_der_diastolica: f.pa_der_diastolica,
@@ -340,7 +350,7 @@ function FlowPageInner() {
       };
       const vRes = await fetch(`${B()}/visits/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authH2,
         body: JSON.stringify(visitPayload),
       });
       if (!vRes.ok) throw new Error('Error al crear visita');
@@ -362,11 +372,13 @@ function FlowPageInner() {
     }
     if (!patientId) return;
     setSaving(true);
+    const authH3: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) authH3['Authorization'] = `Bearer ${token}`;
     try {
       // 3a: Actualizar paciente con datos del médico
       await fetch(`${B()}/patients/${patientId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authH3,
         body: JSON.stringify({
           sexo_biologico: f.sexo_biologico, genero_identidad: f.genero_identidad,
           sust_recreativas: f.sust_recreativas, libido_basal: f.libido_basal,
@@ -390,7 +402,7 @@ function FlowPageInner() {
       if (visitId) {
         await fetch(`${B()}/visits/${visitId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authH3,
           body: JSON.stringify({
             libido_visita: f.libido_visita,
             motivo: f.motivo, motivo_intensidad: f.motivo_intensidad,
