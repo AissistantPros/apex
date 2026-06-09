@@ -143,6 +143,7 @@ function FlowPageInner() {
     emergency_contact_name: '', emergency_contact_phone: '',
     emergency_contact_email: '', emergency_contact_relationship: '',
     referred_by: '', referred_type: '', referred_other: '',
+    social_network: '',
     prev_redes: false, prev_web: false, prev_gmaps: false,
 
     // FASE 2 — Enfermería: Antecedentes
@@ -253,7 +254,15 @@ function FlowPageInner() {
   const setMed   = (i: number, k: string, v: string) => setMeds(p => p.map((m, idx) => idx===i ? {...m, [k]: v} : m));
   const removeMed = (i: number) => setMeds(p => p.filter((_,idx) => idx!==i));
 
-  const toggleSource = (s: string) => setSources(p => p.includes(s) ? p.filter(x=>x!==s) : [...p,s]);
+  const toggleSource = (s: string) => setSources(prev => {
+    const EXCLUSIVE = ['Recomendación de paciente', 'Recomendación de médico'];
+    if (EXCLUSIVE.includes(s)) {
+      // Solo uno puede estar seleccionado a la vez
+      if (prev.includes(s)) return prev.filter(x => x !== s);
+      return [...prev.filter(x => !EXCLUSIVE.includes(x)), s];
+    }
+    return prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s];
+  });
   const toggleMulti  = (arr: string[], set: Function, v: string) =>
     set((p: string[]) => p.includes(v) ? p.filter(x=>x!==v) : [...p,v]);
 
@@ -279,6 +288,7 @@ function FlowPageInner() {
         prev_redes: f.prev_redes, prev_web: f.prev_web, prev_gmaps: f.prev_gmaps,
         sources_of_contact: sources,
         referred_other: f.referred_other,
+        social_network: f.social_network,
         registration_phase: 'reception',
         phases_completed: ['receptionist'],
       };
@@ -594,36 +604,79 @@ function FlowPageInner() {
               </Card>
 
               <Card title="¿Cómo nos conoció?" icon="📍" color={pc.color}>
-                {/* Botones en flex-wrap */}
+                {/* Botones principales — Recomendación es exclusiva entre sí */}
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {SOURCES.map(s => (
-                    <button key={s} type="button" onClick={() => toggleSource(s)}
-                      className="px-4 py-2 rounded-xl text-sm font-medium transition border"
-                      style={{
-                        background: sources.includes(s) ? 'rgba(14,165,233,.18)' : 'transparent',
-                        color:      sources.includes(s) ? '#0ea5e9' : '#7a95aa',
-                        borderColor: sources.includes(s) ? '#0ea5e9' : '#1e2d3d',
-                      }}>
-                      {s}
-                    </button>
-                  ))}
+                  {SOURCES.map(s => {
+                    const isRec = s === 'Recomendación de paciente' || s === 'Recomendación de médico';
+                    const active = sources.includes(s);
+                    return (
+                      <button key={s} type="button" onClick={() => toggleSource(s)}
+                        className="px-4 py-2 rounded-xl text-sm font-medium transition border"
+                        style={{
+                          background: active ? 'rgba(14,165,233,.18)' : 'transparent',
+                          color:      active ? '#0ea5e9' : '#7a95aa',
+                          borderColor: active ? '#0ea5e9' : '#1e2d3d',
+                        }}>
+                        {s === 'Recomendación de paciente' ? '👤 Paciente' :
+                         s === 'Recomendación de médico'   ? '🩺 Médico colega' : s}
+                      </button>
+                    );
+                  })}
                 </div>
-                {sources.includes('Otro') && (
-                  <Field label="¿CUÁL OTRO?">
-                    <input className={`${inp} ${fBlue}`} value={f.referred_other}
-                      onChange={e => set('referred_other', e.target.value)}
-                      placeholder="Describe cómo nos conoció..." />
-                  </Field>
+
+                {/* Sub-opciones según selección */}
+                {sources.includes('Redes sociales') && (
+                  <div className="mb-4 pl-3 border-l-2 border-[#0ea5e9]/40">
+                    <p className="text-xs font-mono text-[#7a95aa] mb-2">¿QUÉ RED SOCIAL?</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Facebook','Instagram','YouTube','TikTok'].map(red => (
+                        <button key={red} type="button"
+                          onClick={() => set('social_network', f.social_network === red ? '' : red)}
+                          className="px-4 py-2 rounded-xl text-sm font-medium transition border"
+                          style={{
+                            background: f.social_network === red ? 'rgba(14,165,233,.18)' : 'transparent',
+                            color:      f.social_network === red ? '#0ea5e9' : '#7a95aa',
+                            borderColor: f.social_network === red ? '#0ea5e9' : '#1e2d3d',
+                          }}>
+                          {red === 'Instagram' ? '📸' : red === 'Facebook' ? '📘' : red === 'YouTube' ? '▶️' : '🎵'} {red}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
-                {(sources.includes('Recomendación de paciente') || sources.includes('Recomendación de médico')) && (
-                  <div className={`space-y-3 ${sources.includes('Otro') ? 'mt-3' : ''} pt-3 border-t border-[#1e2d3d]`}>
-                    <Field label="NOMBRE DE QUIEN RECOMENDÓ">
+
+                {sources.includes('Recomendación de paciente') && (
+                  <div className="mb-4 pl-3 border-l-2 border-[#0ea5e9]/40">
+                    <Field label="NOMBRE DEL PACIENTE QUE RECOMENDÓ">
                       <input className={`${inp} ${fBlue}`} value={f.referred_by}
-                        onChange={e => set('referred_by', e.target.value)} placeholder="Dr. García / Paciente Martínez" />
+                        onChange={e => set('referred_by', e.target.value)}
+                        placeholder="Nombre del paciente que lo recomendó" />
                     </Field>
                   </div>
                 )}
-                <div className="mt-5 pt-4 border-t border-[#1e2d3d]">
+
+                {sources.includes('Recomendación de médico') && (
+                  <div className="mb-4 pl-3 border-l-2 border-[#0ea5e9]/40">
+                    <Field label="NOMBRE DEL MÉDICO QUE RECOMENDÓ">
+                      <input className={`${inp} ${fBlue}`} value={f.referred_by}
+                        onChange={e => set('referred_by', e.target.value)}
+                        placeholder="Dr. García, Dra. López..." />
+                    </Field>
+                  </div>
+                )}
+
+                {sources.includes('Otro') && (
+                  <div className="mb-4 pl-3 border-l-2 border-[#0ea5e9]/40">
+                    <Field label="¿CUÁL OTRO?">
+                      <input className={`${inp} ${fBlue}`} value={f.referred_other}
+                        onChange={e => set('referred_other', e.target.value)}
+                        placeholder="Describe cómo nos conoció..." />
+                    </Field>
+                  </div>
+                )}
+
+                {/* ¿Revisó antes de venir? */}
+                <div className="mt-3 pt-4 border-t border-[#1e2d3d]">
                   <p className="text-xs font-mono text-[#7a95aa] mb-3">¿REVISÓ ANTES DE VENIR?</p>
                   <div className="flex flex-wrap gap-2">
                     {[{ k:'prev_redes', l:'Redes sociales' },{ k:'prev_web', l:'Página web' },{ k:'prev_gmaps', l:'Google Maps' }].map(({k,l}) => (
