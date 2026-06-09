@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from uuid import uuid4
 from datetime import datetime
+import traceback
 from auth import get_doctor_id_from_token
 from db import (
     insert_visit,
@@ -97,7 +98,11 @@ async def create_visit(
             "created_at": result.get("created_at"),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
+        detail = f"Error creando visita: {str(e)}\n{traceback.format_exc()}"
+        print(detail)
         raise HTTPException(500, str(e))
 
 

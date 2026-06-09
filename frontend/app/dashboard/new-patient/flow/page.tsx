@@ -522,7 +522,7 @@ function FlowPageInner() {
         }),
       });
 
-      // 2b: Crear primera visita
+      // 2b: Crear o actualizar visita
       const visitPayload = {
         patient_id: patientId,
         visit_type: 'first_visit',
@@ -538,6 +538,7 @@ function FlowPageInner() {
         circ_cuello: f.circ_cuello, circ_biceps: f.circ_biceps, circ_muneca: f.circ_muneca,
         inbody_grasa: f.inbody_grasa, inbody_musculo: f.inbody_musculo,
         inbody_agua: f.inbody_agua, inbody_visceral: f.inbody_visceral,
+        actividad_si: f.actividad_si,
         actividad_tipo: f.actividad_tipo, actividad_frecuencia: f.actividad_frecuencia,
         actividad_intensidad: f.actividad_intensidad,
         // Funcional
@@ -553,17 +554,38 @@ function FlowPageInner() {
         metas: f.metas,
         status: 'nursing_done',
       };
-      const vRes = await fetch(`${B()}/visits/`, {
-        method: 'POST',
-        headers: authH2,
-        body: JSON.stringify(visitPayload),
-      });
-      if (!vRes.ok) throw new Error('Error al crear visita');
-      const vData = await vRes.json();
-      setVisitId(vData.id || vData.visit_id);
+
+      let savedVisitId = visitId;
+      if (visitId) {
+        // Ya existe visita — actualizar
+        const vRes = await fetch(`${B()}/visits/${visitId}`, {
+          method: 'PUT',
+          headers: authH2,
+          body: JSON.stringify(visitPayload),
+        });
+        if (!vRes.ok) {
+          const errBody = await vRes.json().catch(() => ({}));
+          throw new Error(errBody.detail || `HTTP ${vRes.status}`);
+        }
+      } else {
+        // No hay visita aún — crear
+        const vRes = await fetch(`${B()}/visits/`, {
+          method: 'POST',
+          headers: authH2,
+          body: JSON.stringify(visitPayload),
+        });
+        if (!vRes.ok) {
+          const errBody = await vRes.json().catch(() => ({}));
+          throw new Error(errBody.detail || `HTTP ${vRes.status}`);
+        }
+        const vData = await vRes.json();
+        savedVisitId = vData.id || vData.visit_id;
+        setVisitId(savedVisitId);
+      }
       setPhase(3);
     } catch (e: any) {
-      alert('Error en Fase 2: ' + e.message);
+      console.error('Fase 2 error:', e);
+      alert('Error en Fase 2: ' + (e.message || String(e)));
     } finally {
       setSaving(false);
     }
@@ -605,7 +627,7 @@ function FlowPageInner() {
 
       // 3b: Actualizar visita con motivo + exploración
       if (visitId) {
-        await fetch(`${B()}/visits/${visitId}`, {
+        const vRes3 = await fetch(`${B()}/visits/${visitId}`, {
           method: 'PUT',
           headers: authH3,
           body: JSON.stringify({
@@ -619,11 +641,16 @@ function FlowPageInner() {
             status: 'complete',
           }),
         });
+        if (!vRes3.ok) {
+          const errBody = await vRes3.json().catch(() => ({}));
+          throw new Error(errBody.detail || `HTTP ${vRes3.status}`);
+        }
       }
 
       router.push(`/dashboard/patient/${patientId}`);
     } catch (e: any) {
-      alert('Error en Fase 3: ' + e.message);
+      console.error('Fase 3 error:', e);
+      alert('Error en Fase 3: ' + (e.message || String(e)));
     } finally {
       setSaving(false);
     }
