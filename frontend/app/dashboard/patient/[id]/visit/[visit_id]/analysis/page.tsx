@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
+import TopNav from '@/app/components/TopNav';
 
 // ─────────────────────────────────────────────
 // Tipos
@@ -311,18 +312,9 @@ export default function AnalysisPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-14 z-50 bg-[rgba(7,10,14,.97)] border-b border-[#1e2d3d] backdrop-blur-2xl flex items-center px-6 gap-4">
-        <button onClick={() => router.back()} className="text-[#00e5a0] text-sm">← Volver</button>
-        <div className="flex-1" />
-        {info.badge && (
-          <span className="text-[10px] font-mono px-2 py-1 rounded" style={{ background: `${info.color}15`, color: info.color, border: `1px solid ${info.color}33` }}>
-            {info.badge}
-          </span>
-        )}
-      </header>
+      <TopNav />
 
-      <main className="pt-14 pb-32">
+      <main className="pt-16 pb-32">
         <div className="max-w-3xl mx-auto px-4 py-8">
 
           {/* ── INICIO ── */}

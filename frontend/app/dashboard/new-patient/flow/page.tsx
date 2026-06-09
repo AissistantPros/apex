@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
+import TopNav from '@/app/components/TopNav';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -126,8 +127,9 @@ function FlowPageInner() {
   const [sources, setSources] = useState<string[]>([]);
 
   // ── Multi-selects visita ─────────────────────────────────────────────────
-  const [animo,     setAnimo]     = useState<string[]>([]);
-  const [digestion, setDigestion] = useState<string[]>([]);
+  const [animo,       setAnimo]       = useState<string[]>([]);
+  const [digestion,   setDigestion]   = useState<string[]>([]);
+  const [alcoholTipo, setAlcoholTipo] = useState<string[]>([]);  // cerveza/vino/destilados
 
   // ── Formulario principal ─────────────────────────────────────────────────
   const [f, setF] = useState({
@@ -144,10 +146,12 @@ function FlowPageInner() {
     fractures: '', transfusions: '', childhood_diseases: '',
     allergies_medications: '', allergies_foods: '', allergies_environmental: '',
     med_notas: '',
-    smoking_status: '', smoking_count: '', smoking_since: '', smoking_until: '',
-    alcohol_status: '', alcohol_type: '', alcohol_amount: '',
+    smoking_status: '', smoking_since: '', smoking_years: '',
+    alcohol_status: '', alcohol_cantidad: '',
+    actividad_si: false,
 
     // FASE 2 — Visita: Signos vitales
+    // (antecedentes ya arriba)
     pa_der_sistolica: '', pa_der_diastolica: '',
     pa_izq_sistolica: '', pa_izq_diastolica: '',
     pa_brazo_mayor: '', fc: '', temperatura: '', spo2: '',
@@ -164,9 +168,12 @@ function FlowPageInner() {
     marcha_4m: '', equilibrio_seg: '', sentarse_levantarse: '',
 
     // FASE 2 — Visita: Reporte subjetivo
-    energia: 5, sueno_calidad: 5, sueno_horas: '', animo_val: 5,
-    digestion_val: 5, hidratacion: 5, orina_color: '', dolor_nivel: 1,
-    dolor_descripcion: '', libido: 5, metas: '',
+    energia_despertar: 5, energia_tarde: 5, energia_noche: 5,
+    sueno_calidad: 5, sueno_horas: '',
+    animo_val: 5, animo_otro: '',
+    digestion_val: 5, digestion_otro: '',
+    orina_color_manana: '', orina_color_tarde: '',
+    metas: '',
 
     // FASE 3 — Médico: Historia privada
     sexo_biologico: '', genero_identidad: '',
@@ -180,6 +187,8 @@ function FlowPageInner() {
     erectile_dysfunction: '', testosterone_use: '', testosterone_detalle: '',
     children: '', psa_ultimo: '', psa_valor: '',
 
+    // FASE 3 — Visita: Libido (movido de Fase 2)
+    libido_visita: 5,
     // FASE 3 — Visita: Motivo + Exploración
     motivo: '', motivo_intensidad: 5,
     exploracion_general: '', exploracion_piel: '', exploracion_ojos: '',
@@ -287,10 +296,10 @@ function FlowPageInner() {
           transfusions: f.transfusions, childhood_diseases: f.childhood_diseases,
           allergies_medications: f.allergies_medications, allergies_foods: f.allergies_foods,
           allergies_environmental: f.allergies_environmental, med_notas: f.med_notas,
-          smoking_status: f.smoking_status, smoking_count: f.smoking_count,
-          smoking_since: f.smoking_since, smoking_until: f.smoking_until,
-          alcohol_status: f.alcohol_status, alcohol_type: f.alcohol_type,
-          alcohol_amount: f.alcohol_amount,
+          smoking_status: f.smoking_status,
+          smoking_since: f.smoking_since, smoking_years: f.smoking_years,
+          alcohol_status: f.alcohol_status, alcohol_tipo: alcoholTipo,
+          alcohol_cantidad: f.alcohol_cantidad,
           medications: meds, family_history_table: family,
           registration_phase: 'nursing',
           phases_completed: ['receptionist', 'nurse'],
@@ -321,12 +330,12 @@ function FlowPageInner() {
         marcha_4m: f.marcha_4m, equilibrio_seg: f.equilibrio_seg,
         sentarse_levantarse: f.sentarse_levantarse,
         // Subjetivo
-        energia: f.energia, sueno_calidad: f.sueno_calidad, sueno_horas: f.sueno_horas,
-        animo_val: f.animo_val, animo_tags: animo,
-        digestion_val: f.digestion_val, digestion_tags: digestion,
-        hidratacion: f.hidratacion, orina_color: f.orina_color,
-        dolor_nivel: f.dolor_nivel, dolor_descripcion: f.dolor_descripcion,
-        libido: f.libido, metas: f.metas,
+        energia_despertar: f.energia_despertar, energia_tarde: f.energia_tarde, energia_noche: f.energia_noche,
+        sueno_calidad: f.sueno_calidad, sueno_horas: f.sueno_horas,
+        animo_val: f.animo_val, animo_tags: animo, animo_otro: f.animo_otro,
+        digestion_val: f.digestion_val, digestion_tags: digestion, digestion_otro: f.digestion_otro,
+        orina_color_manana: f.orina_color_manana, orina_color_tarde: f.orina_color_tarde,
+        metas: f.metas,
         status: 'nursing_done',
       };
       const vRes = await fetch(`${B()}/visits/`, {
@@ -383,6 +392,7 @@ function FlowPageInner() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            libido_visita: f.libido_visita,
             motivo: f.motivo, motivo_intensidad: f.motivo_intensidad,
             exploracion_general: f.exploracion_general, exploracion_piel: f.exploracion_piel,
             exploracion_ojos: f.exploracion_ojos, exploracion_boca: f.exploracion_boca,
@@ -425,15 +435,9 @@ function FlowPageInner() {
   return (
     <div className="bg-[#070a0e] min-h-screen">
 
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-14 z-50 bg-[rgba(7,10,14,.97)] border-b border-[#1e2d3d] backdrop-blur-2xl flex items-center px-6 gap-4">
-        <button onClick={() => patientId ? router.push(`/dashboard/patient/${patientId}`) : router.back()}
-          className="text-[#00e5a0] text-sm">← {patientId ? 'Ver paciente' : 'Volver'}</button>
-        <div className="flex-1" />
-        <span className="text-xs font-mono" style={{ color: pc.color }}>{pc.label}</span>
-      </header>
+      <TopNav />
 
-      <main className="pt-14 min-h-screen">
+      <main className="pt-16 min-h-screen">
         <div className="max-w-3xl mx-auto px-4 py-8 pb-36">
 
           {/* Stepper */}
@@ -679,20 +683,11 @@ function FlowPageInner() {
 
               {/* — Alergias — */}
               <Card title="Alergias conocidas" icon="⚠️" color={pc.color}>
-                <div className="space-y-3">
-                  <Field label="ALERGIAS A MEDICAMENTOS">
-                    <input className={`${inp} ${fOrng}`} value={f.allergies_medications}
-                      onChange={e => set('allergies_medications', e.target.value)} placeholder="Penicilina, AINEs, yodo..." />
-                  </Field>
-                  <Field label="ALERGIAS A ALIMENTOS">
-                    <input className={`${inp} ${fOrng}`} value={f.allergies_foods}
-                      onChange={e => set('allergies_foods', e.target.value)} placeholder="Mariscos, lácteos, nueces..." />
-                  </Field>
-                  <Field label="ALERGIAS AMBIENTALES / OTRAS">
-                    <input className={`${inp} ${fOrng}`} value={f.allergies_environmental}
-                      onChange={e => set('allergies_environmental', e.target.value)} placeholder="Polen, polvo, látex..." />
-                  </Field>
-                </div>
+                <Field label="ALERGIAS (medicamentos, alimentos, ambientales)">
+                  <textarea rows={3} className={`${inp} ${fOrng}`} value={f.allergies_medications}
+                    onChange={e => set('allergies_medications', e.target.value)}
+                    placeholder="Penicilina, mariscos, látex, polvo... o 'Sin alergias conocidas'" />
+                </Field>
               </Card>
 
               {/* — Medicamentos actuales — */}
@@ -737,6 +732,7 @@ function FlowPageInner() {
               {/* — Hábitos — */}
               <Card title="Hábitos" icon="🚬" color={pc.color}>
                 <div className="space-y-6">
+                  {/* Tabaquismo */}
                   <div>
                     <p className="text-xs font-mono text-[#7a95aa] mb-3">TABAQUISMO</p>
                     <div className="flex gap-4 flex-wrap mb-3">
@@ -748,17 +744,24 @@ function FlowPageInner() {
                         </label>
                       ))}
                     </div>
-                    {(f.smoking_status==='Fumador activo'||f.smoking_status==='Exfumador') && (
-                      <div className="grid grid-cols-3 gap-3">
-                        <Field label="CIGARROS/DÍA"><input type="number" className={`${inp} ${fOrng}`} value={f.smoking_count} onChange={e=>set('smoking_count',e.target.value)} placeholder="10" /></Field>
-                        <Field label="DESDE AÑO"><input type="number" className={`${inp} ${fOrng}`} value={f.smoking_since} onChange={e=>set('smoking_since',e.target.value)} placeholder="2005" /></Field>
-                        {f.smoking_status==='Exfumador' && <Field label="DEJÓ EN AÑO"><input type="number" className={`${inp} ${fOrng}`} value={f.smoking_until} onChange={e=>set('smoking_until',e.target.value)} placeholder="2020" /></Field>}
-                      </div>
+                    {f.smoking_status==='Fumador activo' && (
+                      <Field label="¿DESDE QUÉ AÑO FUMA?">
+                        <input type="number" className={`${inp} ${fOrng}`} value={f.smoking_since}
+                          onChange={e=>set('smoking_since',e.target.value)} placeholder="2010" />
+                      </Field>
+                    )}
+                    {f.smoking_status==='Exfumador' && (
+                      <Field label="¿CUÁNTOS AÑOS FUMÓ EN TOTAL?">
+                        <input type="number" className={`${inp} ${fOrng}`} value={f.smoking_years}
+                          onChange={e=>set('smoking_years',e.target.value)} placeholder="15" />
+                      </Field>
                     )}
                   </div>
+
+                  {/* Alcohol */}
                   <div>
                     <p className="text-xs font-mono text-[#7a95aa] mb-3">ALCOHOL</p>
-                    <div className="flex gap-4 flex-wrap mb-3">
+                    <div className="flex gap-4 flex-wrap mb-4">
                       {['Nunca','Ocasional','Frecuente','Diario'].map(s => (
                         <label key={s} className="flex items-center gap-2 cursor-pointer">
                           <input type="radio" name="alcohol" value={s} checked={f.alcohol_status===s}
@@ -768,9 +771,42 @@ function FlowPageInner() {
                       ))}
                     </div>
                     {f.alcohol_status && f.alcohol_status!=='Nunca' && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <Field label="TIPO DE BEBIDA"><input className={`${inp} ${fOrng}`} value={f.alcohol_type} onChange={e=>set('alcohol_type',e.target.value)} placeholder="Cerveza, vino..." /></Field>
-                        <Field label="CANTIDAD APROX."><input className={`${inp} ${fOrng}`} value={f.alcohol_amount} onChange={e=>set('alcohol_amount',e.target.value)} placeholder="2 cervezas fin de semana..." /></Field>
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">TIPO DE BEBIDA (puede marcar varias)</p>
+                          <div className="flex gap-3 flex-wrap">
+                            {['Cerveza','Vino','Destilados (whisky, ron, tequila...)'].map(tipo => (
+                              <label key={tipo} className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox"
+                                  checked={alcoholTipo.includes(tipo)}
+                                  onChange={() => setAlcoholTipo(p => p.includes(tipo) ? p.filter(x=>x!==tipo) : [...p,tipo])}
+                                  className="w-4 h-4 accent-[#f97316]" />
+                                <span className="text-sm text-[#dde6ef]">{tipo}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">CANTIDAD APROXIMADA A LA SEMANA</p>
+                          <div className="flex flex-col gap-2">
+                            {[
+                              { v:'1-5',    l:'1–5 bebidas',            note:'Bajo riesgo' },
+                              { v:'6-10',   l:'6–10 bebidas',           note:'Riesgo moderado' },
+                              { v:'11-15',  l:'11–15 bebidas',          note:'Riesgo elevado' },
+                              { v:'16-20',  l:'16–20 bebidas',          note:'Riesgo alto' },
+                              { v:'20+',    l:'Más de 20 bebidas',      note:'⚠️ Consumo problemático' },
+                            ].map(opt => (
+                              <label key={opt.v} className="flex items-center gap-3 cursor-pointer">
+                                <input type="radio" name="alcohol_cant" value={opt.v}
+                                  checked={f.alcohol_cantidad===opt.v}
+                                  onChange={e=>set('alcohol_cantidad',e.target.value)}
+                                  className="w-4 h-4 accent-[#f97316]" />
+                                <span className="text-sm text-[#dde6ef]">{opt.l}</span>
+                                <span className="text-xs text-[#3d5870]">{opt.note}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -831,6 +867,7 @@ function FlowPageInner() {
 
               <Card title="Composición corporal y actividad física" icon="⚖️" color={pc.color}>
                 <div className="space-y-4">
+                  {/* Peso, talla, IMC */}
                   <div className="grid grid-cols-3 gap-4">
                     <Field label="PESO (kg)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.peso} onChange={e=>set('peso',e.target.value)} placeholder="75" /></Field>
                     <Field label="TALLA (cm)"><input type="number" className={`${inp} ${fOrng}`} value={f.talla} onChange={e=>set('talla',e.target.value)} placeholder="170" /></Field>
@@ -841,16 +878,14 @@ function FlowPageInner() {
                       </div>
                     </Field>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  {/* Circunferencias (solo las relevantes) */}
+                  <div className="grid grid-cols-4 gap-3">
                     <Field label="CINTURA (cm)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.circ_cintura} onChange={e=>set('circ_cintura',e.target.value)} placeholder="85" /></Field>
-                    <Field label="ABDOMINAL (cm)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.circ_abdominal} onChange={e=>set('circ_abdominal',e.target.value)} placeholder="90" /></Field>
-                    <Field label="CADERA (cm)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.circ_cadera} onChange={e=>set('circ_cadera',e.target.value)} placeholder="95" /></Field>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
                     <Field label="CUELLO (cm)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.circ_cuello} onChange={e=>set('circ_cuello',e.target.value)} placeholder="38" /></Field>
                     <Field label="BÍCEPS (cm)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.circ_biceps} onChange={e=>set('circ_biceps',e.target.value)} placeholder="32" /></Field>
                     <Field label="MUÑECA (cm)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.circ_muneca} onChange={e=>set('circ_muneca',e.target.value)} placeholder="16" /></Field>
                   </div>
+                  {/* InBody */}
                   <div>
                     <p className="text-xs font-mono text-[#7a95aa] mb-2">INBODY / BIOIMPEDANCIA (si se realizó)</p>
                     <div className="grid grid-cols-4 gap-3">
@@ -860,13 +895,38 @@ function FlowPageInner() {
                       <Field label="VISCERAL"><input type="number" className={`${inp} ${fOrng}`} value={f.inbody_visceral} onChange={e=>set('inbody_visceral',e.target.value)} placeholder="8" /></Field>
                     </div>
                   </div>
+                  {/* Actividad física */}
                   <div>
-                    <p className="text-xs font-mono text-[#7a95aa] mb-2">ACTIVIDAD FÍSICA</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <Field label="TIPO"><input className={`${inp} ${fOrng}`} value={f.actividad_tipo} onChange={e=>set('actividad_tipo',e.target.value)} placeholder="Cardio, pesas, yoga..." /></Field>
-                      <Field label="FRECUENCIA"><input className={`${inp} ${fOrng}`} value={f.actividad_frecuencia} onChange={e=>set('actividad_frecuencia',e.target.value)} placeholder="3x/semana" /></Field>
-                      <Field label="INTENSIDAD"><input className={`${inp} ${fOrng}`} value={f.actividad_intensidad} onChange={e=>set('actividad_intensidad',e.target.value)} placeholder="Moderada" /></Field>
-                    </div>
+                    <p className="text-xs font-mono text-[#7a95aa] mb-3">ACTIVIDAD FÍSICA</p>
+                    <label className="flex items-center gap-3 cursor-pointer mb-4">
+                      <input type="checkbox" checked={f.actividad_si}
+                        onChange={e=>set('actividad_si',e.target.checked)} className="w-4 h-4 accent-[#f97316]" />
+                      <span className="text-sm text-[#dde6ef]">El paciente realiza actividad física regularmente</span>
+                    </label>
+                    {f.actividad_si && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <Field label="TIPO DE EJERCICIO">
+                          <input className={`${inp} ${fOrng}`} value={f.actividad_tipo}
+                            onChange={e=>set('actividad_tipo',e.target.value)} placeholder="Cardio, pesas, yoga..." />
+                        </Field>
+                        <Field label="FRECUENCIA">
+                          <select className={`${inp} ${fOrng}`} value={f.actividad_frecuencia}
+                            onChange={e=>set('actividad_frecuencia',e.target.value)}>
+                            <option value="">Seleccionar</option>
+                            {['1 vez/semana','2 veces/semana','3 veces/semana','4 veces/semana','5 veces/semana','Diario'].map(o=><option key={o}>{o}</option>)}
+                          </select>
+                        </Field>
+                        <Field label="INTENSIDAD">
+                          <select className={`${inp} ${fOrng}`} value={f.actividad_intensidad}
+                            onChange={e=>set('actividad_intensidad',e.target.value)}>
+                            <option value="">Seleccionar</option>
+                            <option>Baja</option>
+                            <option>Moderada</option>
+                            <option>Fuerte / Intensa</option>
+                          </select>
+                        </Field>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -887,58 +947,89 @@ function FlowPageInner() {
 
               <Card title="Reporte subjetivo del paciente" icon="🧠" color={pc.color}>
                 <div className="space-y-5">
-                  <Slider label="NIVEL DE ENERGÍA (1-10)" value={f.energia} onChange={v=>set('energia',v)} color="#f97316" />
+
+                  {/* Energía — 3 momentos del día */}
+                  <div>
+                    <p className="text-xs font-mono text-[#7a95aa] mb-3">NIVEL DE ENERGÍA (1=muy bajo · 10=excelente)</p>
+                    <div className="space-y-3">
+                      <Slider label="Al despertar" value={f.energia_despertar} onChange={v=>set('energia_despertar',v)} color="#f97316" />
+                      <Slider label="Por la tarde" value={f.energia_tarde}    onChange={v=>set('energia_tarde',v)}    color="#f97316" />
+                      <Slider label="Por la noche"  value={f.energia_noche}   onChange={v=>set('energia_noche',v)}   color="#f97316" />
+                    </div>
+                  </div>
+
+                  {/* Sueño */}
                   <div className="grid grid-cols-2 gap-4">
                     <Slider label="CALIDAD DEL SUEÑO (1-10)" value={f.sueno_calidad} onChange={v=>set('sueno_calidad',v)} color="#f97316" />
-                    <Field label="HORAS DE SUEÑO">
-                      <input type="number" step="0.5" className={`${inp} ${fOrng}`} value={f.sueno_horas} onChange={e=>set('sueno_horas',e.target.value)} placeholder="7.5" />
+                    <Field label="HORAS DE SUEÑO (aprox.)">
+                      <input type="number" step="0.5" className={`${inp} ${fOrng}`} value={f.sueno_horas}
+                        onChange={e=>set('sueno_horas',e.target.value)} placeholder="7.5" />
                     </Field>
                   </div>
+
+                  {/* Estado anímico */}
                   <div>
                     <p className="text-xs font-mono text-[#7a95aa] mb-2">ESTADO ANÍMICO (puede marcar varios)</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mb-2">
                       {ANIMO_OPTS.map(o => (
                         <button key={o} onClick={() => toggleMulti(animo, setAnimo, o)}
                           className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
-                          style={{ background: animo.includes(o) ? 'rgba(249,115,22,.15)' : 'transparent', color: animo.includes(o) ? '#f97316' : '#7a95aa', borderColor: animo.includes(o) ? '#f97316' : '#1e2d3d' }}>
+                          style={{ background: animo.includes(o)?'rgba(249,115,22,.15)':'transparent', color: animo.includes(o)?'#f97316':'#7a95aa', borderColor: animo.includes(o)?'#f97316':'#1e2d3d' }}>
                           {o}
                         </button>
                       ))}
                     </div>
+                    {animo.includes('Otro') && (
+                      <input className={`${inp} ${fOrng} mt-1`} value={f.animo_otro}
+                        onChange={e=>set('animo_otro',e.target.value)}
+                        placeholder="Describir otro estado anímico..." />
+                    )}
                   </div>
+
+                  {/* Digestión */}
                   <Slider label="DIGESTIÓN GENERAL (1-10)" value={f.digestion_val} onChange={v=>set('digestion_val',v)} color="#f97316" />
                   <div>
                     <p className="text-xs font-mono text-[#7a95aa] mb-2">SÍNTOMAS DIGESTIVOS</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mb-2">
                       {DIGESTION_OPTS.map(o => (
                         <button key={o} onClick={() => toggleMulti(digestion, setDigestion, o)}
                           className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
-                          style={{ background: digestion.includes(o) ? 'rgba(249,115,22,.15)' : 'transparent', color: digestion.includes(o) ? '#f97316' : '#7a95aa', borderColor: digestion.includes(o) ? '#f97316' : '#1e2d3d' }}>
+                          style={{ background: digestion.includes(o)?'rgba(249,115,22,.15)':'transparent', color: digestion.includes(o)?'#f97316':'#7a95aa', borderColor: digestion.includes(o)?'#f97316':'#1e2d3d' }}>
                           {o}
                         </button>
                       ))}
                     </div>
+                    {digestion.includes('Otro') && (
+                      <input className={`${inp} ${fOrng} mt-1`} value={f.digestion_otro}
+                        onChange={e=>set('digestion_otro',e.target.value)}
+                        placeholder="Describir otro síntoma digestivo..." />
+                    )}
                   </div>
-                  <Slider label="HIDRATACIÓN PERCIBIDA (1-10)" value={f.hidratacion} onChange={v=>set('hidratacion',v)} color="#f97316" />
+
+                  {/* Color de orina — mañana y tarde */}
                   <div>
-                    <p className="text-xs font-mono text-[#7a95aa] mb-2">COLOR DE ORINA HABITUAL</p>
-                    <div className="flex gap-3 flex-wrap">
-                      {ORINA_COLORS.map(c => (
-                        <button key={c.hex} onClick={() => set('orina_color', c.hex)}
-                          title={`${c.label} — ${c.text}`}
-                          className="w-10 h-10 rounded-full border-2 transition"
-                          style={{ background: c.hex, borderColor: f.orina_color===c.hex ? '#00e5a0' : 'transparent' }} />
+                    <p className="text-xs font-mono text-[#7a95aa] mb-3">COLOR DE ORINA</p>
+                    <div className="space-y-3">
+                      {[
+                        { label: 'Por la mañana', field: 'orina_color_manana' as const },
+                        { label: 'Por la tarde',   field: 'orina_color_tarde'  as const },
+                      ].map(({ label, field }) => (
+                        <div key={field}>
+                          <p className="text-xs text-[#3d5870] mb-1.5">{label}</p>
+                          <div className="flex gap-3 flex-wrap">
+                            {ORINA_COLORS.map(c => (
+                              <button key={c.hex} onClick={() => set(field, c.hex)}
+                                title={`${c.label} — ${c.text}`}
+                                className="w-9 h-9 rounded-full border-2 transition"
+                                style={{ background: c.hex, borderColor: f[field]===c.hex ? '#00e5a0' : 'transparent' }} />
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
-                  <div>
-                    <Slider label="DOLOR (1=ninguno, 10=insoportable)" value={f.dolor_nivel} onChange={v=>set('dolor_nivel',v)} color="#f43f5e" />
-                    {f.dolor_nivel > 1 && (
-                      <textarea rows={2} className={`${inp} ${fOrng} mt-2`} value={f.dolor_descripcion}
-                        onChange={e=>set('dolor_descripcion',e.target.value)} placeholder="Describir zona, tipo de dolor..." />
-                    )}
-                  </div>
-                  <Slider label="LIBIDO (1-10)" value={f.libido} onChange={v=>set('libido',v)} color="#f97316" />
+
+                  {/* Metas */}
                   <Field label="METAS DEL PACIENTE PARA ESTA CONSULTA">
                     <textarea rows={3} className={`${inp} ${fOrng}`} value={f.metas}
                       onChange={e=>set('metas',e.target.value)}
@@ -1074,11 +1165,18 @@ function FlowPageInner() {
                 <Card title="Salud sexual" icon="💛" color={pc.color}>
                   <p className="text-xs text-[#7a95aa] mb-4">Confidencial — solo visible para el médico tratante.</p>
                   <div className="space-y-4">
-                    <Field label="LIBIDO EN CONDICIONES NORMALES (1-10)">
+                    <Field label="LIBIDO BASAL — EN CONDICIONES NORMALES (1-10)">
                       <div className="flex items-center gap-4">
                         <input type="range" min={1} max={10} value={f.libido_basal}
                           onChange={e=>set('libido_basal',e.target.value)} className="flex-1" />
                         <span className="text-[#a78bfa] font-mono text-lg min-w-[30px]">{f.libido_basal}</span>
+                      </div>
+                    </Field>
+                    <Field label="LIBIDO ACTUAL — ¿CÓMO HA ESTADO RECIENTEMENTE? (1-10)">
+                      <div className="flex items-center gap-4">
+                        <input type="range" min={1} max={10} value={f.libido_visita}
+                          onChange={e=>set('libido_visita',parseInt(e.target.value))} className="flex-1" />
+                        <span className="text-[#a78bfa] font-mono text-lg min-w-[30px]">{f.libido_visita}</span>
                       </div>
                     </Field>
                     <Field label="NOTAS DE SALUD SEXUAL">

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
+import { getRole, setRole, UserRole, ROLE_LABELS } from '@/app/lib/role';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -13,6 +14,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [activeRole, setActiveRole] = useState<UserRole>('doctor');
 
   const [form, setForm] = useState({
     display_name: '',
@@ -28,6 +30,7 @@ export default function ProfilePage() {
     getUser().then(async u => {
       if (!u) { router.push('/auth/login'); return; }
       setUser(u);
+      setActiveRole(getRole());
       try {
         const res = await fetch(`${BACKEND()}/doctor/profile`);
         const data = await res.json();
@@ -133,6 +136,29 @@ export default function ProfilePage() {
             </Field>
             <Field label="URL del logo de la clínica (opcional)">
               <input value={form.clinic_logo_url} onChange={e => set('clinic_logo_url', e.target.value)} className={inp} placeholder="https://..." />
+            </Field>
+          </Card>
+
+          {/* Rol activo */}
+          <Card title="Rol activo (temporal hasta auth real)" icon="🔑">
+            <Field label="¿CON QUÉ ROL ESTÁS USANDO APEX AHORA?">
+              <div className="flex gap-3">
+                {(['doctor','nurse','receptionist'] as UserRole[]).map(r => (
+                  <button key={r}
+                    onClick={() => { setRole(r); setActiveRole(r); }}
+                    className="flex-1 py-3 rounded-xl text-sm font-bold transition border"
+                    style={{
+                      background: activeRole === r ? (r==='doctor' ? '#a78bfa' : r==='nurse' ? '#f97316' : '#0ea5e9') + '20' : 'transparent',
+                      color:      activeRole === r ? (r==='doctor' ? '#a78bfa' : r==='nurse' ? '#f97316' : '#0ea5e9') : '#7a95aa',
+                      borderColor: activeRole === r ? (r==='doctor' ? '#a78bfa' : r==='nurse' ? '#f97316' : '#0ea5e9') : '#1e2d3d',
+                    }}>
+                    {r==='doctor' ? '🟣' : r==='nurse' ? '🟨' : '🟦'} {ROLE_LABELS[r]}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-[#3d5870] mt-2">
+                El menú superior cambia según el rol. Cuando se implemente auth real, esto será automático.
+              </p>
             </Field>
           </Card>
 
