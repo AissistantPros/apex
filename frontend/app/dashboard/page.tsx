@@ -112,7 +112,7 @@ export default function DashboardPage() {
         {/* 3 botones grandes */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           <BigButton icon="👤" label="Paciente Nuevo" color="#00e5a0"
-            onClick={() => router.push('/dashboard/new-patient')} />
+            onClick={() => router.push('/dashboard/new-patient/flow')} />
           <BigButton icon="📊" label="Estadísticas" color="#0ea5e9"
             onClick={() => router.push('/dashboard/stats')} />
           <BigButton icon="❓" label="Ayuda" color="#f59e0b"
@@ -184,15 +184,9 @@ export default function DashboardPage() {
 
         {/* Actividad reciente */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-semibold text-[#dde6ef]">📋 Actividad reciente</h2>
-              <p className="text-xs text-[#3d5870] mt-0.5">Pacientes con cambios recientes</p>
-            </div>
-            <button onClick={() => router.push('/dashboard/patients')}
-              className="text-sm text-[#0ea5e9] hover:underline font-mono">
-              Ver todos →
-            </button>
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-[#dde6ef]">📋 Actividad reciente</h2>
+            <p className="text-xs text-[#3d5870] mt-0.5">Pacientes con cambios recientes</p>
           </div>
 
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-hidden">
@@ -200,7 +194,7 @@ export default function DashboardPage() {
               <div className="p-10 text-center">
                 <p className="text-4xl mb-3">🏥</p>
                 <p className="text-[#7a95aa] font-medium">Aún no hay pacientes</p>
-                <button onClick={() => router.push('/dashboard/new-patient')}
+                <button onClick={() => router.push('/dashboard/new-patient/flow')}
                   className="mt-4 px-5 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition">
                   + Paciente Nuevo
                 </button>

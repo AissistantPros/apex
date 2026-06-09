@@ -25,7 +25,7 @@ const ENFERMEDADES: { key: Enfermedad; label: string }[] = [
 ];
 const SOURCES = [
   'Recomendación de paciente','Recomendación de médico','Redes sociales',
-  'Búsqueda en internet','Página web','Google Maps','Publicidad pagada','Otro',
+  'Búsqueda en internet','Página web','Google Maps','Otro',
 ];
 const ANIMO_OPTS     = ['Estable','Ansioso','Irritable','Triste','Sin motivación','Bien','Otro'];
 const DIGESTION_OPTS = ['Sin problemas','Distensión','Estreñimiento','Diarrea','Reflujo','Náuseas','Otro'];
@@ -103,11 +103,14 @@ const PHASE_CONFIG = {
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 function FlowPageInner() {
   const router     = useRouter();
-  const [user, setUser]     = useState<any>(null);
-  const [token, setToken]   = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [phase, setPhase]   = useState(1);
-  const [saving, setSaving] = useState(false);
+  const [user, setUser]         = useState<any>(null);
+  const [token, setToken]       = useState<string | null>(null);
+  const [docName, setDocName]   = useState('Doctor');
+  const [docPhoto, setDocPhoto] = useState<string | null>(null);
+  const [pendingNote, setPendingNote] = useState('');
+  const [loading, setLoading]   = useState(true);
+  const [phase, setPhase]       = useState(1);
+  const [saving, setSaving]     = useState(false);
 
   // ID del paciente una vez guardada la Fase 1
   const [patientId, setPatientId] = useState<string | null>(null);
@@ -139,7 +142,7 @@ function FlowPageInner() {
     email: '', phone: '', phone_landline: '',
     emergency_contact_name: '', emergency_contact_phone: '',
     emergency_contact_email: '', emergency_contact_relationship: '',
-    referred_by: '', referred_type: '',
+    referred_by: '', referred_type: '', referred_other: '',
     prev_redes: false, prev_web: false, prev_gmaps: false,
 
     // FASE 2 — Enfermería: Antecedentes
@@ -212,6 +215,15 @@ function FlowPageInner() {
       setToken(t);
       const authHeader: Record<string, string> = t ? { Authorization: `Bearer ${t}` } : {};
 
+      // Cargar perfil del doctor para el TopNav
+      try {
+        const pRes = await fetch(`${B()}/doctor/profile`, { headers: authHeader });
+        const pData = await pRes.json();
+        const name = pData.display_name || u?.user_metadata?.full_name || u?.email?.split('@')[0] || 'Doctor';
+        setDocName(name);
+        if (pData.photo_url) setDocPhoto(pData.photo_url);
+      } catch (_) {}
+
       // Retomar registro de paciente existente
       const pid = searchParams.get('patient_id');
       const ph  = parseInt(searchParams.get('phase') || '1');
@@ -266,6 +278,7 @@ function FlowPageInner() {
         referred_by: f.referred_by, referred_type: f.referred_type,
         prev_redes: f.prev_redes, prev_web: f.prev_web, prev_gmaps: f.prev_gmaps,
         sources_of_contact: sources,
+        referred_other: f.referred_other,
         registration_phase: 'reception',
         phases_completed: ['receptionist'],
       };
@@ -278,7 +291,29 @@ function FlowPageInner() {
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Error'); }
       const data = await res.json();
-      setPatientId(data.id);
+      const newId = data.id;
+      setPatientId(newId);
+
+      // Guardar nota pendiente si la hay
+      if (pendingNote.trim()) {
+        try {
+          const noteRes = await fetch(`${B()}/patients/${newId}/notes`, {
+            method: 'POST',
+            headers: authH,
+            body: JSON.stringify({
+              content: pendingNote.trim(),
+              author_role: 'receptionist',
+              author_name: docName,
+            }),
+          });
+          if (noteRes.ok) {
+            const noteData = await noteRes.json();
+            setNotes([noteData]);
+          }
+        } catch (_) {}
+        setPendingNote('');
+      }
+
       setPhase(2);
     } catch (e: any) {
       alert('Error al guardar: ' + e.message);
@@ -447,7 +482,7 @@ function FlowPageInner() {
   return (
     <div className="bg-[#070a0e] min-h-screen">
 
-      <TopNav />
+      <TopNav userName={docName} photoUrl={docPhoto} />
 
       <main className="pt-16 min-h-screen">
         <div className="max-w-3xl mx-auto px-4 py-8 pb-36">
@@ -559,46 +594,73 @@ function FlowPageInner() {
               </Card>
 
               <Card title="¿Cómo nos conoció?" icon="📍" color={pc.color}>
-                <div className="space-y-2 mb-4">
+                {/* Botones en flex-wrap */}
+                <div className="flex flex-wrap gap-2 mb-4">
                   {SOURCES.map(s => (
-                    <label key={s} className="flex items-center gap-3 cursor-pointer">
-                      <input type="checkbox" checked={sources.includes(s)} onChange={() => toggleSource(s)}
-                        className="w-4 h-4 accent-[#0ea5e9]" />
-                      <span className="text-sm text-[#dde6ef]">{s}</span>
-                    </label>
+                    <button key={s} type="button" onClick={() => toggleSource(s)}
+                      className="px-4 py-2 rounded-xl text-sm font-medium transition border"
+                      style={{
+                        background: sources.includes(s) ? 'rgba(14,165,233,.18)' : 'transparent',
+                        color:      sources.includes(s) ? '#0ea5e9' : '#7a95aa',
+                        borderColor: sources.includes(s) ? '#0ea5e9' : '#1e2d3d',
+                      }}>
+                      {s}
+                    </button>
                   ))}
                 </div>
+                {sources.includes('Otro') && (
+                  <Field label="¿CUÁL OTRO?">
+                    <input className={`${inp} ${fBlue}`} value={f.referred_other}
+                      onChange={e => set('referred_other', e.target.value)}
+                      placeholder="Describe cómo nos conoció..." />
+                  </Field>
+                )}
                 {(sources.includes('Recomendación de paciente') || sources.includes('Recomendación de médico')) && (
-                  <div className="space-y-3 pt-4 border-t border-[#1e2d3d]">
+                  <div className={`space-y-3 ${sources.includes('Otro') ? 'mt-3' : ''} pt-3 border-t border-[#1e2d3d]`}>
                     <Field label="NOMBRE DE QUIEN RECOMENDÓ">
                       <input className={`${inp} ${fBlue}`} value={f.referred_by}
                         onChange={e => set('referred_by', e.target.value)} placeholder="Dr. García / Paciente Martínez" />
                     </Field>
                   </div>
                 )}
-                <div className="mt-4 pt-4 border-t border-[#1e2d3d]">
+                <div className="mt-5 pt-4 border-t border-[#1e2d3d]">
                   <p className="text-xs font-mono text-[#7a95aa] mb-3">¿REVISÓ ANTES DE VENIR?</p>
-                  <div className="flex gap-6">
+                  <div className="flex flex-wrap gap-2">
                     {[{ k:'prev_redes', l:'Redes sociales' },{ k:'prev_web', l:'Página web' },{ k:'prev_gmaps', l:'Google Maps' }].map(({k,l}) => (
-                      <label key={k} className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={f[k as keyof typeof f] as boolean}
-                          onChange={e => set(k, e.target.checked)} className="w-4 h-4 accent-[#0ea5e9]" />
-                        <span className="text-sm text-[#dde6ef]">{l}</span>
-                      </label>
+                      <button key={k} type="button"
+                        onClick={() => set(k, !(f[k as keyof typeof f] as boolean))}
+                        className="px-4 py-2 rounded-xl text-sm font-medium transition border"
+                        style={{
+                          background: (f[k as keyof typeof f] as boolean) ? 'rgba(14,165,233,.18)' : 'transparent',
+                          color:      (f[k as keyof typeof f] as boolean) ? '#0ea5e9' : '#7a95aa',
+                          borderColor:(f[k as keyof typeof f] as boolean) ? '#0ea5e9' : '#1e2d3d',
+                        }}>
+                        {l}
+                      </button>
                     ))}
                   </div>
                 </div>
               </Card>
 
-              {/* Nota de recepción */}
+              {/* Nota de recepción — siempre visible */}
               <Card title="Nota de Recepción" icon="📝" color={pc.color}>
-                <p className="text-xs text-[#3d5870] mb-3">Observaciones de la recepcionista. Se guardará con timestamp al avanzar.</p>
                 {patientId ? (
-                  <NoteThread patientId={patientId} notes={notes} defaultRole="receptionist"
-                    onNoteAdded={n => setNotes(prev => [...prev, n])}
-                    onNoteDeleted={id => setNotes(prev => prev.filter(n => n.id !== id))} />
+                  <>
+                    <p className="text-xs text-[#3d5870] mb-3">Agrega observaciones. Quedan registradas con timestamp.</p>
+                    <NoteThread patientId={patientId} notes={notes} defaultRole="receptionist"
+                      onNoteAdded={n => setNotes(prev => [...prev, n])}
+                      onNoteDeleted={id => setNotes(prev => prev.filter(n => n.id !== id))} />
+                  </>
                 ) : (
-                  <p className="text-xs text-[#7a95aa]">Las notas estarán disponibles después de guardar los datos generales.</p>
+                  <>
+                    <p className="text-xs text-[#3d5870] mb-3">La nota se guardará al avanzar a la siguiente fase.</p>
+                    <textarea
+                      rows={3}
+                      value={pendingNote}
+                      onChange={e => setPendingNote(e.target.value)}
+                      className={`${inp} ${fBlue} resize-none`}
+                      placeholder="Observaciones de recepción..." />
+                  </>
                 )}
               </Card>
             </>

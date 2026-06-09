@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
@@ -15,6 +15,20 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [activeRole, setActiveRole] = useState<UserRole>('doctor');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert('La imagen no debe superar 2 MB'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target?.result as string;
+      setForm(prev => ({ ...prev, photo_url: base64 }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const [form, setForm] = useState({
     display_name: '',
@@ -139,9 +153,48 @@ export default function ProfilePage() {
             <Field label="Nombre de la clínica o consultorio">
               <input value={form.clinic_name} onChange={e => set('clinic_name', e.target.value)} className={inp} placeholder="Clínica Longevidad, Consultorio García..." />
             </Field>
-            <Field label="URL de tu foto de perfil">
-              <input value={form.photo_url} onChange={e => set('photo_url', e.target.value)} className={inp} placeholder="https://..." />
-              <p className="text-xs text-[#3d5870] mt-1">Sube tu foto a un servicio como imgur.com o cloudinary.com y pega el link aquí.</p>
+            <Field label="FOTO DE PERFIL">
+              <div className="flex items-center gap-4">
+                {/* Preview */}
+                <div className="flex-shrink-0">
+                  {form.photo_url ? (
+                    <img src={form.photo_url} alt="foto" className="w-16 h-16 rounded-xl object-cover border-2 border-[#00e5a0]/30" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-2xl font-black text-black">
+                      {displayName[0]?.toUpperCase() || 'D'}
+                    </div>
+                  )}
+                </div>
+                {/* Botón subir + input URL */}
+                <div className="flex-1 space-y-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoFile}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2 px-4 rounded-lg text-sm font-semibold border border-[#1e2d3d] text-[#0ea5e9] hover:border-[#0ea5e9] hover:bg-[rgba(14,165,233,.08)] transition"
+                  >
+                    📷 Subir imagen (máx. 2 MB)
+                  </button>
+                  <input
+                    value={form.photo_url.startsWith('data:') ? '' : form.photo_url}
+                    onChange={e => set('photo_url', e.target.value)}
+                    className={inp}
+                    placeholder="O pega una URL de imagen..."
+                  />
+                </div>
+              </div>
+              {form.photo_url && (
+                <button type="button" onClick={() => set('photo_url', '')}
+                  className="mt-2 text-xs text-[#f43f5e] hover:underline">
+                  × Quitar foto
+                </button>
+              )}
             </Field>
             <Field label="URL del logo de la clínica (opcional)">
               <input value={form.clinic_logo_url} onChange={e => set('clinic_logo_url', e.target.value)} className={inp} placeholder="https://..." />
