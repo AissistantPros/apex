@@ -486,6 +486,8 @@ function FlowPageInner() {
       const data = await res.json();
       const newId = data.id;
       setPatientId(newId);
+      // Actualizar URL para que un reload conserve el progreso
+      router.replace(`/dashboard/new-patient/flow?patient_id=${newId}&phase=2`);
 
       // Guardar nota pendiente si la hay
       if (pendingNote.trim()) {
@@ -605,6 +607,8 @@ function FlowPageInner() {
         savedVisitId = vData.id || vData.visit_id;
         setVisitId(savedVisitId);
       }
+      // Actualizar URL para que un reload conserve el progreso
+      router.replace(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=3`);
       setPhase(3);
     } catch (e: any) {
       console.error('Fase 2 error:', e);
