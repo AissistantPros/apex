@@ -231,6 +231,166 @@ function FlowPageInner() {
       if (pid) {
         setPatientId(pid);
         if (ph >= 2 && ph <= 3) setPhase(ph);
+
+        // ── Cargar datos del paciente desde la DB ─────────────────────────────
+        try {
+          const patRes = await fetch(`${B()}/patients/${pid}`, { headers: authHeader });
+          const p = await patRes.json();
+          if (p && !p.detail) {
+            setF(prev => ({
+              ...prev,
+              // Fase 1 — Recepción
+              first_name:                     p.first_name                    || '',
+              last_name:                      p.last_name                     || '',
+              date_of_birth:                  p.date_of_birth || p.birth_date || '',
+              occupation:                     p.occupation                    || '',
+              city:                           p.city                          || '',
+              email:                          p.email                         || '',
+              phone:                          p.phone                         || '',
+              phone_landline:                 p.phone_landline                || '',
+              emergency_contact_name:         p.emergency_contact_name        || '',
+              emergency_contact_phone:        p.emergency_contact_phone       || '',
+              emergency_contact_email:        p.emergency_contact_email       || '',
+              emergency_contact_relationship: p.emergency_contact_relationship|| '',
+              referred_by:                    p.referred_by                   || '',
+              referred_type:                  p.referred_type                 || '',
+              referred_other:                 p.referred_other                || '',
+              social_network:                 p.social_network                || '',
+              prev_redes:                     p.prev_redes                    ?? false,
+              prev_web:                       p.prev_web                      ?? false,
+              prev_gmaps:                     p.prev_gmaps                    ?? false,
+              // Fase 2 — Antecedentes
+              chronic_diseases:               p.chronic_diseases              || '',
+              surgeries:                      p.surgeries                     || '',
+              hospitalizations:               p.hospitalizations              || '',
+              fractures:                      p.fractures                     || '',
+              transfusions:                   p.transfusions                  || '',
+              childhood_diseases:             p.childhood_diseases            || '',
+              allergies_medications:          p.allergies_medications         || '',
+              allergies_foods:                p.allergies_foods               || '',
+              allergies_environmental:        p.allergies_environmental       || '',
+              med_notas:                      p.med_notas                     || '',
+              smoking_status:                 p.smoking_status                || '',
+              smoking_since:                  p.smoking_since                 || '',
+              smoking_years:                  p.smoking_years                 || '',
+              alcohol_status:                 p.alcohol_status                || '',
+              alcohol_cantidad:               p.alcohol_cantidad              || '',
+              // Fase 3 — Médico
+              sexo_biologico:                 p.sexo_biologico                || '',
+              genero_identidad:               p.genero_identidad              || '',
+              sust_recreativas:               p.sust_recreativas              || '',
+              libido_basal:                   p.libido_basal                  || '5',
+              salud_sexual_notas:             p.salud_sexual_notas            || '',
+              dx_psiquiatrico:                p.dx_psiquiatrico               || '',
+              med_psiquiatrica:               p.med_psiquiatrica              || '',
+              trauma_relevante:               p.trauma_relevante              || '',
+              menarca_age:                    p.menarca_age                   || '',
+              ciclos_regulares:               p.ciclos_regulares              || '',
+              pregnancies:                    p.pregnancies                   || '',
+              births:                         p.births                        || '',
+              miscarriages:                   p.miscarriages                  || '',
+              menopausal_tipo:                p.menopausal_tipo               || '',
+              menopausal_age:                 p.menopausal_age                || '',
+              contraceptive:                  p.contraceptive                 || '',
+              pap_ultimo:                     p.pap_ultimo                    || '',
+              masto_ultima:                   p.masto_ultima                  || '',
+              colpo_ultima:                   p.colpo_ultima                  || '',
+              erectile_dysfunction:           p.erectile_dysfunction          || '',
+              testosterone_use:               p.testosterone_use              || '',
+              testosterone_detalle:           p.testosterone_detalle          || '',
+              children:                       p.children                      || '',
+              psa_ultimo:                     p.psa_ultimo                    || '',
+              psa_valor:                      p.psa_valor                     || '',
+            }));
+            // Arrays y objetos separados
+            if (Array.isArray(p.sources_of_contact)) setSources(p.sources_of_contact);
+            if (Array.isArray(p.alcohol_tipo))        setAlcoholTipo(p.alcohol_tipo);
+            if (Array.isArray(p.medications))         setMeds(p.medications);
+            if (p.family_history_table && typeof p.family_history_table === 'object')
+              setFamily(prev => ({ ...prev, ...p.family_history_table }));
+          }
+        } catch (_) {}
+
+        // ── Cargar visita más reciente para pre-rellenar fase 2/3 ─────────────
+        try {
+          const vRes = await fetch(`${B()}/visits/${pid}`, { headers: authHeader });
+          const vData = await vRes.json();
+          const visits = vData.visits || [];
+          if (visits.length > 0) {
+            const v = visits[0]; // más reciente
+            setVisitId(v.id);
+            const str = (val: any) => val != null ? String(val) : '';
+            const num = (val: any, def = 5) => val != null ? Number(val) : def;
+            setF(prev => ({
+              ...prev,
+              // Signos vitales
+              pa_der_sistolica:  str(v.pa_der_sistolica),
+              pa_der_diastolica: str(v.pa_der_diastolica),
+              pa_izq_sistolica:  str(v.pa_izq_sistolica),
+              pa_izq_diastolica: str(v.pa_izq_diastolica),
+              pa_brazo_mayor:    str(v.pa_brazo_mayor),
+              fc:                str(v.fc),
+              temperatura:       str(v.temperatura),
+              spo2:              str(v.spo2),
+              glucosa:           str(v.glucosa),
+              glucosa_ayuno:     str(v.glucosa_ayuno),
+              ecg_realizado:     v.ecg_realizado ?? false,
+              // Composición corporal
+              peso:           str(v.peso),
+              talla:          str(v.talla),
+              circ_abdominal: str(v.circ_abdominal),
+              circ_cintura:   str(v.circ_cintura),
+              circ_cadera:    str(v.circ_cadera),
+              circ_cuello:    str(v.circ_cuello),
+              circ_biceps:    str(v.circ_biceps),
+              circ_muneca:    str(v.circ_muneca),
+              inbody_grasa:   str(v.inbody_grasa),
+              inbody_musculo: str(v.inbody_musculo),
+              inbody_agua:    str(v.inbody_agua),
+              inbody_visceral:str(v.inbody_visceral),
+              actividad_si:          v.actividad_si ?? false,
+              actividad_tipo:        str(v.actividad_tipo),
+              actividad_frecuencia:  str(v.actividad_frecuencia),
+              actividad_intensidad:  str(v.actividad_intensidad),
+              // Pruebas funcionales
+              fuerza_mano_der:    str(v.fuerza_mano_der),
+              fuerza_mano_izq:    str(v.fuerza_mano_izq),
+              marcha_4m:          str(v.marcha_4m),
+              equilibrio_seg:     str(v.equilibrio_seg),
+              sentarse_levantarse:str(v.sentarse_levantarse),
+              // Reporte subjetivo
+              energia_despertar: num(v.energia_despertar),
+              energia_tarde:     num(v.energia_tarde),
+              energia_noche:     num(v.energia_noche),
+              sueno_calidad:     num(v.sueno_calidad),
+              sueno_horas:       str(v.sueno_horas),
+              animo_val:         num(v.animo_val),
+              animo_otro:        str(v.animo_otro),
+              digestion_val:     num(v.digestion_val),
+              digestion_otro:    str(v.digestion_otro),
+              orina_color_manana: str(v.orina_color_manana),
+              orina_color_tarde:  str(v.orina_color_tarde),
+              metas:             str(v.metas),
+              // Fase 3 — Exploración
+              libido_visita:              num(v.libido_visita),
+              motivo:                     str(v.motivo),
+              motivo_intensidad:          num(v.motivo_intensidad),
+              exploracion_general:        str(v.exploracion_general),
+              exploracion_piel:           str(v.exploracion_piel),
+              exploracion_ojos:           str(v.exploracion_ojos),
+              exploracion_boca:           str(v.exploracion_boca),
+              exploracion_tiroides:       str(v.exploracion_tiroides),
+              exploracion_abdomen:        str(v.exploracion_abdomen),
+              exploracion_extremidades:   str(v.exploracion_extremidades),
+              exploracion_notas:          str(v.exploracion_notas),
+              labs_notas:                 str(v.labs_notas),
+              dx_presuntivo:              str(v.dx_presuntivo),
+            }));
+            if (Array.isArray(v.animo_tags))    setAnimo(v.animo_tags);
+            if (Array.isArray(v.digestion_tags)) setDigestion(v.digestion_tags);
+          }
+        } catch (_) {}
+
         // Cargar notas existentes
         try {
           const nRes = await fetch(`${B()}/patients/${pid}/notes`, { headers: authHeader });
