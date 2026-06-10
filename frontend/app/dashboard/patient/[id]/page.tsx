@@ -131,7 +131,7 @@ export default function PatientPage() {
           {/* Botones acción */}
           <div className="flex gap-2 flex-shrink-0">
             <button
-              onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=2`)}
+              onClick={() => router.push(`/dashboard/patient/${patientId}/new-visit`)}
               className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
             >
               + Nueva Visita

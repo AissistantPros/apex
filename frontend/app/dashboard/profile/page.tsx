@@ -229,7 +229,7 @@ export default function ProfilePage() {
             <Field label="¿Cómo quieres que la IA te dirija en los análisis?">
               <select value={form.ai_name_preference} onChange={e => set('ai_name_preference', e.target.value)} className={inp}>
                 <option value="">Doctor / Doctora (por default)</option>
-                <option value="nombre">Por mi nombre: Dr. {form.display_name || '...'}</option>
+                <option value="nombre">Por mi nombre: {form.display_name || '...'}</option>
                 <option value="colega">Como colega: "te sugiero..." / "considera..."</option>
                 <option value="formal">Formal: "El médico tratante..."</option>
               </select>

@@ -143,10 +143,16 @@ export default function PatientsPage() {
                     </div>
 
                     {/* Acciones */}
-                    <div className="col-span-2 flex justify-end">
+                    <div className="col-span-2 flex justify-end gap-2">
+                      <button
+                        onClick={() => router.push(`/dashboard/patient/${p.id}/new-visit`)}
+                        className="px-3 py-1.5 bg-[#00e5a0] text-black text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                      >
+                        + Visita
+                      </button>
                       <button
                         onClick={() => router.push(`/dashboard/patient/${p.id}`)}
-                        className="px-3 py-1.5 bg-[#0ea5e9] text-black text-xs font-bold rounded-lg hover:opacity-90 transition"
+                        className="px-3 py-1.5 bg-[#0ea5e9] text-black text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
                       >
                         Ver ficha
                       </button>
