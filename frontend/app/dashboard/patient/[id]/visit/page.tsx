@@ -159,6 +159,11 @@ export default function VisitPage() {
   const toggleMulti = (arr: string[], setArr: (a: string[]) => void, val: string) =>
     setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
 
+  // ── Scroll suave al top en cada cambio de paso ──
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
+
   useEffect(() => {
     getUser().then(u => {
       if (!u) router.push('/auth/login');

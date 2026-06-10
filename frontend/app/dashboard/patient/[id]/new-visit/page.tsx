@@ -139,6 +139,11 @@ export default function NewVisitPage() {
   const toggleMulti = (arr: string[], setArr: (a: string[]) => void, val: string) =>
     setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
 
+  // ── Scroll suave al top en cada cambio de paso ──
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [phase, nursingStep, doctorStep]);
+
   // ── Carga inicial ──
   useEffect(() => {
     getUser().then(async u => {

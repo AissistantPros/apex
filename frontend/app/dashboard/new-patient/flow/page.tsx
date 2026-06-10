@@ -216,6 +216,11 @@ function FlowPageInner() {
 
   const searchParams = useSearchParams();
 
+  // ── Scroll suave al top en cada cambio de fase ──
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [phase]);
+
   useEffect(() => {
     const init = async () => {
       const u = await getUser();
