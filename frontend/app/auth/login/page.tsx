@@ -101,26 +101,44 @@ export default function LoginPage() {
     }
   }, [router]);
 
-  // ── Secuencia de animación del arranque ───────────────────────────────────
+  // ── Secuencia de animación del arranque (con loop si auth tarda) ──────────
   const runBootAnimation = useCallback(() => {
-    const STEP_DELAY = 800; // ms entre pasos
-    BOOT_STEPS.forEach((_, i) => {
+    const STEP_DELAY = 1600; // ms entre pasos (~10s para 6 pasos)
+
+    const runCycle = (startIdx: number, baseCompleted: number[]) => {
+      BOOT_STEPS.forEach((_, i) => {
+        setTimeout(() => {
+          playStepTick(i);
+          setCompleted(prev => i > 0 ? [...prev, startIdx + i - 1] : prev);
+          setActiveStep(startIdx + i);
+          // Barra: en loop la barra cicla entre 0 y 95% para no llegar al 100 antes de terminar
+          const progress = authDone.current
+            ? 100
+            : Math.min(95, Math.round(((i + 1) / BOOT_STEPS.length) * 95));
+          setBarWidth(progress);
+        }, i * STEP_DELAY);
+      });
+
+      const cycleTime = BOOT_STEPS.length * STEP_DELAY + 400;
       setTimeout(() => {
-        playStepTick(i);
-        setCompleted(prev => i > 0 ? [...prev, i - 1] : prev);
-        setActiveStep(i);
-        setBarWidth(Math.round(((i + 1) / BOOT_STEPS.length) * 100));
-      }, i * STEP_DELAY);
-    });
-    // Completar último paso
-    const totalTime = BOOT_STEPS.length * STEP_DELAY + 400;
-    setTimeout(() => {
-      setCompleted(Array.from({ length: BOOT_STEPS.length }, (_, i) => i));
-      setActiveStep(-1);
-      setBarWidth(100);
-      animDone.current = true;
-      tryRedirect();
-    }, totalTime);
+        if (authDone.current) {
+          // Auth ya terminó — completar y redirigir
+          setCompleted(prev => [...prev, startIdx + BOOT_STEPS.length - 1]);
+          setActiveStep(-1);
+          setBarWidth(100);
+          animDone.current = true;
+          tryRedirect();
+        } else {
+          // Auth aún no termina — reset visual y volver a empezar
+          setCompleted([]);
+          setActiveStep(-1);
+          setBarWidth(0);
+          setTimeout(() => runCycle(startIdx + BOOT_STEPS.length, []), 300);
+        }
+      }, cycleTime);
+    };
+
+    runCycle(0, []);
   }, [playStepTick, tryRedirect]);
 
   // ── Submit login ─────────────────────────────────────────────────────────
