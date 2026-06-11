@@ -402,10 +402,12 @@ export default function NewVisitPage() {
   const dob         = patient?.date_of_birth || patient?.birth_date;
   const age         = dob ? Math.floor((Date.now() - new Date(dob).getTime()) / (1000*60*60*24*365.25)) : null;
   const initials    = `${patient?.first_name?.[0]||''}${patient?.last_name?.[0]||''}`.toUpperCase();
-  // Talla: viene del primer registro de visita (no cambia entre visitas)
+  // Talla: columna DB = "height". El alias "talla" era legacy, ahora el backend lo mapea.
+  // Buscamos ambos por compatibilidad con registros anteriores.
   const patientH    = visits.find(v => v.height || v.talla)?.height
                    || visits.find(v => v.height || v.talla)?.talla
-                   || patient?.height || patient?.talla_cm || null;
+                   || patient?.height || patient?.talla_cm
+                   || null;
   const imc         = calcIMC(form.peso, patientH);
   const marchInterp = interpMarcha(form.marcha_seg);
   const tb          = tabletMode; // alias corto

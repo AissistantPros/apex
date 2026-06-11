@@ -31,9 +31,22 @@ NUMERIC_VISIT_FIELDS = {
 }
 
 def clean_visit_data(data: dict) -> dict:
-    """Convierte strings vacíos a None en campos numéricos y elimina claves desconocidas problemáticas."""
-    cleaned = {}
+    """Convierte strings vacíos a None en campos numéricos y normaliza alias de columnas."""
+    # Alias: el frontend puede enviar nombres en español; la DB usa inglés
+    ALIASES = {
+        "talla":     "height",
+        "peso":      "weight",
+        "fc":        "heart_rate",
+        "temperatura": "temperature",
+        "glucosa":   "glucose",
+    }
+    # Normalizar alias antes de limpiar
+    normalized = {}
     for k, v in data.items():
+        normalized[ALIASES.get(k, k)] = v
+
+    cleaned = {}
+    for k, v in normalized.items():
         if k in NUMERIC_VISIT_FIELDS:
             if v == "" or v is None:
                 cleaned[k] = None
