@@ -262,7 +262,7 @@ export default function NewVisitPage() {
     // Subjetivo
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
-    libido_hoy: 5, orina_color: '',
+    libido_hoy: 5, orina_color: '', orina_color_tarde: '',
     dolor_hoy: false, dolor_ubicacion: '', dolor_intensidad: 5,
     metas_paciente: '',
     // Exploración
@@ -344,7 +344,7 @@ export default function NewVisitPage() {
         energy_evening: form.energia_tarde, sleep_quality: form.sueno_calidad,
         sleep_hours: form.sueno_horas, wakes_rested: form.sueno_reparador,
         mood: animo, libido: form.libido_hoy, digestion,
-        urine_color: form.orina_color, pain_today: form.dolor_hoy,
+        urine_color: form.orina_color, urine_color_afternoon: form.orina_color_tarde, pain_today: form.dolor_hoy,
         pain_location: form.dolor_ubicacion, pain_intensity: form.dolor_intensidad,
         patient_goals: form.metas_paciente,
         general_inspection: form.exp_general, ecg_interpretation: form.ecg_interpretacion,
@@ -381,7 +381,10 @@ export default function NewVisitPage() {
   const dob         = patient?.date_of_birth || patient?.birth_date;
   const age         = dob ? Math.floor((Date.now() - new Date(dob).getTime()) / (1000*60*60*24*365.25)) : null;
   const initials    = `${patient?.first_name?.[0]||''}${patient?.last_name?.[0]||''}`.toUpperCase();
-  const patientH    = patient?.height || patient?.talla_cm || null;
+  // Talla: viene del primer registro de visita (no cambia entre visitas)
+  const patientH    = visits.find(v => v.height || v.talla)?.height
+                   || visits.find(v => v.height || v.talla)?.talla
+                   || patient?.height || patient?.talla_cm || null;
   const imc         = calcIMC(form.peso, patientH);
   const marchInterp = interpMarcha(form.marcha_seg);
   const tb          = tabletMode; // alias corto
@@ -565,21 +568,6 @@ export default function NewVisitPage() {
                           </div>
                         </div>
                       ))}
-                    </div>
-                    <div className="mt-4">
-                      <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>BRAZO CON LECTURA MÁS ALTA</p>
-                      <div className="flex gap-3 flex-wrap">
-                        {['Derecho','Izquierdo','Igual'].map(b => (
-                          <label key={b} className={`flex items-center gap-2 cursor-pointer px-4 rounded-lg border transition ${tb ? 'py-3' : 'py-2'}`}
-                            style={{ background: form.pa_brazo_mayor === b.toLowerCase() ? '#0ea5e9' : '#1e2d3d', borderColor: form.pa_brazo_mayor === b.toLowerCase() ? '#0ea5e9' : '#2a3a4d', color: form.pa_brazo_mayor === b.toLowerCase() ? '#000' : '#dde6ef' }}>
-                            <input type="radio" name="pa_brazo" value={b.toLowerCase()}
-                              checked={form.pa_brazo_mayor === b.toLowerCase()}
-                              onChange={e => set('pa_brazo_mayor', e.target.value)}
-                              className="sr-only" />
-                            <span className={tb ? 'text-sm font-semibold' : 'text-sm'}>{b}</span>
-                          </label>
-                        ))}
-                      </div>
                     </div>
                   </div>
 
@@ -1061,19 +1049,26 @@ export default function NewVisitPage() {
 
                   <Slider label="LIBIDO ACTUAL" value={form.libido_hoy} onChange={v => set('libido_hoy', v)} tablet={tb} />
 
-                  {/* Color orina */}
-                  <div className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-4">
-                    <p className={`font-mono text-[#a78bfa] mb-3 ${tb ? 'text-sm' : 'text-xs'}`}>COLOR DE ORINA EN LA MAÑANA</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {ORINA_COLORS.map(c => (
-                        <button key={c.hex} type="button" onClick={() => set('orina_color', c.label)}
-                          className={`flex flex-col items-center gap-1 rounded-xl border-2 transition ${tb ? 'p-3' : 'p-2'}`}
-                          style={{ borderColor: form.orina_color === c.label ? '#a78bfa' : '#1e2d3d', background: form.orina_color === c.label ? '#a78bfa11' : 'transparent' }}>
-                          <div className={`rounded-full border border-[#1e2d3d] ${tb ? 'w-10 h-10' : 'w-8 h-8'}`} style={{ background: c.hex }} />
-                          <span className="text-[10px] text-[#7a95aa] text-center max-w-[60px] leading-tight">{c.text}</span>
-                        </button>
-                      ))}
-                    </div>
+                  {/* Color orina — mañana y tarde lado a lado */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {([
+                      { field: 'orina_color',       label: 'COLOR ORINA EN LA MAÑANA' },
+                      { field: 'orina_color_tarde',  label: 'COLOR ORINA POR LA TARDE' },
+                    ] as const).map(({ field, label }) => (
+                      <div key={field} className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-4">
+                        <p className={`font-mono text-[#a78bfa] mb-3 ${tb ? 'text-sm' : 'text-xs'}`}>{label}</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {ORINA_COLORS.map(c => (
+                            <button key={c.hex} type="button" onClick={() => set(field, c.label)}
+                              className={`flex flex-col items-center gap-1 rounded-xl border-2 transition ${tb ? 'p-3' : 'p-2'}`}
+                              style={{ borderColor: form[field] === c.label ? '#a78bfa' : '#1e2d3d', background: form[field] === c.label ? '#a78bfa11' : 'transparent' }}>
+                              <div className={`rounded-full border border-[#1e2d3d] ${tb ? 'w-10 h-10' : 'w-8 h-8'}`} style={{ background: c.hex }} />
+                              <span className="text-[10px] text-[#7a95aa] text-center max-w-[60px] leading-tight">{c.text}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   {/* Dolor */}
