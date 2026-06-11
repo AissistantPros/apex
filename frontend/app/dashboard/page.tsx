@@ -114,10 +114,10 @@ export default function DashboardPage() {
         <div className="grid grid-cols-3 gap-4">
           <BigButton icon="👤" label="Paciente Nuevo" color="#00e5a0"
             onClick={() => router.push('/dashboard/new-patient/flow')} />
-          <BigButton icon="👥" label="Mis Pacientes"  color="#0ea5e9"
-            onClick={() => router.push('/dashboard/patients')} />
-          <BigButton icon="📊" label="Estadísticas"  color="#a78bfa"
+          <BigButton icon="📊" label="Estadísticas"  color="#0ea5e9"
             onClick={() => router.push('/dashboard/stats')} />
+          <BigButton icon="❓" label="Ayuda"          color="#f59e0b"
+            onClick={() => router.push('/dashboard/help')} />
         </div>
 
         {/* ── Buscador ── */}
