@@ -206,17 +206,29 @@ export default function DashboardPage() {
                   const dob = p.date_of_birth || p.birth_date;
                   const age = dob ? Math.floor((Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)) : null;
                   return (
-                    <div key={p.id} onClick={() => router.push(`/dashboard/patient/${p.id}`)}
-                      className="flex items-center gap-4 px-5 py-4 hover:bg-[#111820] cursor-pointer transition">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
-                        {initials || '?'}
-                      </div>
-                      <div className="flex-1 min-w-0">
+                    <div key={p.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#111820] transition">
+                      {p.photo_url ? (
+                        <img src={p.photo_url} alt="foto"
+                          className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#1e2d3d]" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+                          {initials || '?'}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => router.push(`/dashboard/patient/${p.id}`)}>
                         <p className="font-semibold text-[#dde6ef] truncate">{p.full_name}</p>
-                        <p className="text-xs text-[#7a95aa] font-mono">{p.id}</p>
+                        <p className="text-xs text-[#7a95aa]">{age !== null ? `${age} años` : p.id.slice(0, 8)}</p>
                       </div>
-                      {age !== null && <span className="text-xs text-[#3d5870] hidden sm:block">{age} años</span>}
-                      <span className="text-[#3d5870] text-lg">›</span>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button onClick={() => router.push(`/dashboard/patient/${p.id}/new-visit`)}
+                          className="px-3 py-1.5 bg-[#00e5a0] text-black text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap">
+                          + Visita
+                        </button>
+                        <button onClick={() => router.push(`/dashboard/patient/${p.id}`)}
+                          className="px-3 py-1.5 bg-[#1e2d3d] text-[#dde6ef] text-xs font-semibold rounded-lg hover:bg-[#2a3a4d] transition whitespace-nowrap hidden sm:block">
+                          Ver ficha
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

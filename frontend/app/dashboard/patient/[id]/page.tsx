@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
@@ -31,8 +31,35 @@ export default function PatientPage() {
   const [showDanger,    setShowDanger]    = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting,      setDeleting]      = useState(false);
-  const [patientNotes,  setPatientNotes]  = useState<Note[]>([]);
-  const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
+  const [patientNotes,    setPatientNotes]    = useState<Note[]>([]);
+  const [expandedVisit,   setExpandedVisit]   = useState<string | null>(null);
+  const [uploadingPhoto,  setUploadingPhoto]  = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = async (file: File) => {
+    if (file.size > 8 * 1024 * 1024) { alert('La imagen no debe superar 8 MB'); return; }
+    setUploadingPhoto(true);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string;
+      try {
+        const session = await getSession();
+        const token   = session?.access_token;
+        const headers: Record<string,string> = {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+        const res = await fetch(`${BACKEND()}/patients/${patientId}`, {
+          method: 'PUT', headers,
+          body: JSON.stringify({ photo_url: base64 }),
+        });
+        if (res.ok) setPatient((prev: any) => ({ ...prev, photo_url: base64 }));
+        else alert('Error al guardar la foto');
+      } catch { alert('Error de conexión'); }
+      setUploadingPhoto(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     getUser().then(async u => {
@@ -111,8 +138,25 @@ export default function PatientPage() {
 
         {/* ── Header del paciente ── */}
         <div className="flex items-start gap-5 mb-6 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-2xl font-black text-white flex-shrink-0">
-            {initials || '?'}
+          {/* Avatar clicable — cambia foto */}
+          <div className="relative flex-shrink-0 group cursor-pointer"
+            onClick={() => photoInputRef.current?.click()}
+            title="Cambiar foto del paciente">
+            <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f); e.target.value = ''; }} />
+            {patient.photo_url ? (
+              <img src={patient.photo_url} alt="foto"
+                className="w-20 h-20 rounded-2xl object-cover border-2 border-[#1e2d3d] group-hover:border-[#00e5a0] transition" />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-2xl font-black text-white group-hover:opacity-80 transition">
+                {uploadingPhoto ? '⏳' : (initials || '?')}
+              </div>
+            )}
+            <div className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+              <span className="text-white text-xs font-bold text-center leading-tight px-1">
+                {uploadingPhoto ? 'Subiendo...' : '📷 Cambiar'}
+              </span>
+            </div>
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-serif font-bold text-[#dde6ef] mb-0.5">{patient.full_name}</h1>
