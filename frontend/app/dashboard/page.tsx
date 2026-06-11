@@ -184,15 +184,9 @@ export default function DashboardPage() {
 
         {/* ── Pacientes recientes ── */}
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="font-semibold text-[#dde6ef]">📋 Pacientes recientes</h2>
-              <p className="text-xs text-[#3d5870] mt-0.5">Últimos registros</p>
-            </div>
-            <button onClick={() => router.push('/dashboard/patients')}
-              className="text-xs text-[#0ea5e9] hover:underline">
-              Ver todos →
-            </button>
+          <div className="mb-3">
+            <h2 className="font-semibold text-[#dde6ef]">📋 Pacientes recientes</h2>
+            <p className="text-xs text-[#3d5870] mt-0.5">Últimos registros</p>
           </div>
 
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-hidden">
