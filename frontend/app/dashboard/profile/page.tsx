@@ -242,7 +242,7 @@ export default function ProfilePage() {
             onClick={handleSave}
             disabled={saving}
             className="w-full py-4 text-base font-bold rounded-2xl transition"
-            style={{ background: saved ? '#00e5a0' : '#0ea5e9', color: '#000' }}
+            style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}
           >
             {saving ? 'Guardando...' : saved ? '✓ Perfil guardado correctamente' : 'Guardar cambios'}
           </button>

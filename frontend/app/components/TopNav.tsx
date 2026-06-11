@@ -17,14 +17,43 @@ const ALL_LINKS = [
   { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['doctor'] },
 ];
 
+// ── Helpers de tema ──────────────────────────────────────────────────────────
+function getTheme(): 'dark' | 'light' {
+  if (typeof window === 'undefined') return 'dark';
+  return (localStorage.getItem('apex-theme') as 'dark' | 'light') || 'dark';
+}
+function applyTheme(theme: 'dark' | 'light') {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('apex-theme', theme);
+}
+
+// ── Script de hidratación temprana (evita flash) ─────────────────────────────
+// Se inyecta en el <head> via layout.tsx — exportado por separado
+export const themeScript = `
+(function(){
+  var t = localStorage.getItem('apex-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+`;
+
 export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const router   = useRouter();
   const pathname = usePathname();
-  const [role, setRoleState] = useState<UserRole>('doctor');
+  const [role, setRoleState]     = useState<UserRole>('doctor');
+  const [theme, setThemeState]   = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
     setRoleState(getRole());
+    const saved = getTheme();
+    setThemeState(saved);
+    applyTheme(saved);
   }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setThemeState(next);
+    applyTheme(next);
+  };
 
   const links = ALL_LINKS.filter(l => l.roles.includes(role));
 
@@ -33,24 +62,35 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
 
   const roleColor = ROLE_COLORS[role];
 
+  const isDark = theme === 'dark';
+
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 z-50 bg-[rgba(7,10,14,.98)] border-b border-[#1e2d3d] backdrop-blur-2xl flex items-center px-6 gap-4">
+    <header
+      className="fixed top-0 left-0 right-0 h-16 z-50 backdrop-blur-2xl flex items-center px-6 gap-4"
+      style={{
+        background:  isDark ? 'rgba(7,10,14,0.98)'    : 'rgba(255,255,255,0.98)',
+        borderBottom: `1px solid ${isDark ? '#1e2d3d' : '#cddae6'}`,
+      }}
+    >
 
       {/* Logo */}
-      <div className="flex items-center gap-2 mr-2">
-        <span className="text-xl font-black text-[#00e5a0] tracking-widest">APEX</span>
-        <span className="font-mono text-xs bg-[rgba(14,165,233,.15)] border border-[rgba(14,165,233,.25)] px-1.5 py-0.5 rounded text-[#0ea5e9]">PRO</span>
+      <div className="flex items-center gap-2 mr-2 flex-shrink-0">
+        <span className="text-xl font-black tracking-widest" style={{ color: 'var(--c-green)' }}>APEX</span>
+        <span className="font-mono text-xs px-1.5 py-0.5 rounded"
+          style={{ color: 'var(--c-blue)', background: 'var(--c-blue-10)', border: '1px solid var(--c-blue-25)' }}>
+          PRO
+        </span>
       </div>
 
-      {/* Nav links (role-based) */}
+      {/* Nav links */}
       <nav className="flex items-center gap-1">
         {links.map(({ href, icon, label }) => (
           <button key={href} onClick={() => router.push(href)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all"
             style={{
-              background: isActive(href) ? 'rgba(0,229,160,.12)' : 'transparent',
-              color:      isActive(href) ? '#00e5a0' : '#7a95aa',
-              border:     isActive(href) ? '1px solid rgba(0,229,160,.2)' : '1px solid transparent',
+              background:  isActive(href) ? 'var(--c-green-10)' : 'transparent',
+              color:       isActive(href) ? 'var(--c-green)'    : 'var(--c-text-2)',
+              border:      isActive(href) ? '1px solid var(--c-green-20)' : '1px solid transparent',
             }}>
             <span>{icon}</span>
             <span className="hidden md:inline">{label}</span>
@@ -60,25 +100,44 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
 
       <div className="flex-1" />
 
-      {/* Badge de rol activo */}
+      {/* Toggle dark/light */}
+      <button
+        onClick={toggleTheme}
+        title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all"
+        style={{
+          background:  isDark ? 'rgba(255,255,255,0.07)' : 'rgba(12,31,46,0.07)',
+          color:       'var(--c-text-2)',
+          border:      `1px solid var(--c-border)`,
+        }}
+      >
+        <span className="text-base">{isDark ? '☀️' : '🌙'}</span>
+        <span className="hidden sm:inline text-xs">{isDark ? 'Claro' : 'Oscuro'}</span>
+      </button>
+
+      {/* Badge de rol */}
       <span
-        className="hidden sm:flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg"
+        className="hidden sm:flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg flex-shrink-0"
         style={{ color: roleColor, background: roleColor + '15', border: `1px solid ${roleColor}33` }}
       >
         {role === 'doctor' ? '🟣' : role === 'nurse' ? '🟨' : '🟦'} {ROLE_LABELS[role]}
       </span>
 
-      {/* Perfil del doctor */}
+      {/* Perfil */}
       <button
         onClick={() => router.push('/dashboard/profile')}
-        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-[#1e2d3d] transition"
+        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition-all"
+        style={{ border: '1px solid transparent' }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--c-hover)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       >
         <div className="text-right hidden md:block">
-          <p className="text-sm font-semibold text-[#dde6ef]">{userName}</p>
-          <p className="font-mono text-xs text-[#3d5870]">Ver perfil</p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{userName}</p>
+          <p className="font-mono text-xs" style={{ color: 'var(--c-text-3)' }}>Ver perfil</p>
         </div>
         {photoUrl ? (
-          <img src={photoUrl} alt="foto" className="w-9 h-9 rounded-full object-cover border-2 border-[#00e5a0]/30" />
+          <img src={photoUrl} alt="foto" className="w-9 h-9 rounded-full object-cover border-2"
+            style={{ borderColor: 'var(--c-green-30)' }} />
         ) : (
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-sm font-bold text-black">
             {userName[0]?.toUpperCase() || 'D'}
@@ -86,9 +145,21 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         )}
       </button>
 
+      {/* Salir */}
       <button
         onClick={async () => { await signOut(); router.push('/auth/login'); }}
-        className="px-3 py-1.5 rounded-lg text-xs font-mono text-[#7a95aa] hover:text-[#f43f5e] hover:bg-[rgba(244,63,94,.08)] transition border border-transparent hover:border-[rgba(244,63,94,.2)]"
+        className="px-3 py-1.5 rounded-lg text-xs font-mono transition"
+        style={{ color: 'var(--c-text-2)', border: '1px solid transparent' }}
+        onMouseEnter={e => {
+          e.currentTarget.style.color = '#f43f5e';
+          e.currentTarget.style.background = 'rgba(244,63,94,.08)';
+          e.currentTarget.style.borderColor = 'rgba(244,63,94,.2)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.color = 'var(--c-text-2)';
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.borderColor = 'transparent';
+        }}
       >
         Salir
       </button>

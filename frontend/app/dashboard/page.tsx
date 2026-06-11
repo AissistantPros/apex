@@ -522,7 +522,8 @@ export default function DashboardPage() {
                           + Visita
                         </button>
                         <button onClick={() => router.push(`/dashboard/patient/${p.id}`)}
-                          className="px-3 py-1.5 bg-[#1e2d3d] text-[#dde6ef] text-xs font-semibold rounded-lg hover:bg-[#2a3a4d] transition whitespace-nowrap hidden sm:block">
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg transition whitespace-nowrap hidden sm:block"
+                          style={{ background: 'var(--c-hover)', color: 'var(--c-text)', border: '1px solid var(--c-border)' }}>
                           Ver ficha
                         </button>
                       </div>
@@ -542,11 +543,12 @@ export default function DashboardPage() {
 function BigButton({ icon, label, color, onClick }: { icon: string; label: string; color: string; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className="flex flex-col items-center justify-center gap-3 py-8 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl hover:shadow-xl transition-all group"
+      className="flex flex-col items-center justify-center gap-3 py-8 rounded-2xl hover:shadow-xl transition-all group"
+      style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = color + '66'; e.currentTarget.style.background = color + '0d'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2d3d'; e.currentTarget.style.background = '#0d1520'; }}>
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.background = 'var(--c-card)'; }}>
       <span className="text-5xl group-hover:scale-110 transition-transform">{icon}</span>
-      <span className="text-sm font-bold text-[#dde6ef] text-center leading-tight">{label}</span>
+      <span className="text-sm font-bold text-center leading-tight" style={{ color: 'var(--c-text)' }}>{label}</span>
     </button>
   );
 }

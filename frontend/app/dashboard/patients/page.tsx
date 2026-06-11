@@ -61,7 +61,8 @@ export default function PatientsPage() {
           </div>
           <button
             onClick={() => router.push('/dashboard/new-patient')}
-            className="px-5 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition"
+            className="px-5 py-2.5 text-sm font-bold rounded-xl hover:opacity-90 transition"
+            style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}
           >
             + Nuevo Paciente
           </button>
@@ -146,13 +147,15 @@ export default function PatientsPage() {
                     <div className="col-span-2 flex justify-end gap-2">
                       <button
                         onClick={() => router.push(`/dashboard/patient/${p.id}/new-visit`)}
-                        className="px-3 py-1.5 bg-[#00e5a0] text-black text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                        className="px-3 py-1.5 text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                        style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}
                       >
                         + Visita
                       </button>
                       <button
                         onClick={() => router.push(`/dashboard/patient/${p.id}`)}
-                        className="px-3 py-1.5 bg-[#0ea5e9] text-black text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                        className="px-3 py-1.5 text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                        style={{ background: 'var(--c-blue)', color: 'var(--c-blue-fg)' }}
                       >
                         Ver ficha
                       </button>
