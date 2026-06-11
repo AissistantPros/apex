@@ -399,7 +399,7 @@ export default function DashboardPage() {
           )}
 
           {/* Frase del día */}
-          <div className="mt-5 max-w-2xl bg-[#0d1520] border border-[#1e2d3d] rounded-2xl px-5 py-4 text-left">
+          <div className="mt-5 w-full bg-[#0d1520] border border-[#1e2d3d] rounded-2xl px-6 py-4 text-left">
             <p className="text-sm text-[#dde6ef] leading-relaxed italic">"{quote.text}"</p>
             <p className="text-xs text-[#3d5870] mt-2 text-right">— {quote.author}</p>
           </div>
