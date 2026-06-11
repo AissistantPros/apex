@@ -637,26 +637,43 @@ export default function NewVisitPage() {
                     )}
                   </div>
 
+                  {/* Talla — solo se muestra si no hay registro previo */}
+                  {!patientH && (
+                    <div className="p-3 rounded-xl border border-[#f59e0b]/30 bg-[#f59e0b]/05">
+                      <p className="text-xs font-mono text-[#f59e0b] mb-2">⚠ TALLA NO ENCONTRADA EN VISITAS ANTERIORES — ingresa ahora</p>
+                      <Field label="TALLA (cm)" tablet={tb}>
+                        <NumInput value={form.talla ?? ''} onChange={v => set('talla', v)} placeholder="170" unit="cm" tablet={tb} />
+                      </Field>
+                    </div>
+                  )}
+
                   {/* Peso + IMC */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
                     <Field label="PESO (kg)" tablet={tb}>
                       <NumInput value={form.peso} onChange={v => set('peso', v)} placeholder="75.0" unit="kg" tablet={tb} />
                     </Field>
-                    {imc ? (
-                      <div className="bg-[#0d1520] border border-[#0ea5e9]/30 rounded-lg px-4 py-3 flex items-center gap-3">
-                        <div>
-                          <p className="text-[10px] font-mono text-[#7a95aa]">IMC CALCULADO</p>
-                          <p className="text-2xl font-mono font-black mt-0.5" style={{
-                            color: parseFloat(imc) < 18.5 ? '#f59e0b' : parseFloat(imc) < 25 ? '#00e5a0' : parseFloat(imc) < 30 ? '#f59e0b' : '#f43f5e'
-                          }}>{imc}</p>
+                    {(() => {
+                      const h = patientH || form.talla;
+                      const imcVal = calcIMC(form.peso, h);
+                      return imcVal ? (
+                        <div className="bg-[#0d1520] border border-[#0ea5e9]/30 rounded-lg px-4 py-3 flex items-center gap-3">
+                          <div>
+                            <p className="text-[10px] font-mono text-[#7a95aa]">IMC CALCULADO</p>
+                            <p className="text-2xl font-mono font-black mt-0.5" style={{
+                              color: parseFloat(imcVal) < 18.5 ? '#f59e0b' : parseFloat(imcVal) < 25 ? '#00e5a0' : parseFloat(imcVal) < 30 ? '#f59e0b' : '#f43f5e'
+                            }}>{imcVal}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-[#3d5870]">
+                              {parseFloat(imcVal) < 18.5 ? 'Bajo peso' : parseFloat(imcVal) < 25 ? 'Normal' : parseFloat(imcVal) < 30 ? 'Sobrepeso' : 'Obesidad'}
+                            </p>
+                            <p className="text-[10px] text-[#3d5870] font-mono mt-0.5">{patientH || form.talla} cm</p>
+                          </div>
                         </div>
-                        <p className="text-xs text-[#3d5870]">
-                          {parseFloat(imc) < 18.5 ? 'Bajo peso' : parseFloat(imc) < 25 ? 'Normal' : parseFloat(imc) < 30 ? 'Sobrepeso' : 'Obesidad'}
-                        </p>
-                      </div>
-                    ) : !patientH ? (
-                      <p className="text-xs text-[#3d5870] italic">Talla no registrada — IMC no disponible</p>
-                    ) : null}
+                      ) : (
+                        <p className="text-xs text-[#3d5870] italic">Ingresa el peso{!patientH && !form.talla ? ' y talla' : ''} para calcular IMC</p>
+                      );
+                    })()}
                   </div>
 
                   {/* Circunferencias: abdominal, cuello, bíceps, muñeca */}
