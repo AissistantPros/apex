@@ -374,7 +374,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#070a0e]">
       <TopNav userName={displayName} photoUrl={photoUrl} />
 
-      <main className="pt-16 max-w-3xl mx-auto px-6">
+      <main className="pt-16 max-w-5xl mx-auto px-6">
 
         {/* ── Encabezado del doctor ── */}
         <div className="flex flex-col items-center pt-12 pb-8 text-center">
@@ -399,7 +399,7 @@ export default function DashboardPage() {
           )}
 
           {/* Frase del día */}
-          <div className="mt-5 max-w-md bg-[#0d1520] border border-[#1e2d3d] rounded-2xl px-5 py-4 text-left">
+          <div className="mt-5 max-w-2xl bg-[#0d1520] border border-[#1e2d3d] rounded-2xl px-5 py-4 text-left">
             <p className="text-sm text-[#dde6ef] leading-relaxed italic">"{quote.text}"</p>
             <p className="text-xs text-[#3d5870] mt-2 text-right">— {quote.author}</p>
           </div>
