@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
+import { getRole } from '@/app/lib/role';
 import TopNav from '@/app/components/TopNav';
+import ChatBubble from '@/app/components/ChatBubble';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -25,12 +27,14 @@ export default function DashboardPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showDropdown, setShowDropdown]   = useState(false);
   const [loading, setLoading]   = useState(true);
+  const [isDoctor, setIsDoctor] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getUser().then(u => {
       if (!u) { router.push('/auth/login'); return; }
       setUser(u);
+      setIsDoctor(getRole() === 'doctor');
       fetchData();
     });
   }, [router]);
@@ -86,6 +90,7 @@ export default function DashboardPage() {
   );
 
   return (
+    <>
     <div className="min-h-screen bg-[#070a0e]">
       <TopNav userName={displayName} photoUrl={photoUrl} />
 
@@ -239,6 +244,10 @@ export default function DashboardPage() {
 
       </main>
     </div>
+
+    {/* Chat IA — solo para el médico, solo en home */}
+    {isDoctor && <ChatBubble />}
+    </>
   );
 }
 
