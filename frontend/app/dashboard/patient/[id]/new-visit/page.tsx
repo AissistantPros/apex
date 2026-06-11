@@ -253,7 +253,8 @@ export default function NewVisitPage() {
     pa_izq_sistolica: '', pa_izq_diastolica: '',
     pa_brazo_mayor: '', fc: '', temperatura: '', spo2: '',
     glucosa: '', glucosa_ayuno: '', ecg_realizado: false,
-    // Composición (sin talla)
+    // Composición — talla solo se usa cuando no hay registro previo
+    talla: '',
     peso: '',
     circ_abdominal: '', circ_cuello: '', circ_biceps: '', circ_muneca: '',
     inbody_grasa: '', inbody_musculo: '', inbody_agua: '', inbody_visceral: '',
@@ -408,7 +409,7 @@ export default function NewVisitPage() {
                    || visits.find(v => v.height || v.talla)?.talla
                    || patient?.height || patient?.talla_cm
                    || null;
-  const imc         = calcIMC(form.peso, patientH);
+  const imc         = calcIMC(form.peso, patientH || form.talla);
   const marchInterp = interpMarcha(form.marcha_seg);
   const tb          = tabletMode; // alias corto
 
