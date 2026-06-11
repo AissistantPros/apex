@@ -13,8 +13,7 @@ const getGreeting = (name: string): { line1: string; line2: string } => {
   const n = name;
   if (h >= 0  && h < 4)  return { line1: 'Todavía en pie,',         line2: n };
   if (h >= 4  && h < 6)  return { line1: 'Madrugando,',             line2: n };
-  if (h >= 6  && h < 9)  return { line1: 'Buenos días,',            line2: n };
-  if (h >= 9  && h < 12) return { line1: 'Buenas mañanas,',         line2: n };
+  if (h >= 6  && h < 12) return { line1: 'Buenos días,',            line2: n };
   if (h >= 12 && h < 14) return { line1: 'Buen día,',               line2: n };
   if (h >= 14 && h < 19) return { line1: 'Buenas tardes,',          line2: n };
   if (h >= 19 && h < 22) return { line1: 'Buenas noches,',          line2: n };
