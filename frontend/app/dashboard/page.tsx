@@ -182,6 +182,67 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* ── Pacientes recientes ── */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-semibold text-[#dde6ef]">📋 Pacientes recientes</h2>
+              <p className="text-xs text-[#3d5870] mt-0.5">Últimos registros</p>
+            </div>
+            <button onClick={() => router.push('/dashboard/patients')}
+              className="text-xs text-[#0ea5e9] hover:underline">
+              Ver todos →
+            </button>
+          </div>
+
+          <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-hidden">
+            {allPatients.length === 0 ? (
+              <div className="p-10 text-center">
+                <p className="text-4xl mb-3">🏥</p>
+                <p className="text-[#7a95aa] font-medium">Aún no hay pacientes</p>
+                <button onClick={() => router.push('/dashboard/new-patient/flow')}
+                  className="mt-4 px-5 py-2.5 text-sm font-bold rounded-xl hover:opacity-90 transition"
+                  style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}>
+                  + Paciente Nuevo
+                </button>
+              </div>
+            ) : (
+              <div className="divide-y divide-[#1e2d3d]">
+                {allPatients.slice(0, 6).map(p => {
+                  const initials = `${p.first_name?.[0]||''}${p.last_name?.[0]||''}`.toUpperCase();
+                  const dob = p.date_of_birth || p.birth_date;
+                  const age = dob ? Math.floor((Date.now() - new Date(dob).getTime()) / (1000*60*60*24*365.25)) : null;
+                  return (
+                    <div key={p.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#111820] transition cursor-pointer"
+                      onClick={() => router.push(`/dashboard/patient/${p.id}`)}>
+                      {p.photo_url
+                        ? <img src={p.photo_url} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#1e2d3d]" />
+                        : <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-sm font-bold text-white flex-shrink-0">{initials||'?'}</div>
+                      }
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-[#dde6ef] truncate text-sm">{p.full_name}</p>
+                        <p className="text-xs text-[#7a95aa]">{age !== null ? `${age} años` : p.id.slice(0,8)}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => router.push(`/dashboard/patient/${p.id}/new-visit`)}
+                          className="px-3 py-1.5 text-xs font-bold rounded-lg hover:opacity-90 transition"
+                          style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}>
+                          + Visita
+                        </button>
+                        <button onClick={() => router.push(`/dashboard/patient/${p.id}`)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg transition hidden sm:block"
+                          style={{ background: 'var(--c-hover)', color: 'var(--c-text)', border: '1px solid var(--c-border)' }}>
+                          Ver ficha
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
       </main>
     </div>
   );
