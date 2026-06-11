@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from routes_patients import router as patients_router, doctor_profile_router
 from routes_visits import router as visits_router
 from routes_analysis import router as analysis_router
+from routes_chat import router as chat_router
 
 app = FastAPI(title="APEX Backend", version="0.1.0")
 
@@ -54,6 +55,7 @@ app.include_router(patients_router)
 app.include_router(doctor_profile_router)
 app.include_router(visits_router)
 app.include_router(analysis_router)
+app.include_router(chat_router)
 
 if __name__ == "__main__":
     import uvicorn
