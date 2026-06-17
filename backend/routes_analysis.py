@@ -60,6 +60,10 @@ class ChatRequest(BaseModel):
     current_diagnosis: str
 
 
+class ClarifyRequest(BaseModel):
+    patient_data: dict = {}
+
+
 def build_doctor_context(ai_original: str, doctor_version: str, label: str) -> str:
     """Genera texto de contexto explicando qué cambió el médico vs lo que propuso la IA."""
     if not ai_original or ai_original.strip() == doctor_version.strip():
@@ -99,9 +103,9 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
 def extract_structured_header(raw_text: str) -> tuple[dict, str]:
     """
     Extrae el JSON de la primera línea y retorna (metadata, resto_del_texto).
-    metadata = {"confidence": int, "question": str|None}
+    metadata = {"confidence": int}
     """
-    metadata = {"confidence": 75, "question": None}
+    metadata = {"confidence": 75}
     text = raw_text.strip()
     # Buscar la primera línea que sea JSON válido
     first_line_end = text.find('\n')
@@ -111,8 +115,6 @@ def extract_structured_header(raw_text: str) -> tuple[dict, str]:
             parsed = json.loads(first_line)
             if "confidence" in parsed:
                 metadata["confidence"] = int(parsed.get("confidence", 75))
-                q = parsed.get("question")
-                metadata["question"] = q if q and q != "null" else None
                 return metadata, text[first_line_end:].strip()
         except Exception:
             pass
@@ -122,13 +124,47 @@ def extract_structured_header(raw_text: str) -> tuple[dict, str]:
         try:
             parsed = json.loads(m.group())
             metadata["confidence"] = int(parsed.get("confidence", 75))
-            q = parsed.get("question")
-            metadata["question"] = q if q and q != "null" else None
             cleaned = text[:m.start()].strip() + "\n" + text[m.end():].strip()
             return metadata, cleaned.strip()
         except Exception:
             pass
     return metadata, text
+
+
+@router.post("/{visit_id}/clarify")
+async def get_clarifying_questions(
+    visit_id: str,
+    body: ClarifyRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Genera preguntas de aclaración antes del análisis completo."""
+    import json as json_lib
+    try:
+        visit_record = get_visit(visit_id) or {}
+        patient_id = body.patient_data.get("patient_id") or visit_record.get("patient_id", "")
+        patient_record = get_patient(patient_id) if patient_id else {}
+
+        full_patient = {**body.patient_data, **patient_record}
+        full_visit = visit_record
+
+        from services.system_prompt import get_clarifying_questions_prompt
+        prompt = get_clarifying_questions_prompt(full_patient, full_visit)
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400)
+
+        questions = []
+        try:
+            m = re.search(r'\{[\s\S]*?"questions"[\s\S]*?\}', raw)
+            if m:
+                data = json_lib.loads(m.group())
+                questions = [q for q in data.get("questions", []) if q][:3]
+        except Exception:
+            questions = []
+
+        return {"visit_id": visit_id, "questions": questions}
+    except Exception as e:
+        print(f"[ERROR clarify] {str(e)}")
+        # No bloquear el flujo si falla
+        return {"visit_id": visit_id, "questions": []}
 
 
 @router.post("/{visit_id}/traditional")
@@ -139,6 +175,16 @@ async def run_traditional(
 ):
     """Genera el diagnóstico de medicina tradicional."""
     try:
+        # Extraer respuestas del médico a preguntas de aclaración (si las hay)
+        doctor_answers = patient_data.pop("_doctor_answers", None)
+        extra_context = ""
+        if doctor_answers and doctor_answers.strip():
+            extra_context = (
+                "RESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
+                "(tómalas en cuenta — son información adicional directa del paciente):\n"
+                + doctor_answers
+            )
+
         # Cargar visita y paciente completos desde Supabase
         visit_record = get_visit(visit_id) or {}
         patient_id = patient_data.get("patient_id") or visit_record.get("patient_id", "")
@@ -162,7 +208,7 @@ async def run_traditional(
 
         insert_analysis(analysis_record)
 
-        prompt = get_traditional_diagnosis_prompt(full_patient, full_visit)
+        prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context)
         raw = call_claude(prompt, model=MODEL_DIAGNOSE)
         metadata, diagnosis = extract_structured_header(raw)
 
@@ -175,7 +221,6 @@ async def run_traditional(
             "diagnosis": diagnosis,
             "validation": validation,
             "confidence": metadata["confidence"],
-            "ai_question": metadata["question"],
         }
 
     except Exception as e:
@@ -224,7 +269,6 @@ async def run_functional(
             "diagnosis": diagnosis,
             "validation": validation,
             "confidence": metadata["confidence"],
-            "ai_question": metadata["question"],
         }
 
     except Exception as e:
@@ -274,7 +318,6 @@ async def run_longevity(
             "diagnosis": diagnosis,
             "validation": validation,
             "confidence": metadata["confidence"],
-            "ai_question": metadata["question"],
         }
 
     except Exception as e:

@@ -383,23 +383,50 @@ DATOS DE LA VISITA ACTUAL
 
 STRUCTURED_HEADER_INSTRUCTIONS = """
 ANTES de tu análisis clínico, escribe EXACTAMENTE esta línea JSON (una sola línea):
-{"confidence": <número 0-100>, "question": "<pregunta concisa para el médico, o null si no necesitas>"}
+{"confidence": <número 0-100>}
 
-La "question" debe ser algo que el médico pueda preguntar al paciente AHORA MISMO en el consultorio
-que cambiaría o confirmaría el diagnóstico. Si no necesitas preguntar nada, pon null.
-Ejemplos de buenas preguntas: "¿Siente dolor o ardor al orinar?" / "¿El cansancio es peor por las tardes?"
-NO preguntes por labs — solo síntomas o historia que el médico pueda obtener verbalmente ahora.
+Ya tuviste oportunidad de preguntar al médico antes de este análisis — NO hagas preguntas aquí,
+entrega el análisis completo con la información disponible.
 
 Después del JSON, continúa con el análisis clínico normal. Sé conciso — el médico tiene al paciente enfrente.
 Usa términos médicos, no expliques lo obvio. Máximo 400 palabras por sección.
 """
 
 
-def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None) -> str:
+def get_clarifying_questions_prompt(patient_data: dict, visit_data: dict) -> str:
+    """Genera hasta 3 preguntas de aclaración ANTES del análisis completo."""
+    patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data)
+
+    return f"""Eres APEX, asistente médico. Vas a analizar un caso clínico pero primero necesitas aclarar algunas dudas con el médico tratante.
+
+{patient_ctx}
+
+{visit_ctx}
+
+TAREA: Identifica hasta 3 preguntas que el médico pueda hacer AL PACIENTE AHORA MISMO, en el consultorio, que cambiarían o confirmarían significativamente el diagnóstico.
+
+REGLAS ESTRICTAS:
+- Solo preguntas sobre síntomas, sensaciones o historia que el paciente puede responder verbalmente
+- NO preguntes por laboratorios, estudios o pruebas
+- Si los datos son suficientes, haz 0 preguntas
+- Máximo 3 preguntas. Si son 1 ó 2, mejor.
+- Preguntas cortas, directas, clínicamente relevantes para ESTE caso
+- Cada pregunta debe cambiar materialmente el diagnóstico si la respuesta es sí o no
+
+Responde SOLO con este JSON (nada más, sin explicaciones):
+{{"questions": ["¿Pregunta 1?", "¿Pregunta 2?"]}}
+
+Si no necesitas preguntar nada:
+{{"questions": []}}"""
+
+
+def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "") -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+    extra = f"\n\n{extra_context}" if extra_context else ""
 
-    return f"""Eres un médico internista senior. Analiza este caso clínico con precisión — el médico tratante está leyendo esto con el paciente enfrente. Sé técnico, breve y directo.
+    return f"""Eres un médico internista senior. Analiza este caso clínico — el médico está leyendo esto con el paciente enfrente. Sé técnico, breve, directo. Máximo 3 líneas por sección.{extra}
 
 {patient_ctx}
 
@@ -407,24 +434,29 @@ def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None
 
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
-FORMATO DEL ANÁLISIS (después del JSON):
-═══ DIAGNÓSTICO PRINCIPAL ═══
-[diagnóstico con CIE-10] — [2-3 líneas de justificación con datos concretos del paciente]
+TAREA: Lista los diagnósticos más probables para este caso, del más al menos probable, cada uno
+con su porcentaje de certeza según LA INFORMACIÓN DISPONIBLE.
 
-═══ DIAGNÓSTICOS DIFERENCIALES ═══
-1. [diagnóstico] — PROBABILIDAD: ALTA/MEDIA/BAJA — [dato clave que lo sustenta]
-2. [diagnóstico] — PROBABILIDAD: ... — [dato clave]
-3. [diagnóstico] — PROBABILIDAD: ... — [dato clave]
+REGLAS:
+- Máximo 4 diagnósticos. Si solo 2 o 3 son razonablemente probables, pon esos — no rellenes con opciones poco probables.
+- El primero (más probable) siempre se incluye, aunque su certeza sea menor al 50%.
+- A partir del segundo diagnóstico en adelante, NO lo incluyas si su certeza es menor al 50%.
+- Cada diagnóstico debe incluir el estudio o estudios específicos que lo confirmarían — no hagas una lista de estudios aparte.
 
-═══ ESTUDIOS SUGERIDOS ═══
-• URGENTE: [nombre estudio] — [razón en 1 línea]
-• DESEADO: [nombre estudio] — [razón en 1 línea]
-• COMPLEMENTARIO: [nombre estudio] — [razón en 1 línea]
+FORMATO DEL ANÁLISIS (después del JSON). Usa EXACTAMENTE estos delimitadores:
+═══ DIAGNÓSTICOS POSIBLES ═══
+1. [Diagnóstico + CIE-10] | [XX%]
+[1-2 líneas con los datos concretos que lo justifican]
+ESTUDIO PARA CONFIRMAR: [estudio(s) específico(s)]
+
+2. [Diagnóstico + CIE-10] | [XX%]
+[1-2 líneas]
+ESTUDIO PARA CONFIRMAR: [estudio(s)]
 
 ═══ ALERTAS CLÍNICAS ═══
-[Datos que requieren atención inmediata, o "Sin alertas inmediatas"]
+• [Hallazgo urgente o "Sin alertas inmediatas"]
 
-Responde solo con el JSON + análisis. Sin introducciones ni despedidas."""
+IMPORTANTE: No uses markdown (**negrita**). Escribe en texto plano. Sin introducciones ni despedidas."""
 
 
 def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str,
@@ -445,23 +477,20 @@ DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante):
 
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
-FORMATO (después del JSON):
+FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
 ═══ RAÍZ DEL PROBLEMA ═══
-[causa raíz en 2-3 líneas con datos concretos del paciente]
+[causa raíz en 2 líneas con datos concretos del paciente]
+ESTUDIO PARA CONFIRMAR: [estudio(s) específico(s) que confirmarían esta raíz del problema]
 
 ═══ CASCADA DE CAUSALIDAD ═══
 [factor inicial] → [disfunción A] → [disfunción B] → [síntoma visible]
 
 ═══ SISTEMAS DESREGULADOS ═══
 1. [Sistema] — [mecanismo en 1 línea] — Evidencia: [dato del paciente]
-2. [Sistema] — ...
+2. [Sistema] — [mecanismo] — Evidencia: [dato]
 
 ═══ FACTORES PERPETUANTES ═══
-• [factor] — [cómo contribuye, en 1 línea]
-• ...
-
-═══ CONEXIÓN CON DX TRADICIONAL ═══
-[1-2 líneas sobre cómo se complementan]"""
+• [factor] — [cómo contribuye, en 1 línea]"""
 
 
 def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str,
@@ -482,25 +511,23 @@ DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante):
 
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
-FORMATO (después del JSON):
+FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
 ═══ EDAD BIOLÓGICA ESTIMADA ═══
-[X] años (cronológica: [Y] años = [+/-Z] años)
-Biomarcadores clave usados: [lista breve con valores del paciente]
+[X] años (cronológica: [Y] años = [+/-Z] años). Biomarcadores clave: [lista con valores del paciente]
 
 ═══ RIESGOS A 5-10 AÑOS ═══
-• Cardiovascular: BAJO/MODERADO/ALTO — [1 línea de justificación]
+• Cardiovascular: BAJO/MODERADO/ALTO — [1 línea]
 • Metabólico: BAJO/MODERADO/ALTO — [1 línea]
 • Neurodegenerativo: BAJO/MODERADO/ALTO — [1 línea]
 • Musculoesquelético: BAJO/MODERADO/ALTO — [1 línea]
 
 ═══ ESTADO ACTUAL vs ÓPTIMO ═══
-| Parámetro | Valor actual | Rango óptimo | Estado |
-|-----------|-------------|--------------|--------|
-[máximo 6 filas, los más relevantes]
+[Parámetro] | [Valor actual] | [Rango óptimo] | [Estado: OK/BAJO/ALTO/ALERTA]
+[máximo 5 filas, los más relevantes para ESTE paciente]
 
-═══ POTENCIAL DE MEJORA (12 meses con protocolo) ═══
-• Edad biológica: -[X] años estimado
-• [2-3 mejoras concretas y cuantificadas]"""
+═══ POTENCIAL DE MEJORA ═══
+• Edad biológica: -[X] años estimado con protocolo
+• [2 mejoras concretas y cuantificadas]"""
 
 
 def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,

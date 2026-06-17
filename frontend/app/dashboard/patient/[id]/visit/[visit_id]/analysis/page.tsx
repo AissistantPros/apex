@@ -7,7 +7,7 @@ import TopNav from '@/app/components/TopNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step =
-  | 'init' | 'loading'
+  | 'init' | 'clarifying' | 'loading'
   | 'review_traditional' | 'review_functional' | 'review_longevity'
   | 'review_protocol_traditional' | 'review_protocol_functional' | 'review_protocol_longevity'
   | 'documents' | 'complete';
@@ -18,7 +18,6 @@ interface DiagnosisState {
   validation: string;
   confirmed: boolean;
   confidence: number;
-  ai_question: string | null;
 }
 
 interface ChatMsg {
@@ -27,9 +26,12 @@ interface ChatMsg {
   ts?: number;
 }
 
-const EMPTY_DX: DiagnosisState = { ai_text: '', doctor_text: '', validation: '', confirmed: false, confidence: 75, ai_question: null };
+const EMPTY_DX: DiagnosisState = {
+  ai_text: '', doctor_text: '', validation: '',
+  confirmed: false, confidence: 75,
+};
 
-// ─── Loading screen steps ─────────────────────────────────────────────────────
+// ─── Loading steps ────────────────────────────────────────────────────────────
 const LOAD_MSGS = [
   'Cargando historial clínico completo',
   'Analizando signos vitales y datos de la visita',
@@ -63,15 +65,407 @@ const STEPPER_LABELS = [
   { label: 'Documentos',     color: '#f59e0b' },
 ];
 
-// ─── Parse sections from AI text ──────────────────────────────────────────────
+// ─── Markdown / Section Parsers ───────────────────────────────────────────────
+
+/** Renders inline bold: **text** → <strong> */
+function Md({ text }: { text: string }) {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1
+          ? <strong key={i} className="font-bold text-[#dde6ef]">{p}</strong>
+          : p
+      )}
+    </>
+  );
+}
+
 function parseSections(text: string): Record<string, string> {
   const sections: Record<string, string> = {};
-  const regex = /═══\s*(.+?)\s*═══\s*\n([\s\S]*?)(?=═══|$)/g;
+  // Primary: ═══ TITLE ═══
+  const r1 = /═══\s*(.+?)\s*═══\s*\n([\s\S]*?)(?=═══|$)/g;
   let m;
-  while ((m = regex.exec(text)) !== null) {
-    sections[m[1].trim()] = m[2].trim();
-  }
+  while ((m = r1.exec(text)) !== null) sections[m[1].trim()] = m[2].trim();
+  if (Object.keys(sections).length > 0) return sections;
+
+  // Secondary: ══ TITLE ══
+  const r2 = /══\s*(.+?)\s*══\s*\n([\s\S]*?)(?=══|$)/g;
+  while ((m = r2.exec(text)) !== null) sections[m[1].trim()] = m[2].trim();
+  if (Object.keys(sections).length > 0) return sections;
+
   return sections;
+}
+
+// ─── Section Renderers ────────────────────────────────────────────────────────
+
+/** Busca una línea "ESTUDIO PARA CONFIRMAR: ..." y la separa del resto del texto */
+function extractStudy(text: string): { rest: string; study: string | null } {
+  const m = text.match(/ESTUDIOS?\s*(?:PARA CONFIRMAR|SUGERIDOS?)?:\s*(.+)/i);
+  if (!m) return { rest: text, study: null };
+  const rest = (text.slice(0, m.index) + text.slice((m.index || 0) + m[0].length)).trim();
+  return { rest, study: m[1].trim() };
+}
+
+function StudyTag({ text }: { text: string }) {
+  return (
+    <div className="mt-3 flex items-start gap-2 bg-[rgba(14,165,233,.07)] border border-[rgba(14,165,233,.2)] rounded-lg px-3 py-2">
+      <span className="text-[#0ea5e9] text-xs flex-shrink-0 mt-0.5">🔬</span>
+      <p className="text-xs text-[#7a95aa] font-mono leading-relaxed">
+        <span className="text-[#0ea5e9] font-bold">Estudio para confirmar: </span>
+        <Md text={text} />
+      </p>
+    </div>
+  );
+}
+
+function MainDxBlock({ body, color }: { body: string; color: string }) {
+  const { rest, study } = extractStudy(body);
+  const lines = rest.split('\n').filter(l => l.trim());
+  const headline = lines[0] || '';
+  const detail = lines.slice(1).join('\n').trim();
+  return (
+    <div className="rounded-xl p-4" style={{ background: `${color}10`, border: `1px solid ${color}30` }}>
+      <p className="font-bold text-base leading-snug mb-2" style={{ color }}>
+        <Md text={headline} />
+      </p>
+      {detail && (
+        <p className="text-sm text-[#dde6ef] leading-relaxed font-serif">
+          <Md text={detail} />
+        </p>
+      )}
+      {study && <StudyTag text={study} />}
+    </div>
+  );
+}
+
+function RankedDiagnosesBlock({ body, color }: { body: string; color: string }) {
+  const lines = body.split('\n');
+  const items: { name: string; pct: number | null; detail: string; study: string | null }[] = [];
+  let current: { name: string; pct: number | null; detail: string[] } | null = null;
+
+  const flush = () => {
+    if (!current) return;
+    const { rest, study } = extractStudy(current.detail.join(' ').trim());
+    items.push({ name: current.name, pct: current.pct, detail: rest, study });
+  };
+
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) continue;
+    const head = t.match(/^\d+\.\s*(.+?)\s*\|\s*(\d{1,3})\s*%/);
+    if (head) {
+      flush();
+      current = { name: head[1].trim(), pct: parseInt(head[2], 10), detail: [] };
+    } else if (current) {
+      current.detail.push(t);
+    }
+  }
+  flush();
+
+  if (!items.length) {
+    return <DefaultBlock body={body} />;
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-[#7a95aa] font-serif mb-3 italic">
+        Diagnósticos posibles con la información disponible, del más al menos probable:
+      </p>
+      <div className="flex flex-col gap-3">
+        {items.map((item, i) => {
+          const isFirst = i === 0;
+          const pctColor = item.pct == null ? '#7a95aa' : item.pct >= 75 ? color : item.pct >= 50 ? '#f59e0b' : '#7a95aa';
+          return (
+            <div key={i} className="rounded-xl p-4"
+              style={isFirst
+                ? { background: `${color}10`, border: `1px solid ${color}30` }
+                : { background: '#070a0e', border: '1px solid #1e2d3d' }}>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <span className="font-bold text-sm leading-snug" style={{ color: isFirst ? color : '#dde6ef' }}>
+                  {isFirst ? '🎯 ' : `${i + 1}. `}<Md text={item.name} />
+                </span>
+                {item.pct != null && (
+                  <span className="text-xs font-mono font-bold px-2 py-1 rounded flex-shrink-0 whitespace-nowrap"
+                    style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
+                    {item.pct}%
+                  </span>
+                )}
+              </div>
+              {item.detail && (
+                <p className="text-sm text-[#dde6ef] leading-relaxed font-serif"><Md text={item.detail} /></p>
+              )}
+              {item.study && <StudyTag text={item.study} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AlertsBlock({ body }: { body: string }) {
+  const raw = body.trim();
+  if (!raw || raw.toLowerCase().includes('sin alertas')) {
+    return (
+      <div className="flex items-center gap-2 bg-[rgba(0,229,160,.07)] border border-[rgba(0,229,160,.2)] rounded-xl px-4 py-3 text-sm text-[#00e5a0]">
+        <span>✓</span> Sin alertas inmediatas
+      </div>
+    );
+  }
+  const lines = raw.split('\n').filter(l => l.trim());
+  return (
+    <div className="flex flex-col gap-2">
+      {lines.map((line, i) => {
+        const clean = line.replace(/^[•\-\*]\s*/, '');
+        return (
+          <div key={i} className="flex items-start gap-2.5 bg-[rgba(249,115,22,.07)] border border-[rgba(249,115,22,.25)] rounded-xl px-4 py-3">
+            <span className="text-[#f97316] flex-shrink-0 mt-0.5 text-base">⚠</span>
+            <p className="text-sm text-[#dde6ef] leading-relaxed font-serif"><Md text={clean} /></p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CascadeBlock({ body }: { body: string }) {
+  const lines = body.split('\n').filter(l => l.trim());
+  // Find the chain line (has →)
+  const chain = lines.find(l => l.includes('→'));
+  const rest = lines.filter(l => l !== chain);
+  if (!chain) {
+    return <p className="text-sm text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap">{body}</p>;
+  }
+  const nodes = chain.split('→').map(n => n.trim()).filter(Boolean);
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1 mb-3 bg-[#070a0e] border border-[#1e2d3d] rounded-xl p-3">
+        {nodes.map((node, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <span className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#dde6ef] whitespace-nowrap">
+              {node}
+            </span>
+            {i < nodes.length - 1 && (
+              <span className="text-[#3d5870] text-sm">→</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {rest.length > 0 && (
+        <p className="text-sm text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap"><Md text={rest.join('\n')} /></p>
+      )}
+    </div>
+  );
+}
+
+function TableBlock({ body }: { body: string }) {
+  // Parse pipe-separated table
+  const lines = body.split('\n').filter(l => l.trim() && !l.trim().startsWith('|---') && !l.trim().startsWith('|:'));
+  if (lines.length < 2) {
+    return <p className="text-sm text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap">{body}</p>;
+  }
+  // Check if lines have | separator
+  const hasTable = lines.some(l => l.includes('|'));
+  if (!hasTable) {
+    // Format: "Param | Value | Range | Status" style without pipes at line start
+    const rows = lines.map(l => l.split('|').map(c => c.trim()));
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <tbody>
+            {rows.map((cols, i) => (
+              <tr key={i} className={i === 0 ? '' : 'border-t border-[#1e2d3d]'}>
+                {cols.map((col, j) => (
+                  <td key={j} className={`px-3 py-2 text-left ${i === 0 ? 'font-mono text-[10px] text-[#3d5870] uppercase' : 'text-[#dde6ef] font-serif'}`}>
+                    {col}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  const rows = lines.map(l => l.split('|').map(c => c.trim()).filter(Boolean));
+  const statusColor = (s: string) => {
+    const u = s.toUpperCase();
+    if (u.includes('ALTO') || u.includes('ALERTA')) return '#f43f5e';
+    if (u.includes('BAJO')) return '#f59e0b';
+    if (u.includes('OK') || u.includes('NORMAL') || u.includes('ÓPTIMO')) return '#00e5a0';
+    return '#dde6ef';
+  };
+  return (
+    <div className="bg-[#070a0e] border border-[#1e2d3d] rounded-xl overflow-hidden">
+      <table className="w-full text-sm">
+        <tbody>
+          {rows.map((cols, i) => (
+            <tr key={i} className="border-b border-[#1e2d3d] last:border-0">
+              {cols.map((col, j) => {
+                const isStatus = j === cols.length - 1 && i > 0;
+                const sc = isStatus ? statusColor(col) : undefined;
+                return (
+                  <td key={j} className={`px-4 py-2.5 ${i === 0 ? 'font-mono text-[10px] text-[#3d5870] uppercase' : 'font-serif'}`}
+                    style={{ color: isStatus ? sc : i === 0 ? undefined : '#dde6ef' }}>
+                    {isStatus && sc === '#f43f5e' && '↑ '}
+                    {isStatus && sc === '#f59e0b' && '↓ '}
+                    {col}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RisksBlock({ body }: { body: string }) {
+  const lines = body.split('\n').filter(l => l.trim());
+  const riskColor = (text: string) => {
+    if (text.includes('ALTO')) return { bg: 'rgba(244,63,94,.1)', color: '#f43f5e', border: 'rgba(244,63,94,.25)' };
+    if (text.includes('MODERADO')) return { bg: 'rgba(245,158,11,.1)', color: '#f59e0b', border: 'rgba(245,158,11,.25)' };
+    return { bg: 'rgba(0,229,160,.08)', color: '#00e5a0', border: 'rgba(0,229,160,.2)' };
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      {lines.map((line, i) => {
+        const clean = line.replace(/^[•\-\*]\s*/, '');
+        const c = riskColor(clean);
+        const [label, ...rest] = clean.split('—');
+        return (
+          <div key={i} className="flex items-start gap-3 rounded-xl px-4 py-3"
+            style={{ background: c.bg, border: `1px solid ${c.border}` }}>
+            <span className="text-xs font-mono font-bold flex-shrink-0 mt-0.5 whitespace-nowrap" style={{ color: c.color }}>
+              {label?.trim() || '—'}
+            </span>
+            {rest.length > 0 && (
+              <span className="text-sm text-[#dde6ef] font-serif">{rest.join('—').trim()}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProtocolBlock({ body }: { body: string }) {
+  // Each numbered item is a drug/supplement
+  const sections: { name: string; fields: string[] }[] = [];
+  const lines = body.split('\n');
+  let current: { name: string; fields: string[] } | null = null;
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (/^\d+\./.test(t)) {
+      if (current) sections.push(current);
+      current = { name: t.replace(/^\d+\.\s*/, ''), fields: [] };
+    } else if (current && t.startsWith('•')) {
+      current.fields.push(t.replace(/^•\s*/, ''));
+    } else if (current && t && !t.startsWith('═') && !t.startsWith('══')) {
+      current.fields.push(t);
+    }
+  }
+  if (current) sections.push(current);
+
+  if (!sections.length) {
+    // Fallback: render as bullet list
+    const bullets = body.split('\n').filter(l => l.trim());
+    return (
+      <div className="flex flex-col gap-2">
+        {bullets.map((b, i) => {
+          const clean = b.replace(/^[•\-\*\d+\.]\s*/, '');
+          if (!clean) return null;
+          return (
+            <div key={i} className="bg-[#070a0e] border border-[#1e2d3d] rounded-xl px-4 py-3">
+              <p className="text-sm text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {sections.map((sec, i) => (
+        <div key={i} className="bg-[#070a0e] border border-[#1e2d3d] rounded-xl p-4">
+          <p className="font-bold text-[#dde6ef] text-sm mb-2"><Md text={sec.name} /></p>
+          {sec.fields.map((f, j) => {
+            const [label, ...val] = f.split(':');
+            return (
+              <div key={j} className="flex gap-2 text-xs mb-1">
+                {val.length > 0 ? (
+                  <>
+                    <span className="font-mono text-[#3d5870] flex-shrink-0">{label}:</span>
+                    <span className="text-[#dde6ef] font-serif">{val.join(':').trim()}</span>
+                  </>
+                ) : (
+                  <span className="text-[#7a95aa] font-serif">{f}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DefaultBlock({ body }: { body: string }) {
+  const lines = body.split('\n');
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => {
+        const t = line.trim();
+        if (!t) return <div key={i} className="h-1" />;
+        const isBullet = /^[•\-\*]/.test(t);
+        const clean = t.replace(/^[•\-\*]\s*/, '');
+        if (isBullet) {
+          return (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-[#3d5870] flex-shrink-0 mt-1 text-xs">•</span>
+              <p className="text-sm text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
+            </div>
+          );
+        }
+        return (
+          <p key={i} className="text-sm text-[#dde6ef] font-serif leading-relaxed">
+            <Md text={t} />
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Section Dispatcher ───────────────────────────────────────────────────────
+function SectionContent({ title, body, color }: { title: string; body: string; color: string }) {
+  const t = title.toUpperCase();
+  if (t.includes('DIAGNÓSTICOS POSIBLES')) {
+    return <RankedDiagnosesBlock body={body} color={color} />;
+  }
+  if (t.includes('DIAGNÓSTICO PRINCIPAL') || t.includes('RAÍZ DEL PROBLEMA') || t.includes('EDAD BIOLÓGICA')) {
+    return <MainDxBlock body={body} color={color} />;
+  }
+  if (t.includes('ALERTA')) {
+    return <AlertsBlock body={body} />;
+  }
+  if (t.includes('CASCADA')) {
+    return <CascadeBlock body={body} />;
+  }
+  if (t.includes('ESTADO ACTUAL') || t.includes('ÓPTIMO')) {
+    return <TableBlock body={body} />;
+  }
+  if (t.includes('RIESGOS')) {
+    return <RisksBlock body={body} />;
+  }
+  if (t.includes('PROTOCOLO') || t.includes('NIVEL') || t.includes('MEDICAMENTO') || t.includes('SUPLEMENTO')) {
+    return <ProtocolBlock body={body} />;
+  }
+  return <DefaultBlock body={body} />;
 }
 
 // ─── Confidence Bar ───────────────────────────────────────────────────────────
@@ -93,38 +487,10 @@ function ConfidenceBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-// ─── Studies Section ──────────────────────────────────────────────────────────
-function StudiesBlock({ text }: { text: string }) {
-  if (!text) return null;
-  const lines = text.split('\n').filter(l => l.trim());
-  const dots: Record<string, string> = { 'URGENTE': '#f43f5e', 'DESEADO': '#f59e0b', 'COMPLEMENTARIO': '#0ea5e9' };
-  return (
-    <div className="mb-5 bg-[#070a0e] border border-[#1e2d3d] rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-xs font-mono tracking-widest text-[#3d5870]">ESTUDIOS SUGERIDOS</span>
-      </div>
-      <div className="flex flex-col gap-2">
-        {lines.map((line, i) => {
-          const level = Object.keys(dots).find(k => line.includes(k));
-          const color = level ? dots[level] : '#3d5870';
-          const clean = line.replace(/^[•\-\*]\s*/, '').replace(/^(URGENTE|DESEADO|COMPLEMENTARIO):\s*/i, '');
-          return (
-            <div key={i} className="flex items-start gap-3 bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2">
-              <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: color, boxShadow: level === 'URGENTE' ? `0 0 6px ${color}` : 'none' }} />
-              <div>
-                {level && <span className="text-[10px] font-mono mr-2" style={{ color }}>{level}</span>}
-                <span className="text-sm text-[#dde6ef]">{clean}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ─── Diagnosis Card ───────────────────────────────────────────────────────────
-function DiagnosisCard({ state, color, onEdit, onRestore, editMode, setEditMode, setState }: {
+function DiagnosisCard({
+  state, color, onEdit, onRestore, editMode, setEditMode, setState,
+}: {
   state: DiagnosisState; color: string;
   onEdit: () => void; onRestore: () => void;
   editMode: boolean; setEditMode: (v: boolean) => void;
@@ -132,6 +498,7 @@ function DiagnosisCard({ state, color, onEdit, onRestore, editMode, setEditMode,
 }) {
   const sections = parseSections(state.doctor_text);
   const hasStructure = Object.keys(sections).length > 0;
+  const SKIP_SECTIONS = ['ESTUDIOS SUGERIDOS', 'ESTUDIOS'];
 
   if (editMode) {
     return (
@@ -157,9 +524,10 @@ function DiagnosisCard({ state, color, onEdit, onRestore, editMode, setEditMode,
   }
 
   return (
-    <div className="bg-[#0d1520] border rounded-xl overflow-hidden mb-5" style={{ borderColor: `${color}33` }}>
-      <div className="flex justify-between items-center px-5 py-3 border-b" style={{ borderColor: `${color}22` }}>
-        <span className="text-xs font-mono text-[#7a95aa]">
+    <div className="mb-5">
+      {/* Edit bar */}
+      <div className="flex justify-between items-center px-1 mb-3">
+        <span className="text-xs font-mono text-[#3d5870]">
           {state.confirmed ? '✓ CONFIRMADO' : 'GENERADO POR IA'}
           {state.doctor_text !== state.ai_text && ' · ✏️ EDITADO'}
         </span>
@@ -168,30 +536,29 @@ function DiagnosisCard({ state, color, onEdit, onRestore, editMode, setEditMode,
           ✏️ Editar
         </button>
       </div>
-      <div className="p-5">
-        {hasStructure ? (
-          <div className="space-y-5">
-            {Object.entries(sections).map(([title, body]) => {
-              if (title.includes('ESTUDIOS')) return null; // Rendered separately
-              const isMainDx = title.includes('DIAGNÓSTICO PRINCIPAL') || title.includes('RAÍZ') || title.includes('EDAD BIOLÓGICA');
-              return (
-                <div key={title}>
-                  <div className="text-[10px] font-mono tracking-widest mb-2" style={{ color: isMainDx ? color : '#3d5870' }}>
-                    {title}
-                  </div>
-                  <div className="text-sm text-[#dde6ef] leading-relaxed whitespace-pre-wrap font-serif">
-                    {body}
-                  </div>
+
+      {/* Structured sections */}
+      {hasStructure ? (
+        <div className="space-y-4">
+          {Object.entries(sections).map(([title, body]) => {
+            if (SKIP_SECTIONS.some(s => title.toUpperCase().includes(s))) return null;
+            return (
+              <div key={title}>
+                <div className="text-[10px] font-mono tracking-widest mb-2 px-1"
+                  style={{ color: title.toUpperCase().includes('DIAGNÓSTICO PRINCIPAL') || title.toUpperCase().includes('RAÍZ') ? color : '#3d5870' }}>
+                  {title}
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-sm text-[#dde6ef] leading-relaxed whitespace-pre-wrap font-serif">
-            {state.doctor_text}
-          </div>
-        )}
-      </div>
+                <SectionContent title={title} body={body} color={color} />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Fallback: render raw text with inline markdown */
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-5">
+          <DefaultBlock body={state.doctor_text} />
+        </div>
+      )}
     </div>
   );
 }
@@ -199,35 +566,24 @@ function DiagnosisCard({ state, color, onEdit, onRestore, editMode, setEditMode,
 // ─── Loading Screen ───────────────────────────────────────────────────────────
 function LoadingScreen({ label }: { label: string }) {
   const [activeIdx, setActiveIdx] = useState(0);
-
   useEffect(() => {
     let i = 0;
-    const interval = setInterval(() => {
-      i++;
-      if (i < LOAD_MSGS.length) setActiveIdx(i);
-      else clearInterval(interval);
-    }, 1800);
-    return () => clearInterval(interval);
+    const iv = setInterval(() => { i++; if (i < LOAD_MSGS.length) setActiveIdx(i); else clearInterval(iv); }, 1800);
+    return () => clearInterval(iv);
   }, []);
-
   return (
     <div className="fixed inset-0 bg-[#070a0e] z-50 flex flex-col items-center justify-center px-6">
-      {/* Scan line */}
       <div className="fixed left-0 right-0 h-px pointer-events-none"
         style={{ background: 'linear-gradient(90deg,transparent,rgba(0,229,160,.4),transparent)', animation: 'scan 2.2s linear infinite' }} />
-
       <div className="w-full max-w-md">
         <div className="text-[#00e5a0] text-3xl font-black tracking-widest mb-1">APEX</div>
         <div className="font-mono text-[10px] tracking-[4px] text-[#3d5870] mb-8 uppercase">{label}</div>
-
         <div className="flex flex-col gap-2 mb-6">
           {LOAD_MSGS.map((msg, i) => (
             <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border font-mono text-xs transition-all duration-500 ${
-              i === activeIdx
-                ? 'border-[rgba(0,229,160,.3)] bg-[rgba(0,229,160,.05)] text-[#00e5a0]'
-                : i < activeIdx
-                  ? 'border-[rgba(14,165,233,.15)] bg-transparent text-[#3d5870]'
-                  : 'border-[#111820] bg-transparent text-[#1e2d3d]'
+              i === activeIdx ? 'border-[rgba(0,229,160,.3)] bg-[rgba(0,229,160,.05)] text-[#00e5a0]'
+              : i < activeIdx ? 'border-[rgba(14,165,233,.15)] text-[#3d5870]'
+              : 'border-[#111820] text-[#1e2d3d]'
             }`}>
               <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${
                 i === activeIdx ? 'bg-[#00e5a0] text-black' : i < activeIdx ? 'bg-[#0ea5e9] text-white' : 'bg-[#1e2d3d] text-[#3d5870]'
@@ -238,13 +594,11 @@ function LoadingScreen({ label }: { label: string }) {
             </div>
           ))}
         </div>
-
         <div className="h-0.5 bg-[#1e2d3d] rounded overflow-hidden">
           <div className="h-full rounded transition-all duration-[1800ms] ease-out"
             style={{ width: `${((activeIdx + 1) / LOAD_MSGS.length) * 100}%`, background: 'linear-gradient(90deg, #0ea5e9, #00e5a0)' }} />
         </div>
       </div>
-
       <style>{`
         @keyframes scan { 0% { top: 0 } 100% { top: 100vh } }
         @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,160,.4)} 60%{box-shadow:0 0 0 6px rgba(0,229,160,0)} }
@@ -253,35 +607,109 @@ function LoadingScreen({ label }: { label: string }) {
   );
 }
 
-// ─── Floating Chat Bubble ─────────────────────────────────────────────────────
+// ─── Clarifying Questions Step ────────────────────────────────────────────────
+function ClarifyStep({
+  questions,
+  answers,
+  setAnswers,
+  onSubmit,
+  onSkip,
+  loadingAnalysis,
+}: {
+  questions: string[];
+  answers: string[];
+  setAnswers: (a: string[]) => void;
+  onSubmit: () => void;
+  onSkip: () => void;
+  loadingAnalysis: boolean;
+}) {
+  return (
+    <div className="py-4">
+      {/* AI header */}
+      <div className="flex items-start gap-4 mb-6">
+        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-sm font-black text-black flex-shrink-0 mt-0.5">A</div>
+        <div className="flex-1">
+          <p className="font-bold text-[#dde6ef] mb-0.5">APEX IA</p>
+          <p className="text-sm text-[#7a95aa] font-serif">
+            {questions.length === 0
+              ? 'Los datos son suficientes. Continuando con el análisis...'
+              : 'Tengo algunas preguntas antes de analizar el caso. Puedes responderlas o continuar directamente.'}
+          </p>
+        </div>
+      </div>
+
+      {questions.length > 0 && (
+        <div className="flex flex-col gap-3 mb-6">
+          {questions.map((q, i) => (
+            <div key={i} className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4">
+              <div className="flex items-start gap-3 mb-3">
+                <span className="text-[10px] font-mono px-2 py-1 rounded-lg flex-shrink-0 mt-0.5"
+                  style={{ background: 'rgba(167,139,250,.12)', color: '#a78bfa', border: '1px solid rgba(167,139,250,.25)' }}>
+                  P{i + 1}
+                </span>
+                <p className="text-sm text-[#dde6ef] leading-relaxed font-serif">{q}</p>
+              </div>
+              <textarea
+                value={answers[i] || ''}
+                onChange={e => {
+                  const n = [...answers];
+                  n[i] = e.target.value;
+                  setAnswers(n);
+                }}
+                placeholder="Respuesta (opcional)…"
+                rows={2}
+                className="w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#a78bfa] resize-none placeholder-[#3d5870] transition"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-3 flex-wrap">
+        <button
+          onClick={onSubmit}
+          disabled={loadingAnalysis}
+          className="px-6 py-2.5 text-black text-sm font-bold rounded-xl disabled:opacity-40 transition"
+          style={{ background: '#00e5a0' }}>
+          {loadingAnalysis ? 'Analizando...' : 'Continuar a diagnóstico →'}
+        </button>
+        {questions.length > 0 && (
+          <button
+            onClick={onSkip}
+            disabled={loadingAnalysis}
+            className="px-5 py-2.5 border border-[#1e2d3d] text-[#7a95aa] text-sm rounded-xl hover:border-[#3d5870] disabled:opacity-40 transition">
+            Continuar sin responder
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Floating Chat ────────────────────────────────────────────────────────────
 function FloatingChat({
-  messages, input, setInput, onSend, loading, unread, onOpen, isOpen, setIsOpen, currentStep
+  messages, input, setInput, onSend, loading, unread, onOpen, isOpen, setIsOpen, currentStep, hasActionBar,
 }: {
   messages: ChatMsg[]; input: string; setInput: (v: string) => void;
   onSend: () => void; loading: boolean; unread: number;
   onOpen: () => void; isOpen: boolean; setIsOpen: (v: boolean) => void;
-  currentStep: string;
+  currentStep: string; hasActionBar: boolean;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const bottomPx = hasActionBar ? 96 : 24;
 
-  useEffect(() => {
-    if (isOpen) endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen]);
-
-  useEffect(() => {
-    if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
-  }, [isOpen]);
+  useEffect(() => { if (isOpen) endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isOpen]);
+  useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 100); }, [isOpen]);
 
   const stepLabel = STEP_CFG[currentStep]?.label || 'Análisis';
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+    <div className="fixed right-6 z-50 flex flex-col items-end gap-3" style={{ bottom: `${bottomPx}px` }}>
       {/* Expanded panel */}
       {isOpen && (
         <div className="w-[340px] bg-[#0d1520] border border-[#1e2d3d] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-          style={{ maxHeight: '480px', boxShadow: '0 8px 40px rgba(0,0,0,.7)' }}>
-          {/* Header */}
+          style={{ maxHeight: '460px', boxShadow: '0 8px 40px rgba(0,0,0,.7)' }}>
           <div className="flex items-center gap-3 px-4 py-3 border-b border-[#1e2d3d] bg-[#0c1118]">
             <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-black"
               style={{ background: 'linear-gradient(135deg,#00e5a0,#0ea5e9)' }}>A</div>
@@ -292,13 +720,10 @@ function FloatingChat({
             <button onClick={() => setIsOpen(false)}
               className="w-6 h-6 rounded-md bg-[#1e2d3d] flex items-center justify-center text-[#7a95aa] hover:text-[#dde6ef] transition text-xs">✕</button>
           </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" style={{ maxHeight: 300 }}>
+          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-0" style={{ maxHeight: 280 }}>
             {messages.length === 0 && (
               <div className="text-xs font-mono text-[#3d5870] text-center py-4">
-                Pregunta sobre el diagnóstico o comparte info adicional.<br/>
-                <span className="text-[#1e2d3d]">El contexto se mantiene durante toda la sesión.</span>
+                Pregunta sobre el diagnóstico o comparte info adicional.
               </div>
             )}
             {messages.map((m, i) => (
@@ -311,13 +736,9 @@ function FloatingChat({
               ) : (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[88%] px-3 py-2 rounded-xl text-sm leading-relaxed ${
-                    m.role === 'user'
-                      ? 'bg-[#a78bfa] text-black font-medium'
-                      : 'bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] font-serif'
+                    m.role === 'user' ? 'bg-[#a78bfa] text-black font-medium' : 'bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] font-serif'
                   }`}>
-                    {m.role === 'assistant' && (
-                      <div className="text-[9px] font-mono text-[#00e5a0] mb-1">APEX</div>
-                    )}
+                    {m.role === 'assistant' && <div className="text-[9px] font-mono text-[#00e5a0] mb-1">APEX</div>}
                     {m.content}
                   </div>
                 </div>
@@ -337,8 +758,6 @@ function FloatingChat({
             )}
             <div ref={endRef} />
           </div>
-
-          {/* Input */}
           <div className="flex gap-2 p-3 border-t border-[#1e2d3d]">
             <textarea ref={inputRef}
               value={input}
@@ -349,13 +768,10 @@ function FloatingChat({
               className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0] resize-none min-h-[36px] max-h-[80px] placeholder-[#3d5870] transition"
             />
             <button onClick={onSend} disabled={loading || !input.trim()}
-              className="px-3 py-2 bg-[#00e5a0] text-black text-sm font-bold rounded-lg hover:bg-[#00ffb0] disabled:opacity-40 transition flex-shrink-0">
-              →
-            </button>
+              className="px-3 py-2 bg-[#00e5a0] text-black text-sm font-bold rounded-lg hover:bg-[#00ffb0] disabled:opacity-40 transition flex-shrink-0">→</button>
           </div>
         </div>
       )}
-
       {/* Toggle button */}
       <button onClick={() => { setIsOpen(!isOpen); onOpen(); }}
         className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center relative transition-transform hover:scale-105 active:scale-95"
@@ -367,7 +783,6 @@ function FloatingChat({
           </div>
         )}
       </button>
-
       <style>{`@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }`}</style>
     </div>
   );
@@ -380,10 +795,9 @@ function Stepper({ current, completed, onGoTo }: { current: number; completed: n
       {STEPPER_LABELS.map((s, i) => {
         const isDone = i < completed;
         const isActive = i === current;
-        const canClick = isDone;
         return (
           <div key={i} className="flex items-start gap-1 flex-shrink-0">
-            <div className="flex flex-col items-center gap-1 cursor-pointer" onClick={() => canClick && onGoTo(i)}>
+            <div className="flex flex-col items-center gap-1 cursor-pointer" onClick={() => isDone && onGoTo(i)}>
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
                 isDone ? 'text-white' : isActive ? 'text-black' : 'text-[#3d5870]'
               }`} style={{
@@ -407,37 +821,11 @@ function Stepper({ current, completed, onGoTo }: { current: number; completed: n
   );
 }
 
-// ─── AI Question Banner ───────────────────────────────────────────────────────
-function AIQuestionBanner({ question, onReply }: { question: string; onReply: () => void }) {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-  return (
-    <div className="bg-[rgba(167,139,250,.07)] border border-[rgba(167,139,250,.25)] rounded-xl px-4 py-3 mb-5 flex items-start gap-3">
-      <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-black text-black mt-0.5"
-        style={{ background: 'linear-gradient(135deg,#a78bfa,#0ea5e9)' }}>A</div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-mono text-[#a78bfa] mb-1">APEX PREGUNTA</div>
-        <p className="text-sm text-[#dde6ef] leading-relaxed">{question}</p>
-        <div className="flex gap-2 mt-2">
-          <button onClick={onReply}
-            className="text-xs px-3 py-1.5 bg-[#a78bfa] text-black font-semibold rounded-lg hover:bg-[#b49ef5] transition">
-            Responder en chat
-          </button>
-          <button onClick={() => setDismissed(true)}
-            className="text-xs px-3 py-1.5 border border-[#1e2d3d] text-[#7a95aa] rounded-lg hover:border-[#3d5870] transition">
-            Ignorar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AnalysisPage() {
   const router = useRouter();
   const params = useParams();
-  const visit_id  = params.visit_id as string;
+  const visit_id   = params.visit_id as string;
   const patient_id = params.id as string;
 
   const [token, setToken]   = useState<string | null>(null);
@@ -448,6 +836,11 @@ export default function AnalysisPage() {
   const [editMode, setEditMode] = useState(false);
   const [completedStepIdx, setCompletedStepIdx] = useState(-1);
 
+  // Clarifying questions
+  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
+  const [clarifyAnswers, setClarifyAnswers]     = useState<string[]>([]);
+  const [clarifyLoading, setClarifyLoading]     = useState(false);
+
   // Diagnósticos
   const [traditional, setTraditional] = useState<DiagnosisState>(EMPTY_DX);
   const [functional,  setFunctional]  = useState<DiagnosisState>(EMPTY_DX);
@@ -456,7 +849,7 @@ export default function AnalysisPage() {
   const [protFunc,    setProtFunc]    = useState<DiagnosisState>(EMPTY_DX);
   const [protLong,    setProtLong]    = useState<DiagnosisState>(EMPTY_DX);
 
-  // Chat (global, persiste toda la sesión)
+  // Chat
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput]       = useState('');
   const [chatLoading, setChatLoading]   = useState(false);
@@ -494,7 +887,7 @@ export default function AnalysisPage() {
     return { ...pat, ...lastVisit };
   };
 
-  // ── Chat helpers ────────────────────────────────────────────────────────────
+  // ── Chat ────────────────────────────────────────────────────────────────────
   const addDivider = (label: string) =>
     setChatMessages(prev => [...prev, { role: 'divider', content: label }]);
 
@@ -516,7 +909,7 @@ export default function AnalysisPage() {
       review_protocol_traditional: protTrad.doctor_text,
       review_protocol_functional:  protFunc.doctor_text,
       review_protocol_longevity:   protLong.doctor_text,
-      init: '', loading: '', documents: '', complete: '',
+      init: '', clarifying: '', loading: '', documents: '', complete: '',
     };
     return map[step] || '';
   };
@@ -527,11 +920,9 @@ export default function AnalysisPage() {
     setChatInput('');
     setChatLoading(true);
     setChatMessages(prev => [...prev, { role: 'user', content: q }]);
-
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/${getCurrentStepKey()}/chat`, {
-        method: 'POST',
-        headers: authH(),
+        method: 'POST', headers: authH(),
         body: JSON.stringify({ question: q, current_diagnosis: getCurrentDiagnosisText() }),
       });
       const json = await res.json();
@@ -547,36 +938,68 @@ export default function AnalysisPage() {
 
   const openChat = () => setChatUnread(0);
 
-  // Inject AI question into chat
-  const injectAIQuestion = (question: string | null, stepLabel: string) => {
-    if (!question) return;
-    setChatMessages(prev => [...prev, {
-      role: 'assistant',
-      content: `❓ ${question}`,
-    }]);
-    if (!chatOpen) setChatUnread(prev => prev + 1);
+  // ── Step 0: Get clarifying questions ────────────────────────────────────────
+  const startClarify = async () => {
+    setError('');
+    setClarifyLoading(true);
+    try {
+      const data = await loadPatientData();
+      setPatientData(data);
+
+      const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify`, {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({ patient_data: data }),
+      });
+      const json = await res.json();
+      const questions: string[] = json.questions || [];
+      setClarifyQuestions(questions);
+      setClarifyAnswers(new Array(questions.length).fill(''));
+      setStep('clarifying');
+    } catch {
+      // If clarify fails, skip straight to analysis
+      setClarifyQuestions([]);
+      setClarifyAnswers([]);
+      setStep('clarifying');
+    } finally {
+      setClarifyLoading(false);
+    }
   };
 
-  // ── API calls ────────────────────────────────────────────────────────────────
-  const startTraditional = async () => {
+  // ── Step 1: Traditional analysis (with optional answers) ─────────────────────
+  const startTraditional = async (answersOverride?: string[]) => {
     setStep('loading');
     setLoadingLabel('ANALIZANDO — MEDICINA TRADICIONAL');
     setError('');
     setChatMessages([]);
     setEditMode(false);
+
     try {
-      const data = await loadPatientData();
-      setPatientData(data);
+      const data = patientData || (await loadPatientData());
+      if (!patientData) setPatientData(data);
+
+      // Build doctor answers string
+      const answers = answersOverride ?? clarifyAnswers;
+      const hasAnswers = clarifyQuestions.length > 0 && answers.some(a => a.trim());
+      let doctorAnswers = '';
+      if (hasAnswers) {
+        doctorAnswers = clarifyQuestions
+          .map((q, i) => answers[i]?.trim() ? `P: ${q}\nR: ${answers[i].trim()}` : null)
+          .filter(Boolean)
+          .join('\n\n');
+      }
+
+      const payload = { ...data, ...(doctorAnswers ? { _doctor_answers: doctorAnswers } : {}) };
+
       const res = await fetch(`${apiBase}/analyze/${visit_id}/traditional`, {
-        method: 'POST', headers: authH(), body: JSON.stringify(data),
+        method: 'POST', headers: authH(), body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
-      setTraditional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75, ai_question: json.ai_question || null });
+      setTraditional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       setStep('review_traditional');
       setCompletedStepIdx(-1);
-      injectAIQuestion(json.ai_question, 'Dx Tradicional');
-    } catch (e: any) { setError('Error: ' + e.message); setStep('init'); }
+    } catch (e: any) { setError('Error: ' + e.message); setStep('clarifying'); }
   };
 
   const startFunctional = async () => {
@@ -591,10 +1014,9 @@ export default function AnalysisPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
-      setFunctional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75, ai_question: json.ai_question || null });
+      setFunctional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       setStep('review_functional');
       setCompletedStepIdx(0);
-      injectAIQuestion(json.ai_question, 'Dx Funcional');
     } catch (e: any) { setError('Error: ' + e.message); setStep('review_traditional'); }
   };
 
@@ -610,10 +1032,9 @@ export default function AnalysisPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
-      setLongevity({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75, ai_question: json.ai_question || null });
+      setLongevity({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       setStep('review_longevity');
       setCompletedStepIdx(1);
-      injectAIQuestion(json.ai_question, 'Dx Longevidad');
     } catch (e: any) { setError('Error: ' + e.message); setStep('review_functional'); }
   };
 
@@ -630,7 +1051,7 @@ export default function AnalysisPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
-      const s: DiagnosisState = { ai_text: json.protocol, doctor_text: json.protocol, validation: '', confirmed: false, confidence: 90, ai_question: null };
+      const s: DiagnosisState = { ai_text: json.protocol, doctor_text: json.protocol, validation: '', confirmed: false, confidence: 90 };
       if (type === 'traditional') setProtTrad(s);
       else if (type === 'functional') setProtFunc(s);
       else setProtLong(s);
@@ -676,18 +1097,16 @@ export default function AnalysisPage() {
   const isReviewStep = step.startsWith('review_');
   const info = STEP_CFG[step] || { label: '', color: '#00e5a0', badge: '', stepIdx: -1 };
   const { state, setState } = getCurrentSetters();
-  const sections = parseSections(state.doctor_text);
-  const studiesText = sections['ESTUDIOS SUGERIDOS'] || '';
+  const hasActionBar = isReviewStep && !editMode;
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
       <TopNav />
 
-      {/* Loading overlay */}
       {step === 'loading' && <LoadingScreen label={loadingLabel} />}
 
       <main className="pt-16 pb-32">
-        <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="max-w-[860px] mx-auto px-6 py-8">
 
           {/* ── INIT ── */}
           {step === 'init' && (
@@ -698,9 +1117,8 @@ export default function AnalysisPage() {
                 Análisis en 6 pasos: 3 diagnósticos + 3 protocolos. Cada paso espera tu confirmación.
               </p>
               <p className="text-xs font-mono text-[#3d5870] max-w-md mx-auto mb-10">
-                Tu versión de cada diagnóstico alimenta los pasos siguientes.
+                Antes de dar el diagnóstico, APEX puede hacerte hasta 3 preguntas clave sobre el paciente.
               </p>
-
               <div className="flex items-center justify-center gap-2 mb-10 flex-wrap">
                 {STEPPER_LABELS.map((s, i) => (
                   <div key={i} className="flex items-center gap-2">
@@ -714,23 +1132,40 @@ export default function AnalysisPage() {
                   </div>
                 ))}
               </div>
-
               {error && <p className="text-[#f43f5e] text-sm mb-4">{error}</p>}
-
-              <button onClick={startTraditional}
-                className="px-8 py-3 bg-[#00e5a0] text-black font-semibold rounded-xl hover:bg-[#00ffb0] transition text-sm">
-                Iniciar Análisis →
+              <button onClick={startClarify} disabled={clarifyLoading}
+                className="px-8 py-3 bg-[#00e5a0] text-black font-semibold rounded-xl hover:bg-[#00ffb0] transition text-sm disabled:opacity-40">
+                {clarifyLoading ? 'Cargando...' : 'Iniciar Análisis →'}
               </button>
+            </div>
+          )}
+
+          {/* ── CLARIFYING ── */}
+          {step === 'clarifying' && (
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="px-2.5 py-1 rounded text-[10px] font-mono tracking-wider bg-[rgba(167,139,250,.1)] text-[#a78bfa] border border-[rgba(167,139,250,.25)]">
+                  PREGUNTAS PREVIAS
+                </div>
+                <h2 className="text-xl font-serif text-[#dde6ef]">Antes de analizar</h2>
+              </div>
+              {error && <p className="text-[#f43f5e] text-sm mb-4">{error}</p>}
+              <ClarifyStep
+                questions={clarifyQuestions}
+                answers={clarifyAnswers}
+                setAnswers={setClarifyAnswers}
+                onSubmit={() => startTraditional(clarifyAnswers)}
+                onSkip={() => startTraditional([])}
+                loadingAnalysis={clarifyLoading}
+              />
             </div>
           )}
 
           {/* ── REVIEW ── */}
           {isReviewStep && (
             <div>
-              {/* Stepper */}
               <Stepper current={info.stepIdx} completed={completedStepIdx + 1} onGoTo={handleGoTo} />
 
-              {/* Badge + title */}
               <div className="flex items-center gap-3 mb-5">
                 <div className="px-2.5 py-1 rounded text-[10px] font-mono tracking-wider"
                   style={{ background: `${info.color}15`, color: info.color, border: `1px solid ${info.color}33` }}>
@@ -739,21 +1174,8 @@ export default function AnalysisPage() {
                 <h2 className="text-xl font-serif text-[#dde6ef]">{info.label}</h2>
               </div>
 
-              {/* AI Question Banner */}
-              {state.ai_question && (
-                <AIQuestionBanner
-                  question={state.ai_question}
-                  onReply={() => { setChatOpen(true); setChatUnread(0); }}
-                />
-              )}
-
-              {/* Confidence bar */}
               <ConfidenceBar pct={state.confidence} color={info.color} />
 
-              {/* Studies block */}
-              {studiesText && <StudiesBlock text={studiesText} />}
-
-              {/* Main diagnosis card */}
               <DiagnosisCard
                 state={state}
                 color={info.color}
@@ -764,7 +1186,6 @@ export default function AnalysisPage() {
                 setState={setState}
               />
 
-              {/* Validation (collapsible) */}
               {state.validation && !step.startsWith('review_protocol_') && (
                 <details className="bg-[#070a0e] border border-[#1e2d3d] rounded-xl mb-5">
                   <summary className="px-4 py-3 text-xs font-mono text-[#3d5870] cursor-pointer hover:text-[#7a95aa]">
@@ -779,7 +1200,7 @@ export default function AnalysisPage() {
               {error && <p className="text-[#f43f5e] text-sm mb-4">{error}</p>}
 
               <p className="text-xs font-mono text-[#3d5870] text-center mt-6">
-                💬 Usa el chat (esquina inferior derecha) para preguntar o compartir info adicional
+                💬 Usa el chat (esquina inferior derecha) para preguntas o info adicional
               </p>
             </div>
           )}
@@ -794,9 +1215,9 @@ export default function AnalysisPage() {
                 <p className="text-[#7a95aa] text-sm mb-8">Diagnósticos y protocolos confirmados.</p>
                 <div className="grid grid-cols-3 gap-4 mb-8">
                   {[
-                    { icon: '📋', label: 'Receta médica', sub: 'Medicamentos + dosis' },
-                    { icon: '🔬', label: 'Solicitud estudios', sub: 'Labs recomendados' },
-                    { icon: '📊', label: 'Reporte paciente', sub: 'Resumen completo' },
+                    { icon: '📋', label: 'Receta médica',        sub: 'Medicamentos + dosis' },
+                    { icon: '🔬', label: 'Solicitud estudios',   sub: 'Labs recomendados' },
+                    { icon: '📊', label: 'Reporte paciente',     sub: 'Resumen completo' },
                   ].map(d => (
                     <div key={d.label} className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-4 cursor-pointer hover:border-[#00e5a0] transition">
                       <div className="text-3xl mb-2">{d.icon}</div>
@@ -831,12 +1252,12 @@ export default function AnalysisPage() {
       </main>
 
       {/* ── Bottom action bar ── */}
-      {isReviewStep && !editMode && (
+      {hasActionBar && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#070a0e]/95 border-t border-[#1e2d3d] px-6 py-4 flex justify-between items-center z-40 backdrop-blur-sm">
           <div className="text-xs font-mono text-[#3d5870]">
             {state.doctor_text !== state.ai_text
               ? '✏️ Editado — tu versión se usará en los siguientes pasos'
-              : 'Puedes aceptar como está o editar antes de continuar'}
+              : 'Puedes aceptar o editar antes de continuar'}
           </div>
           <button onClick={handleContinue}
             className="px-6 py-2.5 text-sm font-bold rounded-xl transition text-black"
@@ -859,6 +1280,7 @@ export default function AnalysisPage() {
           isOpen={chatOpen}
           setIsOpen={setChatOpen}
           currentStep={step}
+          hasActionBar={hasActionBar}
         />
       )}
     </div>
