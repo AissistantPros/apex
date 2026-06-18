@@ -1463,13 +1463,6 @@ function FlowPageInner() {
                       ))}
                     </div>
                   </div>
-
-                  {/* Metas */}
-                  <Field label="METAS DEL PACIENTE PARA ESTA CONSULTA">
-                    <textarea rows={3} className={`${inp} ${fOrng}`} value={f.metas}
-                      onChange={e=>set('metas',e.target.value)}
-                      placeholder="Bajar de peso, mejorar energía, revisar laboratorios..." />
-                  </Field>
                 </div>
               </Card>
 

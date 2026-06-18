@@ -393,26 +393,38 @@ Usa términos médicos, no expliques lo obvio. Máximo 400 palabras por sección
 """
 
 
-def get_clarifying_questions_prompt(patient_data: dict, visit_data: dict) -> str:
-    """Genera hasta 3 preguntas de aclaración ANTES del análisis completo."""
+def get_clarifying_questions_prompt(patient_data: dict, visit_data: dict, draft_diagnosis: str = "") -> str:
+    """Genera hasta 3 preguntas de aclaración basadas en un borrador de diagnóstico YA generado."""
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data)
 
-    return f"""Eres APEX, asistente médico. Vas a analizar un caso clínico pero primero necesitas aclarar algunas dudas con el médico tratante.
+    draft_block = (
+        f"""
+BORRADOR DE DIAGNÓSTICO QUE YA GENERASTE PARA ESTE CASO (con la información disponible hasta ahora):
+{draft_diagnosis}
+"""
+        if draft_diagnosis and draft_diagnosis.strip() else ""
+    )
+
+    return f"""Eres APEX, asistente médico. Ya analizaste este caso clínico y generaste un borrador de diagnóstico.
+Ahora necesitas identificar si hay preguntas puntuales que, de contestarse, cambiarían o reforzarían ese borrador.
 
 {patient_ctx}
 
 {visit_ctx}
-
-TAREA: Identifica hasta 3 preguntas que el médico pueda hacer AL PACIENTE AHORA MISMO, en el consultorio, que cambiarían o confirmarían significativamente el diagnóstico.
+{draft_block}
+TAREA: Basándote ESPECÍFICAMENTE en las partes menos ciertas o con menor evidencia de tu borrador de diagnóstico,
+identifica hasta 3 preguntas que el médico pueda hacer AL PACIENTE AHORA MISMO, en el consultorio, que cambiarían
+o confirmarían significativamente ese diagnóstico.
 
 REGLAS ESTRICTAS:
+- Las preguntas deben apuntar a lo que más incertidumbre le genera al borrador de diagnóstico, no preguntas genéricas
 - Solo preguntas sobre síntomas, sensaciones o historia que el paciente puede responder verbalmente
 - NO preguntes por laboratorios, estudios o pruebas
-- Si los datos son suficientes, haz 0 preguntas
+- Si el borrador ya tiene suficiente certeza, haz 0 preguntas
 - Máximo 3 preguntas. Si son 1 ó 2, mejor.
 - Preguntas cortas, directas, clínicamente relevantes para ESTE caso
-- Cada pregunta debe cambiar materialmente el diagnóstico si la respuesta es sí o no
+- Cada pregunta debe cambiar materialmente el diagnóstico o su porcentaje de certeza si la respuesta es sí o no
 
 Responde SOLO con este JSON (nada más, sin explicaciones):
 {{"questions": ["¿Pregunta 1?", "¿Pregunta 2?"]}}

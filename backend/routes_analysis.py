@@ -66,6 +66,20 @@ class ChatRequest(BaseModel):
 
 class ClarifyRequest(BaseModel):
     patient_data: dict = {}
+    selected_type: str = "traditional"
+
+
+class FinalizeFirstRequest(BaseModel):
+    doctor_answers: str = ""
+
+
+def build_diagnosis_prompt(diagnosis_type: str, full_patient: dict, full_visit: dict, extra_context: str = "") -> str:
+    """Genera el prompt de diagnóstico correspondiente sin depender de un diagnóstico previo."""
+    if diagnosis_type == "functional":
+        return get_functional_medicine_prompt(full_patient, "", visit_data=full_visit, extra_context=extra_context)
+    if diagnosis_type == "longevity":
+        return get_longevity_diagnosis_prompt(full_patient, "", visit_data=full_visit, extra_context=extra_context)
+    return get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context)
 
 
 def build_doctor_context(ai_original: str, doctor_version: str, label: str) -> str:
@@ -141,7 +155,12 @@ async def get_clarifying_questions(
     body: ClarifyRequest,
     doctor_id: str = Depends(get_doctor_id),
 ):
-    """Genera preguntas de aclaración antes del análisis completo."""
+    """
+    Analiza el caso completo PRIMERO (borrador silencioso, no se muestra al médico),
+    y luego genera hasta 3 preguntas de aclaración basadas en lo que ese borrador
+    encontró menos certero. El borrador se guarda en el registro de análisis para
+    usarse en /finalize_first sin tener que repetir el análisis.
+    """
     import json as json_lib
     try:
         visit_record = get_visit(visit_id) or {}
@@ -150,6 +169,7 @@ async def get_clarifying_questions(
 
         full_patient = {**body.patient_data, **patient_record}
         full_visit = visit_record
+        diagnosis_type = body.selected_type if body.selected_type in ("traditional", "functional", "longevity") else "traditional"
 
         if not get_analysis(visit_id):
             insert_analysis({
@@ -163,8 +183,25 @@ async def get_clarifying_questions(
                 "updated_at": datetime.utcnow().isoformat(),
             })
 
+        # 1) Analiza el caso completo y guarda el borrador (no se muestra aún al médico)
+        draft_prompt = build_diagnosis_prompt(diagnosis_type, full_patient, full_visit)
+        raw_draft = call_claude(draft_prompt, model=MODEL_DIAGNOSE)
+        draft_metadata, draft_diagnosis = extract_structured_header(raw_draft)
+
+        val_prompt = get_secondary_validation_prompt(draft_diagnosis)
+        draft_validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+
+        update_analysis(visit_id, {
+            "draft_diagnosis": draft_diagnosis,
+            "draft_confidence": draft_metadata["confidence"],
+            "draft_validation": draft_validation,
+            "draft_type": diagnosis_type,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+
+        # 2) Con el borrador ya generado, identifica si hace falta preguntar algo al paciente
         from services.system_prompt import get_clarifying_questions_prompt
-        prompt = get_clarifying_questions_prompt(full_patient, full_visit)
+        prompt = get_clarifying_questions_prompt(full_patient, full_visit, draft_diagnosis=draft_diagnosis)
         raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400)
 
         questions = []
@@ -181,6 +218,81 @@ async def get_clarifying_questions(
         print(f"[ERROR clarify] {str(e)}")
         # No bloquear el flujo si falla
         return {"visit_id": visit_id, "questions": []}
+
+
+@router.post("/{visit_id}/finalize_first")
+async def finalize_first_diagnosis(
+    visit_id: str,
+    body: FinalizeFirstRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """
+    Cierra el ciclo de la primera pregunta/respuesta del médico:
+    - Si el médico no respondió nada, usa el borrador tal cual (sin gastar otra llamada a la IA).
+    - Si respondió, cruza las respuestas con el borrador y solo ajusta el diagnóstico/certeza
+      si las respuestas cambian algo materialmente.
+    """
+    try:
+        analysis = get_analysis(visit_id)
+        if not analysis:
+            raise HTTPException(404, "Análisis no encontrado")
+
+        draft_diagnosis = analysis.get("draft_diagnosis") or ""
+        draft_type = analysis.get("draft_type") or "traditional"
+        draft_confidence = analysis.get("draft_confidence", 75)
+        draft_validation = analysis.get("draft_validation") or ""
+
+        if not draft_diagnosis:
+            raise HTTPException(404, "No hay un borrador de diagnóstico para esta visita")
+
+        doctor_answers = (body.doctor_answers or "").strip()
+
+        if not doctor_answers:
+            # El médico no agregó nada nuevo — usamos el borrador sin volver a llamar a la IA
+            return {
+                "visit_id": visit_id,
+                "step": draft_type,
+                "diagnosis": draft_diagnosis,
+                "validation": draft_validation,
+                "confidence": draft_confidence,
+            }
+
+        visit_record = get_visit(visit_id) or {}
+        patient_id = analysis.get("patient_id")
+        patient_data = get_patient(patient_id) if patient_id else {}
+
+        extra_context = f"""
+BORRADOR DE DIAGNÓSTICO GENERADO ANTES DE LAS PREGUNTAS DE ACLARACIÓN:
+{draft_diagnosis}
+
+RESPUESTAS DEL MÉDICO A LAS PREGUNTAS DE ACLARACIÓN:
+{doctor_answers}
+
+INSTRUCCIÓN: Si estas respuestas NO cambian el diagnóstico de forma material, repite el mismo
+diagnóstico y los mismos porcentajes de certeza del borrador. Si SÍ cambian algo, ajusta el
+diagnóstico y/o los porcentajes de certeza en consecuencia.
+"""
+
+        prompt = build_diagnosis_prompt(draft_type, patient_data, visit_record, extra_context=extra_context)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        metadata, diagnosis = extract_structured_header(raw)
+
+        val_prompt = get_secondary_validation_prompt(diagnosis)
+        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+
+        return {
+            "visit_id": visit_id,
+            "step": draft_type,
+            "diagnosis": diagnosis,
+            "validation": validation,
+            "confidence": metadata["confidence"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR finalize_first] {str(e)}")
+        raise HTTPException(500, str(e))
 
 
 @router.post("/{visit_id}/traditional")

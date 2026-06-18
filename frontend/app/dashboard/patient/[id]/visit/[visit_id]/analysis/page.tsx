@@ -1041,31 +1041,65 @@ export default function AnalysisPage() {
 
   const openChat = () => setChatUnread(0);
 
-  // ── Step 0: Get clarifying questions ────────────────────────────────────────
+  // ── Step 0: Analiza el caso completo (borrador silencioso) y genera preguntas ──
   const startClarify = async () => {
     setError('');
     setClarifyLoading(true);
+    setStep('loading');
+    setLoadingLabel('ANALIZANDO EL CASO COMPLETO...');
     try {
-      const data = await loadPatientData();
-      setPatientData(data);
+      const data = patientData || (await loadPatientData());
+      if (!patientData) setPatientData(data);
 
+      const first = activeTypes[0] || 'traditional';
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify`, {
         method: 'POST',
         headers: authH(),
-        body: JSON.stringify({ patient_data: data }),
+        body: JSON.stringify({ patient_data: data, selected_type: first }),
       });
       const json = await res.json();
       const questions: string[] = json.questions || [];
       setClarifyQuestions(questions);
       setClarifyAnswers(new Array(questions.length).fill(''));
       setStep('clarifying');
-    } catch {
-      // If clarify fails, skip straight to analysis
+    } catch (e: any) {
+      // Si falla el análisis silencioso, no podemos continuar — regresa al selector
+      setError('Error al analizar el caso: ' + e.message);
       setClarifyQuestions([]);
       setClarifyAnswers([]);
-      setStep('clarifying');
+      setStep('select');
     } finally {
       setClarifyLoading(false);
+    }
+  };
+
+  // ── Cierra el ciclo de preguntas: usa el borrador o lo ajusta con las respuestas ──
+  const finalizeFirstDiagnosis = async (answers: string[]) => {
+    const first = activeTypes[0] || 'traditional';
+    setStep('loading');
+    setLoadingLabel('FINALIZANDO DIAGNÓSTICO...');
+    setError('');
+    setChatMessages([]);
+    setEditMode(false);
+    try {
+      const doctorAnswers = buildDoctorAnswersText(answers);
+      const res = await fetch(`${apiBase}/analyze/${visit_id}/finalize_first`, {
+        method: 'POST', headers: authH(),
+        body: JSON.stringify({ doctor_answers: doctorAnswers }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const json = await res.json();
+      const result: DiagnosisState = {
+        ai_text: json.diagnosis, doctor_text: json.diagnosis,
+        validation: json.validation, confirmed: false, confidence: json.confidence || 75,
+      };
+      if (first === 'functional') setFunctional(result);
+      else if (first === 'longevity') setLongevity(result);
+      else setTraditional(result);
+      enterStep(`review_${first}` as Step);
+    } catch (e: any) {
+      setError('Error: ' + e.message);
+      setStep('clarifying');
     }
   };
 
@@ -1167,16 +1201,6 @@ export default function AnalysisPage() {
     } catch (e: any) { setError('Error: ' + e.message); }
   };
 
-  // ── Step inicial: dispara el primer análisis seleccionado ────────────────────
-  const runFirstDiagnosis = () => {
-    const first = activeTypes[0];
-    if (!first) return;
-    if (first === 'traditional') return startTraditional(clarifyAnswers);
-    const text = buildDoctorAnswersText(clarifyAnswers);
-    if (first === 'functional') return startFunctional(text);
-    return startLongevity(text);
-  };
-
   // ── Navigation ───────────────────────────────────────────────────────────────
   const getCurrentSetters = () => {
     const map: Record<string, { state: DiagnosisState; setState: (fn: (p: DiagnosisState) => DiagnosisState) => void }> = {
@@ -1240,7 +1264,7 @@ export default function AnalysisPage() {
                 Análisis en {stepperLabels.length} pasos: {activeTypes.length || 3} diagnósticos + {activeTypes.length || 3} protocolos. Cada paso espera tu confirmación.
               </p>
               <p className="text-xs font-mono text-[#3d5870] max-w-md mx-auto mb-10">
-                Antes de dar el diagnóstico, APEX puede hacerte hasta 3 preguntas clave sobre el paciente.
+                APEX analiza el caso completo primero, y solo si hace falta te hace hasta 3 preguntas clave sobre el paciente.
               </p>
               <div className="flex items-center justify-center gap-2 mb-10 flex-wrap">
                 {stepperLabels.map((s, i) => (
@@ -1256,11 +1280,20 @@ export default function AnalysisPage() {
                 ))}
               </div>
               {error && <p className="text-[#f43f5e] text-sm mb-4">{error}</p>}
-              <button onClick={startClarify} disabled={clarifyLoading}
-                className="px-8 py-3 bg-[#00e5a0] text-black font-semibold rounded-xl hover:bg-[#00ffb0] transition text-sm disabled:opacity-40">
-                {clarifyLoading ? 'Cargando...' : 'Iniciar Análisis →'}
+              <button onClick={() => setStep('select')}
+                className="px-8 py-3 bg-[#00e5a0] text-black font-semibold rounded-xl hover:bg-[#00ffb0] transition text-sm">
+                Iniciar Análisis →
               </button>
             </div>
+          )}
+
+          {/* ── SELECT ANALYSIS TYPES ── */}
+          {step === 'select' && (
+            <SelectAnalysisStep
+              selected={selectedTypes}
+              onToggle={t => setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+              onContinue={startClarify}
+            />
           )}
 
           {/* ── CLARIFYING ── */}
@@ -1270,27 +1303,18 @@ export default function AnalysisPage() {
                 <div className="px-2.5 py-1 rounded text-[10px] font-mono tracking-wider bg-[rgba(167,139,250,.1)] text-[#a78bfa] border border-[rgba(167,139,250,.25)]">
                   PREGUNTAS PREVIAS
                 </div>
-                <h2 className="text-xl font-serif text-[#dde6ef]">Antes de analizar</h2>
+                <h2 className="text-xl font-serif text-[#dde6ef]">Antes de mostrar el diagnóstico</h2>
               </div>
               {error && <p className="text-[#f43f5e] text-sm mb-4">{error}</p>}
               <ClarifyStep
                 questions={clarifyQuestions}
                 answers={clarifyAnswers}
                 setAnswers={setClarifyAnswers}
-                onSubmit={() => setStep('select')}
-                onSkip={() => { setClarifyAnswers(new Array(clarifyQuestions.length).fill('')); setStep('select'); }}
+                onSubmit={() => finalizeFirstDiagnosis(clarifyAnswers)}
+                onSkip={() => finalizeFirstDiagnosis([])}
                 loadingAnalysis={clarifyLoading}
               />
             </div>
-          )}
-
-          {/* ── SELECT ANALYSIS TYPES ── */}
-          {step === 'select' && (
-            <SelectAnalysisStep
-              selected={selectedTypes}
-              onToggle={t => setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
-              onContinue={runFirstDiagnosis}
-            />
           )}
 
           {/* ── REVIEW ── */}

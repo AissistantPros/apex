@@ -237,6 +237,13 @@ CREATE TABLE IF NOT EXISTS public.analyses (
   -- Preferencias aprendidas del médico
   preferences_summary TEXT,
 
+  -- Borrador del primer diagnóstico (análisis silencioso antes de mostrarlo al médico,
+  -- usado para generar preguntas de aclaración basadas en el caso real, no genéricas)
+  draft_diagnosis TEXT,
+  draft_validation TEXT,
+  draft_confidence INT,
+  draft_type TEXT,
+
   status VARCHAR(50) DEFAULT 'in_progress',  -- in_progress, completed, closed
 
   created_at TIMESTAMPTZ DEFAULT NOW(),
