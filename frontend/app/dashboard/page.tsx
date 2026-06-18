@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
-import TopNav from '@/app/components/TopNav';
 import ChatBubble from '@/app/components/ChatBubble';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
@@ -84,8 +83,6 @@ export default function DashboardPage() {
   return (
     <>
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={photoUrl} />
-
       <main className="pt-16 max-w-5xl mx-auto px-6 flex flex-col gap-7 pb-24">
 
         {/* ── Encabezado ── */}

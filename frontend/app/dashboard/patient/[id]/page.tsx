@@ -3,10 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
-import TopNav from '@/app/components/TopNav';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useRevealScroll } from '@/app/lib/useRevealScroll';
-import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -23,7 +21,6 @@ export default function PatientPage() {
   const router   = useRouter();
   const params   = useParams();
   const patientId = params?.id as string;
-  const { displayName, photoUrl } = useDoctorProfile();
 
   const [user, setUser]       = useState<any>(null);
   const [patient, setPatient] = useState<any>(null);
@@ -130,8 +127,6 @@ export default function PatientPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={photoUrl} />
-
       <main className="pt-16 max-w-4xl mx-auto px-6 py-8">
 
         {/* ── Header del paciente ── */}

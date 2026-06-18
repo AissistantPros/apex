@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
-import TopNav from '@/app/components/TopNav';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -104,7 +103,7 @@ const PHASE_CONFIG = {
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 function FlowPageInner() {
   const router     = useRouter();
-  const { displayName: docName, photoUrl: docPhoto } = useDoctorProfile();
+  const { displayName: docName } = useDoctorProfile();
   const [user, setUser]         = useState<any>(null);
   const [token, setToken]       = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState('');
@@ -770,8 +769,6 @@ function FlowPageInner() {
 
   return (
     <div className="bg-[#070a0e] min-h-screen">
-
-      <TopNav userName={docName} photoUrl={docPhoto} />
 
       <main className="pt-16 min-h-screen">
         <div className="max-w-3xl mx-auto px-4 py-8 pb-36">

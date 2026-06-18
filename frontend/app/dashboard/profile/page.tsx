@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
-import TopNav from '@/app/components/TopNav';
 import { getRole, setRole, UserRole, ROLE_LABELS } from '@/app/lib/role';
+import { notifyDoctorProfileUpdated } from '@/app/lib/useDoctorProfile';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -85,6 +85,7 @@ export default function ProfilePage() {
         headers,
         body: JSON.stringify(form),
       });
+      notifyDoctorProfileUpdated();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
@@ -100,7 +101,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={form.photo_url || form.clinic_logo_url} />
 
       <main className="pt-16 max-w-2xl mx-auto px-6 py-10">
 

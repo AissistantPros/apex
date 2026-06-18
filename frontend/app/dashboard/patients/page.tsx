@@ -3,12 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
-import TopNav from '@/app/components/TopNav';
-import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 export default function PatientsPage() {
   const router = useRouter();
-  const { displayName, photoUrl } = useDoctorProfile();
   const [user, setUser] = useState<any>(null);
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -45,8 +42,6 @@ export default function PatientsPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={photoUrl} />
-
       <main className="pt-16 max-w-5xl mx-auto px-6 py-10">
 
         {/* Header */}

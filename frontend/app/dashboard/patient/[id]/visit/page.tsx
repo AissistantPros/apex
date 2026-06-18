@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
-import TopNav from '@/app/components/TopNav';
-import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -96,7 +94,6 @@ export default function VisitPage() {
   const router = useRouter();
   const params = useParams();
   const patientId = params?.id as string;
-  const { displayName, photoUrl } = useDoctorProfile();
   const [user, setUser] = useState<any>(null);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -300,8 +297,6 @@ export default function VisitPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={photoUrl} />
-
       <main className="pt-16 pb-36">
         <div className="max-w-2xl mx-auto px-4 py-8">
 

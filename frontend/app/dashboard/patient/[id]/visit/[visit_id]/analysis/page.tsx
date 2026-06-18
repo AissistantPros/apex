@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
-import TopNav from '@/app/components/TopNav';
-import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step =
@@ -907,7 +905,6 @@ export default function AnalysisPage() {
   const params = useParams();
   const visit_id   = params.visit_id as string;
   const patient_id = params.id as string;
-  const { displayName, photoUrl } = useDoctorProfile();
 
   const [token, setToken]   = useState<string | null>(null);
   const [step, setStep]     = useState<Step>('init');
@@ -1250,7 +1247,6 @@ export default function AnalysisPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={photoUrl} />
 
       {step === 'loading' && <LoadingScreen label={loadingLabel} />}
 

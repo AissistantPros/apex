@@ -2,12 +2,9 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser } from '@/app/lib/auth';
-import TopNav from '@/app/components/TopNav';
-import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 export default function StaffPage() {
   const router = useRouter();
-  const { displayName, photoUrl } = useDoctorProfile();
 
   useEffect(() => {
     getUser().then(u => { if (!u) router.push('/auth/login'); });
@@ -15,7 +12,6 @@ export default function StaffPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={photoUrl} />
       <main className="pt-16 max-w-4xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-serif font-semibold text-[#dde6ef] mb-2">🩺 Gestión de Staff</h1>
         <p className="text-[#7a95aa] mb-8">Administra los permisos de tu equipo de trabajo.</p>

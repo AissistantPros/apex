@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
-import TopNav from '@/app/components/TopNav';
-import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -217,7 +215,6 @@ export default function NewVisitPage() {
   const router    = useRouter();
   const params    = useParams();
   const patientId = params?.id as string;
-  const { displayName, photoUrl } = useDoctorProfile();
 
   const [user,    setUser]    = useState<any>(null);
   const [patient, setPatient] = useState<any>(null);
@@ -438,7 +435,6 @@ export default function NewVisitPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <TopNav userName={displayName} photoUrl={photoUrl} />
 
       {/* Modal ficha completa */}
       {showModal && <PatientModal patient={patient} visits={visits} onClose={() => setShowModal(false)} />}
