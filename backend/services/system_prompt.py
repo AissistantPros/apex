@@ -464,6 +464,11 @@ def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: st
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
 
+    traditional_block = (
+        f"DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante):\n{traditional_diagnosis}\n"
+        if traditional_diagnosis and traditional_diagnosis.strip() else ""
+    )
+
     return f"""Eres un médico de medicina funcional. Identifica la raíz del problema, no solo el síntoma. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
@@ -472,9 +477,7 @@ def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: st
 
 {visit_ctx}
 
-DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante):
-{traditional_diagnosis}
-
+{traditional_block}
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
 FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
@@ -498,6 +501,11 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
 
+    functional_block = (
+        f"DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante):\n{functional_diagnosis}\n"
+        if functional_diagnosis and functional_diagnosis.strip() else ""
+    )
+
     return f"""Eres especialista en medicina de longevidad. Calcula edad biológica y proyecciones. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
@@ -506,9 +514,7 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
 
 {visit_ctx}
 
-DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante):
-{functional_diagnosis}
-
+{functional_block}
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
 FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:

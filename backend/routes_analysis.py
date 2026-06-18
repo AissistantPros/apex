@@ -34,22 +34,26 @@ async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
 
 
 class FunctionalRequest(BaseModel):
-    doctor_traditional: str
+    doctor_traditional: str = ""
     ai_traditional_original: str = ""
+    doctor_answers: str = ""
+    patient_id: str = ""
 
 
 class LongevityRequest(BaseModel):
-    doctor_traditional: str
-    doctor_functional: str
+    doctor_traditional: str = ""
+    doctor_functional: str = ""
     ai_traditional_original: str = ""
     ai_functional_original: str = ""
+    doctor_answers: str = ""
+    patient_id: str = ""
 
 
 class ProtocolRequest(BaseModel):
     protocol_type: str
-    doctor_traditional: str
-    doctor_functional: str
-    doctor_longevity: str
+    doctor_traditional: str = ""
+    doctor_functional: str = ""
+    doctor_longevity: str = ""
     ai_traditional_original: str = ""
     ai_functional_original: str = ""
     ai_longevity_original: str = ""
@@ -147,6 +151,18 @@ async def get_clarifying_questions(
         full_patient = {**body.patient_data, **patient_record}
         full_visit = visit_record
 
+        if not get_analysis(visit_id):
+            insert_analysis({
+                "id": f"analysis_{visit_id}",
+                "visit_id": visit_id,
+                "patient_id": patient_id,
+                "doctor_id": doctor_id,
+                "status": "in_progress",
+                "chat_history": [],
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+
         from services.system_prompt import get_clarifying_questions_prompt
         prompt = get_clarifying_questions_prompt(full_patient, full_visit)
         raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400)
@@ -194,19 +210,18 @@ async def run_traditional(
         full_patient = {**patient_data, **patient_record}
         full_visit = visit_record
 
-        # Crear registro en Supabase
-        analysis_record = {
-            "id": f"analysis_{visit_id}",
-            "visit_id": visit_id,
-            "patient_id": patient_id,
-            "doctor_id": doctor_id,
-            "status": "in_progress",
-            "chat_history": [],
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-
-        insert_analysis(analysis_record)
+        # Crear registro en Supabase si aún no existe (puede ya existir desde /clarify)
+        if not get_analysis(visit_id):
+            insert_analysis({
+                "id": f"analysis_{visit_id}",
+                "visit_id": visit_id,
+                "patient_id": patient_id,
+                "doctor_id": doctor_id,
+                "status": "in_progress",
+                "chat_history": [],
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            })
 
         prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context)
         raw = call_claude(prompt, model=MODEL_DIAGNOSE)
@@ -238,17 +253,37 @@ async def run_functional(
     try:
         analysis = get_analysis(visit_id)
         if not analysis:
-            raise HTTPException(404, "Análisis no encontrado")
+            visit_record = get_visit(visit_id) or {}
+            patient_id = body.patient_id or visit_record.get("patient_id", "")
+            insert_analysis({
+                "id": f"analysis_{visit_id}",
+                "visit_id": visit_id,
+                "patient_id": patient_id,
+                "doctor_id": doctor_id,
+                "status": "in_progress",
+                "chat_history": [],
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+            analysis = get_analysis(visit_id)
 
         visit_record = get_visit(visit_id) or {}
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
 
-        doctor_context = build_doctor_context(
-            body.ai_traditional_original,
-            body.doctor_traditional,
-            "DIAGNÓSTICO TRADICIONAL"
-        )
+        doctor_context = ""
+        if body.doctor_traditional and body.doctor_traditional.strip():
+            doctor_context = build_doctor_context(
+                body.ai_traditional_original,
+                body.doctor_traditional,
+                "DIAGNÓSTICO TRADICIONAL"
+            )
+        if body.doctor_answers and body.doctor_answers.strip():
+            doctor_context += (
+                "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
+                "(tómalas en cuenta — son información adicional directa del paciente):\n"
+                + body.doctor_answers
+            )
         chat_snippet = _chat_snippet(analysis.get("chat_history", []))
 
         prompt = get_functional_medicine_prompt(
@@ -286,25 +321,48 @@ async def run_longevity(
     try:
         analysis = get_analysis(visit_id)
         if not analysis:
-            raise HTTPException(404, "Análisis no encontrado")
+            visit_record = get_visit(visit_id) or {}
+            patient_id = body.patient_id or visit_record.get("patient_id", "")
+            insert_analysis({
+                "id": f"analysis_{visit_id}",
+                "visit_id": visit_id,
+                "patient_id": patient_id,
+                "doctor_id": doctor_id,
+                "status": "in_progress",
+                "chat_history": [],
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+            analysis = get_analysis(visit_id)
 
         visit_record = get_visit(visit_id) or {}
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
 
-        ctx_trad = build_doctor_context(
-            body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
-        )
-        ctx_func = build_doctor_context(
-            body.ai_functional_original, body.doctor_functional, "DIAGNÓSTICO FUNCIONAL"
-        )
+        ctx_trad = ""
+        if body.doctor_traditional and body.doctor_traditional.strip():
+            ctx_trad = build_doctor_context(
+                body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
+            )
+        ctx_func = ""
+        if body.doctor_functional and body.doctor_functional.strip():
+            ctx_func = build_doctor_context(
+                body.ai_functional_original, body.doctor_functional, "DIAGNÓSTICO FUNCIONAL"
+            )
+        ctx_answers = ""
+        if body.doctor_answers and body.doctor_answers.strip():
+            ctx_answers = (
+                "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
+                "(tómalas en cuenta — son información adicional directa del paciente):\n"
+                + body.doctor_answers
+            )
         chat_snippet = _chat_snippet(analysis.get("chat_history", []))
 
         prompt = get_longevity_diagnosis_prompt(
             patient_data,
             body.doctor_functional,
             visit_data=visit_record,
-            extra_context=ctx_trad + ctx_func + chat_snippet
+            extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet
         )
         raw = call_claude(prompt, model=MODEL_DIAGNOSE)
         metadata, diagnosis = extract_structured_header(raw)
@@ -348,12 +406,17 @@ async def run_protocol(
         }
         diagnosis = diagnosis_map.get(body.protocol_type, body.doctor_traditional)
 
-        full_diagnosis = f"""{diagnosis}
+        confirmed_lines = []
+        if body.doctor_traditional and body.doctor_traditional.strip():
+            confirmed_lines.append(f"• Convencional: {body.doctor_traditional}")
+        if body.doctor_functional and body.doctor_functional.strip():
+            confirmed_lines.append(f"• Funcional: {body.doctor_functional}")
+        if body.doctor_longevity and body.doctor_longevity.strip():
+            confirmed_lines.append(f"• Longevidad: {body.doctor_longevity}")
 
-DIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:
-• Tradicional: {body.doctor_traditional}
-• Funcional: {body.doctor_functional}
-• Longevidad: {body.doctor_longevity}"""
+        full_diagnosis = diagnosis
+        if confirmed_lines:
+            full_diagnosis += "\n\nDIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:\n" + "\n".join(confirmed_lines)
 
         prompt = get_protocol_prompt(patient_data, full_diagnosis, body.protocol_type, visit_data=visit_record)
         protocol = call_claude(prompt, model=MODEL_DIAGNOSE)

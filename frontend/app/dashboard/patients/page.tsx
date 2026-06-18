@@ -60,7 +60,7 @@ export default function PatientsPage() {
             </p>
           </div>
           <button
-            onClick={() => router.push('/dashboard/new-patient')}
+            onClick={() => router.push('/dashboard/new-patient/flow')}
             className="px-5 py-2.5 text-sm font-bold rounded-xl hover:opacity-90 transition"
             style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}
           >
@@ -97,7 +97,7 @@ export default function PatientsPage() {
             </p>
             {!search && (
               <button
-                onClick={() => router.push('/dashboard/new-patient')}
+                onClick={() => router.push('/dashboard/new-patient/flow')}
                 className="mt-5 px-6 py-3 bg-[#00e5a0] text-black font-bold rounded-xl hover:opacity-90 transition"
               >
                 Registrar primer paciente

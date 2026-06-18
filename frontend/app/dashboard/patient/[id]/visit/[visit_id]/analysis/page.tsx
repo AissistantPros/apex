@@ -1,16 +1,60 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step =
-  | 'init' | 'clarifying' | 'loading'
+  | 'init' | 'clarifying' | 'select' | 'loading'
   | 'review_traditional' | 'review_functional' | 'review_longevity'
   | 'review_protocol_traditional' | 'review_protocol_functional' | 'review_protocol_longevity'
   | 'documents' | 'complete';
+
+type AnalysisType = 'traditional' | 'functional' | 'longevity';
+const ALL_TYPES: AnalysisType[] = ['traditional', 'functional', 'longevity'];
+
+const TYPE_META: Record<AnalysisType, {
+  dxLabel: string; protoLabel: string; badge: string; protoBadge: string;
+  color: string; short: string; icon: string; selectLabel: string; selectDesc: string;
+}> = {
+  traditional: {
+    dxLabel: 'Diagnóstico Convencional', protoLabel: 'Protocolo Convencional',
+    badge: 'MEDICINA CONVENCIONAL', protoBadge: 'PROTOCOLO CONVENCIONAL',
+    color: '#0ea5e9', short: 'Conv.', icon: '🩺',
+    selectLabel: 'Medicina Convencional',
+    selectDesc: 'Diagnóstico clínico clásico, subespecialidades y estudios de confirmación.',
+  },
+  functional: {
+    dxLabel: 'Diagnóstico Funcional', protoLabel: 'Protocolo Funcional',
+    badge: 'MEDICINA FUNCIONAL', protoBadge: 'PROTOCOLO FUNCIONAL',
+    color: '#00e5a0', short: 'Func.', icon: '🧬',
+    selectLabel: 'Medicina Funcional',
+    selectDesc: 'Raíz del problema, cascada de causalidad y sistemas desregulados.',
+  },
+  longevity: {
+    dxLabel: 'Diagnóstico Longevidad', protoLabel: 'Protocolo Longevidad',
+    badge: 'LONGEVIDAD', protoBadge: 'PROTOCOLO LONGEVIDAD',
+    color: '#a78bfa', short: 'Long.', icon: '⏳',
+    selectLabel: 'Medicina de Longevidad',
+    selectDesc: 'Edad biológica, riesgos a 5-10 años y potencial de mejora.',
+  },
+};
+
+function stepCfgFor(s: Step): { label: string; color: string; badge: string } {
+  let m = s.match(/^review_protocol_(traditional|functional|longevity)$/);
+  if (m) { const t = TYPE_META[m[1] as AnalysisType]; return { label: t.protoLabel, color: t.color, badge: t.protoBadge }; }
+  m = s.match(/^review_(traditional|functional|longevity)$/);
+  if (m) { const t = TYPE_META[m[1] as AnalysisType]; return { label: t.dxLabel, color: t.color, badge: t.badge }; }
+  return { label: '', color: '#00e5a0', badge: '' };
+}
+
+function buildStepperLabels(types: AnalysisType[]): { label: string; color: string }[] {
+  const dx    = types.map(t => ({ label: `Dx ${TYPE_META[t].short}`,    color: TYPE_META[t].color }));
+  const proto = types.map(t => ({ label: `Proto ${TYPE_META[t].short}`, color: TYPE_META[t].color }));
+  return [...dx, ...proto, { label: 'Documentos', color: '#f59e0b' }];
+}
 
 interface DiagnosisState {
   ai_text: string;
@@ -43,26 +87,6 @@ const LOAD_MSGS = [
   'Verificando fuentes y evidencia',
   'Filtrando alucinaciones clínicas',
   'Preparando diagnóstico estructurado',
-];
-
-// ─── Step config ──────────────────────────────────────────────────────────────
-const STEP_CFG: Record<string, { label: string; color: string; badge: string; stepIdx: number }> = {
-  review_traditional:          { label: 'Diagnóstico Tradicional',  color: '#0ea5e9', badge: 'MEDICINA TRADICIONAL',   stepIdx: 0 },
-  review_functional:           { label: 'Diagnóstico Funcional',    color: '#00e5a0', badge: 'MEDICINA FUNCIONAL',     stepIdx: 1 },
-  review_longevity:            { label: 'Diagnóstico Longevidad',   color: '#a78bfa', badge: 'LONGEVIDAD',             stepIdx: 2 },
-  review_protocol_traditional: { label: 'Protocolo Tradicional',    color: '#0ea5e9', badge: 'PROTOCOLO TRADICIONAL',  stepIdx: 3 },
-  review_protocol_functional:  { label: 'Protocolo Funcional',      color: '#00e5a0', badge: 'PROTOCOLO FUNCIONAL',    stepIdx: 4 },
-  review_protocol_longevity:   { label: 'Protocolo Longevidad',     color: '#a78bfa', badge: 'PROTOCOLO LONGEVIDAD',   stepIdx: 5 },
-};
-
-const STEPPER_LABELS = [
-  { label: 'Dx Tradicional', color: '#0ea5e9' },
-  { label: 'Dx Funcional',   color: '#00e5a0' },
-  { label: 'Longevidad',     color: '#a78bfa' },
-  { label: 'Proto Trad.',    color: '#0ea5e9' },
-  { label: 'Proto Func.',    color: '#00e5a0' },
-  { label: 'Proto Long.',    color: '#a78bfa' },
-  { label: 'Documentos',     color: '#f59e0b' },
 ];
 
 // ─── Markdown / Section Parsers ───────────────────────────────────────────────
@@ -686,14 +710,69 @@ function ClarifyStep({
   );
 }
 
+// ─── Select Analysis Step ───────────────────────────────────────────────────────
+function SelectAnalysisStep({
+  selected, onToggle, onContinue,
+}: {
+  selected: AnalysisType[]; onToggle: (t: AnalysisType) => void; onContinue: () => void;
+}) {
+  return (
+    <div className="py-4">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-serif text-[#dde6ef] mb-2">¿Qué análisis necesitas?</h2>
+        <p className="text-sm text-[#7a95aa] max-w-md mx-auto">
+          Elige uno, varios o los tres. Cada uno genera su propio diagnóstico y protocolo —
+          solo se procesa lo que selecciones.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        {ALL_TYPES.map(t => {
+          const meta = TYPE_META[t];
+          const isOn = selected.includes(t);
+          return (
+            <button key={t} type="button" onClick={() => onToggle(t)}
+              className="relative flex flex-col items-center text-center gap-3 rounded-2xl p-6 transition-all"
+              style={{
+                background: isOn ? `${meta.color}14` : '#0d1520',
+                border: `2px solid ${isOn ? meta.color : '#1e2d3d'}`,
+                boxShadow: isOn ? `0 0 0 4px ${meta.color}1f` : 'none',
+              }}>
+              <div className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all"
+                style={{
+                  background: isOn ? meta.color : 'transparent',
+                  border: `2px solid ${isOn ? meta.color : '#3d5870'}`,
+                  color: isOn ? '#04110b' : 'transparent',
+                }}>✓</div>
+              <div className="text-4xl">{meta.icon}</div>
+              <div className="text-base font-bold" style={{ color: isOn ? meta.color : '#dde6ef' }}>
+                {meta.selectLabel}
+              </div>
+              <p className="text-xs text-[#7a95aa] leading-relaxed">{meta.selectDesc}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex justify-center">
+        <button onClick={onContinue} disabled={selected.length === 0}
+          className="px-8 py-3 text-black text-sm font-bold rounded-xl disabled:opacity-40 transition"
+          style={{ background: '#00e5a0' }}>
+          Comenzar análisis →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Floating Chat ────────────────────────────────────────────────────────────
 function FloatingChat({
-  messages, input, setInput, onSend, loading, unread, onOpen, isOpen, setIsOpen, currentStep, hasActionBar,
+  messages, input, setInput, onSend, loading, unread, onOpen, isOpen, setIsOpen, stepLabel, hasActionBar,
 }: {
   messages: ChatMsg[]; input: string; setInput: (v: string) => void;
   onSend: () => void; loading: boolean; unread: number;
   onOpen: () => void; isOpen: boolean; setIsOpen: (v: boolean) => void;
-  currentStep: string; hasActionBar: boolean;
+  stepLabel: string; hasActionBar: boolean;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -701,8 +780,6 @@ function FloatingChat({
 
   useEffect(() => { if (isOpen) endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isOpen]);
   useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 100); }, [isOpen]);
-
-  const stepLabel = STEP_CFG[currentStep]?.label || 'Análisis';
 
   return (
     <div className="fixed right-6 z-50 flex flex-col items-end gap-3" style={{ bottom: `${bottomPx}px` }}>
@@ -789,10 +866,12 @@ function FloatingChat({
 }
 
 // ─── Stepper ──────────────────────────────────────────────────────────────────
-function Stepper({ current, completed, onGoTo }: { current: number; completed: number; onGoTo: (i: number) => void }) {
+function Stepper({ current, completed, onGoTo, labels }: {
+  current: number; completed: number; onGoTo: (i: number) => void; labels: { label: string; color: string }[];
+}) {
   return (
     <div className="flex items-start gap-1 mb-6 overflow-x-auto pb-1">
-      {STEPPER_LABELS.map((s, i) => {
+      {labels.map((s, i) => {
         const isDone = i < completed;
         const isActive = i === current;
         return (
@@ -811,7 +890,7 @@ function Stepper({ current, completed, onGoTo }: { current: number; completed: n
                 {s.label}
               </span>
             </div>
-            {i < STEPPER_LABELS.length - 1 && (
+            {i < labels.length - 1 && (
               <div className="h-0.5 w-4 mt-3.5 rounded" style={{ background: i < completed ? s.color : '#1e2d3d' }} />
             )}
           </div>
@@ -840,6 +919,16 @@ export default function AnalysisPage() {
   const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
   const [clarifyAnswers, setClarifyAnswers]     = useState<string[]>([]);
   const [clarifyLoading, setClarifyLoading]     = useState(false);
+
+  // Selección de tipos de análisis a ejecutar
+  const [selectedTypes, setSelectedTypes] = useState<AnalysisType[]>(['traditional', 'functional', 'longevity']);
+  const activeTypes = useMemo(() => ALL_TYPES.filter(t => selectedTypes.includes(t)), [selectedTypes]);
+  const stepOrder = useMemo<Step[]>(() => {
+    const dx    = activeTypes.map(t => `review_${t}` as Step);
+    const proto = activeTypes.map(t => `review_protocol_${t}` as Step);
+    return [...dx, ...proto, 'documents'];
+  }, [activeTypes]);
+  const stepperLabels = useMemo(() => buildStepperLabels(activeTypes), [activeTypes]);
 
   // Diagnósticos
   const [traditional, setTraditional] = useState<DiagnosisState>(EMPTY_DX);
@@ -909,9 +998,23 @@ export default function AnalysisPage() {
       review_protocol_traditional: protTrad.doctor_text,
       review_protocol_functional:  protFunc.doctor_text,
       review_protocol_longevity:   protLong.doctor_text,
-      init: '', clarifying: '', loading: '', documents: '', complete: '',
+      init: '', clarifying: '', select: '', loading: '', documents: '', complete: '',
     };
     return map[step] || '';
+  };
+
+  const buildDoctorAnswersText = (answers: string[]): string => {
+    const hasAnswers = clarifyQuestions.length > 0 && answers.some(a => a.trim());
+    if (!hasAnswers) return '';
+    return clarifyQuestions
+      .map((q, i) => answers[i]?.trim() ? `P: ${q}\nR: ${answers[i].trim()}` : null)
+      .filter(Boolean)
+      .join('\n\n');
+  };
+
+  const enterStep = (s: Step) => {
+    setStep(s);
+    setCompletedStepIdx(stepOrder.indexOf(s) - 1);
   };
 
   const sendChat = async () => {
@@ -969,7 +1072,7 @@ export default function AnalysisPage() {
   // ── Step 1: Traditional analysis (with optional answers) ─────────────────────
   const startTraditional = async (answersOverride?: string[]) => {
     setStep('loading');
-    setLoadingLabel('ANALIZANDO — MEDICINA TRADICIONAL');
+    setLoadingLabel('ANALIZANDO — MEDICINA CONVENCIONAL');
     setError('');
     setChatMessages([]);
     setEditMode(false);
@@ -978,16 +1081,8 @@ export default function AnalysisPage() {
       const data = patientData || (await loadPatientData());
       if (!patientData) setPatientData(data);
 
-      // Build doctor answers string
       const answers = answersOverride ?? clarifyAnswers;
-      const hasAnswers = clarifyQuestions.length > 0 && answers.some(a => a.trim());
-      let doctorAnswers = '';
-      if (hasAnswers) {
-        doctorAnswers = clarifyQuestions
-          .map((q, i) => answers[i]?.trim() ? `P: ${q}\nR: ${answers[i].trim()}` : null)
-          .filter(Boolean)
-          .join('\n\n');
-      }
+      const doctorAnswers = buildDoctorAnswersText(answers);
 
       const payload = { ...data, ...(doctorAnswers ? { _doctor_answers: doctorAnswers } : {}) };
 
@@ -997,53 +1092,66 @@ export default function AnalysisPage() {
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
       setTraditional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
-      setStep('review_traditional');
-      setCompletedStepIdx(-1);
-    } catch (e: any) { setError('Error: ' + e.message); setStep('clarifying'); }
+      enterStep('review_traditional');
+    } catch (e: any) { setError('Error: ' + e.message); setStep('select'); }
   };
 
-  const startFunctional = async () => {
+  const startFunctional = async (doctorAnswersOverride?: string) => {
     setStep('loading');
     setLoadingLabel('ANALIZANDO — MEDICINA FUNCIONAL');
-    addDivider('── Diagnóstico Funcional ──');
+    if (doctorAnswersOverride === undefined) addDivider('── Diagnóstico Funcional ──');
+    else { setChatMessages([]); setError(''); }
     setEditMode(false);
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/functional`, {
         method: 'POST', headers: authH(),
-        body: JSON.stringify({ doctor_traditional: traditional.doctor_text, ai_traditional_original: traditional.ai_text }),
+        body: JSON.stringify({
+          doctor_traditional: traditional.doctor_text,
+          ai_traditional_original: traditional.ai_text,
+          doctor_answers: doctorAnswersOverride || '',
+          patient_id,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
       setFunctional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
-      setStep('review_functional');
-      setCompletedStepIdx(0);
-    } catch (e: any) { setError('Error: ' + e.message); setStep('review_traditional'); }
+      enterStep('review_functional');
+    } catch (e: any) { setError('Error: ' + e.message); setStep(doctorAnswersOverride === undefined ? 'review_traditional' : 'select'); }
   };
 
-  const startLongevity = async () => {
+  const startLongevity = async (doctorAnswersOverride?: string) => {
     setStep('loading');
     setLoadingLabel('ANALIZANDO — LONGEVIDAD');
-    addDivider('── Diagnóstico Longevidad ──');
+    if (doctorAnswersOverride === undefined) addDivider('── Diagnóstico Longevidad ──');
+    else { setChatMessages([]); setError(''); }
     setEditMode(false);
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/longevity`, {
         method: 'POST', headers: authH(),
-        body: JSON.stringify({ doctor_traditional: traditional.doctor_text, doctor_functional: functional.doctor_text, ai_traditional_original: traditional.ai_text, ai_functional_original: functional.ai_text }),
+        body: JSON.stringify({
+          doctor_traditional: traditional.doctor_text,
+          doctor_functional: functional.doctor_text,
+          ai_traditional_original: traditional.ai_text,
+          ai_functional_original: functional.ai_text,
+          doctor_answers: doctorAnswersOverride || '',
+          patient_id,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
       setLongevity({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
-      setStep('review_longevity');
-      setCompletedStepIdx(1);
-    } catch (e: any) { setError('Error: ' + e.message); setStep('review_functional'); }
+      enterStep('review_longevity');
+    } catch (e: any) {
+      setError('Error: ' + e.message);
+      setStep(doctorAnswersOverride === undefined ? (activeTypes.includes('functional') ? 'review_functional' : 'review_traditional') : 'select');
+    }
   };
 
-  const startProtocol = async (type: 'traditional' | 'functional' | 'longevity') => {
+  const startProtocol = async (type: AnalysisType) => {
     setStep('loading');
-    setLoadingLabel(`GENERANDO — PROTOCOLO ${type.toUpperCase()}`);
-    addDivider(`── Protocolo ${type} ──`);
+    setLoadingLabel(`GENERANDO — ${TYPE_META[type].protoBadge}`);
+    addDivider(`── ${TYPE_META[type].protoLabel} ──`);
     setEditMode(false);
-    const idx = { traditional: 3, functional: 4, longevity: 5 }[type];
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/protocol`, {
         method: 'POST', headers: authH(),
@@ -1055,9 +1163,18 @@ export default function AnalysisPage() {
       if (type === 'traditional') setProtTrad(s);
       else if (type === 'functional') setProtFunc(s);
       else setProtLong(s);
-      setStep(`review_protocol_${type}` as Step);
-      setCompletedStepIdx(idx - 1);
+      enterStep(`review_protocol_${type}` as Step);
     } catch (e: any) { setError('Error: ' + e.message); }
+  };
+
+  // ── Step inicial: dispara el primer análisis seleccionado ────────────────────
+  const runFirstDiagnosis = () => {
+    const first = activeTypes[0];
+    if (!first) return;
+    if (first === 'traditional') return startTraditional(clarifyAnswers);
+    const text = buildDoctorAnswersText(clarifyAnswers);
+    if (first === 'functional') return startFunctional(text);
+    return startLongevity(text);
   };
 
   // ── Navigation ───────────────────────────────────────────────────────────────
@@ -1073,29 +1190,35 @@ export default function AnalysisPage() {
     return map[step] || { state: traditional, setState: setTraditional };
   };
 
+  const advanceTo = (next: Step) => {
+    if (next === 'documents') { setStep('documents'); setCompletedStepIdx(stepOrder.length - 1); return; }
+    let m = next.match(/^review_protocol_(traditional|functional|longevity)$/);
+    if (m) return startProtocol(m[1] as AnalysisType);
+    m = next.match(/^review_(traditional|functional|longevity)$/);
+    if (m) {
+      const t = m[1] as AnalysisType;
+      if (t === 'traditional') return startTraditional();
+      if (t === 'functional')  return startFunctional();
+      return startLongevity();
+    }
+  };
+
   const handleContinue = () => {
     const { setState } = getCurrentSetters();
     setState(prev => ({ ...prev, confirmed: true }));
-    if (step === 'review_traditional')          return startFunctional();
-    if (step === 'review_functional')           return startLongevity();
-    if (step === 'review_longevity')            return startProtocol('traditional');
-    if (step === 'review_protocol_traditional') return startProtocol('functional');
-    if (step === 'review_protocol_functional')  return startProtocol('longevity');
-    if (step === 'review_protocol_longevity')   { setStep('documents'); setCompletedStepIdx(5); }
+    const idx = stepOrder.indexOf(step);
+    const next = stepOrder[idx + 1];
+    if (next) advanceTo(next);
   };
 
   const handleGoTo = (stepIdx: number) => {
-    const stepMap: Step[] = [
-      'review_traditional', 'review_functional', 'review_longevity',
-      'review_protocol_traditional', 'review_protocol_functional', 'review_protocol_longevity',
-      'documents',
-    ];
-    if (stepIdx <= completedStepIdx) setStep(stepMap[stepIdx]);
+    if (stepIdx <= completedStepIdx) setStep(stepOrder[stepIdx]);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
   const isReviewStep = step.startsWith('review_');
-  const info = STEP_CFG[step] || { label: '', color: '#00e5a0', badge: '', stepIdx: -1 };
+  const info = stepCfgFor(step);
+  const currentStepIdx = stepOrder.indexOf(step);
   const { state, setState } = getCurrentSetters();
   const hasActionBar = isReviewStep && !editMode;
 
@@ -1114,13 +1237,13 @@ export default function AnalysisPage() {
               <div className="text-5xl mb-5">🔬</div>
               <h1 className="text-3xl font-serif text-[#dde6ef] mb-3">Análisis Clínico APEX</h1>
               <p className="text-[#7a95aa] text-sm max-w-md mx-auto mb-2">
-                Análisis en 6 pasos: 3 diagnósticos + 3 protocolos. Cada paso espera tu confirmación.
+                Análisis en {stepperLabels.length} pasos: {activeTypes.length || 3} diagnósticos + {activeTypes.length || 3} protocolos. Cada paso espera tu confirmación.
               </p>
               <p className="text-xs font-mono text-[#3d5870] max-w-md mx-auto mb-10">
                 Antes de dar el diagnóstico, APEX puede hacerte hasta 3 preguntas clave sobre el paciente.
               </p>
               <div className="flex items-center justify-center gap-2 mb-10 flex-wrap">
-                {STEPPER_LABELS.map((s, i) => (
+                {stepperLabels.map((s, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="flex flex-col items-center gap-1">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-black" style={{ background: s.color }}>
@@ -1128,7 +1251,7 @@ export default function AnalysisPage() {
                       </div>
                       <span className="text-[9px] font-mono whitespace-nowrap" style={{ color: s.color }}>{s.label}</span>
                     </div>
-                    {i < STEPPER_LABELS.length - 1 && <div className="w-5 h-px bg-[#1e2d3d] mb-4" />}
+                    {i < stepperLabels.length - 1 && <div className="w-5 h-px bg-[#1e2d3d] mb-4" />}
                   </div>
                 ))}
               </div>
@@ -1154,17 +1277,26 @@ export default function AnalysisPage() {
                 questions={clarifyQuestions}
                 answers={clarifyAnswers}
                 setAnswers={setClarifyAnswers}
-                onSubmit={() => startTraditional(clarifyAnswers)}
-                onSkip={() => startTraditional([])}
+                onSubmit={() => setStep('select')}
+                onSkip={() => { setClarifyAnswers(new Array(clarifyQuestions.length).fill('')); setStep('select'); }}
                 loadingAnalysis={clarifyLoading}
               />
             </div>
           )}
 
+          {/* ── SELECT ANALYSIS TYPES ── */}
+          {step === 'select' && (
+            <SelectAnalysisStep
+              selected={selectedTypes}
+              onToggle={t => setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+              onContinue={runFirstDiagnosis}
+            />
+          )}
+
           {/* ── REVIEW ── */}
           {isReviewStep && (
             <div>
-              <Stepper current={info.stepIdx} completed={completedStepIdx + 1} onGoTo={handleGoTo} />
+              <Stepper labels={stepperLabels} current={currentStepIdx} completed={completedStepIdx + 1} onGoTo={handleGoTo} />
 
               <div className="flex items-center gap-3 mb-5">
                 <div className="px-2.5 py-1 rounded text-[10px] font-mono tracking-wider"
@@ -1208,7 +1340,7 @@ export default function AnalysisPage() {
           {/* ── DOCUMENTS ── */}
           {step === 'documents' && (
             <div>
-              <Stepper current={6} completed={6} onGoTo={handleGoTo} />
+              <Stepper labels={stepperLabels} current={stepperLabels.length - 1} completed={stepperLabels.length} onGoTo={handleGoTo} />
               <div className="text-center py-8">
                 <div className="text-5xl mb-4">📄</div>
                 <h2 className="text-2xl font-serif text-[#dde6ef] mb-2">Generar Documentos</h2>
@@ -1262,7 +1394,7 @@ export default function AnalysisPage() {
           <button onClick={handleContinue}
             className="px-6 py-2.5 text-sm font-bold rounded-xl transition text-black"
             style={{ background: info.color }}>
-            {step === 'review_protocol_longevity' ? 'Generar Documentos →' : 'Confirmar y continuar →'}
+            {stepOrder.indexOf(step) === stepOrder.length - 2 ? 'Generar Documentos →' : 'Confirmar y continuar →'}
           </button>
         </div>
       )}
@@ -1279,7 +1411,7 @@ export default function AnalysisPage() {
           onOpen={openChat}
           isOpen={chatOpen}
           setIsOpen={setChatOpen}
-          currentStep={step}
+          stepLabel={info.label || 'Análisis'}
           hasActionBar={hasActionBar}
         />
       )}
