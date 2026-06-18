@@ -6,6 +6,7 @@ import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useRevealScroll } from '@/app/lib/useRevealScroll';
+import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -22,9 +23,9 @@ export default function PatientPage() {
   const router   = useRouter();
   const params   = useParams();
   const patientId = params?.id as string;
+  const { displayName, photoUrl } = useDoctorProfile();
 
   const [user, setUser]       = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
   const [patient, setPatient] = useState<any>(null);
   const [visits,  setVisits]  = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,17 +79,14 @@ export default function PatientPage() {
       const token   = session?.access_token;
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-      const [pRes, vRes, profRes] = await Promise.all([
+      const [pRes, vRes] = await Promise.all([
         fetch(`${BACKEND()}/patients/${patientId}`, { headers }),
         fetch(`${BACKEND()}/visits/${patientId}`,   { headers }),
-        fetch(`${BACKEND()}/doctor/profile`,        { headers }),
       ]);
       const pData    = await pRes.json();
       const vData    = await vRes.json();
-      const profData = await profRes.json();
       setPatient(pData);
       setVisits(vData.visits || []);
-      setProfile(profData);
 
       try {
         const nRes  = await fetch(`${BACKEND()}/patients/${patientId}/notes`, { headers });
@@ -117,9 +115,6 @@ export default function PatientPage() {
       setConfirmDelete(false);
     }
   };
-
-  const displayName = profile?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Doctor';
-  const photoUrl    = profile?.photo_url || profile?.clinic_logo_url || null;
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen bg-[#070a0e] text-[#dde6ef]">Cargando ficha...</div>

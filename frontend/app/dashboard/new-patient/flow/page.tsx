@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import TopNav from '@/app/components/TopNav';
+import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -103,10 +104,9 @@ const PHASE_CONFIG = {
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 function FlowPageInner() {
   const router     = useRouter();
+  const { displayName: docName, photoUrl: docPhoto } = useDoctorProfile();
   const [user, setUser]         = useState<any>(null);
   const [token, setToken]       = useState<string | null>(null);
-  const [docName, setDocName]   = useState('Doctor');
-  const [docPhoto, setDocPhoto] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState('');
   const [loading, setLoading]   = useState(true);
   const [phase, setPhase]       = useState(1);
@@ -242,15 +242,6 @@ function FlowPageInner() {
       const t = session?.access_token || null;
       setToken(t);
       const authHeader: Record<string, string> = t ? { Authorization: `Bearer ${t}` } : {};
-
-      // Cargar perfil del doctor para el TopNav
-      try {
-        const pRes = await fetch(`${B()}/doctor/profile`, { headers: authHeader });
-        const pData = await pRes.json();
-        const name = pData.display_name || u?.user_metadata?.full_name || u?.email?.split('@')[0] || 'Doctor';
-        setDocName(name);
-        setDocPhoto(pData.photo_url || pData.clinic_logo_url || null);
-      } catch (_) {}
 
       // Retomar registro de paciente existente
       const pid = searchParams.get('patient_id');

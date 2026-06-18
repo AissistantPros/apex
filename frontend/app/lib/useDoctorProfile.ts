@@ -8,24 +8,36 @@ const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8
 export function useDoctorProfile() {
   const [displayName, setDisplayName] = useState('Doctor');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [profile, setProfileState] = useState<any>(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
+      // Fallback inmediato con los datos de auth — así nunca se queda
+      // pegado en "Doctor" mientras el backend (Render free tier) despierta.
+      let u: Awaited<ReturnType<typeof getUser>> = null;
       try {
-        const [u, session] = await Promise.all([getUser(), getSession()]);
+        u = await getUser();
+        if (active && u) {
+          setDisplayName(u.user_metadata?.full_name || u.email?.split('@')[0] || 'Doctor');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
+      // Perfil real (nombre/foto configurados en /dashboard/profile) — sobreescribe
+      // el fallback en cuanto responde, sin importar cuánto tarde.
+      try {
+        const session = await getSession();
         const token = session?.access_token;
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch(`${BACKEND()}/doctor/profile`, { headers });
-        const profile = res.ok ? await res.json() : null;
+        if (!res.ok || !active) return;
+        const profileData = await res.json();
         if (!active) return;
-        setDisplayName(
-          profile?.display_name
-          || u?.user_metadata?.full_name
-          || u?.email?.split('@')[0]
-          || 'Doctor'
-        );
-        setPhotoUrl(profile?.photo_url || profile?.clinic_logo_url || null);
+        setProfileState(profileData);
+        if (profileData?.display_name) setDisplayName(profileData.display_name);
+        setPhotoUrl(profileData?.photo_url || profileData?.clinic_logo_url || null);
       } catch (e) {
         console.error(e);
       }
@@ -33,5 +45,5 @@ export function useDoctorProfile() {
     return () => { active = false; };
   }, []);
 
-  return { displayName, photoUrl };
+  return { displayName, photoUrl, profile };
 }

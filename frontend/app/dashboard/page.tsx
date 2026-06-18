@@ -6,6 +6,7 @@ import { getUser, getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
 import TopNav from '@/app/components/TopNav';
 import ChatBubble from '@/app/components/ChatBubble';
+import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -20,8 +21,8 @@ const getGreeting = (name: string) => {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { displayName, photoUrl, profile } = useDoctorProfile();
   const [user, setUser]         = useState<any>(null);
-  const [profile, setProfile]   = useState<any>(null);
   const [allPatients, setAllPatients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -53,12 +54,8 @@ export default function DashboardPage() {
       const session = await getSession();
       const token = session?.access_token;
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      const [pRes, profileRes] = await Promise.all([
-        fetch(`${BACKEND()}/patients?limit=200`, { headers }),
-        fetch(`${BACKEND()}/doctor/profile`, { headers }),
-      ]);
+      const pRes = await fetch(`${BACKEND()}/patients?limit=200`, { headers });
       setAllPatients((await pRes.json()).patients || []);
-      setProfile(await profileRes.json());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -77,12 +74,7 @@ export default function DashboardPage() {
     setShowDropdown(true);
   }, [searchQuery, allPatients]);
 
-  const displayName = profile?.display_name
-    || user?.user_metadata?.full_name
-    || user?.email?.split('@')[0]
-    || 'Doctor';
   const clinicName = profile?.clinic_name || null;
-  const photoUrl   = profile?.photo_url || profile?.clinic_logo_url || null;
   const greeting   = getGreeting(displayName);
 
   if (loading) return (
