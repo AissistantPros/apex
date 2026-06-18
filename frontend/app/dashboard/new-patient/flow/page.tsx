@@ -182,14 +182,6 @@ function FlowPageInner() {
     fuerza_mano_der: '', fuerza_mano_izq: '',
     marcha_4m: '', equilibrio_seg: '', sentarse_levantarse: '',
 
-    // FASE 2 — Visita: Reporte subjetivo
-    energia_despertar: 5, energia_tarde: 5, energia_noche: 5,
-    sueno_calidad: 5, sueno_horas: '',
-    animo_val: 5, animo_otro: '',
-    digestion_val: 5, digestion_otro: '',
-    orina_color_manana: '', orina_color_tarde: '',
-    metas: '',
-
     // FASE 3 — Médico: Historia privada
     sexo_biologico: '', genero_identidad: '',
     sust_recreativas: '', libido_basal: '5', salud_sexual_notas: '',
@@ -202,15 +194,35 @@ function FlowPageInner() {
     erectile_dysfunction: '', testosterone_use: '', testosterone_detalle: '',
     children: '', psa_ultimo: '', psa_valor: '',
 
-    // FASE 3 — Visita: Libido (movido de Fase 2)
-    libido_visita: 5,
-    // FASE 3 — Visita: Motivo + Exploración
-    motivo: '', motivo_intensidad: 5,
-    exploracion_general: '', exploracion_piel: '', exploracion_ojos: '',
-    exploracion_boca: '', exploracion_tiroides: '', exploracion_abdomen: '',
-    exploracion_extremidades: '', exploracion_notas: '',
-    labs_notas: '', dx_presuntivo: '',
+    // FASE 3 — Visita: Motivo de consulta (idéntico a visitas posteriores)
+    motivo_visita: '', motivo_intensidad: 5, motivo_desde: '',
+    motivo_primera_vez: '', cambios_meds: '',
+
+    // FASE 3 — Visita: Reporte subjetivo (idéntico a visitas posteriores)
+    energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
+    sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
+    libido_hoy: 5, orina_color: '', orina_color_tarde: '',
+    metas_paciente: '',
+
+    // FASE 3 — Visita: Exploración clínica (idéntico a visitas posteriores)
+    exp_general: '', ecg_interpretacion: '',
+    exp_piel: '', exp_ojos: '', exp_boca: '',
+    exp_tiroides: '', exp_abdomen: '', exp_neurologico: '', exp_otros: '',
+    img_tipo: '', img_interpretacion: '',
+    cognitivo_realizado: false, cognitivo_palabras: '',
+    cognitivo_reloj: '', cognitivo_notas: '',
+
+    // FASE 3 — Visita: Labs
+    lab_notas: '',
   });
+
+  // Dolencias — el paciente puede tener varias simultáneas (idéntico a visitas posteriores)
+  type Dolor = { ubicacion: string; intensidad: number };
+  const [dolores, setDolores] = useState<Dolor[]>([]);
+  const addDolor    = () => setDolores(prev => [...prev, { ubicacion: '', intensidad: 5 }]);
+  const removeDolor = (i: number) => setDolores(prev => prev.filter((_, j) => j !== i));
+  const updateDolor = (i: number, field: keyof Dolor, value: string | number) =>
+    setDolores(prev => prev.map((d, j) => j === i ? { ...d, [field]: value } : d));
 
   const set = (field: string, value: any) => setF(prev => ({ ...prev, [field]: value }));
 
@@ -374,37 +386,46 @@ function FlowPageInner() {
               marcha_4m:          str(v.marcha_4m),
               equilibrio_seg:     str(v.equilibrio_seg),
               sentarse_levantarse:str(v.sentarse_levantarse),
-              // Reporte subjetivo
-              energia_despertar: num(v.energia_despertar),
-              energia_tarde:     num(v.energia_tarde),
-              energia_noche:     num(v.energia_noche),
-              sueno_calidad:     num(v.sueno_calidad),
-              sueno_horas:       str(v.sueno_horas),
-              animo_val:         num(v.animo_val),
-              animo_otro:        str(v.animo_otro),
-              digestion_val:     num(v.digestion_val),
-              digestion_otro:    str(v.digestion_otro),
-              orina_color_manana: str(v.orina_color_manana),
-              orina_color_tarde:  str(v.orina_color_tarde),
-              metas:             str(v.metas),
-              // Fase 3 — Exploración
-              libido_visita:              num(v.libido_visita),
-              motivo:                     str(v.motivo),
-              motivo_intensidad:          num(v.motivo_intensidad),
-              exploracion_general:        str(v.exploracion_general),
-              exploracion_piel:           str(v.exploracion_piel),
-              exploracion_ojos:           str(v.exploracion_ojos),
-              exploracion_boca:           str(v.exploracion_boca),
-              exploracion_tiroides:       str(v.exploracion_tiroides),
-              exploracion_abdomen:        str(v.exploracion_abdomen),
-              exploracion_extremidades:   str(v.exploracion_extremidades),
-              exploracion_notas:          str(v.exploracion_notas),
-              labs_notas:                 str(v.labs_notas),
-              dx_presuntivo:              str(v.dx_presuntivo),
+              // Fase 3 — Motivo de consulta
+              motivo_visita:      str(v.visit_reason),
+              motivo_intensidad:  num(v.discomfort_intensity),
+              motivo_desde:       str(v.symptom_since),
+              motivo_primera_vez: str(v.first_time),
+              cambios_meds:       str(v.medication_changes),
+              // Fase 3 — Reporte subjetivo
+              energia_manana:    num(v.energy_morning),
+              energia_mediodia:  num(v.energy_noon),
+              energia_tarde:     num(v.energy_evening),
+              sueno_calidad:     num(v.sleep_quality),
+              sueno_horas:       str(v.sleep_hours),
+              sueno_reparador:   str(v.wakes_rested),
+              libido_hoy:        num(v.libido),
+              orina_color:       str(v.urine_color),
+              orina_color_tarde: str(v.urine_color_afternoon),
+              metas_paciente:    str(v.patient_goals),
+              // Fase 3 — Exploración clínica
+              exp_general:        str(v.general_inspection),
+              ecg_interpretacion: str(v.ecg_interpretation),
+              exp_piel:           str(v.skin_findings),
+              exp_ojos:           str(v.eye_findings),
+              exp_boca:           str(v.mouth_findings),
+              exp_tiroides:       str(v.thyroid_findings),
+              exp_abdomen:        str(v.abdomen_findings),
+              exp_neurologico:    str(v.neuro_findings),
+              exp_otros:          str(v.other_findings),
+              img_tipo:           str(v.imaging_type),
+              img_interpretacion: str(v.imaging_findings),
+              cognitivo_realizado: v.minicog_done ?? false,
+              cognitivo_palabras: str(v.minicog_words),
+              cognitivo_reloj:    str(v.minicog_clock),
+              cognitivo_notas:    str(v.minicog_notes),
+              // Fase 3 — Labs
+              lab_notas: str(v.labs_notes),
             }));
-            if (Array.isArray(v.animo_tags))    setAnimo(v.animo_tags);
-            if (Array.isArray(v.digestion_tags)) setDigestion(v.digestion_tags);
-            if (Array.isArray(v.labs_files))     setLabFiles(v.labs_files);
+            if (Array.isArray(v.mood))      setAnimo(v.mood);
+            if (Array.isArray(v.digestion)) setDigestion(v.digestion);
+            if (Array.isArray(v.pains) && v.pains.length > 0) setDolores(v.pains);
+            if (Array.isArray(v.labs_files)) setLabFiles(v.labs_files);
           }
         } catch (_) {}
 
@@ -603,13 +624,6 @@ function FlowPageInner() {
         fuerza_mano_der: f.fuerza_mano_der, fuerza_mano_izq: f.fuerza_mano_izq,
         marcha_4m: f.marcha_4m, equilibrio_seg: f.equilibrio_seg,
         sentarse_levantarse: f.sentarse_levantarse,
-        // Subjetivo
-        energia_despertar: f.energia_despertar, energia_tarde: f.energia_tarde, energia_noche: f.energia_noche,
-        sueno_calidad: f.sueno_calidad, sueno_horas: f.sueno_horas,
-        animo_val: f.animo_val, animo_tags: animo, animo_otro: f.animo_otro,
-        digestion_val: f.digestion_val, digestion_tags: digestion, digestion_otro: f.digestion_otro,
-        orina_color_manana: f.orina_color_manana, orina_color_tarde: f.orina_color_tarde,
-        metas: f.metas,
         status: 'nursing_done',
       };
 
@@ -685,27 +699,41 @@ function FlowPageInner() {
         }),
       });
 
-      // 3b: Actualizar visita con motivo + exploración
-      // Campos vacíos de exploración → "Sin hallazgos" para que la IA tenga info completa
+      // 3b: Actualizar visita con motivo + reporte subjetivo + exploración
+      // Mismas columnas reales de DB que usa la visita de seguimiento (new-visit.tsx),
+      // para que la IA siempre lea de las mismas claves sin importar el tipo de visita.
       const sh = (val: string) => val && val.trim() !== '' ? val.trim() : 'Sin hallazgos';
       if (visitId) {
         const vRes3 = await fetch(`${B()}/visits/${visitId}`, {
           method: 'PUT',
           headers: authH3,
           body: JSON.stringify({
-            libido_visita: f.libido_visita,
-            motivo: f.motivo, motivo_intensidad: f.motivo_intensidad,
-            exploracion_general:      sh(f.exploracion_general),
-            exploracion_piel:         sh(f.exploracion_piel),
-            exploracion_ojos:         sh(f.exploracion_ojos),
-            exploracion_boca:         sh(f.exploracion_boca),
-            exploracion_tiroides:     sh(f.exploracion_tiroides),
-            exploracion_abdomen:      sh(f.exploracion_abdomen),
-            exploracion_extremidades: sh(f.exploracion_extremidades),
-            exploracion_notas: f.exploracion_notas || '',
-            labs_notas: f.labs_notas && f.labs_notas.trim() !== '' ? f.labs_notas : 'Sin laboratorios recientes',
+            // Motivo de consulta
+            visit_reason: f.motivo_visita, discomfort_intensity: f.motivo_intensidad,
+            symptom_since: f.motivo_desde, first_time: f.motivo_primera_vez,
+            medication_changes: f.cambios_meds,
+            pain_today: dolores.length > 0,
+            pain_location: dolores[0]?.ubicacion || '', pain_intensity: dolores[0]?.intensidad ?? null,
+            pains: dolores,
+            // Reporte subjetivo
+            energy_morning: f.energia_manana, energy_noon: f.energia_mediodia,
+            energy_evening: f.energia_tarde, sleep_quality: f.sueno_calidad,
+            sleep_hours: f.sueno_horas, wakes_rested: f.sueno_reparador,
+            mood: animo, libido: f.libido_hoy, digestion,
+            urine_color: f.orina_color, urine_color_afternoon: f.orina_color_tarde,
+            patient_goals: f.metas_paciente,
+            // Exploración clínica
+            general_inspection: sh(f.exp_general), ecg_interpretation: f.ecg_interpretacion,
+            skin_findings: sh(f.exp_piel), eye_findings: sh(f.exp_ojos),
+            mouth_findings: sh(f.exp_boca), thyroid_findings: sh(f.exp_tiroides),
+            abdomen_findings: sh(f.exp_abdomen), neuro_findings: sh(f.exp_neurologico),
+            other_findings: f.exp_otros, imaging_type: f.img_tipo,
+            imaging_findings: f.img_interpretacion, minicog_done: f.cognitivo_realizado,
+            minicog_words: f.cognitivo_palabras, minicog_clock: f.cognitivo_reloj,
+            minicog_notes: f.cognitivo_notas,
+            // Labs
+            labs_notes: f.lab_notas && f.lab_notas.trim() !== '' ? f.lab_notas : 'Sin laboratorios recientes',
             labs_files: labFiles.map(lf => ({ name: lf.name, type: lf.type, size: lf.size, data: lf.data })),
-            dx_presuntivo: f.dx_presuntivo,
             status: 'complete',
           }),
         });
@@ -1380,92 +1408,6 @@ function FlowPageInner() {
                 </div>
               </Card>
 
-              <Card title="Reporte subjetivo del paciente" icon="🧠" color={pc.color}>
-                <div className="space-y-5">
-
-                  {/* Energía — 3 momentos del día */}
-                  <div>
-                    <p className="text-xs font-mono text-[#7a95aa] mb-3">NIVEL DE ENERGÍA (1=muy bajo · 10=excelente)</p>
-                    <div className="space-y-3">
-                      <Slider label="Al despertar" value={f.energia_despertar} onChange={v=>set('energia_despertar',v)} color="#f97316" />
-                      <Slider label="Por la tarde" value={f.energia_tarde}    onChange={v=>set('energia_tarde',v)}    color="#f97316" />
-                      <Slider label="Por la noche"  value={f.energia_noche}   onChange={v=>set('energia_noche',v)}   color="#f97316" />
-                    </div>
-                  </div>
-
-                  {/* Sueño */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <Slider label="CALIDAD DEL SUEÑO (1-10)" value={f.sueno_calidad} onChange={v=>set('sueno_calidad',v)} color="#f97316" />
-                    <Field label="HORAS DE SUEÑO (aprox.)">
-                      <input type="number" step="0.5" className={`${inp} ${fOrng}`} value={f.sueno_horas}
-                        onChange={e=>set('sueno_horas',e.target.value)} placeholder="7.5" />
-                    </Field>
-                  </div>
-
-                  {/* Estado anímico */}
-                  <div>
-                    <p className="text-xs font-mono text-[#7a95aa] mb-2">ESTADO ANÍMICO (puede marcar varios)</p>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {ANIMO_OPTS.map(o => (
-                        <button key={o} onClick={() => toggleMulti(animo, setAnimo, o)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
-                          style={{ background: animo.includes(o)?'rgba(249,115,22,.15)':'transparent', color: animo.includes(o)?'#f97316':'#7a95aa', borderColor: animo.includes(o)?'#f97316':'#1e2d3d' }}>
-                          {o}
-                        </button>
-                      ))}
-                    </div>
-                    {animo.includes('Otro') && (
-                      <input className={`${inp} ${fOrng} mt-1`} value={f.animo_otro}
-                        onChange={e=>set('animo_otro',e.target.value)}
-                        placeholder="Describir otro estado anímico..." />
-                    )}
-                  </div>
-
-                  {/* Digestión */}
-                  <Slider label="DIGESTIÓN GENERAL (1-10)" value={f.digestion_val} onChange={v=>set('digestion_val',v)} color="#f97316" />
-                  <div>
-                    <p className="text-xs font-mono text-[#7a95aa] mb-2">SÍNTOMAS DIGESTIVOS</p>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {DIGESTION_OPTS.map(o => (
-                        <button key={o} onClick={() => toggleMulti(digestion, setDigestion, o)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
-                          style={{ background: digestion.includes(o)?'rgba(249,115,22,.15)':'transparent', color: digestion.includes(o)?'#f97316':'#7a95aa', borderColor: digestion.includes(o)?'#f97316':'#1e2d3d' }}>
-                          {o}
-                        </button>
-                      ))}
-                    </div>
-                    {digestion.includes('Otro') && (
-                      <input className={`${inp} ${fOrng} mt-1`} value={f.digestion_otro}
-                        onChange={e=>set('digestion_otro',e.target.value)}
-                        placeholder="Describir otro síntoma digestivo..." />
-                    )}
-                  </div>
-
-                  {/* Color de orina — mañana y tarde */}
-                  <div>
-                    <p className="text-xs font-mono text-[#7a95aa] mb-3">COLOR DE ORINA</p>
-                    <div className="space-y-3">
-                      {[
-                        { label: 'Por la mañana', field: 'orina_color_manana' as const },
-                        { label: 'Por la tarde',   field: 'orina_color_tarde'  as const },
-                      ].map(({ label, field }) => (
-                        <div key={field}>
-                          <p className="text-xs text-[#3d5870] mb-1.5">{label}</p>
-                          <div className="flex gap-3 flex-wrap">
-                            {ORINA_COLORS.map(c => (
-                              <button key={c.hex} onClick={() => set(field, c.hex)}
-                                title={`${c.label} — ${c.text}`}
-                                className="w-9 h-9 rounded-full border-2 transition"
-                                style={{ background: c.hex, borderColor: f[field]===c.hex ? '#00e5a0' : 'transparent' }} />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
               {/* — Nota de enfermería — */}
               {patientId && (
                 <Card title="Nota de Enfermería" icon="📝" color={pc.color}>
@@ -1600,13 +1542,6 @@ function FlowPageInner() {
                         <span className="text-[#a78bfa] font-mono text-lg min-w-[30px]">{f.libido_basal}</span>
                       </div>
                     </Field>
-                    <Field label="LIBIDO ACTUAL — ¿CÓMO HA ESTADO RECIENTEMENTE? (1-10)">
-                      <div className="flex items-center gap-4">
-                        <input type="range" min={1} max={10} value={f.libido_visita}
-                          onChange={e=>set('libido_visita',parseInt(e.target.value))} className="flex-1" />
-                        <span className="text-[#a78bfa] font-mono text-lg min-w-[30px]">{f.libido_visita}</span>
-                      </div>
-                    </Field>
                     <Field label="NOTAS DE SALUD SEXUAL">
                       <textarea rows={3} className={`${inp} ${fPurp}`} value={f.salud_sexual_notas}
                         onChange={e=>set('salud_sexual_notas',e.target.value)}
@@ -1653,54 +1588,254 @@ function FlowPageInner() {
               </div>
 
               <Card title="Motivo de consulta" icon="📋" color={pc.color}>
-                <div className="space-y-3">
-                  <Field label="MOTIVO PRINCIPAL">
-                    <textarea rows={3} className={`${inp} ${fPurp}`} value={f.motivo}
-                      onChange={e=>set('motivo',e.target.value)} placeholder="¿Qué trae al paciente hoy?" />
+                <div className="space-y-4">
+                  <Field label="¿A QUÉ VIENE HOY?">
+                    <textarea rows={4} className={`${inp} ${fPurp} resize-none`} value={f.motivo_visita}
+                      onChange={e=>set('motivo_visita',e.target.value)} placeholder="Describe con las palabras del paciente el motivo de consulta..." />
                   </Field>
-                  <Field label="INTENSIDAD / URGENCIA PERCIBIDA (1-10)">
-                    <div className="flex items-center gap-4">
-                      <input type="range" min={1} max={10} value={f.motivo_intensidad}
-                        onChange={e=>set('motivo_intensidad',parseInt(e.target.value))} className="flex-1" />
-                      <span className="text-[#a78bfa] font-mono text-lg min-w-[30px]">{f.motivo_intensidad}</span>
+                  <Slider label="INTENSIDAD DEL MALESTAR PRINCIPAL" value={f.motivo_intensidad}
+                    onChange={v=>set('motivo_intensidad',v)} color="#a78bfa" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="¿DESDE CUÁNDO?">
+                      <input className={`${inp} ${fPurp}`} placeholder="3 días, 2 semanas, 1 mes..."
+                        value={f.motivo_desde} onChange={e=>set('motivo_desde',e.target.value)} />
+                    </Field>
+                    <Field label="CAMBIOS DE MEDICAMENTOS RECIENTES">
+                      <input className={`${inp} ${fPurp}`} placeholder="Inició metformina, suspendió..."
+                        value={f.cambios_meds} onChange={e=>set('cambios_meds',e.target.value)} />
+                    </Field>
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono text-[#7a95aa] mb-2">¿ES LA PRIMERA VEZ?</p>
+                    <div className="flex gap-3 flex-wrap">
+                      {[
+                        { val: 'si',        label: 'Sí, primera vez' },
+                        { val: 'no',        label: 'No, recurrente' },
+                        { val: 'episodios', label: 'Ha tenido episodios antes' },
+                      ].map(({ val, label }) => (
+                        <label key={val} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
+                          style={{ background: f.motivo_primera_vez === val ? '#a78bfa' : '#1e2d3d', borderColor: f.motivo_primera_vez === val ? '#a78bfa' : '#2a3a4d', color: f.motivo_primera_vez === val ? '#000' : '#dde6ef' }}>
+                          <input type="radio" name="primera_vez" value={val}
+                            checked={f.motivo_primera_vez === val}
+                            onChange={e=>set('motivo_primera_vez', e.target.value)} className="sr-only" />
+                          {label}
+                        </label>
+                      ))}
                     </div>
+                  </div>
+
+                  {/* Dolor — parte del motivo de consulta. Puede haber varias dolencias a la vez */}
+                  <div className="bg-[#111820] border border-[#f43f5e]/20 rounded-xl p-4 space-y-4">
+                    <label className="flex items-center gap-3 cursor-pointer text-sm">
+                      <input type="checkbox" checked={dolores.length > 0}
+                        onChange={e => setDolores(e.target.checked ? [{ ubicacion: '', intensidad: 5 }] : [])}
+                        className="w-4 h-4 accent-[#f43f5e] flex-shrink-0" />
+                      <span className="text-[#dde6ef] font-semibold">Tiene dolor hoy</span>
+                    </label>
+                    {dolores.map((d, i) => (
+                      <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-[#1e2d3d] pt-4 first:border-t-0 first:pt-0">
+                        <Field label={`DÓNDE DUELE${dolores.length > 1 ? ` #${i+1}` : ''}`}>
+                          <div className="flex gap-2">
+                            <input className={`${inp} ${fPurp} flex-1`} placeholder="Cabeza, espalda, articulaciones..."
+                              value={d.ubicacion} onChange={e => updateDolor(i, 'ubicacion', e.target.value)} />
+                            {dolores.length > 1 && (
+                              <button type="button" onClick={() => removeDolor(i)}
+                                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#1e2d3d] hover:bg-[#f43f5e]/20 text-[#3d5870] hover:text-[#f43f5e] transition text-lg">
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        </Field>
+                        <Slider label="INTENSIDAD DEL DOLOR" value={d.intensidad}
+                          onChange={v => updateDolor(i, 'intensidad', v)} color="#f43f5e" />
+                      </div>
+                    ))}
+                    {dolores.length > 0 && (
+                      <button type="button" onClick={addDolor}
+                        className="text-[#f43f5e] border border-[#f43f5e]/30 rounded-xl hover:bg-[#f43f5e]/10 transition font-semibold px-3 py-2 text-xs">
+                        + Agregar otra dolencia
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              <Card title="Reporte Subjetivo" icon="🧠" color={pc.color}>
+                <div className="space-y-5">
+                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
+                    <p className="text-xs font-mono text-[#a78bfa]">ENERGÍA EN LOS ÚLTIMOS 5 DÍAS</p>
+                    <Slider label="AL DESPERTAR"     value={f.energia_manana}   onChange={v=>set('energia_manana',v)}   color="#a78bfa" />
+                    <Slider label="A MEDIODÍA"        value={f.energia_mediodia} onChange={v=>set('energia_mediodia',v)} color="#a78bfa" />
+                    <Slider label="AL FINAL DEL DÍA"  value={f.energia_tarde}    onChange={v=>set('energia_tarde',v)}    color="#a78bfa" />
+                  </div>
+
+                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-mono text-[#a78bfa]">SUEÑO</p>
+                    <Slider label="CALIDAD DEL SUEÑO" value={f.sueno_calidad} onChange={v=>set('sueno_calidad',v)} color="#a78bfa" />
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="HORAS POR NOCHE">
+                        <input type="number" step="0.5" className={`${inp} ${fPurp}`} value={f.sueno_horas}
+                          onChange={e=>set('sueno_horas',e.target.value)} placeholder="7.5" />
+                      </Field>
+                      <div>
+                        <p className="text-xs font-mono text-[#7a95aa] mb-2">¿DESCANSADO?</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {['Sí','No','A veces'].map(o => (
+                            <label key={o} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
+                              style={{ background: f.sueno_reparador === o ? '#a78bfa' : '#1e2d3d', borderColor: f.sueno_reparador === o ? '#a78bfa' : '#2a3a4d', color: f.sueno_reparador === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="sueno_rep" value={o} checked={f.sueno_reparador === o}
+                                onChange={e=>set('sueno_reparador', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ánimo + Digestión lado a lado */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
+                      <p className="text-xs font-mono text-[#a78bfa] mb-3">ÁNIMO ESTA SEMANA</p>
+                      <div className="flex flex-wrap gap-2">
+                        {ANIMO_OPTS.map(o => (
+                          <button key={o} type="button" onClick={() => toggleMulti(animo, setAnimo, o)}
+                            className="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                            style={{ background: animo.includes(o) ? '#a78bfa' : '#1e2d3d', color: animo.includes(o) ? '#000' : '#7a95aa' }}>
+                            {o}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
+                      <p className="text-xs font-mono text-[#a78bfa] mb-3">DIGESTIÓN</p>
+                      <div className="flex flex-wrap gap-2">
+                        {DIGESTION_OPTS.map(o => (
+                          <button key={o} type="button" onClick={() => toggleMulti(digestion, setDigestion, o)}
+                            className="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                            style={{ background: digestion.includes(o) ? '#a78bfa' : '#1e2d3d', color: digestion.includes(o) ? '#000' : '#7a95aa' }}>
+                            {o}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Slider label="LIBIDO EN LOS ÚLTIMOS DÍAS" value={f.libido_hoy} onChange={v=>set('libido_hoy',v)} color="#a78bfa" />
+
+                  {/* Color orina — mañana y tarde lado a lado */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {([
+                      { field: 'orina_color' as const,      label: 'COLOR ORINA EN LA MAÑANA' },
+                      { field: 'orina_color_tarde' as const, label: 'COLOR ORINA POR LA TARDE' },
+                    ]).map(({ field, label }) => (
+                      <div key={field} className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
+                        <p className="text-xs font-mono text-[#a78bfa] mb-3">{label}</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {ORINA_COLORS.map(c => (
+                            <button key={c.hex} type="button" onClick={() => set(field, c.label)}
+                              className="flex flex-col items-center gap-1 rounded-xl border-2 transition p-2"
+                              style={{ borderColor: f[field] === c.label ? '#a78bfa' : '#1e2d3d', background: f[field] === c.label ? '#a78bfa11' : 'transparent' }}>
+                              <div className="w-8 h-8 rounded-full border border-[#1e2d3d]" style={{ background: c.hex }} />
+                              <span className="text-[10px] text-[#7a95aa] text-center max-w-[60px] leading-tight">{c.text}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Field label="METAS DEL PACIENTE">
+                    <textarea rows={3} className={`${inp} ${fPurp} resize-none`}
+                      value={f.metas_paciente} onChange={e=>set('metas_paciente',e.target.value)}
+                      placeholder="Bajar de peso, tener más energía, dormir mejor..." />
                   </Field>
                 </div>
               </Card>
 
-              <Card title="Exploración física" icon="🔬" color={pc.color}>
+              <Card title="Exploración Clínica" icon="🔬" color={pc.color}>
+                <p className="text-xs text-[#7a95aa] mb-3">Solo lo relevante. No obligatorio campo por campo.</p>
                 <div className="space-y-3">
-                  {[
-                    { k:'exploracion_general',      l:'ASPECTO GENERAL' },
-                    { k:'exploracion_piel',         l:'PIEL / FANERAS' },
-                    { k:'exploracion_ojos',         l:'OJOS / CONJUNTIVAS / ESCLERAS' },
-                    { k:'exploracion_boca',         l:'BOCA / MUCOSAS / DENTICIÓN' },
-                    { k:'exploracion_tiroides',     l:'CUELLO / TIROIDES / GANGLIOS' },
-                    { k:'exploracion_abdomen',      l:'ABDOMEN' },
-                    { k:'exploracion_extremidades', l:'EXTREMIDADES' },
-                  ].map(({k,l}) => {
-                    const val = (f as any)[k] as string;
-                    const isSH = val === 'Sin hallazgos';
-                    return (
-                      <div key={k}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-mono text-[#7a95aa]">{l}</label>
-                          <button type="button"
-                            onClick={() => set(k, isSH ? '' : 'Sin hallazgos')}
-                            className="text-xs px-2.5 py-0.5 rounded-lg border transition ml-2 flex-shrink-0"
-                            style={{ background: isSH?'rgba(0,229,160,.12)':'transparent', color: isSH?'#00e5a0':'#3d5870', borderColor: isSH?'#00e5a0':'#1e2d3d' }}>
-                            {isSH ? '✓ Sin hallazgos' : '⊘ Sin hallazgos'}
-                          </button>
-                        </div>
-                        <input className={`${inp} ${fPurp}`} value={val}
-                          onChange={e=>set(k,e.target.value)} placeholder="Describir hallazgos..." />
-                      </div>
-                    );
-                  })}
-                  <Field label="NOTAS ADICIONALES DE EXPLORACIÓN">
-                    <textarea rows={3} className={`${inp} ${fPurp}`} value={f.exploracion_notas}
-                      onChange={e=>set('exploracion_notas',e.target.value)} placeholder="Otros hallazgos relevantes..." />
+                  <Field label="IMPRESIÓN GENERAL">
+                    <textarea rows={3} className={`${inp} ${fPurp} resize-none`}
+                      value={f.exp_general} onChange={e=>set('exp_general',e.target.value)}
+                      placeholder="Paciente en buen estado general, consciente, orientado, normohidratado..." />
                   </Field>
+
+                  {f.ecg_realizado && (
+                    <Field label="INTERPRETACIÓN ECG">
+                      <textarea rows={3} className={`${inp} ${fPurp} resize-none`}
+                        value={f.ecg_interpretacion} onChange={e=>set('ecg_interpretacion',e.target.value)}
+                        placeholder="Ritmo sinusal regular, eje normal..." />
+                    </Field>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { key: 'exp_piel',        label: 'PIEL Y MUCOSAS',  ph: 'Coloración, ictericia, acné...' },
+                      { key: 'exp_ojos',        label: 'OJOS',            ph: 'Ictericia escleral, xantelasmas...' },
+                      { key: 'exp_boca',        label: 'BOCA',            ph: 'Estado dental, lengua...' },
+                      { key: 'exp_tiroides',    label: 'TIROIDES',        ph: 'Palpación, tamaño, nódulos...' },
+                      { key: 'exp_abdomen',     label: 'ABDOMEN',         ph: 'Hepatomegalia, masas...' },
+                      { key: 'exp_neurologico', label: 'NEUROLÓGICO',     ph: 'Temblor, marcha, reflejos...' },
+                    ].map(({ key, label, ph }) => (
+                      <Field key={key} label={label}>
+                        <textarea rows={4} maxLength={500} placeholder={ph}
+                          value={(f as any)[key] as string}
+                          onChange={e=>set(key, e.target.value)}
+                          className={`${inp} ${fPurp} resize-none`} />
+                      </Field>
+                    ))}
+                  </div>
+
+                  <Field label="OTROS HALLAZGOS">
+                    <textarea rows={2} className={`${inp} ${fPurp} resize-none`}
+                      value={f.exp_otros} onChange={e=>set('exp_otros',e.target.value)}
+                      placeholder="Cualquier otro hallazgo..." />
+                  </Field>
+
+                  <div className="grid grid-cols-2 gap-4 bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
+                    <Field label="TIPO DE ESTUDIO DE IMAGEN">
+                      <input className={`${inp} ${fPurp}`} placeholder="RX tórax, TAC abdomen..."
+                        value={f.img_tipo} onChange={e=>set('img_tipo',e.target.value)} />
+                    </Field>
+                    <Field label="HALLAZGOS">
+                      <input className={`${inp} ${fPurp}`} placeholder="Sin infiltrados, silueta cardíaca normal..."
+                        value={f.img_interpretacion} onChange={e=>set('img_interpretacion',e.target.value)} />
+                    </Field>
+                  </div>
+
+                  <label className="flex items-center gap-3 cursor-pointer bg-[#111820] border border-[#a78bfa]/20 rounded-xl px-4 py-3">
+                    <input type="checkbox" checked={f.cognitivo_realizado}
+                      onChange={e=>set('cognitivo_realizado', e.target.checked)}
+                      className="w-4 h-4 accent-[#a78bfa] flex-shrink-0" />
+                    <span className="text-sm text-[#dde6ef] font-semibold">Se realizó Mini-Cog hoy</span>
+                  </label>
+                  {f.cognitivo_realizado && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
+                      <Field label="PALABRAS RECORDADAS (0-3)">
+                        <input type="number" className={`${inp} ${fPurp}`} value={f.cognitivo_palabras}
+                          onChange={e=>set('cognitivo_palabras', e.target.value)} placeholder="0-3" />
+                      </Field>
+                      <div>
+                        <p className="text-xs font-mono text-[#7a95aa] mb-2">RELOJ CORRECTO</p>
+                        <div className="flex gap-2">
+                          {['Sí','No','Parcial'].map(o => (
+                            <label key={o} className="flex items-center justify-center cursor-pointer flex-1 rounded-lg border transition py-2 text-xs"
+                              style={{ background: f.cognitivo_reloj === o ? '#a78bfa' : '#1e2d3d', borderColor: f.cognitivo_reloj === o ? '#a78bfa' : '#2a3a4d', color: f.cognitivo_reloj === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="reloj" value={o} checked={f.cognitivo_reloj === o}
+                                onChange={e=>set('cognitivo_reloj', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <Field label="OBSERVACIONES">
+                        <input className={`${inp} ${fPurp}`} placeholder="Notas..."
+                          value={f.cognitivo_notas} onChange={e=>set('cognitivo_notas', e.target.value)} />
+                      </Field>
+                    </div>
+                  )}
                 </div>
               </Card>
 
@@ -1708,10 +1843,10 @@ function FlowPageInner() {
                 <div className="space-y-4">
 
                   {/* Notas de labs */}
-                  <Field label="LABORATORIOS RECIENTES (resultados o pendientes)">
-                    <textarea rows={4} className={`${inp} ${fPurp}`} value={f.labs_notas}
-                      onChange={e=>set('labs_notas',e.target.value)}
-                      placeholder="Glucosa 105, HbA1c 5.8%, TSH 2.1... o 'pendiente de resultados'" />
+                  <Field label="NOTAS SOBRE LOS LABORATORIOS">
+                    <textarea rows={4} className={`${inp} ${fPurp} resize-none`} value={f.lab_notas}
+                      onChange={e=>set('lab_notas',e.target.value)}
+                      placeholder="Resultados relevantes, valores que llaman la atención..." />
                   </Field>
 
                   {/* Subida de archivos */}
@@ -1765,13 +1900,6 @@ function FlowPageInner() {
                       </div>
                     )}
                   </div>
-
-                  {/* Diagnóstico presuntivo */}
-                  <Field label="DIAGNÓSTICO PRESUNTIVO (para la IA)">
-                    <textarea rows={3} className={`${inp} ${fPurp}`} value={f.dx_presuntivo}
-                      onChange={e=>set('dx_presuntivo',e.target.value)}
-                      placeholder="Impresión diagnóstica inicial del médico..." />
-                  </Field>
                 </div>
               </Card>
 

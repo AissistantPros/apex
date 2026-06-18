@@ -118,6 +118,10 @@ CREATE TABLE IF NOT EXISTS public.visits (
   first_time VARCHAR(50),
   medication_changes TEXT,
 
+  -- Notas por rol (recepción / enfermería)
+  reception_notes TEXT,
+  nursing_notes TEXT,
+
   -- BLOQUE B: Signos vitales
   pa_der_sistolica FLOAT,
   pa_der_diastolica FLOAT,
@@ -169,9 +173,11 @@ CREATE TABLE IF NOT EXISTS public.visits (
   libido INT,
   digestion TEXT[],
   urine_color VARCHAR(50),
+  urine_color_afternoon VARCHAR(50),
   pain_today BOOLEAN,
   pain_location VARCHAR(100),
   pain_intensity INT,
+  pains JSONB DEFAULT '[]'::jsonb,
   patient_goals TEXT,
 
   -- BLOQUE F: Exploración clínica

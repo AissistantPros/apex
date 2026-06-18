@@ -268,10 +268,17 @@ def build_visit_context(visit: dict) -> str:
 
     dolor = visit.get("pain_today") or visit.get("dolor_hoy") or False
     dolor_str = "No"
+    pains = visit.get("pains") or []
     if dolor:
-        dolor_ubi = visit.get("pain_location") or visit.get("dolor_ubicacion") or "No especificado"
-        dolor_int = visit.get("pain_intensity") or visit.get("dolor_intensidad") or "N/D"
-        dolor_str = f"Sí — ubicación: {dolor_ubi}, intensidad declarada: {dolor_int}/10"
+        if isinstance(pains, list) and len(pains) > 0:
+            dolor_str = "Sí — " + "; ".join(
+                f"{p.get('ubicacion', 'No especificado')} (intensidad {p.get('intensidad', 'N/D')}/10)"
+                for p in pains
+            )
+        else:
+            dolor_ubi = visit.get("pain_location") or visit.get("dolor_ubicacion") or "No especificado"
+            dolor_int = visit.get("pain_intensity") or visit.get("dolor_intensidad") or "N/D"
+            dolor_str = f"Sí — ubicación: {dolor_ubi}, intensidad declarada: {dolor_int}/10"
 
     # Cognitivo
     cog = visit.get("minicog_done") or visit.get("cognitivo_realizado") or False
@@ -345,18 +352,29 @@ DATOS DE LA VISITA ACTUAL
   • VO2max estimado (ml/kg/min): {vo2max}
 
 ── REPORTE SUBJETIVO (autoevaluado por el paciente) ──
-  • Nivel de energía en la MAÑANA (escala 1–10): {visit.get('energy_morning') or visit.get('energia_manana') or 'N/D'}/10
-  • Nivel de energía al MEDIODÍA (escala 1–10): {visit.get('energy_noon') or visit.get('energia_mediodia') or 'N/D'}/10
-  • Nivel de energía en la TARDE (escala 1–10): {visit.get('energy_evening') or visit.get('energia_tarde') or 'N/D'}/10
-  • Calidad del sueño (escala 1–10): {visit.get('sleep_quality') or visit.get('sueno_calidad') or 'N/D'}/10
-  • Horas de sueño por noche: {visit.get('sleep_hours') or visit.get('sueno_horas') or 'N/D'} h
-  • ¿Se despierta descansado? (opciones: Siempre / A veces / Rara vez / Nunca): {visit.get('wakes_rested') or visit.get('sueno_reparador') or 'N/D'}
-  • Estado de ánimo actual (múltiple selección, opciones: Estable / Ansioso / Irritable / Triste / Sin motivación / Bien / Otro): {animo_str or 'No especificado'}
-  • Libido HOY, en este momento (escala 1–10, diferente del basal en registro): {visit.get('libido') or visit.get('libido_hoy') or 'N/D'}/10
-  • Digestión (múltiple selección, opciones: Sin problemas / Distensión / Estreñimiento / Diarrea / Reflujo / Náuseas / Otro): {digestion_str or 'No especificado'}
-  • Color de orina (escala visual, del más pálido al más oscuro): {orina}
+  • Pregunta hecha al paciente: "En los últimos 5 días, ¿cómo calificarías tu energía AL DESPERTAR?" (escala 1–10)
+    Respuesta: {visit.get('energy_morning') or visit.get('energia_manana') or 'N/D'}/10
+  • Pregunta hecha al paciente: "En los últimos 5 días, ¿cómo calificarías tu energía A MEDIODÍA?" (escala 1–10)
+    Respuesta: {visit.get('energy_noon') or visit.get('energia_mediodia') or 'N/D'}/10
+  • Pregunta hecha al paciente: "En los últimos 5 días, ¿cómo calificarías tu energía AL FINAL DEL DÍA?" (escala 1–10)
+    Respuesta: {visit.get('energy_evening') or visit.get('energia_tarde') or 'N/D'}/10
+  • Pregunta hecha al paciente: "¿Cómo calificarías la calidad de tu sueño?" (escala 1–10)
+    Respuesta: {visit.get('sleep_quality') or visit.get('sueno_calidad') or 'N/D'}/10
+  • Pregunta hecha al paciente: "¿Cuántas horas duermes por noche?"
+    Respuesta: {visit.get('sleep_hours') or visit.get('sueno_horas') or 'N/D'} h
+  • Pregunta hecha al paciente: "¿Te despiertas descansado?" (opciones: Siempre / A veces / Rara vez / Nunca)
+    Respuesta: {visit.get('wakes_rested') or visit.get('sueno_reparador') or 'N/D'}
+  • Pregunta hecha al paciente: "¿Cómo describirías tu estado de ánimo esta semana?" (múltiple selección, opciones: Estable / Ansioso / Irritable / Triste / Sin motivación / Bien / Otro)
+    Respuesta: {animo_str or 'No especificado'}
+  • Pregunta hecha al paciente: "En los últimos días, ¿cómo calificarías tu libido?" (escala 1–10, distinto del basal registrado al ingreso del paciente)
+    Respuesta: {visit.get('libido') or visit.get('libido_hoy') or 'N/D'}/10
+  • Pregunta hecha al paciente: "¿Cómo ha estado tu digestión?" (múltiple selección, opciones: Sin problemas / Distensión / Estreñimiento / Diarrea / Reflujo / Náuseas / Otro)
+    Respuesta: {digestion_str or 'No especificado'}
+  • Pregunta hecha al paciente: "¿De qué color es tu orina?" (escala visual, del más pálido al más oscuro)
+    Respuesta: {orina}
     (muy pálido = bien hidratado; naranja oscuro = deshidratación severa / revisar hematuria)
-  • ¿Tiene dolor físico hoy?: {dolor_str}
+  • Pregunta hecha al paciente: "¿Tienes dolor físico hoy? ¿Dónde y con qué intensidad?"
+    Respuesta: {dolor_str}
 
 ── EXPLORACIÓN CLÍNICA (realizada por el médico) ──
   • Inspección general: {visit.get('general_inspection') or visit.get('exp_general') or 'No registrada'}

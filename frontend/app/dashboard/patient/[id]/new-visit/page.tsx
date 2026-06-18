@@ -237,6 +237,14 @@ export default function NewVisitPage() {
   const [receptionNotes, setReceptionNotes] = useState('');
   const [nursingNotes,   setNursingNotes]   = useState('');
 
+  // Dolencias — el paciente puede tener varias simultáneas
+  type Dolor = { ubicacion: string; intensidad: number };
+  const [dolores, setDolores] = useState<Dolor[]>([]);
+  const addDolor    = () => setDolores(prev => [...prev, { ubicacion: '', intensidad: 5 }]);
+  const removeDolor = (i: number) => setDolores(prev => prev.filter((_, j) => j !== i));
+  const updateDolor = (i: number, field: keyof Dolor, value: string | number) =>
+    setDolores(prev => prev.map((d, j) => j === i ? { ...d, [field]: value } : d));
+
   // Multi-selects
   const [animo,     setAnimo]     = useState<string[]>([]);
   const [digestion, setDigestion] = useState<string[]>([]);
@@ -269,7 +277,6 @@ export default function NewVisitPage() {
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
-    dolor_hoy: false, dolor_ubicacion: '', dolor_intensidad: 5,
     metas_paciente: '',
     // Exploración
     exp_general: '', ecg_interpretacion: '',
@@ -365,8 +372,10 @@ export default function NewVisitPage() {
         energy_evening: form.energia_tarde, sleep_quality: form.sueno_calidad,
         sleep_hours: form.sueno_horas, wakes_rested: form.sueno_reparador,
         mood: animo, libido: form.libido_hoy, digestion,
-        urine_color: form.orina_color, urine_color_afternoon: form.orina_color_tarde, pain_today: form.dolor_hoy,
-        pain_location: form.dolor_ubicacion, pain_intensity: form.dolor_intensidad,
+        urine_color: form.orina_color, urine_color_afternoon: form.orina_color_tarde,
+        pain_today: dolores.length > 0,
+        pain_location: dolores[0]?.ubicacion || '', pain_intensity: dolores[0]?.intensidad ?? null,
+        pains: dolores,
         patient_goals: form.metas_paciente,
         general_inspection: form.exp_general, ecg_interpretation: form.ecg_interpretacion,
         skin_findings: form.exp_piel, eye_findings: form.exp_ojos,
@@ -1023,23 +1032,37 @@ export default function NewVisitPage() {
                     </div>
                   </div>
 
-                  {/* Dolor — parte del motivo de consulta */}
+                  {/* Dolor — parte del motivo de consulta. Puede haber varias dolencias a la vez */}
                   <div className="bg-[#0d1520] border border-[#f43f5e]/20 rounded-xl p-4 space-y-4">
                     <label className={`flex items-center gap-3 cursor-pointer ${tb ? 'text-base' : 'text-sm'}`}>
-                      <input type="checkbox" checked={form.dolor_hoy}
-                        onChange={e => set('dolor_hoy', e.target.checked)}
+                      <input type="checkbox" checked={dolores.length > 0}
+                        onChange={e => setDolores(e.target.checked ? [{ ubicacion: '', intensidad: 5 }] : [])}
                         className={`flex-shrink-0 accent-[#f43f5e] ${tb ? 'w-5 h-5' : 'w-4 h-4'}`} />
                       <span className="text-[#dde6ef] font-semibold">Tiene dolor hoy</span>
                     </label>
-                    {form.dolor_hoy && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Field label="DÓNDE DUELE" tablet={tb}>
-                          <input className={inp(tb)} placeholder="Cabeza, espalda, articulaciones..."
-                            value={form.dolor_ubicacion} onChange={e => set('dolor_ubicacion', e.target.value)} />
+                    {dolores.map((d, i) => (
+                      <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-[#1e2d3d] pt-4 first:border-t-0 first:pt-0">
+                        <Field label={`DÓNDE DUELE${dolores.length > 1 ? ` #${i+1}` : ''}`} tablet={tb}>
+                          <div className="flex gap-2">
+                            <input className={inp(tb) + ' flex-1'} placeholder="Cabeza, espalda, articulaciones..."
+                              value={d.ubicacion} onChange={e => updateDolor(i, 'ubicacion', e.target.value)} />
+                            {dolores.length > 1 && (
+                              <button type="button" onClick={() => removeDolor(i)}
+                                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#1e2d3d] hover:bg-[#f43f5e]/20 text-[#3d5870] hover:text-[#f43f5e] transition text-lg">
+                                ×
+                              </button>
+                            )}
+                          </div>
                         </Field>
-                        <Slider label="INTENSIDAD DEL DOLOR" value={form.dolor_intensidad}
-                          onChange={v => set('dolor_intensidad', v)} color="#f43f5e" tablet={tb} />
+                        <Slider label="INTENSIDAD DEL DOLOR" value={d.intensidad}
+                          onChange={v => updateDolor(i, 'intensidad', v)} color="#f43f5e" tablet={tb} />
                       </div>
+                    ))}
+                    {dolores.length > 0 && (
+                      <button type="button" onClick={addDolor}
+                        className={`text-[#f43f5e] border border-[#f43f5e]/30 rounded-xl hover:bg-[#f43f5e]/10 transition font-semibold ${tb ? 'px-4 py-3 text-sm' : 'px-3 py-2 text-xs'}`}>
+                        + Agregar otra dolencia
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1051,7 +1074,7 @@ export default function NewVisitPage() {
                   <h2 className={`font-serif text-[#dde6ef] ${tb ? 'text-2xl' : 'text-xl'}`}>🧠 Reporte Subjetivo</h2>
 
                   <div className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-5 space-y-5">
-                    <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>ENERGÍA HOY</p>
+                    <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>ENERGÍA EN LOS ÚLTIMOS 5 DÍAS</p>
                     <Slider label="AL DESPERTAR"     value={form.energia_manana}   onChange={v => set('energia_manana', v)} tablet={tb} />
                     <Slider label="A MEDIODÍA"        value={form.energia_mediodia} onChange={v => set('energia_mediodia', v)} tablet={tb} />
                     <Slider label="AL FINAL DEL DÍA" value={form.energia_tarde}    onChange={v => set('energia_tarde', v)} tablet={tb} />
@@ -1108,7 +1131,7 @@ export default function NewVisitPage() {
                     </div>
                   </div>
 
-                  <Slider label="LIBIDO ACTUAL" value={form.libido_hoy} onChange={v => set('libido_hoy', v)} tablet={tb} />
+                  <Slider label="LIBIDO EN LOS ÚLTIMOS DÍAS" value={form.libido_hoy} onChange={v => set('libido_hoy', v)} tablet={tb} />
 
                   {/* Color orina — mañana y tarde lado a lado */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1160,7 +1183,7 @@ export default function NewVisitPage() {
                     </Field>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
                       { key: 'exp_piel',       label: 'PIEL Y MUCOSAS',  ph: 'Coloración, ictericia, acné...' },
                       { key: 'exp_ojos',       label: 'OJOS',            ph: 'Ictericia escleral, xantelasmas...' },
@@ -1170,9 +1193,10 @@ export default function NewVisitPage() {
                       { key: 'exp_neurologico',label: 'NEUROLÓGICO',     ph: 'Temblor, marcha, reflejos...' },
                     ].map(({ key, label, ph }) => (
                       <Field key={key} label={label} tablet={tb}>
-                        <input className={inp(tb)} placeholder={ph}
+                        <textarea rows={tb ? 5 : 4} maxLength={500} placeholder={ph}
                           value={form[key as keyof typeof form] as string}
-                          onChange={e => set(key, e.target.value)} />
+                          onChange={e => set(key, e.target.value)}
+                          className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`} />
                       </Field>
                     ))}
                   </div>
@@ -1295,6 +1319,7 @@ export default function NewVisitPage() {
                       {form.motivo_visita    && <p>📋 Motivo: {form.motivo_visita.slice(0,80)}{form.motivo_visita.length>80?'...':''}</p>}
                       {form.peso             && <p>⚖️ Peso: {form.peso}kg{imc ? ` · IMC: ${imc}` : ''}</p>}
                       {form.pa_der_sistolica && <p>❤️ PA: {form.pa_der_sistolica}/{form.pa_der_diastolica}{form.fc ? ` · FC: ${form.fc}lpm` : ''}</p>}
+                      {dolores.length > 0    && <p>🤕 {dolores.length} dolencia{dolores.length > 1 ? 's' : ''} registrada{dolores.length > 1 ? 's' : ''}</p>}
                       {receptionNotes        && <p>🏥 Nota recepción registrada</p>}
                       {nursingNotes          && <p>💊 Nota enfermería registrada</p>}
                     </div>
