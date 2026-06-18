@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import TopNav from '@/app/components/TopNav';
 import NoteThread, { Note } from '@/app/components/NoteThread';
+import { useRevealScroll } from '@/app/lib/useRevealScroll';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -31,6 +32,8 @@ export default function PatientPage() {
   const [showDanger,    setShowDanger]    = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting,      setDeleting]      = useState(false);
+  const dangerRevealRef  = useRevealScroll<HTMLDivElement>(showDanger);
+  const confirmRevealRef = useRevealScroll<HTMLDivElement>(confirmDelete);
   const [patientNotes,    setPatientNotes]    = useState<Note[]>([]);
   const [expandedVisit,   setExpandedVisit]   = useState<string | null>(null);
   const [uploadingPhoto,  setUploadingPhoto]  = useState(false);
@@ -116,7 +119,7 @@ export default function PatientPage() {
   };
 
   const displayName = profile?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Doctor';
-  const photoUrl    = profile?.photo_url || null;
+  const photoUrl    = profile?.photo_url || profile?.clinic_logo_url || null;
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen bg-[#070a0e] text-[#dde6ef]">Cargando ficha...</div>
@@ -490,7 +493,7 @@ export default function PatientPage() {
                 ⚠️ Zona de peligro {showDanger ? '▲' : '▼'}
               </button>
               {showDanger && (
-                <div className="mt-4 space-y-3">
+                <div ref={dangerRevealRef} className="mt-4 space-y-3">
                   <p className="text-sm text-[#7a95aa]">Esta acción es permanente. Se eliminará al paciente y todas sus visitas.</p>
                   {!confirmDelete ? (
                     <button onClick={handleDelete}
@@ -498,7 +501,7 @@ export default function PatientPage() {
                       🗑 Eliminar paciente permanentemente
                     </button>
                   ) : (
-                    <div className="bg-[#f43f5e]/10 border border-[#f43f5e]/50 rounded-xl p-4 space-y-3">
+                    <div ref={confirmRevealRef} className="bg-[#f43f5e]/10 border border-[#f43f5e]/50 rounded-xl p-4 space-y-3">
                       <p className="text-sm font-bold text-[#f43f5e]">¿Está seguro? Esta acción no se puede deshacer.</p>
                       <p className="text-xs text-[#7a95aa]">Se eliminará permanentemente a <strong className="text-[#dde6ef]">{patient.full_name}</strong> y todas sus visitas.</p>
                       <div className="flex gap-3">
@@ -595,6 +598,7 @@ const ORINA_LABELS_LOCAL: Record<string, string> = {
 function VisitDetail({ visit: v, index, expanded, onToggle }: {
   visit: any; index: number; expanded: boolean; onToggle: () => void;
 }) {
+  const detailRef = useRevealScroll<HTMLDivElement>(expanded);
   const date = new Date(v.created_at).toLocaleDateString('es-MX', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -636,7 +640,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
       {/* Detalle expandido — TODOS los datos */}
       {expanded && (
-        <div className="px-5 pb-6 border-t border-[#1e2d3d] space-y-6 pt-5">
+        <div ref={detailRef} className="px-5 pb-6 border-t border-[#1e2d3d] space-y-6 pt-5">
 
           {/* Signos vitales */}
           {(v.pa_der_sistolica || fc || temp || v.spo2 || glucosa) && (

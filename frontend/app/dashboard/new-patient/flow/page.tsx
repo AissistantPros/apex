@@ -249,7 +249,7 @@ function FlowPageInner() {
         const pData = await pRes.json();
         const name = pData.display_name || u?.user_metadata?.full_name || u?.email?.split('@')[0] || 'Doctor';
         setDocName(name);
-        if (pData.photo_url) setDocPhoto(pData.photo_url);
+        setDocPhoto(pData.photo_url || pData.clinic_logo_url || null);
       } catch (_) {}
 
       // Retomar registro de paciente existente
