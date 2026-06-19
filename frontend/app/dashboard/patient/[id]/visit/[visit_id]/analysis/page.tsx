@@ -182,13 +182,13 @@ function RankedDiagnosesBlock({ body, color, onToggleSelect }: {
   for (const raw of lines) {
     const t = raw.trim();
     if (!t) continue;
-    const head = t.match(/^\d+\.\s*(.+?)\s*\|\s*(\d{1,3})\s*%/);
+    const head = t.match(/^\d+\.\s*(.+?)(?:\s*\|\s*(\d{1,3})\s*%)?\s*$/);
     if (head) {
       flush();
       let name = head[1].trim();
       let selected = false;
       if (name.startsWith(DX_MARK)) { selected = true; name = name.slice(DX_MARK.length).trim(); }
-      current = { name, pct: parseInt(head[2], 10), detail: [], selected, rawLine: t };
+      current = { name, pct: head[2] ? parseInt(head[2], 10) : null, detail: [], selected, rawLine: t };
     } else if (current) {
       current.detail.push(t);
     }
@@ -256,6 +256,71 @@ function RankedDiagnosesBlock({ body, color, onToggleSelect }: {
           ⭐ Tu selección se usará como diagnóstico de referencia en los siguientes pasos.
         </p>
       )}
+    </div>
+  );
+}
+
+function AddDiagnosisForm({ onAdd, color }: {
+  onAdd: (input: { nombre: string; pct: string; detalle: string; estudio: string }) => void; color: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [nombre, setNombre] = useState('');
+  const [pct, setPct] = useState('');
+  const [detalle, setDetalle] = useState('');
+  const [estudio, setEstudio] = useState('');
+
+  const handleSubmit = () => {
+    if (!nombre.trim()) return;
+    onAdd({ nombre, pct, detalle, estudio });
+    setNombre(''); setPct(''); setDetalle(''); setEstudio('');
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="text-xs font-mono px-3 py-2 rounded-lg border transition mt-1"
+        style={{ color, borderColor: `${color}40`, background: `${color}08` }}>
+        + Agregar mi propio diagnóstico
+      </button>
+    );
+  }
+
+  return (
+    <div className="bg-[#070a0e] border rounded-xl p-4 space-y-3 mt-1" style={{ borderColor: `${color}40` }}>
+      <p className="text-xs font-mono" style={{ color }}>TU DIAGNÓSTICO — llena solo lo que quieras, nada es obligatorio</p>
+      <div>
+        <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">NOMBRE DEL DIAGNÓSTICO</label>
+        <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. Migraña tensional crónica"
+          className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">% DE CONFIANZA (opcional)</label>
+          <input type="number" min={0} max={100} value={pct} onChange={e => setPct(e.target.value)} placeholder="Ej. 85"
+            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+        </div>
+        <div>
+          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">ESTUDIO PARA CONFIRMAR (opcional)</label>
+          <input value={estudio} onChange={e => setEstudio(e.target.value)} placeholder="Ej. RMN cerebral"
+            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+        </div>
+      </div>
+      <div>
+        <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">JUSTIFICACIÓN CLÍNICA (opcional)</label>
+        <textarea rows={2} value={detalle} onChange={e => setDetalle(e.target.value)} placeholder="Qué datos del paciente lo sustentan"
+          className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa] resize-none" />
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={handleSubmit}
+          className="px-4 py-2 text-black text-xs font-bold rounded-lg transition" style={{ background: color }}>
+          ✓ Agregar a la lista
+        </button>
+        <button type="button" onClick={() => setOpen(false)}
+          className="px-4 py-2 border border-[#1e2d3d] text-[#7a95aa] text-xs rounded-lg hover:border-[#7a95aa] transition">
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }
@@ -647,6 +712,129 @@ function ProtocolStructuredView({ data, color }: { data: ProtocolData; color: st
   );
 }
 
+// ─── Edición estructurada del protocolo ───────────────────────────────────────
+
+const PROTOCOL_FIELD_DEFS: { key: keyof ProtocolItem; label: string; placeholder: string; textarea?: boolean }[] = [
+  { key: 'tipo',                label: 'TIPO',                              placeholder: 'Fármaco, Suplemento, Off-label, Ejercicio...' },
+  { key: 'nombre_generico',     label: 'NOMBRE GENÉRICO / PRINCIPIO ACTIVO', placeholder: 'Ej. Metformina' },
+  { key: 'nombre_comercial',    label: 'NOMBRE COMERCIAL (si aplica)',       placeholder: 'Ej. Glucophage' },
+  { key: 'presentacion',        label: 'PRESENTACIÓN',                      placeholder: 'Ej. 500 mg' },
+  { key: 'dosis',               label: 'DOSIS',                             placeholder: 'Ej. 1 tableta' },
+  { key: 'via',                 label: 'VÍA DE ADMINISTRACIÓN',             placeholder: 'Oral, IV, Tópico...' },
+  { key: 'frecuencia',          label: 'FRECUENCIA',                        placeholder: 'Ej. Cada 12 horas' },
+  { key: 'duracion',            label: 'DURACIÓN',                          placeholder: 'Ej. 4 semanas, Indefinido' },
+  { key: 'nivel_evidencia',     label: 'NIVEL DE EVIDENCIA',                placeholder: 'Ej. Clase I, Nivel A' },
+  { key: 'indicacion',          label: 'INDICACIÓN EN ESTE PACIENTE',       placeholder: 'Para qué se lo das', textarea: true },
+  { key: 'alerta',              label: 'ALERTA / CONTRAINDICACIÓN',         placeholder: 'Dejar vacío si no hay', textarea: true },
+  { key: 'ajuste_especial',     label: 'AJUSTE RENAL / HEPÁTICO',           placeholder: 'Dejar vacío si no aplica', textarea: true },
+  { key: 'monitoreo',           label: 'MONITORIZACIÓN REQUERIDA',          placeholder: 'Qué vigilar y cuándo', textarea: true },
+  { key: 'reacciones_adversas', label: 'REACCIONES ADVERSAS',               placeholder: 'Opcional', textarea: true },
+  { key: 'interacciones',       label: 'INTERACCIONES',                     placeholder: 'Opcional', textarea: true },
+  { key: 'mecanismo',           label: 'MECANISMO DE ACCIÓN',               placeholder: 'Opcional', textarea: true },
+];
+
+function ProtocolItemForm({ item, onChange, onRemove }: {
+  item: ProtocolItem; onChange: (field: keyof ProtocolItem, value: string) => void; onRemove: () => void;
+}) {
+  return (
+    <div className="bg-[#070a0e] border border-[#00e5a0]/20 rounded-xl p-4 space-y-3">
+      <div className="flex justify-between items-center">
+        <p className="text-xs font-mono text-[#00e5a0]">Llena solo lo que quieras — nada es obligatorio</p>
+        <button type="button" onClick={onRemove} className="text-[#3d5870] hover:text-[#f43f5e] transition text-sm">✕ Quitar</button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {PROTOCOL_FIELD_DEFS.map(({ key, label, placeholder, textarea }) => (
+          <div key={key} className={textarea ? 'md:col-span-2' : ''}>
+            <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">{label}</label>
+            {textarea ? (
+              <textarea rows={2} value={(item[key] as string) || ''} onChange={e => onChange(key, e.target.value)}
+                placeholder={placeholder}
+                className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0] resize-none" />
+            ) : (
+              <input value={(item[key] as string) || ''} onChange={e => onChange(key, e.target.value)}
+                placeholder={placeholder}
+                className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]" />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProtocolEditMode({ data, onSave, onCancel }: {
+  data: ProtocolData; onSave: (text: string) => void; onCancel: () => void;
+}) {
+  const [keep, setKeep] = useState<boolean[]>(data.items.map(() => true));
+  const [ownItems, setOwnItems] = useState<ProtocolItem[]>([]);
+
+  const toggleKeep = (i: number) => setKeep(prev => prev.map((v, j) => j === i ? !v : v));
+  const addOwnItem = () => setOwnItems(prev => [...prev, { nombre_generico: '' }]);
+  const updateOwnItem = (i: number, field: keyof ProtocolItem, value: string) =>
+    setOwnItems(prev => prev.map((it, j) => j === i ? { ...it, [field]: value } : it));
+  const removeOwnItem = (i: number) => setOwnItems(prev => prev.filter((_, j) => j !== i));
+
+  const handleSave = () => {
+    const kept = data.items.filter((_, i) => keep[i]);
+    const cleanOwn = ownItems.filter(it => it.nombre_generico && it.nombre_generico.trim());
+    const finalData: ProtocolData = { items: [...kept, ...cleanOwn], monitoreo_general: data.monitoreo_general };
+    onSave(JSON.stringify(finalData));
+  };
+
+  return (
+    <div className="bg-[#0d1520] border rounded-xl p-5 mb-5" style={{ borderColor: '#f97316' }}>
+      <p className="text-xs font-mono text-[#f97316] mb-4">EDITANDO PROTOCOLO — acepta, rechaza o agrega intervenciones</p>
+
+      {data.items.length > 0 && (
+        <div className="space-y-2 mb-5">
+          <p className="text-[10px] font-mono text-[#3d5870] mb-1">SUGERIDOS POR LA IA — desmarca lo que no quieras incluir</p>
+          {data.items.map((item, i) => (
+            <label key={i} className="flex items-start gap-3 bg-[#070a0e] border border-[#1e2d3d] rounded-lg px-3 py-2.5 cursor-pointer">
+              <input type="checkbox" checked={keep[i]} onChange={() => toggleKeep(i)}
+                className="w-4 h-4 mt-0.5 accent-[#00e5a0] flex-shrink-0" />
+              <div className={keep[i] ? '' : 'opacity-40 line-through'}>
+                <p className="text-sm font-semibold text-[#dde6ef]">
+                  {item.nombre_generico}{item.nombre_comercial ? ` (${item.nombre_comercial})` : ''}
+                </p>
+                <p className="text-xs text-[#7a95aa]">
+                  {[item.presentacion, item.dosis, item.frecuencia].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {ownItems.length > 0 && (
+        <div className="space-y-4 mb-5">
+          <p className="text-[10px] font-mono text-[#00e5a0] mb-1">TUS INTERVENCIONES AGREGADAS</p>
+          {ownItems.map((item, i) => (
+            <ProtocolItemForm key={i} item={item}
+              onChange={(field, value) => updateOwnItem(i, field, value)}
+              onRemove={() => removeOwnItem(i)} />
+          ))}
+        </div>
+      )}
+
+      <button type="button" onClick={addOwnItem}
+        className="text-[#00e5a0] border border-[#00e5a0]/30 rounded-xl hover:bg-[#00e5a0]/10 transition font-semibold px-4 py-2 text-xs mb-5">
+        + Agregar medicamento / suplemento / intervención propia
+      </button>
+
+      <div className="flex gap-3">
+        <button onClick={handleSave}
+          className="px-4 py-2 bg-[#f97316] text-black text-sm font-semibold rounded-lg hover:bg-[#f97316]/90 transition">
+          ✓ Guardar edición
+        </button>
+        <button onClick={onCancel}
+          className="px-4 py-2 border border-[#1e2d3d] text-[#7a95aa] text-sm rounded-lg hover:border-[#7a95aa] transition">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DefaultBlock({ body }: { body: string }) {
   const lines = body.split('\n');
   return (
@@ -751,7 +939,41 @@ function DiagnosisCard({
     });
   };
 
+  const handleAddDiagnosis = (input: { nombre: string; pct: string; detalle: string; estudio: string }) => {
+    if (!input.nombre.trim()) return;
+    setState(prev => {
+      const secs = parseSections(prev.doctor_text);
+      const key = Object.keys(secs).find(k => k.toUpperCase().includes('DIAGNÓSTICOS POSIBLES'));
+      const delim = prev.doctor_text.includes('═══') ? '═══' : '══';
+      const existingBody = key ? secs[key] : '';
+      const nextNum = (existingBody.match(/^\d+\./gm) || []).length + 1;
+      const pctPart = input.pct.trim() ? ` | ${input.pct.trim()}%` : '';
+      let entry = `${nextNum}. ${DX_MARK}${input.nombre.trim()}${pctPart}`;
+      if (input.detalle.trim()) entry += `\n${input.detalle.trim()}`;
+      if (input.estudio.trim()) entry += `\nESTUDIO PARA CONFIRMAR: ${input.estudio.trim()}`;
+
+      if (key) {
+        const idx = prev.doctor_text.indexOf(existingBody);
+        if (idx === -1) return prev;
+        const before = prev.doctor_text.slice(0, idx + existingBody.length);
+        const after = prev.doctor_text.slice(idx + existingBody.length);
+        return { ...prev, doctor_text: `${before}\n\n${entry}${after}` };
+      }
+      const newSection = `${delim} DIAGNÓSTICOS POSIBLES ${delim}\n${entry}\n\n`;
+      return { ...prev, doctor_text: newSection + prev.doctor_text };
+    });
+  };
+
   if (editMode) {
+    if (protocolData) {
+      return (
+        <ProtocolEditMode
+          data={protocolData}
+          onSave={(text) => { setState(prev => ({ ...prev, doctor_text: text })); setEditMode(false); }}
+          onCancel={() => setEditMode(false)}
+        />
+      );
+    }
     return (
       <div className="bg-[#0d1520] border rounded-xl p-5 mb-5" style={{ borderColor: '#f97316' }}>
         <p className="text-xs font-mono text-[#f97316] mb-3">EDITANDO — tu versión se usa en los pasos siguientes</p>
@@ -803,6 +1025,9 @@ function DiagnosisCard({
                   {title}
                 </div>
                 <SectionContent title={title} body={body} color={color} onToggleSelect={handleToggleSelect} />
+                {title.toUpperCase().includes('DIAGNÓSTICOS POSIBLES') && (
+                  <div className="mt-3"><AddDiagnosisForm onAdd={handleAddDiagnosis} color={color} /></div>
+                )}
               </div>
             );
           })}
