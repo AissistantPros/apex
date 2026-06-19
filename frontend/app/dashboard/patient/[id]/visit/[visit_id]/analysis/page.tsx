@@ -1849,6 +1849,24 @@ export default function AnalysisPage() {
                 </div>
               )}
 
+              {(step === 'review_functional' || step === 'review_protocol_functional') && (
+                <div className="flex items-start gap-2.5 bg-[rgba(167,139,250,.07)] border border-[rgba(167,139,250,.25)] rounded-xl px-4 py-3 mb-5">
+                  <span className="text-[#a78bfa] flex-shrink-0 mt-0.5">ⓘ</span>
+                  <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
+                    <strong className="text-[#a78bfa]">Medicina funcional: hipótesis de causa raíz.</strong> Es normal no alcanzar 100% de certeza sin estudios de laboratorio. Texto genérico — pendiente de revisión legal.
+                  </p>
+                </div>
+              )}
+
+              {step === 'review_protocol_functional' && (
+                <div className="flex items-start gap-2.5 bg-[rgba(245,158,11,.07)] border border-[rgba(245,158,11,.25)] rounded-xl px-4 py-3 mb-5">
+                  <span className="text-[#f59e0b] flex-shrink-0 mt-0.5">⚠</span>
+                  <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
+                    <strong className="text-[#f59e0b]">Aviso COFEPRIS.</strong> Algunos suplementos o usos sugeridos pueden ser off-label o no estar registrados en México. Verifique el registro sanitario antes de prescribir. Texto genérico — pendiente de revisión legal.
+                  </p>
+                </div>
+              )}
+
               <ConfidenceBar pct={state.confidence} color={info.color} />
 
               <DiagnosisCard
