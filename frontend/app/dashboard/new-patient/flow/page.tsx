@@ -10,7 +10,10 @@ const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type Familiar  = 'padre' | 'madre' | 'hermanos';
-type Enfermedad = 'diabetes' | 'hipertension' | 'cancer' | 'cardiopatia';
+type Enfermedad =
+  | 'diabetes' | 'hipertension' | 'cancer' | 'cardiopatia'
+  | 'autoinmune' | 'alergia_alimentaria' | 'neuro_psiquiatrica'
+  | 'metabolica' | 'tiroidea' | 'intestinal' | 'migrana_fibromialgia' | 'trombofilia';
 
 const FAMILIARES: { key: Familiar; label: string }[] = [
   { key: 'padre', label: 'Padre' },
@@ -18,10 +21,18 @@ const FAMILIARES: { key: Familiar; label: string }[] = [
   { key: 'hermanos', label: 'Hermano(s)' },
 ];
 const ENFERMEDADES: { key: Enfermedad; label: string }[] = [
-  { key: 'diabetes',     label: 'Diabetes'      },
-  { key: 'hipertension', label: 'Hipertensión'   },
-  { key: 'cancer',       label: 'Cáncer'         },
-  { key: 'cardiopatia',  label: 'Cardiopatía'    },
+  { key: 'diabetes',             label: 'Diabetes' },
+  { key: 'hipertension',         label: 'Hipertensión' },
+  { key: 'cancer',               label: 'Cáncer' },
+  { key: 'cardiopatia',          label: 'Cardiopatía' },
+  { key: 'autoinmune',           label: 'Autoinmune (lupus, AR, Hashimoto, psoriasis, EM, celiaquía, Crohn/colitis)' },
+  { key: 'alergia_alimentaria',  label: 'Alergia / intolerancia alimentaria (gluten, lactosa, frutos secos, mariscos)' },
+  { key: 'neuro_psiquiatrica',   label: 'Neurológica / psiquiátrica (depresión, ansiedad, Alzheimer, Parkinson, TDAH, bipolaridad)' },
+  { key: 'metabolica',           label: 'Trastorno del metabolismo (gota, Wilson, hemocromatosis, hipercolesterolemia familiar)' },
+  { key: 'tiroidea',             label: 'Tiroidea (hipo/hipertiroidismo, Hashimoto, Graves)' },
+  { key: 'intestinal',           label: 'Intestinal (Crohn, colitis ulcerosa, SII, celiaquía)' },
+  { key: 'migrana_fibromialgia', label: 'Migraña o fibromialgia' },
+  { key: 'trombofilia',          label: 'Trombosis / embolias / trombofilia / abortos recurrentes' },
 ];
 const SOURCES = [
   'Recomendación de paciente','Recomendación de médico','Redes sociales',
@@ -125,7 +136,12 @@ function FlowPageInner() {
 
   // ── Estado heredofamiliar ────────────────────────────────────────────────
   type FamilyRow = Record<Enfermedad, boolean> & { otra: string; vivo: boolean; causa_muerte: string; edad_muerte: string; };
-  const emptyFamily = (): FamilyRow => ({ diabetes: false, hipertension: false, cancer: false, cardiopatia: false, otra: '', vivo: true, causa_muerte: '', edad_muerte: '' });
+  const emptyFamily = (): FamilyRow => ({
+    diabetes: false, hipertension: false, cancer: false, cardiopatia: false,
+    autoinmune: false, alergia_alimentaria: false, neuro_psiquiatrica: false,
+    metabolica: false, tiroidea: false, intestinal: false, migrana_fibromialgia: false, trombofilia: false,
+    otra: '', vivo: true, causa_muerte: '', edad_muerte: '',
+  });
   const [family, setFamily] = useState<Record<Familiar, FamilyRow>>({ padre: emptyFamily(), madre: emptyFamily(), hermanos: emptyFamily() });
 
   // ── Medicamentos ─────────────────────────────────────────────────────────
@@ -160,6 +176,12 @@ function FlowPageInner() {
     fractures: '', transfusions: '', childhood_diseases: '',
     allergies_medications: '', allergies_foods: '', allergies_environmental: '',
     med_notas: '',
+
+    // FASE 2 — Enfermería: Antecedentes lejanos (medicina funcional)
+    childhood_infections: '', childhood_antibiotics: '',
+    toxic_exposure_occupational: '', dental_amalgams: '',
+    tattoos_piercings: '', childhood_residence_exposure: '',
+    secondhand_smoke_exposure: '',
     smoking_status: '', smoking_since: '', smoking_years: '',
     alcohol_status: '', alcohol_cantidad: '',
     actividad_si: false,
@@ -287,6 +309,13 @@ function FlowPageInner() {
               allergies_foods:                p.allergies_foods               || '',
               allergies_environmental:        p.allergies_environmental       || '',
               med_notas:                      p.med_notas                     || '',
+              childhood_infections:           p.childhood_infections          || '',
+              childhood_antibiotics:          p.childhood_antibiotics         || '',
+              toxic_exposure_occupational:    p.toxic_exposure_occupational   || '',
+              dental_amalgams:                p.dental_amalgams               || '',
+              tattoos_piercings:              p.tattoos_piercings             || '',
+              childhood_residence_exposure:   p.childhood_residence_exposure  || '',
+              secondhand_smoke_exposure:      p.secondhand_smoke_exposure     || '',
               smoking_status:                 p.smoking_status                || '',
               smoking_since:                  p.smoking_since                 || '',
               smoking_years:                  p.smoking_years                 || '',
@@ -579,6 +608,10 @@ function FlowPageInner() {
           transfusions: f.transfusions, childhood_diseases: f.childhood_diseases,
           allergies_medications: f.allergies_medications, allergies_foods: f.allergies_foods,
           allergies_environmental: f.allergies_environmental, med_notas: f.med_notas,
+          childhood_infections: f.childhood_infections, childhood_antibiotics: f.childhood_antibiotics,
+          toxic_exposure_occupational: f.toxic_exposure_occupational, dental_amalgams: f.dental_amalgams,
+          tattoos_piercings: f.tattoos_piercings, childhood_residence_exposure: f.childhood_residence_exposure,
+          secondhand_smoke_exposure: f.secondhand_smoke_exposure,
           smoking_status: f.smoking_status,
           smoking_since: f.smoking_since, smoking_years: f.smoking_years,
           alcohol_status: f.alcohol_status, alcohol_tipo: alcoholTipo,
@@ -1126,6 +1159,47 @@ function FlowPageInner() {
                     <input className={`${inp} ${fOrng}`} value={f.childhood_diseases}
                       onChange={e => set('childhood_diseases', e.target.value)} placeholder="Fiebre reumática, meningitis..." />
                   </Field>
+                </div>
+              </Card>
+
+              {/* — Antecedentes lejanos (medicina funcional) — */}
+              <Card title="Antecedentes lejanos" icon="🔎" color={pc.color}>
+                <p className="text-xs text-[#7a95aa] mb-4">Útiles para medicina funcional — buscan el origen, no solo el diagnóstico. Opcionales.</p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="INFECCIONES RECURRENTES EN LA INFANCIA">
+                      <input className={`${inp} ${fOrng}`} value={f.childhood_infections}
+                        onChange={e => set('childhood_infections', e.target.value)} placeholder="Otitis, amigdalitis, neumonías frecuentes..." />
+                    </Field>
+                    <Field label="ANTIBIÓTICOS EN LA INFANCIA">
+                      <input className={`${inp} ${fOrng}`} value={f.childhood_antibiotics}
+                        onChange={e => set('childhood_antibiotics', e.target.value)} placeholder="Cuántos ciclos aprox., si los recuerda..." />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="EXPOSICIÓN LABORAL A QUÍMICOS">
+                      <input className={`${inp} ${fOrng}`} value={f.toxic_exposure_occupational}
+                        onChange={e => set('toxic_exposure_occupational', e.target.value)} placeholder="Pinturas, disolventes, pesticidas, herbicidas..." />
+                    </Field>
+                    <Field label="RESIDENCIA EN INFANCIA / JUVENTUD">
+                      <input className={`${inp} ${fOrng}`} value={f.childhood_residence_exposure}
+                        onChange={e => set('childhood_residence_exposure', e.target.value)} placeholder="Cerca de industrias, minas, zonas con fumigación..." />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <Field label="AMALGAMAS DENTALES">
+                      <input className={`${inp} ${fOrng}`} value={f.dental_amalgams}
+                        onChange={e => set('dental_amalgams', e.target.value)} placeholder="Cuántas, ¿las tiene aún?" />
+                    </Field>
+                    <Field label="TATUAJES O PIERCINGS">
+                      <input className={`${inp} ${fOrng}`} value={f.tattoos_piercings}
+                        onChange={e => set('tattoos_piercings', e.target.value)} placeholder="Cuántos, hace cuánto..." />
+                    </Field>
+                    <Field label="HUMO DE TABACO (PASADO)">
+                      <input className={`${inp} ${fOrng}`} value={f.secondhand_smoke_exposure}
+                        onChange={e => set('secondhand_smoke_exposure', e.target.value)} placeholder="Exposición pasiva en el pasado..." />
+                    </Field>
+                  </div>
                 </div>
               </Card>
 
