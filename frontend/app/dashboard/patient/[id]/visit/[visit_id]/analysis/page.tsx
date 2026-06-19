@@ -570,14 +570,39 @@ function parseProtocolJson(text: string): ProtocolData | null {
   if (!text) return null;
   let raw = text.trim();
   const fence = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  if (fence) raw = fence[1].trim();
-  if (!raw.startsWith('{')) return null;
+  if (fence) {
+    raw = fence[1].trim();
+  } else {
+    // Respuesta truncada (sin ``` de cierre, p.ej. por límite de tokens) — quita solo la apertura
+    const openFence = raw.match(/^```(?:json)?\s*([\s\S]*)$/);
+    if (openFence) raw = openFence[1].trim();
+  }
+  const start = raw.indexOf('{');
+  if (start === -1) return null;
+  raw = raw.slice(start);
   try {
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) return parsed as ProtocolData;
     return null;
   } catch {
-    return null;
+    // JSON truncado a mitad de un item — recupera los items completos que sí cerraron
+    const itemsMatch = raw.match(/"items"\s*:\s*\[/);
+    if (!itemsMatch) return null;
+    const arrStart = itemsMatch.index! + itemsMatch[0].length;
+    const items: ProtocolItem[] = [];
+    let depth = 0, objStart = -1;
+    for (let i = arrStart; i < raw.length; i++) {
+      const ch = raw[i];
+      if (ch === '{') { if (depth === 0) objStart = i; depth++; }
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0 && objStart !== -1) {
+          try { items.push(JSON.parse(raw.slice(objStart, i + 1))); } catch { /* item incompleto, se descarta */ }
+          objStart = -1;
+        }
+      }
+    }
+    return items.length > 0 ? { items } : null;
   }
 }
 

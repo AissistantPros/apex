@@ -116,9 +116,14 @@ def _chat_snippet(history: list, max_turns: int = 6) -> str:
 
 
 def _strip_json_fences(text: str) -> str:
-    """Quita ```json ... ``` si el modelo envuelve el JSON en un bloque de código."""
+    """Quita ```json ... ``` si el modelo envuelve el JSON en un bloque de código.
+    Tolera una respuesta truncada (sin ``` de cierre, p.ej. por max_tokens) quitando
+    solo la cerca de apertura en ese caso."""
     t = text.strip()
     m = re.match(r'^```(?:json)?\s*([\s\S]*?)\s*```$', t)
+    if m:
+        return m.group(1).strip()
+    m = re.match(r'^```(?:json)?\s*([\s\S]*)$', t)
     return m.group(1).strip() if m else t
 
 
@@ -581,7 +586,7 @@ async def run_protocol(
             full_diagnosis += "\n\nDIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:\n" + "\n".join(confirmed_lines)
 
         prompt = get_protocol_prompt(patient_data, full_diagnosis, body.protocol_type, visit_data=visit_record)
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=4000)
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000)
         protocol = _strip_json_fences(protocol)
 
         return {
