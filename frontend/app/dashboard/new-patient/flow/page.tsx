@@ -198,6 +198,7 @@ function FlowPageInner() {
     circ_cuello: '', circ_biceps: '', circ_muneca: '',
     inbody_grasa: '', inbody_musculo: '', inbody_agua: '', inbody_visceral: '',
     actividad_tipo: '', actividad_frecuencia: '', actividad_intensidad: '',
+    sitting_hours: '', work_activity_level: '',
 
     // FASE 2 — Visita: Pruebas funcionales
     fuerza_mano_der: '', fuerza_mano_izq: '',
@@ -222,7 +223,15 @@ function FlowPageInner() {
     // FASE 3 — Visita: Reporte subjetivo (idéntico a visitas posteriores)
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
+    bedtime: '', wake_time: '', night_awakenings: '', snoring: '', daytime_nap: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
+    bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
+    stress_level: 5, racing_mind: '', anxiety_panic: '', stress_coping: '', can_relax: '',
+    recent_chemical_exposure: '', water_source: '', plastic_in_microwave: '', recent_tattoo_amalgam: '',
+    water_intake_liters: '', food_cravings: '', screen_eating: '', meals_per_day: '',
+    cooking_oil: '', ultraprocessed_frequency: '',
+    self_skin_issues: '', hair_loss: '', brittle_nails: '',
+    medication_adherence: '',
 
     // FASE 3 — Visita: Exploración clínica (idéntico a visitas posteriores)
     exp_general: '', ecg_interpretacion: '',
@@ -398,6 +407,8 @@ function FlowPageInner() {
               actividad_tipo:        str(v.actividad_tipo),
               actividad_frecuencia:  str(v.actividad_frecuencia),
               actividad_intensidad:  str(v.actividad_intensidad),
+              sitting_hours:         str(v.sitting_hours),
+              work_activity_level:   str(v.work_activity_level),
               // Pruebas funcionales
               fuerza_mano_der:    str(v.fuerza_mano_der),
               fuerza_mano_izq:    str(v.fuerza_mano_izq),
@@ -417,7 +428,35 @@ function FlowPageInner() {
               sueno_calidad:     num(v.sleep_quality),
               sueno_horas:       str(v.sleep_hours),
               sueno_reparador:   str(v.wakes_rested),
+              bedtime:           str(v.bedtime),
+              wake_time:         str(v.wake_time),
+              night_awakenings:  str(v.night_awakenings),
+              snoring:           str(v.snoring),
+              daytime_nap:       str(v.daytime_nap),
               libido_hoy:        num(v.libido),
+              bristol_scale:           str(v.bristol_scale),
+              bowel_movements_per_day: str(v.bowel_movements_per_day),
+              recent_antibiotics:      str(v.recent_antibiotics),
+              probiotics_use:          str(v.probiotics_use),
+              stress_level:      num(v.stress_level),
+              racing_mind:       str(v.racing_mind),
+              anxiety_panic:     str(v.anxiety_panic),
+              stress_coping:     str(v.stress_coping),
+              can_relax:         str(v.can_relax),
+              recent_chemical_exposure: str(v.recent_chemical_exposure),
+              water_source:             str(v.water_source),
+              plastic_in_microwave:     str(v.plastic_in_microwave),
+              recent_tattoo_amalgam:    str(v.recent_tattoo_amalgam),
+              water_intake_liters:      str(v.water_intake_liters),
+              food_cravings:            str(v.food_cravings),
+              screen_eating:            str(v.screen_eating),
+              meals_per_day:            str(v.meals_per_day),
+              cooking_oil:              str(v.cooking_oil),
+              ultraprocessed_frequency: str(v.ultraprocessed_frequency),
+              self_skin_issues:  str(v.self_skin_issues),
+              hair_loss:         str(v.hair_loss),
+              brittle_nails:     str(v.brittle_nails),
+              medication_adherence: str(v.medication_adherence),
               orina_color:       str(v.urine_color),
               orina_color_tarde: str(v.urine_color_afternoon),
               // Fase 3 — Exploración clínica
@@ -641,6 +680,7 @@ function FlowPageInner() {
         actividad_si: f.actividad_si,
         actividad_tipo: f.actividad_tipo, actividad_frecuencia: f.actividad_frecuencia,
         actividad_intensidad: f.actividad_intensidad,
+        sitting_hours: f.sitting_hours, work_activity_level: f.work_activity_level,
         // Funcional
         fuerza_mano_der: f.fuerza_mano_der, fuerza_mano_izq: f.fuerza_mano_izq,
         marcha_4m: f.marcha_4m, equilibrio_seg: f.equilibrio_seg,
@@ -740,7 +780,20 @@ function FlowPageInner() {
             energy_morning: f.energia_manana, energy_noon: f.energia_mediodia,
             energy_evening: f.energia_tarde, sleep_quality: f.sueno_calidad,
             sleep_hours: f.sueno_horas, wakes_rested: f.sueno_reparador,
+            bedtime: f.bedtime, wake_time: f.wake_time,
+            night_awakenings: f.night_awakenings, snoring: f.snoring, daytime_nap: f.daytime_nap,
             mood: animo, libido: f.libido_hoy, digestion,
+            bristol_scale: f.bristol_scale, bowel_movements_per_day: f.bowel_movements_per_day,
+            recent_antibiotics: f.recent_antibiotics, probiotics_use: f.probiotics_use,
+            stress_level: f.stress_level, racing_mind: f.racing_mind,
+            anxiety_panic: f.anxiety_panic, stress_coping: f.stress_coping, can_relax: f.can_relax,
+            recent_chemical_exposure: f.recent_chemical_exposure, water_source: f.water_source,
+            plastic_in_microwave: f.plastic_in_microwave, recent_tattoo_amalgam: f.recent_tattoo_amalgam,
+            water_intake_liters: f.water_intake_liters, food_cravings: f.food_cravings,
+            screen_eating: f.screen_eating, meals_per_day: f.meals_per_day,
+            cooking_oil: f.cooking_oil, ultraprocessed_frequency: f.ultraprocessed_frequency,
+            self_skin_issues: f.self_skin_issues, hair_loss: f.hair_loss, brittle_nails: f.brittle_nails,
+            medication_adherence: f.medication_adherence,
             urine_color: f.orina_color, urine_color_afternoon: f.orina_color_tarde,
             // Exploración clínica
             general_inspection: sh(f.exp_general), ecg_interpretation: f.ecg_interpretacion,
@@ -1450,6 +1503,19 @@ function FlowPageInner() {
                       </div>
                     )}
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="HORAS SENTADO AL DÍA">
+                      <input type="number" step="0.5" className={`${inp} ${fOrng}`} value={f.sitting_hours}
+                        onChange={e=>set('sitting_hours',e.target.value)} placeholder="8" />
+                    </Field>
+                    <Field label="TIPO DE ACTIVIDAD LABORAL">
+                      <select className={`${inp} ${fOrng}`} value={f.work_activity_level}
+                        onChange={e=>set('work_activity_level',e.target.value)}>
+                        <option value="">Seleccionar</option>
+                        <option>Sedentario</option><option>Mixto</option><option>Activo</option>
+                      </select>
+                    </Field>
+                  </div>
                 </div>
               </Card>
 
@@ -1750,6 +1816,65 @@ function FlowPageInner() {
                         </div>
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="HORA DE ACOSTARSE">
+                        <input type="time" className={`${inp} ${fPurp}`} value={f.bedtime} onChange={e=>set('bedtime',e.target.value)} />
+                      </Field>
+                      <Field label="HORA DE DESPERTAR">
+                        <input type="time" className={`${inp} ${fPurp}`} value={f.wake_time} onChange={e=>set('wake_time',e.target.value)} />
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      {([
+                        { key: 'night_awakenings' as const, label: '¿DESPERTARES NOCTURNOS?', opts: ['Sí','No'] },
+                        { key: 'snoring' as const,          label: '¿RONQUIDOS / APNEA?',     opts: ['Sí','No','No sé'] },
+                        { key: 'daytime_nap' as const,      label: '¿SIESTA DURANTE EL DÍA?', opts: ['Sí','No'] },
+                      ]).map(({ key, label, opts }) => (
+                        <div key={key}>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">{label}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {opts.map(o => (
+                              <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                                style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                <input type="radio" name={key} value={o} checked={f[key] === o}
+                                  onChange={e=>set(key, e.target.value)} className="sr-only" />
+                                {o}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
+                    <p className="text-xs font-mono text-[#a78bfa]">ESTRÉS</p>
+                    <Slider label="NIVEL DE ESTRÉS PERCIBIDO" value={f.stress_level} onChange={v=>set('stress_level',v)} color="#a78bfa" />
+                    <div className="grid grid-cols-3 gap-3">
+                      {([
+                        { key: 'racing_mind' as const,   label: '¿MENTE ACELERADA?', opts: ['Sí','No'] },
+                        { key: 'anxiety_panic' as const, label: '¿ANSIEDAD / PÁNICO?', opts: ['Sí','No','Ocasional'] },
+                        { key: 'can_relax' as const,     label: '¿PUEDE RELAJARSE?', opts: ['Sí','No','Pocas veces'] },
+                      ]).map(({ key, label, opts }) => (
+                        <div key={key}>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">{label}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {opts.map(o => (
+                              <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                                style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                <input type="radio" name={key} value={o} checked={f[key] === o}
+                                  onChange={e=>set(key, e.target.value)} className="sr-only" />
+                                {o}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Field label="¿CÓMO MANEJA EL ESTRÉS?">
+                      <input className={`${inp} ${fPurp}`} placeholder="Ejercicio, meditación, nada en particular..."
+                        value={f.stress_coping} onChange={e=>set('stress_coping',e.target.value)} />
+                    </Field>
                   </div>
 
                   {/* Ánimo + Digestión lado a lado */}
@@ -1777,6 +1902,36 @@ function FlowPageInner() {
                           </button>
                         ))}
                       </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <Field label="ESCALA DE BRISTOL (1-7)">
+                          <input type="number" min={1} max={7} className={`${inp} ${fPurp}`} value={f.bristol_scale}
+                            onChange={e=>set('bristol_scale',e.target.value)} placeholder="1-7" />
+                        </Field>
+                        <Field label="DEPOSICIONES/DÍA">
+                          <input type="number" className={`${inp} ${fPurp}`} value={f.bowel_movements_per_day}
+                            onChange={e=>set('bowel_movements_per_day',e.target.value)} placeholder="1" />
+                        </Field>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        {([
+                          { key: 'recent_antibiotics' as const, label: '¿ANTIBIÓTICOS ÚLTIMO AÑO?' },
+                          { key: 'probiotics_use' as const,     label: '¿USA PROBIÓTICOS?' },
+                        ]).map(({ key, label }) => (
+                          <div key={key}>
+                            <p className="text-[10px] font-mono text-[#7a95aa] mb-2">{label}</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {['Sí','No'].map(o => (
+                                <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
+                                  style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name={key} value={o} checked={f[key] === o}
+                                    onChange={e=>set(key, e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -1802,6 +1957,125 @@ function FlowPageInner() {
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
+                    <p className="text-xs font-mono text-[#a78bfa]">ALIMENTACIÓN</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <Field label="AGUA QUE BEBE AL DÍA (L)">
+                        <input type="number" step="0.5" className={`${inp} ${fPurp}`} value={f.water_intake_liters}
+                          onChange={e=>set('water_intake_liters',e.target.value)} placeholder="1.5" />
+                      </Field>
+                      <Field label="COMIDAS AL DÍA">
+                        <input type="number" className={`${inp} ${fPurp}`} value={f.meals_per_day}
+                          onChange={e=>set('meals_per_day',e.target.value)} placeholder="3" />
+                      </Field>
+                      <Field label="ACEITE PARA COCINAR">
+                        <input className={`${inp} ${fPurp}`} placeholder="Oliva, canola, manteca..."
+                          value={f.cooking_oil} onChange={e=>set('cooking_oil',e.target.value)} />
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="ANTOJOS FRECUENTES">
+                        <input className={`${inp} ${fPurp}`} placeholder="Dulce, sal, harinas..."
+                          value={f.food_cravings} onChange={e=>set('food_cravings',e.target.value)} />
+                      </Field>
+                      <div>
+                        <p className="text-xs font-mono text-[#7a95aa] mb-2">FRECUENCIA DE ULTRAPROCESADOS</p>
+                        <select className={`${inp} ${fPurp}`} value={f.ultraprocessed_frequency}
+                          onChange={e=>set('ultraprocessed_frequency',e.target.value)}>
+                          <option value="">Seleccionar</option>
+                          <option>Nunca</option><option>A veces</option><option>Frecuente</option><option>Diario</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-mono text-[#7a95aa] mb-2">¿COME FRENTE A PANTALLAS?</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {['Sí','No','A veces'].map(o => (
+                          <label key={o} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
+                            style={{ background: f.screen_eating === o ? '#a78bfa' : '#1e2d3d', borderColor: f.screen_eating === o ? '#a78bfa' : '#2a3a4d', color: f.screen_eating === o ? '#000' : '#dde6ef' }}>
+                            <input type="radio" name="screen_eating" value={o} checked={f.screen_eating === o}
+                              onChange={e=>set('screen_eating', e.target.value)} className="sr-only" />
+                            {o}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
+                    <p className="text-xs font-mono text-[#a78bfa]">EXPOSICIÓN AMBIENTAL ACTUAL</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="EXPOSICIÓN RECIENTE A QUÍMICOS/PESTICIDAS">
+                        <input className={`${inp} ${fPurp}`} placeholder="Trabajo, jardín, limpieza..."
+                          value={f.recent_chemical_exposure} onChange={e=>set('recent_chemical_exposure',e.target.value)} />
+                      </Field>
+                      <div>
+                        <p className="text-xs font-mono text-[#7a95aa] mb-2">AGUA QUE CONSUME</p>
+                        <select className={`${inp} ${fPurp}`} value={f.water_source}
+                          onChange={e=>set('water_source',e.target.value)}>
+                          <option value="">Seleccionar</option>
+                          <option>De la llave</option><option>Embotellada</option><option>Filtrada</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs font-mono text-[#7a95aa] mb-2">¿CALIENTA COMIDA EN PLÁSTICO EN MICROONDAS?</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {['Sí','No'].map(o => (
+                            <label key={o} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
+                              style={{ background: f.plastic_in_microwave === o ? '#a78bfa' : '#1e2d3d', borderColor: f.plastic_in_microwave === o ? '#a78bfa' : '#2a3a4d', color: f.plastic_in_microwave === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="plastic_in_microwave" value={o} checked={f.plastic_in_microwave === o}
+                                onChange={e=>set('plastic_in_microwave', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <Field label="TATUAJES / AMALGAMAS RECIENTES">
+                        <input className={`${inp} ${fPurp}`} placeholder="Si aplica..."
+                          value={f.recent_tattoo_amalgam} onChange={e=>set('recent_tattoo_amalgam',e.target.value)} />
+                      </Field>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-mono text-[#a78bfa]">PIEL, CABELLO Y UÑAS — LO QUE EL PACIENTE REPORTA</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {([
+                        { key: 'self_skin_issues' as const, label: '¿PIEL SECA O ACNÉ?' },
+                        { key: 'hair_loss' as const,        label: '¿CAÍDA DE CABELLO?' },
+                        { key: 'brittle_nails' as const,    label: '¿UÑAS FRÁGILES?' },
+                      ]).map(({ key, label }) => (
+                        <div key={key}>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">{label}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {['Sí','No'].map(o => (
+                              <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
+                                style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                <input type="radio" name={key} value={o} checked={f[key] === o}
+                                  onChange={e=>set(key, e.target.value)} className="sr-only" />
+                                {o}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-mono text-[#7a95aa] mb-2">ADHERENCIA A MEDICAMENTOS/SUPLEMENTOS</p>
+                    <select className={`${inp} ${fPurp}`} value={f.medication_adherence}
+                      onChange={e=>set('medication_adherence',e.target.value)}>
+                      <option value="">Seleccionar</option>
+                      <option>Siempre los toma</option>
+                      <option>Casi siempre</option>
+                      <option>A veces se le olvida</option>
+                      <option>Frecuentemente olvida</option>
+                    </select>
                   </div>
                 </div>
               </Card>

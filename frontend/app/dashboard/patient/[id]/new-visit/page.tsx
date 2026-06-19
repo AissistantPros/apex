@@ -266,6 +266,7 @@ export default function NewVisitPage() {
     circ_abdominal: '', circ_cuello: '', circ_biceps: '', circ_muneca: '',
     inbody_grasa: '', inbody_musculo: '', inbody_agua: '', inbody_visceral: '',
     actividad_tipo: '', actividad_frecuencia: '', actividad_intensidad: '',
+    sitting_hours: '', work_activity_level: '',
     // Funcionales
     agarre_der: '', agarre_izq: '',
     marcha_seg: '', syl_reps: '', equilibrio_seg: '', vo2max: '',
@@ -275,7 +276,15 @@ export default function NewVisitPage() {
     // Subjetivo
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
+    bedtime: '', wake_time: '', night_awakenings: '', snoring: '', daytime_nap: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
+    bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
+    stress_level: 5, racing_mind: '', anxiety_panic: '', stress_coping: '', can_relax: '',
+    recent_chemical_exposure: '', water_source: '', plastic_in_microwave: '', recent_tattoo_amalgam: '',
+    water_intake_liters: '', food_cravings: '', screen_eating: '', meals_per_day: '',
+    cooking_oil: '', ultraprocessed_frequency: '',
+    self_skin_issues: '', hair_loss: '', brittle_nails: '',
+    medication_adherence: '',
     // Exploración
     exp_general: '', ecg_interpretacion: '',
     exp_piel: '', exp_ojos: '', exp_boca: '',
@@ -363,13 +372,27 @@ export default function NewVisitPage() {
         inbody_water_pct: form.inbody_agua, inbody_visceral: form.inbody_visceral,
         activity_type: form.actividad_tipo, activity_frequency: form.actividad_frecuencia,
         activity_intensity: form.actividad_intensidad,
+        sitting_hours: form.sitting_hours, work_activity_level: form.work_activity_level,
         grip_right: form.agarre_der, grip_left: form.agarre_izq,
         walk_4m_seconds: form.marcha_seg, sit_stand_30s: form.syl_reps,
         balance_seconds: form.equilibrio_seg, vo2max: form.vo2max,
         energy_morning: form.energia_manana, energy_noon: form.energia_mediodia,
         energy_evening: form.energia_tarde, sleep_quality: form.sueno_calidad,
         sleep_hours: form.sueno_horas, wakes_rested: form.sueno_reparador,
+        bedtime: form.bedtime, wake_time: form.wake_time,
+        night_awakenings: form.night_awakenings, snoring: form.snoring, daytime_nap: form.daytime_nap,
         mood: animo, libido: form.libido_hoy, digestion,
+        bristol_scale: form.bristol_scale, bowel_movements_per_day: form.bowel_movements_per_day,
+        recent_antibiotics: form.recent_antibiotics, probiotics_use: form.probiotics_use,
+        stress_level: form.stress_level, racing_mind: form.racing_mind,
+        anxiety_panic: form.anxiety_panic, stress_coping: form.stress_coping, can_relax: form.can_relax,
+        recent_chemical_exposure: form.recent_chemical_exposure, water_source: form.water_source,
+        plastic_in_microwave: form.plastic_in_microwave, recent_tattoo_amalgam: form.recent_tattoo_amalgam,
+        water_intake_liters: form.water_intake_liters, food_cravings: form.food_cravings,
+        screen_eating: form.screen_eating, meals_per_day: form.meals_per_day,
+        cooking_oil: form.cooking_oil, ultraprocessed_frequency: form.ultraprocessed_frequency,
+        self_skin_issues: form.self_skin_issues, hair_loss: form.hair_loss, brittle_nails: form.brittle_nails,
+        medication_adherence: form.medication_adherence,
         urine_color: form.orina_color, urine_color_afternoon: form.orina_color_tarde,
         pain_today: dolores.length > 0,
         pain_location: dolores[0]?.ubicacion || '', pain_intensity: dolores[0]?.intensidad ?? null,
@@ -742,6 +765,19 @@ export default function NewVisitPage() {
                       </select>
                     </Field>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Field label="HORAS SENTADO AL DÍA" tablet={tb}>
+                      <NumInput value={form.sitting_hours} onChange={v => set('sitting_hours', v)} placeholder="8" unit="hrs" tablet={tb} />
+                    </Field>
+                    <Field label="TIPO DE ACTIVIDAD LABORAL" tablet={tb}>
+                      <select className={inp(tb)} value={form.work_activity_level}
+                        onChange={e => set('work_activity_level', e.target.value)}>
+                        <option value="">Seleccionar</option>
+                        <option>Sedentario</option><option>Mixto</option><option>Activo</option>
+                      </select>
+                    </Field>
+                  </div>
                 </div>
               )}
 
@@ -1097,6 +1133,65 @@ export default function NewVisitPage() {
                         </div>
                       </div>
                     </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Field label="HORA DE ACOSTARSE" tablet={tb}>
+                        <input type="time" className={inp(tb)} value={form.bedtime} onChange={e => set('bedtime', e.target.value)} />
+                      </Field>
+                      <Field label="HORA DE DESPERTAR" tablet={tb}>
+                        <input type="time" className={inp(tb)} value={form.wake_time} onChange={e => set('wake_time', e.target.value)} />
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {([
+                        { key: 'night_awakenings', label: '¿DESPERTARES NOCTURNOS?', opts: ['Sí','No'] },
+                        { key: 'snoring',          label: '¿RONQUIDOS / APNEA?',     opts: ['Sí','No','No sé'] },
+                        { key: 'daytime_nap',      label: '¿SIESTA DURANTE EL DÍA?', opts: ['Sí','No'] },
+                      ] as const).map(({ key, label, opts }) => (
+                        <div key={key}>
+                          <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>{label}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {opts.map(o => (
+                              <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                style={{ background: form[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: form[key] === o ? '#a78bfa' : '#2a3a4d', color: form[key] === o ? '#000' : '#dde6ef' }}>
+                                <input type="radio" name={key} value={o} checked={form[key] === o}
+                                  onChange={e => set(key, e.target.value)} className="sr-only" />
+                                {o}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-5 space-y-4">
+                    <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>ESTRÉS</p>
+                    <Slider label="NIVEL DE ESTRÉS PERCIBIDO" value={form.stress_level} onChange={v => set('stress_level', v)} tablet={tb} />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {([
+                        { key: 'racing_mind',   label: '¿MENTE ACELERADA?', opts: ['Sí','No'] },
+                        { key: 'anxiety_panic', label: '¿ANSIEDAD / PÁNICO?', opts: ['Sí','No','Ocasional'] },
+                        { key: 'can_relax',     label: '¿PUEDE RELAJARSE?', opts: ['Sí','No','Pocas veces'] },
+                      ] as const).map(({ key, label, opts }) => (
+                        <div key={key}>
+                          <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>{label}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {opts.map(o => (
+                              <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                style={{ background: form[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: form[key] === o ? '#a78bfa' : '#2a3a4d', color: form[key] === o ? '#000' : '#dde6ef' }}>
+                                <input type="radio" name={key} value={o} checked={form[key] === o}
+                                  onChange={e => set(key, e.target.value)} className="sr-only" />
+                                {o}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Field label="¿CÓMO MANEJA EL ESTRÉS?" tablet={tb}>
+                      <input className={inp(tb)} placeholder="Ejercicio, meditación, nada en particular..."
+                        value={form.stress_coping} onChange={e => set('stress_coping', e.target.value)} />
+                    </Field>
                   </div>
 
                   {/* Ánimo + Digestión lado a lado */}
@@ -1124,6 +1219,34 @@ export default function NewVisitPage() {
                           </button>
                         ))}
                       </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <Field label="ESCALA DE BRISTOL (1-7)" tablet={tb}>
+                          <NumInput value={form.bristol_scale} onChange={v => set('bristol_scale', v)} placeholder="1-7" tablet={tb} />
+                        </Field>
+                        <Field label="DEPOSICIONES/DÍA" tablet={tb}>
+                          <NumInput value={form.bowel_movements_per_day} onChange={v => set('bowel_movements_per_day', v)} placeholder="1" tablet={tb} />
+                        </Field>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        {([
+                          { key: 'recent_antibiotics', label: '¿ANTIBIÓTICOS ÚLTIMO AÑO?' },
+                          { key: 'probiotics_use',     label: '¿USA PROBIÓTICOS?' },
+                        ] as const).map(({ key, label }) => (
+                          <div key={key}>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-xs' : 'text-[10px]'}`}>{label}</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {['Sí','No'].map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-2 text-xs' : 'py-1.5 text-xs'}`}
+                                  style={{ background: form[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: form[key] === o ? '#a78bfa' : '#2a3a4d', color: form[key] === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name={key} value={o} checked={form[key] === o}
+                                    onChange={e => set(key, e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -1149,6 +1272,123 @@ export default function NewVisitPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-5 space-y-4">
+                    <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>ALIMENTACIÓN</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <Field label="AGUA QUE BEBE AL DÍA" tablet={tb}>
+                        <NumInput value={form.water_intake_liters} onChange={v => set('water_intake_liters', v)} placeholder="1.5" unit="L" tablet={tb} />
+                      </Field>
+                      <Field label="COMIDAS AL DÍA" tablet={tb}>
+                        <NumInput value={form.meals_per_day} onChange={v => set('meals_per_day', v)} placeholder="3" tablet={tb} />
+                      </Field>
+                      <Field label="ACEITE QUE USA PARA COCINAR" tablet={tb}>
+                        <input className={inp(tb)} placeholder="Oliva, canola, manteca..."
+                          value={form.cooking_oil} onChange={e => set('cooking_oil', e.target.value)} />
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <Field label="ANTOJOS FRECUENTES" tablet={tb}>
+                        <input className={inp(tb)} placeholder="Dulce, sal, harinas..."
+                          value={form.food_cravings} onChange={e => set('food_cravings', e.target.value)} />
+                      </Field>
+                      <div>
+                        <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>FRECUENCIA DE ULTRAPROCESADOS</p>
+                        <select className={inp(tb)} value={form.ultraprocessed_frequency}
+                          onChange={e => set('ultraprocessed_frequency', e.target.value)}>
+                          <option value="">Seleccionar</option>
+                          <option>Nunca</option><option>A veces</option><option>Frecuente</option><option>Diario</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿COME FRENTE A PANTALLAS?</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {['Sí','No','A veces'].map(o => (
+                          <label key={o} className={`flex items-center gap-2 cursor-pointer px-4 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-sm'}`}
+                            style={{ background: form.screen_eating === o ? '#a78bfa' : '#1e2d3d', borderColor: form.screen_eating === o ? '#a78bfa' : '#2a3a4d', color: form.screen_eating === o ? '#000' : '#dde6ef' }}>
+                            <input type="radio" name="screen_eating" value={o} checked={form.screen_eating === o}
+                              onChange={e => set('screen_eating', e.target.value)} className="sr-only" />
+                            {o}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-5 space-y-4">
+                    <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>EXPOSICIÓN AMBIENTAL ACTUAL</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <Field label="EXPOSICIÓN RECIENTE A QUÍMICOS/PESTICIDAS" tablet={tb}>
+                        <input className={inp(tb)} placeholder="Trabajo, jardín, limpieza..."
+                          value={form.recent_chemical_exposure} onChange={e => set('recent_chemical_exposure', e.target.value)} />
+                      </Field>
+                      <div>
+                        <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>AGUA QUE CONSUME</p>
+                        <select className={inp(tb)} value={form.water_source}
+                          onChange={e => set('water_source', e.target.value)}>
+                          <option value="">Seleccionar</option>
+                          <option>De la llave</option><option>Embotellada</option><option>Filtrada</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿CALIENTA COMIDA EN PLÁSTICO EN MICROONDAS?</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {['Sí','No'].map(o => (
+                            <label key={o} className={`flex items-center gap-2 cursor-pointer px-4 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-sm'}`}
+                              style={{ background: form.plastic_in_microwave === o ? '#a78bfa' : '#1e2d3d', borderColor: form.plastic_in_microwave === o ? '#a78bfa' : '#2a3a4d', color: form.plastic_in_microwave === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="plastic_in_microwave" value={o} checked={form.plastic_in_microwave === o}
+                                onChange={e => set('plastic_in_microwave', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <Field label="TATUAJES / AMALGAMAS RECIENTES" tablet={tb}>
+                        <input className={inp(tb)} placeholder="Si aplica..."
+                          value={form.recent_tattoo_amalgam} onChange={e => set('recent_tattoo_amalgam', e.target.value)} />
+                      </Field>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-5 space-y-3">
+                    <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>PIEL, CABELLO Y UÑAS — LO QUE EL PACIENTE REPORTA</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {([
+                        { key: 'self_skin_issues', label: '¿PIEL SECA O ACNÉ?' },
+                        { key: 'hair_loss',        label: '¿CAÍDA DE CABELLO?' },
+                        { key: 'brittle_nails',    label: '¿UÑAS FRÁGILES?' },
+                      ] as const).map(({ key, label }) => (
+                        <div key={key}>
+                          <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>{label}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {['Sí','No'].map(o => (
+                              <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-2 text-xs' : 'py-1.5 text-xs'}`}
+                                style={{ background: form[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: form[key] === o ? '#a78bfa' : '#2a3a4d', color: form[key] === o ? '#000' : '#dde6ef' }}>
+                                <input type="radio" name={key} value={o} checked={form[key] === o}
+                                  onChange={e => set(key, e.target.value)} className="sr-only" />
+                                {o}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>ADHERENCIA A MEDICAMENTOS/SUPLEMENTOS</p>
+                    <select className={inp(tb)} value={form.medication_adherence}
+                      onChange={e => set('medication_adherence', e.target.value)}>
+                      <option value="">Seleccionar</option>
+                      <option>Siempre los toma</option>
+                      <option>Casi siempre</option>
+                      <option>A veces se le olvida</option>
+                      <option>Frecuentemente olvida</option>
+                    </select>
                   </div>
                 </div>
               )}

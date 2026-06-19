@@ -60,6 +60,38 @@ class VisitCreate(BaseModel):
     pain_intensity: Optional[Any] = None
     patient_goals: Optional[str] = None
 
+    # BLOQUE E2: Situación actual (medicina funcional)
+    bristol_scale: Optional[Any] = None
+    bowel_movements_per_day: Optional[Any] = None
+    recent_antibiotics: Optional[str] = None
+    probiotics_use: Optional[str] = None
+    bedtime: Optional[str] = None
+    wake_time: Optional[str] = None
+    night_awakenings: Optional[str] = None
+    snoring: Optional[str] = None
+    daytime_nap: Optional[str] = None
+    stress_level: Optional[Any] = None
+    racing_mind: Optional[str] = None
+    anxiety_panic: Optional[str] = None
+    stress_coping: Optional[str] = None
+    can_relax: Optional[str] = None
+    sitting_hours: Optional[Any] = None
+    work_activity_level: Optional[str] = None
+    recent_chemical_exposure: Optional[str] = None
+    water_source: Optional[str] = None
+    plastic_in_microwave: Optional[str] = None
+    recent_tattoo_amalgam: Optional[str] = None
+    water_intake_liters: Optional[Any] = None
+    food_cravings: Optional[str] = None
+    screen_eating: Optional[str] = None
+    meals_per_day: Optional[Any] = None
+    cooking_oil: Optional[str] = None
+    ultraprocessed_frequency: Optional[str] = None
+    self_skin_issues: Optional[str] = None
+    hair_loss: Optional[str] = None
+    brittle_nails: Optional[str] = None
+    medication_adherence: Optional[str] = None
+
     # BLOQUE F: Observaciones Clínicas
     general_inspection: Optional[str] = None
     skin_mucous: Optional[str] = None

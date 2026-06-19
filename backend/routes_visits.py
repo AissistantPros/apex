@@ -28,6 +28,9 @@ NUMERIC_VISIT_FIELDS = {
     "heart_rate","temperature","glucose","weight","height",
     "grip_right","grip_left","sleep_quality","sleep_hours","libido",
     "discomfort_intensity",
+    # medicina funcional — situación actual
+    "bristol_scale","bowel_movements_per_day","stress_level",
+    "sitting_hours","water_intake_liters","meals_per_day",
 }
 
 def clean_visit_data(data: dict) -> dict:

@@ -376,6 +376,45 @@ DATOS DE LA VISITA ACTUAL
   • Pregunta hecha al paciente: "¿Tienes dolor físico hoy? ¿Dónde y con qué intensidad?"
     Respuesta: {dolor_str}
 
+── SITUACIÓN ACTUAL (preguntas de medicina funcional, buscan causa raíz) ──
+  Digestión:
+  • Escala de Bristol (tipo de heces, 1-7): {visit.get('bristol_scale') or 'N/D'}
+  • Deposiciones por día: {visit.get('bowel_movements_per_day') or 'N/D'}
+  • Antibióticos en el último año: {visit.get('recent_antibiotics') or 'N/D'}
+  • Uso de probióticos: {visit.get('probiotics_use') or 'N/D'}
+  Sueño:
+  • Hora de acostarse / despertar: {visit.get('bedtime') or 'N/D'} / {visit.get('wake_time') or 'N/D'}
+  • Despertares nocturnos: {visit.get('night_awakenings') or 'N/D'}
+  • Ronquidos / sospecha de apnea: {visit.get('snoring') or 'N/D'}
+  • Siesta durante el día: {visit.get('daytime_nap') or 'N/D'}
+  Estrés (eje HPA):
+  • Nivel de estrés percibido (1-10): {visit.get('stress_level') or 'N/D'}
+  • Mente acelerada: {visit.get('racing_mind') or 'N/D'}
+  • Ansiedad / pánico: {visit.get('anxiety_panic') or 'N/D'}
+  • Cómo maneja el estrés: {visit.get('stress_coping') or 'N/D'}
+  • ¿Puede relajarse?: {visit.get('can_relax') or 'N/D'}
+  Sedentarismo:
+  • Horas sentado al día: {visit.get('sitting_hours') or 'N/D'}
+  • Tipo de actividad laboral: {visit.get('work_activity_level') or 'N/D'}
+  Exposición ambiental actual:
+  • Exposición reciente a químicos/pesticidas: {visit.get('recent_chemical_exposure') or 'N/D'}
+  • Agua que consume: {visit.get('water_source') or 'N/D'}
+  • Calienta comida en plástico en microondas: {visit.get('plastic_in_microwave') or 'N/D'}
+  • Tatuajes / amalgamas recientes: {visit.get('recent_tattoo_amalgam') or 'N/D'}
+  Alimentación:
+  • Agua que bebe al día: {visit.get('water_intake_liters') or 'N/D'} L
+  • Comidas al día: {visit.get('meals_per_day') or 'N/D'}
+  • Aceite que usa para cocinar: {visit.get('cooking_oil') or 'N/D'}
+  • Antojos frecuentes: {visit.get('food_cravings') or 'N/D'}
+  • Come frente a pantallas: {visit.get('screen_eating') or 'N/D'}
+  • Frecuencia de ultraprocesados: {visit.get('ultraprocessed_frequency') or 'N/D'}
+  Piel, cabello y uñas (autorreporte del paciente, distinto del hallazgo clínico):
+  • Piel seca o acné: {visit.get('self_skin_issues') or 'N/D'}
+  • Caída de cabello: {visit.get('hair_loss') or 'N/D'}
+  • Uñas frágiles: {visit.get('brittle_nails') or 'N/D'}
+  Adherencia:
+  • Adherencia a medicamentos/suplementos: {visit.get('medication_adherence') or 'N/D'}
+
 ── EXPLORACIÓN CLÍNICA (realizada por el médico) ──
   • Inspección general: {visit.get('general_inspection') or visit.get('exp_general') or 'No registrada'}
   • Hallazgos en piel: {visit.get('skin_findings') or visit.get('exp_piel') or 'Sin hallazgos'}
