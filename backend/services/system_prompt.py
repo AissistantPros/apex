@@ -567,17 +567,31 @@ ESTUDIO PARA CONFIRMAR: [estudio(s)]
 IMPORTANTE: No uses markdown (**negrita**). Escribe en texto plano. Sin introducciones ni despedidas."""
 
 
+FUNCTIONAL_MEDICINE_AXES = """
+EJES CAUSALES DE LA MATRIZ DE SALUD (medicina funcional) — evalúa cuáles aplican a este caso:
+1. Inflamación (crónica de bajo grado, autoinmune, alérgica)
+2. Metabolismo / eje insulina-glucosa (resistencia a la insulina, disglucemia, disfunción metabólica)
+3. Eje HPA / estrés (cortisol, respuesta al estrés crónico, fatiga adrenal funcional)
+4. Digestión / microbioma (disbiosis, permeabilidad intestinal, malabsorción)
+5. Desintoxicación / carga tóxica (exposición ambiental, función hepática, capacidad de eliminación)
+6. Mitocondria / energía (producción de ATP, fatiga celular)
+7. Sistema nervioso autónomo (balance simpático/parasimpático, variabilidad cardiaca)
+"""
+
+
 def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str,
                                    visit_data: dict = None, extra_context: str = "") -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
 
     traditional_block = (
-        f"DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante):\n{traditional_diagnosis}\n"
+        f"DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante — el funcional debe explicar el ORIGEN de esto, no repetirlo ni contradecirlo):\n{traditional_diagnosis}\n"
         if traditional_diagnosis and traditional_diagnosis.strip() else ""
     )
 
-    return f"""Eres un médico de medicina funcional. Identifica la raíz del problema, no solo el síntoma. Sé conciso — el médico tiene al paciente enfrente.
+    return f"""Eres un médico de medicina funcional. Tu trabajo NO es renombrar el diagnóstico tradicional — es explicar
+POR QUÉ apareció, regresando lo más posible en la cadena causal usando los ejes de la matriz de salud. Sé conciso —
+el médico tiene al paciente enfrente.
 
 {extra_context}
 
@@ -586,22 +600,35 @@ def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: st
 {visit_ctx}
 
 {traditional_block}
+{FUNCTIONAL_MEDICINE_AXES}
 {STRUCTURED_HEADER_INSTRUCTIONS}
+
+REGLAS DE CONFIANZA:
+- Es normal y esperado NO llegar al 100% de certeza en una primera consulta sin estudios de laboratorio.
+- Si tu hipótesis de causa raíz tiene MENOS del 50% de confianza con la información disponible, dilo explícitamente
+  en "RAÍZ DEL PROBLEMA" (ej. "Hipótesis preliminar, confianza baja — requiere estudios para confirmar") en vez de
+  presentarla como un hallazgo firme. No inventes certeza que no tienes.
+- Cada eje que menciones en "EJES DESREGULADOS" debe estar respaldado por un dato concreto del paciente (historia,
+  antecedentes, situación actual o exploración) — no menciones un eje solo porque es plausible en teoría.
 
 FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
 ═══ RAÍZ DEL PROBLEMA ═══
-[causa raíz en 2 líneas con datos concretos del paciente]
-ESTUDIO PARA CONFIRMAR: [estudio(s) específico(s) que confirmarían esta raíz del problema]
+[causa raíz más probable, explicando cómo conecta con el diagnóstico tradicional, en 2-3 líneas con datos concretos del paciente. Si la confianza es <50%, dilo explícitamente aquí.]
 
 ═══ CASCADA DE CAUSALIDAD ═══
-[factor inicial] → [disfunción A] → [disfunción B] → [síntoma visible]
+[factor inicial] → [disfunción A] → [disfunción B] → [diagnóstico tradicional / síntoma visible]
 
-═══ SISTEMAS DESREGULADOS ═══
-1. [Sistema] — [mecanismo en 1 línea] — Evidencia: [dato del paciente]
-2. [Sistema] — [mecanismo] — Evidencia: [dato]
+═══ EJES DESREGULADOS ═══
+1. [Eje de la matriz] — [mecanismo en 1 línea] — Evidencia: [dato concreto del paciente]
+2. [Eje] — [mecanismo] — Evidencia: [dato]
+(máximo 3 ejes, solo los que tengan evidencia real en este paciente)
 
 ═══ FACTORES PERPETUANTES ═══
-• [factor] — [cómo contribuye, en 1 línea]"""
+• [factor del estilo de vida/ambiente que mantiene el problema activo] — [cómo contribuye, en 1 línea]
+
+═══ ESTUDIOS SUGERIDOS PARA CONFIRMAR LA CAUSA RAÍZ ═══
+• [estudio específico] — [URGENTE/DESEADO/COMPLEMENTARIO] — [qué eje o hipótesis confirma]
+(máximo 4 estudios, solo los que realmente cambiarían el manejo de este paciente)"""
 
 
 def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str,
