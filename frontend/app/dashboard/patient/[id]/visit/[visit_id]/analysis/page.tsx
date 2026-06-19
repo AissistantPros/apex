@@ -6,7 +6,7 @@ import { getUser, getSession } from '@/app/lib/auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step =
-  | 'init' | 'clarifying' | 'select' | 'loading'
+  | 'init' | 'clarifying' | 'clarifying_functional' | 'select' | 'loading'
   | 'review_traditional' | 'review_functional' | 'review_longevity'
   | 'review_protocol_traditional' | 'review_protocol_functional' | 'review_protocol_longevity'
   | 'documents' | 'complete';
@@ -1374,6 +1374,9 @@ export default function AnalysisPage() {
   const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
   const [clarifyAnswers, setClarifyAnswers]     = useState<string[]>([]);
   const [clarifyLoading, setClarifyLoading]     = useState(false);
+  const [funcClarifyQuestions, setFuncClarifyQuestions] = useState<string[]>([]);
+  const [funcClarifyAnswers, setFuncClarifyAnswers]     = useState<string[]>([]);
+  const [funcClarifyLoading, setFuncClarifyLoading]     = useState(false);
 
   // Selección de tipos de análisis a ejecutar
   const [selectedTypes, setSelectedTypes] = useState<AnalysisType[]>(['traditional', 'functional', 'longevity']);
@@ -1453,19 +1456,21 @@ export default function AnalysisPage() {
       review_protocol_traditional: protTrad.doctor_text,
       review_protocol_functional:  protFunc.doctor_text,
       review_protocol_longevity:   protLong.doctor_text,
-      init: '', clarifying: '', select: '', loading: '', documents: '', complete: '',
+      init: '', clarifying: '', clarifying_functional: '', select: '', loading: '', documents: '', complete: '',
     };
     return map[step] || '';
   };
 
-  const buildDoctorAnswersText = (answers: string[]): string => {
-    const hasAnswers = clarifyQuestions.length > 0 && answers.some(a => a.trim());
+  const buildAnswersText = (questions: string[], answers: string[]): string => {
+    const hasAnswers = questions.length > 0 && answers.some(a => a.trim());
     if (!hasAnswers) return '';
-    return clarifyQuestions
+    return questions
       .map((q, i) => answers[i]?.trim() ? `P: ${q}\nR: ${answers[i].trim()}` : null)
       .filter(Boolean)
       .join('\n\n');
   };
+
+  const buildDoctorAnswersText = (answers: string[]): string => buildAnswersText(clarifyQuestions, answers);
 
   const enterStep = (s: Step) => {
     setStep(s);
@@ -1585,6 +1590,36 @@ export default function AnalysisPage() {
     } catch (e: any) { setError('Error: ' + e.message); setStep('select'); }
   };
 
+  // ── Antes de funcional: preguntas dirigidas a buscar la causa raíz ───────────
+  const startClarifyFunctional = async () => {
+    setError('');
+    setFuncClarifyLoading(true);
+    setStep('loading');
+    setLoadingLabel('BUSCANDO LA CAUSA RAÍZ...');
+    try {
+      const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_functional`, {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({ doctor_traditional: traditional.doctor_text, patient_id }),
+      });
+      const json = await res.json();
+      const questions: string[] = json.questions || [];
+      setFuncClarifyQuestions(questions);
+      setFuncClarifyAnswers(new Array(questions.length).fill(''));
+      if (questions.length === 0) {
+        return startFunctional('');
+      }
+      setStep('clarifying_functional');
+    } catch (e: any) {
+      // Si falla, no bloquear el flujo — continúa directo a funcional
+      setFuncClarifyQuestions([]);
+      setFuncClarifyAnswers([]);
+      return startFunctional('');
+    } finally {
+      setFuncClarifyLoading(false);
+    }
+  };
+
   const startFunctional = async (doctorAnswersOverride?: string) => {
     setStep('loading');
     setLoadingLabel('ANALIZANDO — MEDICINA FUNCIONAL');
@@ -1677,7 +1712,7 @@ export default function AnalysisPage() {
     if (m) {
       const t = m[1] as AnalysisType;
       if (t === 'traditional') return startTraditional();
-      if (t === 'functional')  return startFunctional();
+      if (t === 'functional')  return startClarifyFunctional();
       return startLongevity();
     }
   };
@@ -1767,6 +1802,27 @@ export default function AnalysisPage() {
                 onSubmit={() => finalizeFirstDiagnosis(clarifyAnswers)}
                 onSkip={() => finalizeFirstDiagnosis([])}
                 loadingAnalysis={clarifyLoading}
+              />
+            </div>
+          )}
+
+          {/* ── CLARIFYING FUNCTIONAL (causa raíz) ── */}
+          {step === 'clarifying_functional' && (
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="px-2.5 py-1 rounded text-[10px] font-mono tracking-wider bg-[rgba(167,139,250,.1)] text-[#a78bfa] border border-[rgba(167,139,250,.25)]">
+                  BUSCANDO LA CAUSA RAÍZ
+                </div>
+                <h2 className="text-xl font-serif text-[#dde6ef]">Antes del diagnóstico funcional</h2>
+              </div>
+              {error && <p className="text-[#f43f5e] text-sm mb-4">{error}</p>}
+              <ClarifyStep
+                questions={funcClarifyQuestions}
+                answers={funcClarifyAnswers}
+                setAnswers={setFuncClarifyAnswers}
+                onSubmit={() => startFunctional(buildAnswersText(funcClarifyQuestions, funcClarifyAnswers))}
+                onSkip={() => startFunctional('')}
+                loadingAnalysis={funcClarifyLoading}
               />
             </div>
           )}

@@ -18,6 +18,7 @@ from services.system_prompt import (
     get_longevity_diagnosis_prompt,
     get_protocol_prompt,
     get_secondary_validation_prompt,
+    get_functional_clarifying_questions_prompt,
 )
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
@@ -71,6 +72,11 @@ class ClarifyRequest(BaseModel):
 
 class FinalizeFirstRequest(BaseModel):
     doctor_answers: str = ""
+
+
+class ClarifyFunctionalRequest(BaseModel):
+    doctor_traditional: str = ""
+    patient_id: str = ""
 
 
 def build_diagnosis_prompt(diagnosis_type: str, full_patient: dict, full_visit: dict, extra_context: str = "") -> str:
@@ -363,6 +369,40 @@ async def run_traditional(
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         raise HTTPException(500, str(e))
+
+
+@router.post("/{visit_id}/clarify_functional")
+async def get_functional_clarifying_questions(
+    visit_id: str,
+    body: ClarifyFunctionalRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """
+    Antes de generar el diagnóstico funcional, pregunta hasta 3 cosas puntuales que ayuden
+    a ubicar la causa raíz del diagnóstico convencional ya confirmado por el médico.
+    """
+    import json as json_lib
+    try:
+        visit_record = get_visit(visit_id) or {}
+        patient_id = body.patient_id or visit_record.get("patient_id", "")
+        patient_record = get_patient(patient_id) if patient_id else {}
+
+        prompt = get_functional_clarifying_questions_prompt(patient_record, visit_record, body.doctor_traditional)
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400)
+
+        questions = []
+        try:
+            m = re.search(r'\{[\s\S]*?"questions"[\s\S]*?\}', raw)
+            if m:
+                data = json_lib.loads(m.group())
+                questions = [q for q in data.get("questions", []) if q][:3]
+        except Exception:
+            questions = []
+
+        return {"visit_id": visit_id, "questions": questions}
+    except Exception as e:
+        print(f"[ERROR clarify_functional] {str(e)}")
+        return {"visit_id": visit_id, "questions": []}
 
 
 @router.post("/{visit_id}/functional")

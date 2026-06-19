@@ -490,6 +490,45 @@ Si no necesitas preguntar nada:
 {{"questions": []}}"""
 
 
+def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_traditional: str) -> str:
+    """
+    Genera hasta 3 preguntas dirigidas a buscar la CAUSA RAÍZ del diagnóstico convencional
+    ya confirmado por el médico. Se usan ANTES de generar el diagnóstico funcional.
+    """
+    patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data)
+
+    return f"""Eres APEX, asistente de medicina funcional. El médico ya confirmó este diagnóstico convencional:
+
+{doctor_traditional}
+
+{patient_ctx}
+
+{visit_ctx}
+
+TAREA: La medicina funcional busca el ORIGEN de este diagnóstico, no solo nombrarlo — regresando lo más posible
+hacia atrás en la causa (inflamación, eje HPA/estrés, metabolismo/insulina-glucosa, microbioma/digestión,
+toxinas/desintoxicación, mitocondria/energía, sistema nervioso autónomo).
+
+Con la información que YA tienes del paciente (historia, antecedentes, situación actual), identifica hasta 3
+preguntas puntuales que, de contestarse, te ayuden a ubicar la causa raíz MÁS PROBABLE de este diagnóstico
+específico en ESTE paciente. No preguntes nada que ya esté respondido en la información de arriba.
+
+REGLAS ESTRICTAS:
+- Las preguntas deben apuntar a posibles causas raíz del diagnóstico confirmado, no preguntas genéricas
+- Solo preguntas sobre síntomas, sensaciones, hábitos o historia que el paciente puede responder verbalmente
+- NO preguntes por laboratorios o estudios — eso se sugiere después, como estudios a solicitar
+- Si la información ya es suficiente para apuntar a una causa raíz razonable, haz 0 preguntas
+- Máximo 3 preguntas. Si son 1 ó 2, mejor.
+- Preguntas cortas, directas, específicas para ESTE paciente y ESTE diagnóstico
+
+Responde SOLO con este JSON (nada más, sin explicaciones):
+{{"questions": ["¿Pregunta 1?", "¿Pregunta 2?"]}}
+
+Si no necesitas preguntar nada:
+{{"questions": []}}"""
+
+
 def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "") -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
