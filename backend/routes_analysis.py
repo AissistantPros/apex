@@ -106,6 +106,13 @@ def _chat_snippet(history: list, max_turns: int = 6) -> str:
     return "\n\nCONVERSACIÓN RECIENTE CON EL MÉDICO:\n" + "\n".join(lines)
 
 
+def _strip_json_fences(text: str) -> str:
+    """Quita ```json ... ``` si el modelo envuelve el JSON en un bloque de código."""
+    t = text.strip()
+    m = re.match(r'^```(?:json)?\s*([\s\S]*?)\s*```$', t)
+    return m.group(1).strip() if m else t
+
+
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000) -> str:
     kwargs = {
         "model": model,
@@ -531,7 +538,8 @@ async def run_protocol(
             full_diagnosis += "\n\nDIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:\n" + "\n".join(confirmed_lines)
 
         prompt = get_protocol_prompt(patient_data, full_diagnosis, body.protocol_type, visit_data=visit_record)
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE)
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=4000)
+        protocol = _strip_json_fences(protocol)
 
         return {
             "visit_id": visit_id,
@@ -569,16 +577,32 @@ async def chat_step(
             "protocol_longevity":   "Protocolo de Longevidad",
         }
 
-        system = f"""Eres APEX, asistente médico IA. Contexto actual: {step_labels.get(step, step)}.
+        # Identidad básica del paciente — para que la IA sepa de quién se habla
+        patient_line = ""
+        visit = get_visit(visit_id)
+        if visit and visit.get("patient_id"):
+            patient = get_patient(visit["patient_id"])
+            if patient:
+                name = patient.get("full_name") or f"{patient.get('first_name','')} {patient.get('last_name','')}".strip()
+                patient_line = f"\nPaciente: {name} — {patient.get('sex','')}".strip()
+
+        diagnosis_block = body.current_diagnosis.strip() if body.current_diagnosis else ""
+
+        system = f"""Eres APEX, asistente médico IA. Contexto actual: {step_labels.get(step, step)}.{patient_line}
+
+TEXTO ACTUAL DE {step_labels.get(step, step).upper()} (lo que el médico está viendo en pantalla ahora mismo):
+{diagnosis_block if diagnosis_block else "(sin contenido aún)"}
 
 REGLAS:
 - El médico tiene al paciente enfrente. Sé breve, máximo 3-4 oraciones por respuesta.
 - Usa términos médicos — no expliques lo obvio.
-- Si el médico comparte nueva información clínica (síntomas, historia), dile concretamente si cambia el diagnóstico y cómo.
-- Si NO cambia el diagnóstico, explica por qué en 1-2 líneas.
-- Si cambia el diagnóstico, di: "Esto modifica el diagnóstico: [nuevo dx]. Te recomiendo editar el texto antes de continuar."
+- Ya conoces el texto de arriba — NUNCA digas que no tienes contexto o que no sabes de qué caso se habla.
+- Si el médico pregunta por qué no se sugirió algo (ej. otro medicamento), responde con base en el texto de arriba: indicación, contraindicaciones o por qué se prefirió la opción actual.
+- Si el médico comparte nueva información clínica (síntomas, historia), dile concretamente si cambia el diagnóstico/protocolo y cómo.
+- Si NO cambia nada, explica por qué en 1-2 líneas.
+- Si cambia algo, di: "Esto modifica el [diagnóstico/protocolo]: [qué cambia]. Te recomiendo editar el texto antes de continuar."
 - Tono: colega médico, directo, técnico pero amable.
-- Este chat es continuo — tienes contexto de toda la sesión."""
+- Este chat es continuo — tienes el historial completo de la conversación."""
 
         history.append({"role": "user", "content": body.question})
 

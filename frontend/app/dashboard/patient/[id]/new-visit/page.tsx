@@ -276,7 +276,6 @@ export default function NewVisitPage() {
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
-    metas_paciente: '',
     // Exploración
     exp_general: '', ecg_interpretacion: '',
     exp_piel: '', exp_ojos: '', exp_boca: '',
@@ -375,7 +374,6 @@ export default function NewVisitPage() {
         pain_today: dolores.length > 0,
         pain_location: dolores[0]?.ubicacion || '', pain_intensity: dolores[0]?.intensidad ?? null,
         pains: dolores,
-        patient_goals: form.metas_paciente,
         general_inspection: form.exp_general, ecg_interpretation: form.ecg_interpretacion,
         skin_findings: form.exp_piel, eye_findings: form.exp_ojos,
         mouth_findings: form.exp_boca, thyroid_findings: form.exp_tiroides,
@@ -1152,12 +1150,6 @@ export default function NewVisitPage() {
                       </div>
                     ))}
                   </div>
-
-                  <Field label="METAS DEL PACIENTE" tablet={tb}>
-                    <textarea rows={tb ? 4 : 3} className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
-                      value={form.metas_paciente} onChange={e => set('metas_paciente', e.target.value)}
-                      placeholder="Bajar de peso, tener más energía, dormir mejor..." />
-                  </Field>
                 </div>
               )}
 

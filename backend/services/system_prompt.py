@@ -576,12 +576,8 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
     protocol_focus = {
         "traditional": "medicamentos convencionales (incluyendo off-label con justificación científica)",
         "functional":  "suplementos, nutracéuticos y modificaciones de estilo de vida",
-        "longevity":   "intervenciones anti-envejecimiento: péptidos, NAD+, hormonas bioidénticas, optimización metabólica",
+        "longevity":   "intervenciones anti-envejecimiento: péptidos, NAD+, hormonas bioidénticas, optimización metabólica, ejercicio terapéutico",
     }.get(diagnosis_type, "intervención terapéutica")
-
-    nivel1_label = {"traditional": "MEDICAMENTOS", "functional": "SUPLEMENTOS CLAVE", "longevity": "PÉPTIDOS / HORMONAS / NAD+"}.get(diagnosis_type, "INTERVENCIÓN PRINCIPAL")
-    nivel2_label = {"traditional": "SUPLEMENTOS COMPLEMENTARIOS", "functional": "ESTILO DE VIDA", "longevity": "NUTRACEUTICOS / ESTILO DE VIDA"}.get(diagnosis_type, "COMPLEMENTARIO")
-    nivel3_label = {"traditional": "ESTUDIOS DE SEGUIMIENTO", "functional": "MONITOREO", "longevity": "INTERVENCIONES EXPERIMENTALES (solo informativo)"}.get(diagnosis_type, "MONITOREO")
 
     return f"""Eres un médico experto en diseño de protocolos terapéuticos personalizados.
 
@@ -599,40 +595,51 @@ ALERGIAS A MEDICAMENTOS: {alergias}
 TAREA:
 Diseña un protocolo terapéutico completo de tipo: {protocol_focus}
 
-Para CADA intervención proporciona:
-- Nombre exacto (DCI + nombre comercial si aplica)
-- Dosis específica (ej: 500 mg dos veces al día con alimentos)
-- Duración (ej: 12 semanas, luego reevaluar)
-- Indicación específica (qué síntoma o sistema trata en ESTE paciente)
-- Justificación científica (mecanismo de acción relevante para el caso)
-- Efectos secundarios esperados a vigilar
-- Contraindicaciones específicas para ESTE paciente (considerando sus antecedentes y alergias)
-- Interacciones con sus medicamentos actuales
+FORMATO DE SALIDA — ESTRICTO:
+Responde ÚNICAMENTE con un objeto JSON válido. Nada de texto antes o después, nada de ```json. Solo el JSON.
 
-FORMATO:
-══ PROTOCOLO {diagnosis_type.upper()} ══
+Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en las keys):
 
-{nivel1_label}:
-1. [Nombre]
-   • Dosis:
-   • Duración:
-   • Indicación en este paciente:
-   • Mecanismo:
-   • Efectos secundarios:
-   • Contraindicaciones específicas:
-   • Interacciones:
+{{
+  "items": [
+    {{
+      "tipo": "Fármaco",
+      "nombre_generico": "Dapagliflozina",
+      "nombre_comercial": "Forxiga",
+      "nivel_evidencia": "Clase I, Nivel A (Guía ESC 2024)",
+      "alerta": "Riesgo de cetoacidosis euglucémica si se combina con ayuno prolongado o cirugía mayor.",
+      "presentacion": "10 mg",
+      "dosis": "1 tableta",
+      "via": "Oral",
+      "frecuencia": "Cada 24 horas, en ayunas o con el desayuno",
+      "duracion": "Indefinido — reevaluar en 6 meses",
+      "indicacion": "Reduce el riesgo de hospitalización por insuficiencia cardiaca en pacientes con FEVI reducida, independientemente de si tienen diabetes.",
+      "ajuste_especial": "Ajuste renal: no iniciar si FG < 25 ml/min. Si FG 25-45, mantener 10 mg.",
+      "monitoreo": "Función renal (creatinina) y electrolitos a las 2-4 semanas. Vigilar signos de deshidratación.",
+      "reacciones_adversas": "Infecciones genitales por hongos, micción frecuente, hipotensión.",
+      "interacciones": "Diuréticos (potencian hipotensión), insulina/secretagogos (aumenta riesgo de hipoglucemia).",
+      "mecanismo": "Inhibe SGLT2 a nivel renal, reduciendo reabsorción de glucosa."
+    }}
+  ],
+  "monitoreo_general": {{
+    "proxima_revision": "4 semanas",
+    "labs_control": "Perfil metabólico completo, función renal, electrolitos",
+    "criterios_exito": "HbA1c < 6.5%, reducción de peso 5%, mejora de síntomas",
+    "senales_alarma": "Dolor torácico, disnea súbita, edema progresivo — regresar de inmediato"
+  }}
+}}
 
-{nivel2_label}:
-[lista con mismos campos relevantes]
-
-{nivel3_label}:
-[estudios de control / monitoreo sugerido]
-
-MONITOREO GENERAL:
-• Próxima revisión en: [tiempo]
-• Laboratorios de control: [lista]
-• Criterios de éxito: [métricas concretas]
-• Señales de alarma: [cuándo regresar antes]"""
+REGLAS DE LLENADO (síguelas exactamente):
+1. Incluye un objeto en "items" por CADA intervención del protocolo (medicamentos, suplementos, ejercicio, etc. — todos van en la misma lista "items", diferenciados por "tipo").
+2. "tipo" debe ser uno de: "Fármaco", "Off-label", "Suplemento", "Vitamina", "Estilo de vida", "Ejercicio", "Estudio".
+3. "nombre_comercial": usa "" (string vacío) si no aplica — NUNCA inventes un nombre comercial para suplementos genéricos o ejercicio.
+4. "alerta": describe la contraindicación absoluta, interacción grave o riesgo en embarazo más importante para ESTE paciente. Si NO hay ninguna alerta relevante, usa exactamente: "" (string vacío) — el frontend ya muestra un mensaje neutro de "sin contraindicaciones" cuando está vacío, no lo escribas tú.
+5. Si es OFF-LABEL: en "nivel_evidencia" pon "Uso off-label — consenso de expertos" y en "indicacion" aclara que no está aprobado para esta indicación específica pero hay evidencia secundaria.
+6. Si es SUPLEMENTO o VITAMINA: "presentacion" puede usar "mg", "mcg", "UI" o "gr" según corresponda — nunca fuerces "mg". "dosis" puede ser "1 cápsula", "2 gotas", "1 comprimido", etc.
+7. Si es EJERCICIO TERAPÉUTICO: "nombre_generico" es el tipo de ejercicio (ej. "Ejercicio aeróbico de moderada intensidad"), "presentacion" puede ser "30 minutos" o "3 series de 12 repeticiones", "via" se omite con "", "frecuencia" indica los días por semana.
+8. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
+9. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
+10. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
 
 
 def get_secondary_validation_prompt(diagnosis: str) -> str:

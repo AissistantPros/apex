@@ -437,6 +437,183 @@ function ProtocolBlock({ body }: { body: string }) {
   );
 }
 
+// ─── Protocolo estructurado (JSON) ────────────────────────────────────────────
+
+interface ProtocolItem {
+  tipo?: string;
+  nombre_generico: string;
+  nombre_comercial?: string;
+  nivel_evidencia?: string;
+  alerta?: string;
+  presentacion?: string;
+  dosis?: string;
+  via?: string;
+  frecuencia?: string;
+  duracion?: string;
+  indicacion?: string;
+  ajuste_especial?: string;
+  monitoreo?: string;
+  reacciones_adversas?: string;
+  interacciones?: string;
+  mecanismo?: string;
+}
+
+interface ProtocolData {
+  items: ProtocolItem[];
+  monitoreo_general?: {
+    proxima_revision?: string;
+    labs_control?: string;
+    criterios_exito?: string;
+    senales_alarma?: string;
+  };
+}
+
+function parseProtocolJson(text: string): ProtocolData | null {
+  if (!text) return null;
+  let raw = text.trim();
+  const fence = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fence) raw = fence[1].trim();
+  if (!raw.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) return parsed as ProtocolData;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function ProtocolItemCard({ item, color }: { item: ProtocolItem; color: string }) {
+  const [open, setOpen] = useState(false);
+  const hasAlert = !!(item.alerta && item.alerta.trim());
+  const hasDosis = !!(item.presentacion || item.dosis || item.frecuencia);
+  const hasExtra = !!(item.reacciones_adversas || item.interacciones || item.mecanismo);
+
+  return (
+    <div className="rounded-xl overflow-hidden border" style={{ borderColor: hasAlert ? 'rgba(244,63,94,.35)' : '#1e2d3d' }}>
+      {/* Franja de alerta — siempre presente, cambia de estilo según haya o no riesgo */}
+      <div className="px-4 py-2 text-xs font-semibold flex items-start gap-2"
+        style={{
+          background: hasAlert ? 'rgba(244,63,94,.12)' : 'rgba(0,229,160,.08)',
+          color: hasAlert ? '#f43f5e' : '#00e5a0',
+        }}>
+        <span className="flex-shrink-0">{hasAlert ? '⚠' : '✓'}</span>
+        <span className="leading-snug">{hasAlert ? item.alerta : 'Sin contraindicaciones absolutas reportadas'}</span>
+      </div>
+
+      <div className="bg-[#0d1520] p-4 space-y-4">
+        {/* Identificación */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-lg font-bold leading-snug" style={{ color }}>{item.nombre_generico}</p>
+            {item.nombre_comercial && <p className="text-sm text-[#7a95aa]">{item.nombre_comercial}</p>}
+            {item.tipo && (
+              <span className="inline-block mt-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full"
+                style={{ color, background: `${color}15`, border: `1px solid ${color}40` }}>
+                {item.tipo}
+              </span>
+            )}
+          </div>
+          {item.nivel_evidencia && (
+            <div className="text-right flex-shrink-0">
+              <p className="text-[10px] font-mono text-[#3d5870]">EVIDENCIA</p>
+              <p className="text-xs text-[#dde6ef] font-semibold max-w-[180px]">{item.nivel_evidencia}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Dosis y administración */}
+        {hasDosis && (
+          <div className="bg-[#070a0e] border border-[#1e2d3d] rounded-lg p-3 space-y-1.5 text-sm">
+            {item.presentacion && (
+              <p><span className="text-[#3d5870] font-mono text-xs">Presentación: </span><span className="text-[#dde6ef]">{item.presentacion}</span></p>
+            )}
+            {(item.dosis || item.via) && (
+              <p><span className="text-[#3d5870] font-mono text-xs">Dosis: </span><span className="text-[#dde6ef]">{item.dosis}{item.via ? ` — ${item.via}` : ''}</span></p>
+            )}
+            {(item.frecuencia || item.duracion) && (
+              <p><span className="text-[#3d5870] font-mono text-xs">Frecuencia: </span><span className="text-[#dde6ef]">{item.frecuencia}{item.duracion ? ` · Duración: ${item.duracion}` : ''}</span></p>
+            )}
+          </div>
+        )}
+
+        {/* Indicación */}
+        {item.indicacion && (
+          <div>
+            <p className="text-[10px] font-mono text-[#3d5870] mb-1">INDICACIÓN</p>
+            <p className="text-sm text-[#dde6ef] font-serif leading-relaxed">{item.indicacion}</p>
+            {item.ajuste_especial && (
+              <p className="text-xs text-[#7a95aa] italic mt-1.5 bg-[#070a0e] border border-[#1e2d3d] rounded-md px-2.5 py-1.5">
+                {item.ajuste_especial}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Monitorización */}
+        {item.monitoreo && (
+          <div>
+            <p className="text-[10px] font-mono text-[#3d5870] mb-1">MONITORIZACIÓN REQUERIDA</p>
+            <p className="text-sm text-[#dde6ef] font-serif leading-relaxed">{item.monitoreo}</p>
+          </div>
+        )}
+
+        {/* Acordeón — plegado por defecto */}
+        {hasExtra && (
+          <div className="border-t border-[#1e2d3d] pt-3">
+            <button onClick={() => setOpen(o => !o)}
+              className="text-xs font-mono text-[#7a95aa] hover:text-[#dde6ef] transition flex items-center gap-1.5">
+              <span>{open ? '▲' : '▼'}</span> Más detalle — reacciones, interacciones, mecanismo
+            </button>
+            {open && (
+              <div className="mt-3 space-y-2.5 text-xs text-[#7a95aa] font-serif leading-relaxed">
+                {item.reacciones_adversas && (
+                  <p><span className="text-[#dde6ef] font-semibold">Reacciones adversas frecuentes: </span>{item.reacciones_adversas}</p>
+                )}
+                {item.interacciones && (
+                  <p><span className="text-[#dde6ef] font-semibold">Interacciones: </span>{item.interacciones}</p>
+                )}
+                {item.mecanismo && (
+                  <p><span className="text-[#dde6ef] font-semibold">Mecanismo de acción: </span>{item.mecanismo}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProtocolStructuredView({ data, color }: { data: ProtocolData; color: string }) {
+  const mg = data.monitoreo_general;
+  const hasGeneral = !!(mg && (mg.proxima_revision || mg.labs_control || mg.criterios_exito || mg.senales_alarma));
+  return (
+    <div className="space-y-4">
+      {data.items.map((item, i) => <ProtocolItemCard key={i} item={item} color={color} />)}
+      {hasGeneral && (
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-4">
+          <p className="text-xs font-mono text-[#3d5870] mb-3">SEGUIMIENTO GENERAL DEL PROTOCOLO</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            {mg!.proxima_revision && (
+              <div><p className="text-[10px] font-mono text-[#3d5870]">PRÓXIMA REVISIÓN</p><p className="text-[#dde6ef]">{mg!.proxima_revision}</p></div>
+            )}
+            {mg!.labs_control && (
+              <div><p className="text-[10px] font-mono text-[#3d5870]">LABORATORIOS DE CONTROL</p><p className="text-[#dde6ef]">{mg!.labs_control}</p></div>
+            )}
+            {mg!.criterios_exito && (
+              <div><p className="text-[10px] font-mono text-[#3d5870]">CRITERIOS DE ÉXITO</p><p className="text-[#dde6ef]">{mg!.criterios_exito}</p></div>
+            )}
+            {mg!.senales_alarma && (
+              <div><p className="text-[10px] font-mono text-[#f43f5e]">SEÑALES DE ALARMA</p><p className="text-[#dde6ef]">{mg!.senales_alarma}</p></div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DefaultBlock({ body }: { body: string }) {
   const lines = body.split('\n');
   return (
@@ -519,6 +696,7 @@ function DiagnosisCard({
   editMode: boolean; setEditMode: (v: boolean) => void;
   setState: (fn: (prev: DiagnosisState) => DiagnosisState) => void;
 }) {
+  const protocolData = parseProtocolJson(state.doctor_text);
   const sections = parseSections(state.doctor_text);
   const hasStructure = Object.keys(sections).length > 0;
   const SKIP_SECTIONS = ['ESTUDIOS SUGERIDOS', 'ESTUDIOS'];
@@ -560,8 +738,11 @@ function DiagnosisCard({
         </button>
       </div>
 
-      {/* Structured sections */}
-      {hasStructure ? (
+      {/* Protocolo estructurado (JSON) — prioridad sobre cualquier otro render */}
+      {protocolData ? (
+        <ProtocolStructuredView data={protocolData} color={color} />
+      ) : hasStructure ? (
+        /* Structured sections (diagnósticos, formato de secciones ═══) */
         <div className="space-y-4">
           {Object.entries(sections).map(([title, body]) => {
             if (SKIP_SECTIONS.some(s => title.toUpperCase().includes(s))) return null;
@@ -577,7 +758,7 @@ function DiagnosisCard({
           })}
         </div>
       ) : (
-        /* Fallback: render raw text with inline markdown */
+        /* Fallback: render raw text with inline markdown (protocolos viejos, pre-JSON) */
         <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-5">
           <DefaultBlock body={state.doctor_text} />
         </div>

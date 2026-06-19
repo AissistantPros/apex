@@ -201,7 +201,6 @@ function FlowPageInner() {
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
-    metas_paciente: '',
 
     // FASE 3 — Visita: Exploración clínica (idéntico a visitas posteriores)
     exp_general: '', ecg_interpretacion: '',
@@ -392,7 +391,6 @@ function FlowPageInner() {
               libido_hoy:        num(v.libido),
               orina_color:       str(v.urine_color),
               orina_color_tarde: str(v.urine_color_afternoon),
-              metas_paciente:    str(v.patient_goals),
               // Fase 3 — Exploración clínica
               exp_general:        str(v.general_inspection),
               ecg_interpretacion: str(v.ecg_interpretation),
@@ -711,7 +709,6 @@ function FlowPageInner() {
             sleep_hours: f.sueno_horas, wakes_rested: f.sueno_reparador,
             mood: animo, libido: f.libido_hoy, digestion,
             urine_color: f.orina_color, urine_color_afternoon: f.orina_color_tarde,
-            patient_goals: f.metas_paciente,
             // Exploración clínica
             general_inspection: sh(f.exp_general), ecg_interpretation: f.ecg_interpretacion,
             skin_findings: sh(f.exp_piel), eye_findings: sh(f.exp_ojos),
@@ -1732,12 +1729,6 @@ function FlowPageInner() {
                       </div>
                     ))}
                   </div>
-
-                  <Field label="METAS DEL PACIENTE">
-                    <textarea rows={3} className={`${inp} ${fPurp} resize-none`}
-                      value={f.metas_paciente} onChange={e=>set('metas_paciente',e.target.value)}
-                      placeholder="Bajar de peso, tener más energía, dormir mejor..." />
-                  </Field>
                 </div>
               </Card>
 
