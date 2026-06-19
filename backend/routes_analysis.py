@@ -84,13 +84,16 @@ def build_diagnosis_prompt(diagnosis_type: str, full_patient: dict, full_visit: 
 
 def build_doctor_context(ai_original: str, doctor_version: str, label: str) -> str:
     """Genera texto de contexto explicando qué cambió el médico vs lo que propuso la IA."""
+    star_note = ""
+    if "⭐ ELEGIDO POR EL MÉDICO" in doctor_version:
+        star_note = "\nIMPORTANTE: las líneas marcadas con ⭐ ELEGIDO POR EL MÉDICO son el/los diagnóstico(s) que el médico seleccionó como correcto(s) de la lista — puede no coincidir con el de mayor porcentaje. Usa ESE diagnóstico como base para los siguientes pasos, no el de mayor %."
     if not ai_original or ai_original.strip() == doctor_version.strip():
-        return f"\n{label} (aceptado sin cambios por el médico):\n{doctor_version}"
+        return f"\n{label} (aceptado sin cambios por el médico):\n{doctor_version}{star_note}"
     return f"""
 {label}:
 - Lo que la IA propuso: {ai_original[:600]}{'...' if len(ai_original) > 600 else ''}
 - Lo que el MÉDICO confirmó (versión final, puede tener cambios): {doctor_version}
-NOTA: Si hay diferencias, el médico tiene razón. Su versión es la verdad clínica para este paciente.
+NOTA: Si hay diferencias, el médico tiene razón. Su versión es la verdad clínica para este paciente.{star_note}
 """
 
 

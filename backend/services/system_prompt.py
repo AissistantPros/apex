@@ -579,10 +579,14 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
         "longevity":   "intervenciones anti-envejecimiento: péptidos, NAD+, hormonas bioidénticas, optimización metabólica, ejercicio terapéutico",
     }.get(diagnosis_type, "intervención terapéutica")
 
+    star_note = ""
+    if "⭐ ELEGIDO POR EL MÉDICO" in diagnosis:
+        star_note = "\n\nIMPORTANTE: dentro del diagnóstico base, la(s) línea(s) marcadas con ⭐ ELEGIDO POR EL MÉDICO son las que el médico seleccionó manualmente como correctas (puede no ser la de mayor % de confianza calculado por la IA). Diseña el protocolo basándote en ESA selección — el criterio clínico del médico tiene prioridad sobre el ranking automático."
+
     return f"""Eres un médico experto en diseño de protocolos terapéuticos personalizados.
 
 DIAGNÓSTICO BASE:
-{diagnosis}
+{diagnosis}{star_note}
 
 CONTEXTO DEL PACIENTE:
 {patient_ctx}

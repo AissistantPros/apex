@@ -162,15 +162,21 @@ function MainDxBlock({ body, color }: { body: string; color: string }) {
   );
 }
 
-function RankedDiagnosesBlock({ body, color }: { body: string; color: string }) {
+// Marca que el médico estampa en la línea del diagnóstico elegido — se guarda
+// directamente en doctor_text, así viaja a todos los pasos/prompts siguientes.
+const DX_MARK = '⭐ ELEGIDO POR EL MÉDICO — ';
+
+function RankedDiagnosesBlock({ body, color, onToggleSelect }: {
+  body: string; color: string; onToggleSelect?: (rawLine: string) => void;
+}) {
   const lines = body.split('\n');
-  const items: { name: string; pct: number | null; detail: string; study: string | null }[] = [];
-  let current: { name: string; pct: number | null; detail: string[] } | null = null;
+  const items: { name: string; pct: number | null; detail: string; study: string | null; selected: boolean; rawLine: string }[] = [];
+  let current: { name: string; pct: number | null; detail: string[]; selected: boolean; rawLine: string } | null = null;
 
   const flush = () => {
     if (!current) return;
     const { rest, study } = extractStudy(current.detail.join(' ').trim());
-    items.push({ name: current.name, pct: current.pct, detail: rest, study });
+    items.push({ name: current.name, pct: current.pct, detail: rest, study, selected: current.selected, rawLine: current.rawLine });
   };
 
   for (const raw of lines) {
@@ -179,7 +185,10 @@ function RankedDiagnosesBlock({ body, color }: { body: string; color: string }) 
     const head = t.match(/^\d+\.\s*(.+?)\s*\|\s*(\d{1,3})\s*%/);
     if (head) {
       flush();
-      current = { name: head[1].trim(), pct: parseInt(head[2], 10), detail: [] };
+      let name = head[1].trim();
+      let selected = false;
+      if (name.startsWith(DX_MARK)) { selected = true; name = name.slice(DX_MARK.length).trim(); }
+      current = { name, pct: parseInt(head[2], 10), detail: [], selected, rawLine: t };
     } else if (current) {
       current.detail.push(t);
     }
@@ -190,30 +199,49 @@ function RankedDiagnosesBlock({ body, color }: { body: string; color: string }) 
     return <DefaultBlock body={body} />;
   }
 
+  const anySelected = items.some(it => it.selected);
+
   return (
     <div>
       <p className="text-xs text-[#7a95aa] font-serif mb-3 italic">
-        Diagnósticos posibles con la información disponible, del más al menos probable:
+        {onToggleSelect
+          ? 'Diagnósticos posibles, del más al menos probable según la IA. Marca con ⭐ el o los que consideres correctos — tu criterio manda.'
+          : 'Diagnósticos posibles con la información disponible, del más al menos probable:'}
       </p>
       <div className="flex flex-col gap-3">
         {items.map((item, i) => {
           const isFirst = i === 0;
+          const highlight = item.selected || (!anySelected && isFirst);
           const pctColor = item.pct == null ? '#7a95aa' : item.pct >= 75 ? color : item.pct >= 50 ? '#f59e0b' : '#7a95aa';
           return (
             <div key={i} className="rounded-xl p-4"
-              style={isFirst
+              style={item.selected
+                ? { background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.4)' }
+                : highlight
                 ? { background: `${color}10`, border: `1px solid ${color}30` }
                 : { background: '#070a0e', border: '1px solid #1e2d3d' }}>
               <div className="flex items-center justify-between gap-3 mb-2">
-                <span className="font-bold text-sm leading-snug" style={{ color: isFirst ? color : '#dde6ef' }}>
-                  {isFirst ? '🎯 ' : `${i + 1}. `}<Md text={item.name} />
+                <span className="font-bold text-sm leading-snug flex items-center gap-1.5" style={{ color: item.selected ? '#f59e0b' : highlight ? color : '#dde6ef' }}>
+                  {item.selected ? '⭐ ' : highlight ? '🎯 ' : `${i + 1}. `}<Md text={item.name} />
                 </span>
-                {item.pct != null && (
-                  <span className="text-xs font-mono font-bold px-2 py-1 rounded flex-shrink-0 whitespace-nowrap"
-                    style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
-                    {item.pct}%
-                  </span>
-                )}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {item.pct != null && (
+                    <span className="text-xs font-mono font-bold px-2 py-1 rounded whitespace-nowrap"
+                      style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
+                      {item.pct}%
+                    </span>
+                  )}
+                  {onToggleSelect && (
+                    <button type="button" onClick={() => onToggleSelect(item.rawLine)}
+                      title={item.selected ? 'Quitar como diagnóstico elegido' : 'Marcar como el diagnóstico correcto'}
+                      className="text-base leading-none px-1.5 py-1 rounded-md border transition"
+                      style={item.selected
+                        ? { color: '#f59e0b', borderColor: 'rgba(245,158,11,.5)', background: 'rgba(245,158,11,.12)' }
+                        : { color: '#3d5870', borderColor: '#1e2d3d', background: 'transparent' }}>
+                      {item.selected ? '⭐' : '☆'}
+                    </button>
+                  )}
+                </div>
               </div>
               {item.detail && (
                 <p className="text-sm text-[#dde6ef] leading-relaxed font-serif"><Md text={item.detail} /></p>
@@ -223,6 +251,11 @@ function RankedDiagnosesBlock({ body, color }: { body: string; color: string }) 
           );
         })}
       </div>
+      {onToggleSelect && anySelected && (
+        <p className="text-xs text-[#f59e0b] font-mono mt-3">
+          ⭐ Tu selección se usará como diagnóstico de referencia en los siguientes pasos.
+        </p>
+      )}
     </div>
   );
 }
@@ -642,10 +675,12 @@ function DefaultBlock({ body }: { body: string }) {
 }
 
 // ─── Section Dispatcher ───────────────────────────────────────────────────────
-function SectionContent({ title, body, color }: { title: string; body: string; color: string }) {
+function SectionContent({ title, body, color, onToggleSelect }: {
+  title: string; body: string; color: string; onToggleSelect?: (rawLine: string) => void;
+}) {
   const t = title.toUpperCase();
   if (t.includes('DIAGNÓSTICOS POSIBLES')) {
-    return <RankedDiagnosesBlock body={body} color={color} />;
+    return <RankedDiagnosesBlock body={body} color={color} onToggleSelect={onToggleSelect} />;
   }
   if (t.includes('DIAGNÓSTICO PRINCIPAL') || t.includes('RAÍZ DEL PROBLEMA') || t.includes('EDAD BIOLÓGICA')) {
     return <MainDxBlock body={body} color={color} />;
@@ -701,6 +736,21 @@ function DiagnosisCard({
   const hasStructure = Object.keys(sections).length > 0;
   const SKIP_SECTIONS = ['ESTUDIOS SUGERIDOS', 'ESTUDIOS'];
 
+  const handleToggleSelect = (rawLine: string) => {
+    setState(prev => {
+      const lines = prev.doctor_text.split('\n');
+      const idx = lines.findIndex(l => l.trim() === rawLine);
+      if (idx === -1) return prev;
+      const head = lines[idx].match(/^(\s*\d+\.\s*)(.+)$/);
+      if (!head) return prev;
+      const [, prefix, rest] = head;
+      const newRest = rest.trim().startsWith(DX_MARK) ? rest.trim().slice(DX_MARK.length) : DX_MARK + rest.trim();
+      const newLines = [...lines];
+      newLines[idx] = prefix + newRest;
+      return { ...prev, doctor_text: newLines.join('\n') };
+    });
+  };
+
   if (editMode) {
     return (
       <div className="bg-[#0d1520] border rounded-xl p-5 mb-5" style={{ borderColor: '#f97316' }}>
@@ -752,7 +802,7 @@ function DiagnosisCard({
                   style={{ color: title.toUpperCase().includes('DIAGNÓSTICO PRINCIPAL') || title.toUpperCase().includes('RAÍZ') ? color : '#3d5870' }}>
                   {title}
                 </div>
-                <SectionContent title={title} body={body} color={color} />
+                <SectionContent title={title} body={body} color={color} onToggleSelect={handleToggleSelect} />
               </div>
             );
           })}
@@ -1508,6 +1558,15 @@ export default function AnalysisPage() {
                 </div>
                 <h2 className="text-xl font-serif text-[#dde6ef]">{info.label}</h2>
               </div>
+
+              {step.startsWith('review_protocol_') && (
+                <div className="flex items-start gap-2.5 bg-[rgba(245,158,11,.07)] border border-[rgba(245,158,11,.25)] rounded-xl px-4 py-3 mb-5">
+                  <span className="text-[#f59e0b] flex-shrink-0 mt-0.5">⚠</span>
+                  <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
+                    <strong className="text-[#f59e0b]">Sugerencia generada con apoyo de Inteligencia Artificial.</strong> El médico tratante es responsable de validar, ajustar y prescribir cada intervención conforme a su juicio clínico, la evaluación directa del paciente y la normativa vigente. Esta herramienta no sustituye el criterio médico.
+                  </p>
+                </div>
+              )}
 
               <ConfidenceBar pct={state.confidence} color={info.color} />
 
