@@ -672,14 +672,14 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 
 
 def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
-                        visit_data: dict = None) -> str:
+                        visit_data: dict = None, previous_protocols: dict = None) -> str:
     patient_ctx = build_patient_context(patient_data)
 
     alergias = patient_data.get("allergies_medications") or "No refiere"
     meds_actuales = _fmt_meds(patient_data.get("medications"))
 
     protocol_focus = {
-        "traditional": "medicamentos convencionales (incluyendo off-label con justificación científica)",
+        "traditional": "medicamentos convencionales (incluyendo off-label con justificación científica), más hidratación, tipo de dieta y ejercicio",
         "functional":  "suplementos, nutracéuticos y modificaciones de estilo de vida",
         "longevity":   "intervenciones anti-envejecimiento: péptidos, NAD+, hormonas bioidénticas, optimización metabólica, ejercicio terapéutico",
     }.get(diagnosis_type, "intervención terapéutica")
@@ -687,6 +687,21 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
     star_note = ""
     if "⭐ ELEGIDO POR EL MÉDICO" in diagnosis:
         star_note = "\n\nIMPORTANTE: dentro del diagnóstico base, la(s) línea(s) marcadas con ⭐ ELEGIDO POR EL MÉDICO son las que el médico seleccionó manualmente como correctas (puede no ser la de mayor % de confianza calculado por la IA). Diseña el protocolo basándote en ESA selección — el criterio clínico del médico tiene prioridad sobre el ranking automático."
+
+    previous_block = ""
+    if previous_protocols:
+        entries = [(k, v) for k, v in previous_protocols.items() if v and str(v).strip()]
+        if entries:
+            labels = {"traditional": "CONVENCIONAL", "functional": "FUNCIONAL", "longevity": "LONGEVIDAD"}
+            parts = [f"--- Protocolo {labels.get(k, k.upper())} ya entregado ---\n{v}" for k, v in entries]
+            previous_block = (
+                "\n\nPROTOCOLOS YA ENTREGADOS EN ESTA MISMA VISITA (NO REPETIR):\n"
+                + "\n\n".join(parts)
+                + "\n\nREGLA ESTRICTA: no repitas ningún medicamento, suplemento, vitamina o consejo de estilo de vida "
+                "que ya aparezca arriba como item nuevo. Si un item ya prescrito también sirve off-label para el eje "
+                "que estás tratando ahora, NO lo vuelvas a listar como item — menciónalo en 1 línea dentro del campo "
+                "\"indicacion\" de un item relacionado, o en \"monitoreo_general\", solo como nota anecdótica."
+            )
 
     return f"""Eres un médico experto en diseño de protocolos terapéuticos personalizados.
 
@@ -700,9 +715,18 @@ MEDICAMENTOS ACTUALES DEL PACIENTE (para evitar duplicaciones e interacciones):
 {meds_actuales}
 
 ALERGIAS A MEDICAMENTOS: {alergias}
+{previous_block}
 
 TAREA:
 Diseña un protocolo terapéutico completo de tipo: {protocol_focus}
+
+REVISIÓN DE TRASLAPES ANTES DE FINALIZAR (obligatorio):
+Antes de entregar la lista final, revisa si el mecanismo de acción de algún item ya resuelve, empeora o
+contraindica el problema que otro item busca tratar (ejemplo: un agonista GLP-1 que retrasa el vaciado
+gástrico ya puede resolver una diarrea crónica — agregar además un antidiarreico como item independiente
+sería un traslape, no una suma de beneficios). Si detectas un traslape:
+- No listes ambos como tratamientos independientes sin relación.
+- Elige el item más adecuado y usa su campo "alerta" o "interacciones" para explicar la relación con el otro problema.
 
 FORMATO DE SALIDA — ESTRICTO:
 Responde ÚNICAMENTE con un objeto JSON válido. Nada de texto antes o después, nada de ```json. Solo el JSON.
@@ -740,15 +764,50 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
 
 REGLAS DE LLENADO (síguelas exactamente):
 1. Incluye un objeto en "items" por CADA intervención del protocolo (medicamentos, suplementos, ejercicio, etc. — todos van en la misma lista "items", diferenciados por "tipo").
-2. "tipo" debe ser uno de: "Fármaco", "Off-label", "Suplemento", "Vitamina", "Estilo de vida", "Ejercicio", "Estudio".
+2. "tipo" debe ser uno de: "Fármaco", "Off-label", "Suplemento", "Vitamina", "Estilo de vida", "Ejercicio". NUNCA uses "Estudio" — los estudios/laboratorios NO se piden aquí, ya se proponen en el paso de diagnóstico. Si crees que falta un estudio, no lo incluyas como item.
 3. "nombre_comercial": usa "" (string vacío) si no aplica — NUNCA inventes un nombre comercial para suplementos genéricos o ejercicio.
 4. "alerta": describe la contraindicación absoluta, interacción grave o riesgo en embarazo más importante para ESTE paciente. Si NO hay ninguna alerta relevante, usa exactamente: "" (string vacío) — el frontend ya muestra un mensaje neutro de "sin contraindicaciones" cuando está vacío, no lo escribas tú.
 5. Si es OFF-LABEL: en "nivel_evidencia" pon "Uso off-label — consenso de expertos" y en "indicacion" aclara que no está aprobado para esta indicación específica pero hay evidencia secundaria.
 6. Si es SUPLEMENTO o VITAMINA: "presentacion" puede usar "mg", "mcg", "UI" o "gr" según corresponda — nunca fuerces "mg". "dosis" puede ser "1 cápsula", "2 gotas", "1 comprimido", etc.
 7. Si es EJERCICIO TERAPÉUTICO: "nombre_generico" es el tipo de ejercicio (ej. "Ejercicio aeróbico de moderada intensidad"), "presentacion" puede ser "30 minutos" o "3 series de 12 repeticiones", "via" se omite con "", "frecuencia" indica los días por semana.
-8. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
-9. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
-10. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
+8. Si es ESTILO DE VIDA de hidratación o dieta: "nombre_generico" describe la recomendación (ej. "Hidratación dirigida", "Dieta alta en fibra", "Dieta baja en calorías") usando SOLO categorías generales de dieta — nunca nombres de dietas comerciales (keto, paleo, etc.) ni listas de alimentos específicos.
+9. PROTOCOLO CONVENCIONAL ("traditional"): además de los fármacos, incluye siempre que aplique al caso al menos un item de hidratación (tipo "Estilo de vida"), uno de tipo de dieta (tipo "Estilo de vida") y uno de ejercicio (tipo "Ejercicio").
+10. PROTOCOLO FUNCIONAL ("functional"): debe incluir SIEMPRE al menos un item "Suplemento" o "Vitamina" cuando la matriz de salud identificó ejes desregulados con manejo nutracéutico conocido. No está permitido un protocolo funcional compuesto solo de cambios de hábito sin ningún suplemento — si genuinamente no aplica ningún suplemento para este caso, explica por qué en "monitoreo_general".
+11. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
+12. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
+13. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
+
+
+def get_protocol_validation_prompt(protocol_json: str, previous_protocols: dict = None) -> str:
+    """Revisión secundaria de un protocolo ya generado: detecta traslapes/interacciones entre
+    items del mismo protocolo y duplicados contra protocolos previos de la misma visita."""
+    previous_block = ""
+    if previous_protocols:
+        entries = [(k, v) for k, v in previous_protocols.items() if v and str(v).strip()]
+        if entries:
+            labels = {"traditional": "CONVENCIONAL", "functional": "FUNCIONAL", "longevity": "LONGEVIDAD"}
+            parts = [f"--- Protocolo {labels.get(k, k.upper())} ya entregado ---\n{v}" for k, v in entries]
+            previous_block = "\n\nPROTOCOLOS YA ENTREGADOS EN ESTA MISMA VISITA:\n" + "\n\n".join(parts)
+
+    return f"""Eres un farmacólogo clínico haciendo control de calidad de seguridad sobre un protocolo terapéutico
+ya generado por otro médico IA. Tu trabajo es exclusivamente de seguridad y no-duplicación — no rediseñes el protocolo.
+
+PROTOCOLO A REVISAR (JSON):
+{protocol_json}
+{previous_block}
+
+TAREA — revisa el JSON anterior y corrígelo si encuentras:
+1. TRASLAPES/INTERACCIONES: dos o más items cuyo mecanismo de acción se traslapa (uno ya resuelve lo que el otro
+   trata) o interactúa de forma riesgosa. Si encuentras uno, no elimines información — ajusta el campo "alerta" o
+   "interacciones" del item que se queda para explicar la relación, y elimina el item redundante de la lista "items".
+2. DUPLICADOS CONTRA PROTOCOLOS PREVIOS: cualquier item que repita (mismo principio activo o intervención) algo ya
+   entregado en los protocolos previos de esta visita. Elimínalo de "items". Si quieres dejar constancia de que ese
+   medicamento previo también sirve aquí, agrega una nota de 1 línea en "monitoreo_general", no como item nuevo.
+3. Si NO encuentras ningún problema, devuelve el JSON EXACTAMENTE IGUAL, sin modificar nada.
+
+FORMATO DE SALIDA — ESTRICTO:
+Responde ÚNICAMENTE con el objeto JSON corregido (misma estructura exacta: "items" y "monitoreo_general").
+Nada de texto antes o después, nada de ```json. Solo el JSON."""
 
 
 def get_secondary_validation_prompt(diagnosis: str) -> str:

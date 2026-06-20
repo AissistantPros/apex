@@ -28,6 +28,7 @@
   --c-green-fg:   #000000;
   --c-blue:       #0ea5e9;
   --c-blue-fg:    #000000;
+  --c-red:        #f43f5e;
 
   /* ── Transparencias de acento ── */
   --c-green-10:   rgba(0, 229, 160, 0.10);
@@ -63,6 +64,7 @@
   --c-green-fg:   #ffffff;
   --c-blue:       #0369a1;
   --c-blue-fg:    #ffffff;
+  --c-red:        #be123c;
 
   /* ── Transparencias ── */
   --c-green-10:   rgba(0, 158, 114, 0.10);
@@ -170,6 +172,10 @@ body::after {
 [data-theme="light"] .text-\[\#00e5a0\] { color: var(--c-green) !important; }
 /* ── Acento azul — texto ── */
 [data-theme="light"] .text-\[\#0ea5e9\] { color: var(--c-blue) !important; }
+/* ── Acento rojo (alertas) — texto, borde y fondo ── */
+[data-theme="light"] .text-\[\#f43f5e\]   { color: var(--c-red) !important; }
+[data-theme="light"] .border-\[\#f43f5e\] { border-color: var(--c-red) !important; }
+[data-theme="light"] .bg-\[\#f43f5e\]     { background-color: var(--c-red) !important; }
 
 /* ── Fondos de inputs con bg dark ── */
 [data-theme="light"] .bg-\[\#111820\],

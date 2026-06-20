@@ -61,6 +61,8 @@ interface DiagnosisState {
   validation: string;
   confirmed: boolean;
   confidence: number;
+  approved?: boolean[];
+  doctor_notes?: string;
 }
 
 interface ChatMsg {
@@ -71,7 +73,7 @@ interface ChatMsg {
 
 const EMPTY_DX: DiagnosisState = {
   ai_text: '', doctor_text: '', validation: '',
-  confirmed: false, confidence: 75,
+  confirmed: false, confidence: 75, approved: [], doctor_notes: '',
 };
 
 // ─── Loading steps ────────────────────────────────────────────────────────────
@@ -153,7 +155,7 @@ function MainDxBlock({ body, color }: { body: string; color: string }) {
         <Md text={headline} />
       </p>
       {detail && (
-        <p className="text-sm text-[#dde6ef] leading-relaxed font-serif">
+        <p className="text-lg text-[#dde6ef] leading-relaxed font-serif">
           <Md text={detail} />
         </p>
       )}
@@ -244,7 +246,7 @@ function RankedDiagnosesBlock({ body, color, onToggleSelect }: {
                 </div>
               </div>
               {item.detail && (
-                <p className="text-sm text-[#dde6ef] leading-relaxed font-serif"><Md text={item.detail} /></p>
+                <p className="text-lg text-[#dde6ef] leading-relaxed font-serif"><Md text={item.detail} /></p>
               )}
               {item.study && <StudyTag text={item.study} />}
             </div>
@@ -292,24 +294,24 @@ function AddDiagnosisForm({ onAdd, color }: {
       <div>
         <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">NOMBRE DEL DIAGNÓSTICO</label>
         <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. Migraña tensional crónica"
-          className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+          className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">% DE CONFIANZA (opcional)</label>
           <input type="number" min={0} max={100} value={pct} onChange={e => setPct(e.target.value)} placeholder="Ej. 85"
-            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
         </div>
         <div>
           <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">ESTUDIO PARA CONFIRMAR (opcional)</label>
           <input value={estudio} onChange={e => setEstudio(e.target.value)} placeholder="Ej. RMN cerebral"
-            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
         </div>
       </div>
       <div>
         <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">JUSTIFICACIÓN CLÍNICA (opcional)</label>
         <textarea rows={2} value={detalle} onChange={e => setDetalle(e.target.value)} placeholder="Qué datos del paciente lo sustentan"
-          className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa] resize-none" />
+          className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#7a95aa] resize-none" />
       </div>
       <div className="flex gap-2">
         <button type="button" onClick={handleSubmit}
@@ -342,7 +344,7 @@ function AlertsBlock({ body }: { body: string }) {
         return (
           <div key={i} className="flex items-start gap-2.5 bg-[rgba(249,115,22,.07)] border border-[rgba(249,115,22,.25)] rounded-xl px-4 py-3">
             <span className="text-[#f97316] flex-shrink-0 mt-0.5 text-base">⚠</span>
-            <p className="text-sm text-[#dde6ef] leading-relaxed font-serif"><Md text={clean} /></p>
+            <p className="text-lg text-[#dde6ef] leading-relaxed font-serif"><Md text={clean} /></p>
           </div>
         );
       })}
@@ -356,7 +358,7 @@ function CascadeBlock({ body }: { body: string }) {
   const chain = lines.find(l => l.includes('→'));
   const rest = lines.filter(l => l !== chain);
   if (!chain) {
-    return <p className="text-sm text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap">{body}</p>;
+    return <p className="text-lg text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap">{body}</p>;
   }
   const nodes = chain.split('→').map(n => n.trim()).filter(Boolean);
   return (
@@ -374,7 +376,7 @@ function CascadeBlock({ body }: { body: string }) {
         ))}
       </div>
       {rest.length > 0 && (
-        <p className="text-sm text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap"><Md text={rest.join('\n')} /></p>
+        <p className="text-lg text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap"><Md text={rest.join('\n')} /></p>
       )}
     </div>
   );
@@ -384,7 +386,7 @@ function TableBlock({ body }: { body: string }) {
   // Parse pipe-separated table
   const lines = body.split('\n').filter(l => l.trim() && !l.trim().startsWith('|---') && !l.trim().startsWith('|:'));
   if (lines.length < 2) {
-    return <p className="text-sm text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap">{body}</p>;
+    return <p className="text-lg text-[#dde6ef] font-serif leading-relaxed whitespace-pre-wrap">{body}</p>;
   }
   // Check if lines have | separator
   const hasTable = lines.some(l => l.includes('|'));
@@ -463,7 +465,7 @@ function RisksBlock({ body }: { body: string }) {
               {label?.trim() || '—'}
             </span>
             {rest.length > 0 && (
-              <span className="text-sm text-[#dde6ef] font-serif">{rest.join('—').trim()}</span>
+              <span className="text-lg text-[#dde6ef] font-serif">{rest.join('—').trim()}</span>
             )}
           </div>
         );
@@ -501,7 +503,7 @@ function ProtocolBlock({ body }: { body: string }) {
           if (!clean) return null;
           return (
             <div key={i} className="bg-[#070a0e] border border-[#1e2d3d] rounded-xl px-4 py-3">
-              <p className="text-sm text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
+              <p className="text-lg text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
             </div>
           );
         })}
@@ -563,6 +565,7 @@ interface ProtocolData {
     labs_control?: string;
     criterios_exito?: string;
     senales_alarma?: string;
+    nota_doctor?: string;
   };
 }
 
@@ -606,16 +609,23 @@ function parseProtocolJson(text: string): ProtocolData | null {
   }
 }
 
-function ProtocolItemCard({ item, color }: { item: ProtocolItem; color: string }) {
+function ProtocolItemCard({ item, color, selected, onToggle }: {
+  item: ProtocolItem; color: string; selected?: boolean; onToggle?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const hasAlert = !!(item.alerta && item.alerta.trim());
   const hasDosis = !!(item.presentacion || item.dosis || item.frecuencia);
   const hasExtra = !!(item.reacciones_adversas || item.interacciones || item.mecanismo);
+  const selectable = typeof onToggle === 'function';
 
   return (
-    <div className="rounded-xl overflow-hidden border" style={{ borderColor: hasAlert ? 'rgba(244,63,94,.35)' : '#1e2d3d' }}>
+    <div className="rounded-xl overflow-hidden border transition"
+      style={{
+        borderColor: hasAlert ? 'rgba(244,63,94,.35)' : '#1e2d3d',
+        opacity: selectable && !selected ? 0.45 : 1,
+      }}>
       {/* Franja de alerta — siempre presente, cambia de estilo según haya o no riesgo */}
-      <div className="px-4 py-2 text-xs font-semibold flex items-start gap-2"
+      <div className="px-4 py-2 text-base font-semibold flex items-start gap-2"
         style={{
           background: hasAlert ? 'rgba(244,63,94,.12)' : 'rgba(0,229,160,.08)',
           color: hasAlert ? '#f43f5e' : '#00e5a0',
@@ -627,16 +637,22 @@ function ProtocolItemCard({ item, color }: { item: ProtocolItem; color: string }
       <div className="bg-[#0d1520] p-4 space-y-4">
         {/* Identificación */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <p className="text-lg font-bold leading-snug" style={{ color }}>{item.nombre_generico}</p>
-            {item.nombre_comercial && <p className="text-sm text-[#7a95aa]">{item.nombre_comercial}</p>}
-            {item.tipo && (
-              <span className="inline-block mt-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full"
-                style={{ color, background: `${color}15`, border: `1px solid ${color}40` }}>
-                {item.tipo}
-              </span>
+          <label className={`flex items-start gap-3 ${selectable ? 'cursor-pointer' : ''}`}>
+            {selectable && (
+              <input type="checkbox" checked={!!selected} onChange={onToggle}
+                className="w-5 h-5 mt-1 accent-[#00e5a0] flex-shrink-0" />
             )}
-          </div>
+            <div>
+              <p className="text-lg font-bold leading-snug" style={{ color }}>{item.nombre_generico}</p>
+              {item.nombre_comercial && <p className="text-base text-[#7a95aa]">{item.nombre_comercial}</p>}
+              {item.tipo && (
+                <span className="inline-block mt-1.5 text-xs font-mono px-2 py-0.5 rounded-full"
+                  style={{ color, background: `${color}15`, border: `1px solid ${color}40` }}>
+                  {item.tipo}
+                </span>
+              )}
+            </div>
+          </label>
           {item.nivel_evidencia && (
             <div className="text-right flex-shrink-0">
               <p className="text-[10px] font-mono text-[#3d5870]">EVIDENCIA</p>
@@ -664,7 +680,7 @@ function ProtocolItemCard({ item, color }: { item: ProtocolItem; color: string }
         {item.indicacion && (
           <div>
             <p className="text-[10px] font-mono text-[#3d5870] mb-1">INDICACIÓN</p>
-            <p className="text-sm text-[#dde6ef] font-serif leading-relaxed">{item.indicacion}</p>
+            <p className="text-lg text-[#dde6ef] font-serif leading-relaxed">{item.indicacion}</p>
             {item.ajuste_especial && (
               <p className="text-xs text-[#7a95aa] italic mt-1.5 bg-[#070a0e] border border-[#1e2d3d] rounded-md px-2.5 py-1.5">
                 {item.ajuste_especial}
@@ -677,7 +693,7 @@ function ProtocolItemCard({ item, color }: { item: ProtocolItem; color: string }
         {item.monitoreo && (
           <div>
             <p className="text-[10px] font-mono text-[#3d5870] mb-1">MONITORIZACIÓN REQUERIDA</p>
-            <p className="text-sm text-[#dde6ef] font-serif leading-relaxed">{item.monitoreo}</p>
+            <p className="text-lg text-[#dde6ef] font-serif leading-relaxed">{item.monitoreo}</p>
           </div>
         )}
 
@@ -708,12 +724,75 @@ function ProtocolItemCard({ item, color }: { item: ProtocolItem; color: string }
   );
 }
 
-function ProtocolStructuredView({ data, color }: { data: ProtocolData; color: string }) {
+const PROTOCOL_GROUPS: { label: string; match: (tipo: string) => boolean }[] = [
+  { label: 'FÁRMACOS', match: t => /f[aá]rmaco|medicament|off-?label/i.test(t) },
+  { label: 'SUPLEMENTOS Y VITAMINAS', match: t => /suplement|vitamina/i.test(t) },
+  { label: 'ESTILO DE VIDA Y EJERCICIO', match: t => /estilo de vida|ejercicio|h[aá]bito/i.test(t) },
+];
+
+function groupProtocolItems(items: ProtocolItem[]): { label: string; indices: number[] }[] {
+  const groups = PROTOCOL_GROUPS.map(g => ({ label: g.label, indices: [] as number[] }));
+  const other: number[] = [];
+  items.forEach((item, i) => {
+    const tipo = item.tipo || '';
+    const g = PROTOCOL_GROUPS.findIndex(g => g.match(tipo));
+    if (g !== -1) groups[g].indices.push(i); else other.push(i);
+  });
+  if (other.length) groups.push({ label: 'OTROS', indices: other });
+  return groups.filter(g => g.indices.length > 0);
+}
+
+function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: {
+  data: ProtocolData; color: string;
+  approved?: boolean[]; onToggle?: (i: number) => void; onAddItem?: (item: ProtocolItem) => void;
+}) {
   const mg = data.monitoreo_general;
   const hasGeneral = !!(mg && (mg.proxima_revision || mg.labs_control || mg.criterios_exito || mg.senales_alarma));
+  const groups = groupProtocolItems(data.items);
+  const [addingOwn, setAddingOwn] = useState(false);
+  const [ownItem, setOwnItem] = useState<ProtocolItem>({ nombre_generico: '' });
+
+  const submitOwn = () => {
+    if (!ownItem.nombre_generico.trim() || !onAddItem) return;
+    onAddItem(ownItem);
+    setOwnItem({ nombre_generico: '' });
+    setAddingOwn(false);
+  };
+
   return (
-    <div className="space-y-4">
-      {data.items.map((item, i) => <ProtocolItemCard key={i} item={item} color={color} />)}
+    <div className="space-y-6">
+      {groups.map(g => (
+        <div key={g.label}>
+          <p className="text-xs font-mono text-[#3d5870] mb-2 tracking-widest">{g.label}</p>
+          <div className="space-y-4">
+            {g.indices.map(i => (
+              <ProtocolItemCard key={i} item={data.items[i]} color={color}
+                selected={approved ? approved[i] !== false : undefined}
+                onToggle={onToggle ? () => onToggle(i) : undefined} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {onAddItem && (
+        addingOwn ? (
+          <ProtocolItemForm item={ownItem}
+            onChange={(field, value) => setOwnItem(prev => ({ ...prev, [field]: value }))}
+            onRemove={() => setAddingOwn(false)} />
+        ) : (
+          <button type="button" onClick={() => setAddingOwn(true)}
+            className="text-[#00e5a0] border border-[#00e5a0]/30 rounded-xl hover:bg-[#00e5a0]/10 transition font-semibold px-4 py-2 text-base">
+            + Agregar medicamento / suplemento / intervención propia
+          </button>
+        )
+      )}
+      {addingOwn && (
+        <button type="button" onClick={submitOwn}
+          className="px-4 py-2 bg-[#00e5a0] text-black text-sm font-bold rounded-lg hover:opacity-90 transition -mt-3">
+          ✓ Agregar a la lista
+        </button>
+      )}
+
       {hasGeneral && (
         <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-4">
           <p className="text-xs font-mono text-[#3d5870] mb-3">SEGUIMIENTO GENERAL DEL PROTOCOLO</p>
@@ -729,6 +808,9 @@ function ProtocolStructuredView({ data, color }: { data: ProtocolData; color: st
             )}
             {mg!.senales_alarma && (
               <div><p className="text-[10px] font-mono text-[#f43f5e]">SEÑALES DE ALARMA</p><p className="text-[#dde6ef]">{mg!.senales_alarma}</p></div>
+            )}
+            {mg!.nota_doctor && (
+              <div className="md:col-span-2"><p className="text-[10px] font-mono text-[#00e5a0]">NOTA DEL DOCTOR</p><p className="text-[#dde6ef]">{mg!.nota_doctor}</p></div>
             )}
           </div>
         </div>
@@ -774,11 +856,11 @@ function ProtocolItemForm({ item, onChange, onRemove }: {
             {textarea ? (
               <textarea rows={2} value={(item[key] as string) || ''} onChange={e => onChange(key, e.target.value)}
                 placeholder={placeholder}
-                className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0] resize-none" />
+                className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#00e5a0] resize-none" />
             ) : (
               <input value={(item[key] as string) || ''} onChange={e => onChange(key, e.target.value)}
                 placeholder={placeholder}
-                className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]" />
+                className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#00e5a0]" />
             )}
           </div>
         ))}
@@ -873,16 +955,50 @@ function DefaultBlock({ body }: { body: string }) {
           return (
             <div key={i} className="flex items-start gap-2">
               <span className="text-[#3d5870] flex-shrink-0 mt-1 text-xs">•</span>
-              <p className="text-sm text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
+              <p className="text-lg text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
             </div>
           );
         }
         return (
-          <p key={i} className="text-sm text-[#dde6ef] font-serif leading-relaxed">
+          <p key={i} className="text-lg text-[#dde6ef] font-serif leading-relaxed">
             <Md text={t} />
           </p>
         );
       })}
+    </div>
+  );
+}
+
+function StudiesBlock({ body, color, onToggleSelect }: {
+  body: string; color: string; onToggleSelect?: (rawLine: string) => void;
+}) {
+  const lines = body.split('\n').filter(l => l.trim());
+  if (!lines.length) return <DefaultBlock body={body} />;
+  return (
+    <div>
+      <p className="text-sm text-[#7a95aa] font-serif mb-3 italic">
+        {onToggleSelect ? 'Marca los estudios que quieres solicitar — el resto no se incluirá.' : 'Estudios sugeridos:'}
+      </p>
+      <div className="flex flex-col gap-2">
+        {lines.map((raw, i) => {
+          const t = raw.trim();
+          const bulletMatch = t.match(/^([•\-\*]\s*)(.+)$/);
+          const numMatch = t.match(/^(\d+\.\s*)(.+)$/);
+          const rest = bulletMatch ? bulletMatch[2] : numMatch ? numMatch[2] : t;
+          const selected = rest.trim().startsWith(DX_MARK);
+          const clean = selected ? rest.trim().slice(DX_MARK.length) : rest.trim();
+          return (
+            <label key={i} className={`flex items-start gap-3 bg-[#070a0e] border rounded-lg px-3 py-2.5 ${onToggleSelect ? 'cursor-pointer' : ''}`}
+              style={{ borderColor: selected ? `${color}60` : '#1e2d3d', background: selected ? `${color}10` : '#070a0e' }}>
+              {onToggleSelect && (
+                <input type="checkbox" checked={selected} onChange={() => onToggleSelect(t)}
+                  className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ accentColor: color }} />
+              )}
+              <p className="text-base text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -894,6 +1010,9 @@ function SectionContent({ title, body, color, onToggleSelect }: {
   const t = title.toUpperCase();
   if (t.includes('DIAGNÓSTICOS POSIBLES')) {
     return <RankedDiagnosesBlock body={body} color={color} onToggleSelect={onToggleSelect} />;
+  }
+  if (t.includes('ESTUDIO')) {
+    return <StudiesBlock body={body} color={color} onToggleSelect={onToggleSelect} />;
   }
   if (t.includes('DIAGNÓSTICO PRINCIPAL') || t.includes('RAÍZ DEL PROBLEMA') || t.includes('EDAD BIOLÓGICA')) {
     return <MainDxBlock body={body} color={color} />;
@@ -947,14 +1066,40 @@ function DiagnosisCard({
   const protocolData = parseProtocolJson(state.doctor_text);
   const sections = parseSections(state.doctor_text);
   const hasStructure = Object.keys(sections).length > 0;
-  const SKIP_SECTIONS = ['ESTUDIOS SUGERIDOS', 'ESTUDIOS'];
+  const SKIP_SECTIONS: string[] = [];
+
+  const approved = protocolData
+    ? (state.approved && state.approved.length === protocolData.items.length ? state.approved : protocolData.items.map(() => true))
+    : undefined;
+
+  const handleToggleApproved = (i: number) => {
+    setState(prev => {
+      const pd = parseProtocolJson(prev.doctor_text);
+      if (!pd) return prev;
+      const base = prev.approved && prev.approved.length === pd.items.length ? prev.approved : pd.items.map(() => true);
+      const next = base.map((v, j) => j === i ? !v : v);
+      return { ...prev, approved: next };
+    });
+  };
+
+  const handleAddProtocolItem = (item: ProtocolItem) => {
+    setState(prev => {
+      const pd = parseProtocolJson(prev.doctor_text);
+      if (!pd) return prev;
+      const newData: ProtocolData = { items: [...pd.items, item], monitoreo_general: pd.monitoreo_general };
+      const base = prev.approved && prev.approved.length === pd.items.length ? prev.approved : pd.items.map(() => true);
+      return { ...prev, doctor_text: JSON.stringify(newData), approved: [...base, true] };
+    });
+  };
 
   const handleToggleSelect = (rawLine: string) => {
     setState(prev => {
       const lines = prev.doctor_text.split('\n');
       const idx = lines.findIndex(l => l.trim() === rawLine);
       if (idx === -1) return prev;
-      const head = lines[idx].match(/^(\s*\d+\.\s*)(.+)$/);
+      const numHead = lines[idx].match(/^(\s*\d+\.\s*)(.+)$/);
+      const bulletHead = lines[idx].match(/^(\s*[•\-\*]\s*)(.+)$/);
+      const head = numHead || bulletHead;
       if (!head) return prev;
       const [, prefix, rest] = head;
       const newRest = rest.trim().startsWith(DX_MARK) ? rest.trim().slice(DX_MARK.length) : DX_MARK + rest.trim();
@@ -1037,7 +1182,8 @@ function DiagnosisCard({
 
       {/* Protocolo estructurado (JSON) — prioridad sobre cualquier otro render */}
       {protocolData ? (
-        <ProtocolStructuredView data={protocolData} color={color} />
+        <ProtocolStructuredView data={protocolData} color={color}
+          approved={approved} onToggle={handleToggleApproved} onAddItem={handleAddProtocolItem} />
       ) : hasStructure ? (
         /* Structured sections (diagnósticos, formato de secciones ═══) */
         <div className="space-y-4">
@@ -1063,6 +1209,18 @@ function DiagnosisCard({
           <DefaultBlock body={state.doctor_text} />
         </div>
       )}
+
+      {/* Notas propias del doctor — siempre disponibles al final del paso */}
+      <div className="mt-5 bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-4">
+        <p className="text-xs font-mono text-[#3d5870] mb-2 tracking-widest">TUS CONSIDERACIONES (opcional)</p>
+        <textarea
+          value={state.doctor_notes || ''}
+          onChange={e => setState(prev => ({ ...prev, doctor_notes: e.target.value }))}
+          placeholder="Agrega cualquier consideración propia para este paso…"
+          rows={3}
+          className="w-full bg-[#070a0e] border border-[#1e2d3d] rounded-lg px-3 py-2 text-base text-[#dde6ef] outline-none focus:border-[#3d5870] resize-none placeholder-[#3d5870] transition"
+        />
+      </div>
     </div>
   );
 }
@@ -1151,7 +1309,7 @@ function ClarifyStep({
                   style={{ background: 'rgba(167,139,250,.12)', color: '#a78bfa', border: '1px solid rgba(167,139,250,.25)' }}>
                   P{i + 1}
                 </span>
-                <p className="text-sm text-[#dde6ef] leading-relaxed font-serif">{q}</p>
+                <p className="text-lg text-[#dde6ef] leading-relaxed font-serif">{q}</p>
               </div>
               <textarea
                 value={answers[i] || ''}
@@ -1162,7 +1320,7 @@ function ClarifyStep({
                 }}
                 placeholder="Respuesta (opcional)…"
                 rows={2}
-                className="w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#a78bfa] resize-none placeholder-[#3d5870] transition"
+                className="w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#a78bfa] resize-none placeholder-[#3d5870] transition"
               />
             </div>
           ))}
@@ -1322,7 +1480,7 @@ function FloatingChat({
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
               placeholder="Pregunta o nueva información..."
               rows={1}
-              className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0] resize-none min-h-[36px] max-h-[80px] placeholder-[#3d5870] transition"
+              className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#00e5a0] resize-none min-h-[36px] max-h-[80px] placeholder-[#3d5870] transition"
             />
             <button onClick={onSend} disabled={loading || !input.trim()}
               className="px-3 py-2 bg-[#00e5a0] text-black text-sm font-bold rounded-lg hover:bg-[#00ffb0] disabled:opacity-40 transition flex-shrink-0">→</button>
@@ -1729,8 +1887,26 @@ export default function AnalysisPage() {
     return map[step] || { state: traditional, setState: setTraditional };
   };
 
+  const closeVisit = async () => {
+    try {
+      await fetch(`${apiBase}/analyze/${visit_id}/close`, {
+        method: 'POST', headers: authH(),
+        body: JSON.stringify({
+          doctor_traditional: traditional.doctor_text,
+          doctor_functional: functional.doctor_text,
+          doctor_longevity: longevity.doctor_text,
+          protocol_traditional: protTrad.doctor_text,
+          protocol_functional: protFunc.doctor_text,
+          protocol_longevity: protLong.doctor_text,
+        }),
+      });
+    } catch (e) {
+      console.error('Error cerrando visita:', e);
+    }
+  };
+
   const advanceTo = (next: Step) => {
-    if (next === 'documents') { setStep('documents'); setCompletedStepIdx(stepOrder.length - 1); return; }
+    if (next === 'documents') { setStep('documents'); setCompletedStepIdx(stepOrder.length - 1); closeVisit(); return; }
     let m = next.match(/^review_protocol_(traditional|functional|longevity)$/);
     if (m) return startProtocol(m[1] as AnalysisType);
     m = next.match(/^review_(traditional|functional|longevity)$/);
@@ -1744,7 +1920,20 @@ export default function AnalysisPage() {
 
   const handleContinue = () => {
     const { setState } = getCurrentSetters();
-    setState(prev => ({ ...prev, confirmed: true }));
+    setState(prev => {
+      let finalText = prev.doctor_text;
+      const pd = parseProtocolJson(finalText);
+      const notes = (prev.doctor_notes || '').trim();
+      if (pd) {
+        const appr = prev.approved && prev.approved.length === pd.items.length ? prev.approved : pd.items.map(() => true);
+        const kept = pd.items.filter((_, i) => appr[i] !== false);
+        const mg = notes ? { ...pd.monitoreo_general, nota_doctor: notes } : pd.monitoreo_general;
+        finalText = JSON.stringify({ items: kept, monitoreo_general: mg });
+      } else if (notes) {
+        finalText = `${finalText}\n\n--- NOTAS DEL DOCTOR ---\n${notes}`;
+      }
+      return { ...prev, doctor_text: finalText, confirmed: true };
+    });
     const idx = stepOrder.indexOf(step);
     const next = stepOrder[idx + 1];
     if (next) advanceTo(next);

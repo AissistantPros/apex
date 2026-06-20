@@ -33,6 +33,7 @@ export default function PatientPage() {
   const dangerRevealRef  = useRevealScroll<HTMLDivElement>(showDanger);
   const confirmRevealRef = useRevealScroll<HTMLDivElement>(confirmDelete);
   const [patientNotes,    setPatientNotes]    = useState<Note[]>([]);
+  const [visitsError,     setVisitsError]     = useState<string | null>(null);
   const [expandedVisit,   setExpandedVisit]   = useState<string | null>(null);
   const [uploadingPhoto,  setUploadingPhoto]  = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +84,13 @@ export default function PatientPage() {
       const pData    = await pRes.json();
       const vData    = await vRes.json();
       setPatient(pData);
-      setVisits(vData.visits || []);
+      if (vRes.ok) {
+        setVisits(vData.visits || []);
+        setVisitsError(null);
+      } else {
+        setVisits([]);
+        setVisitsError(vData.detail || 'Error al cargar las visitas del paciente');
+      }
 
       try {
         const nRes  = await fetch(`${BACKEND()}/patients/${patientId}/notes`, { headers });
@@ -517,7 +524,16 @@ export default function PatientPage() {
         ════════════════════════════════ */}
         {tab === 'visitas' && (
           <div className="space-y-4">
-            {visits.length === 0 ? (
+            {visitsError && (
+              <div className="text-center py-6 bg-[rgba(244,63,94,.08)] border border-[#f43f5e]/40 rounded-2xl">
+                <p className="text-[#f43f5e] font-medium">⚠ No se pudieron cargar las visitas: {visitsError}</p>
+                <button onClick={() => loadData()}
+                  className="mt-3 px-4 py-2 border border-[#f43f5e]/40 text-[#f43f5e] text-sm rounded-lg hover:bg-[#f43f5e]/10 transition">
+                  Reintentar
+                </button>
+              </div>
+            )}
+            {visits.length === 0 && !visitsError ? (
               <div className="text-center py-16 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl">
                 <p className="text-4xl mb-3">🗓</p>
                 <p className="text-[#7a95aa] text-lg font-medium">No hay visitas registradas</p>

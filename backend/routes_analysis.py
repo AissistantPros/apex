@@ -17,6 +17,7 @@ from services.system_prompt import (
     get_functional_medicine_prompt,
     get_longevity_diagnosis_prompt,
     get_protocol_prompt,
+    get_protocol_validation_prompt,
     get_secondary_validation_prompt,
     get_functional_clarifying_questions_prompt,
 )
@@ -58,6 +59,15 @@ class ProtocolRequest(BaseModel):
     ai_traditional_original: str = ""
     ai_functional_original: str = ""
     ai_longevity_original: str = ""
+
+
+class CloseRequest(BaseModel):
+    doctor_traditional: str = ""
+    doctor_functional: str = ""
+    doctor_longevity: str = ""
+    protocol_traditional: str = ""
+    protocol_functional: str = ""
+    protocol_longevity: str = ""
 
 
 class ChatRequest(BaseModel):
@@ -125,6 +135,18 @@ def _strip_json_fences(text: str) -> str:
         return m.group(1).strip()
     m = re.match(r'^```(?:json)?\s*([\s\S]*)$', t)
     return m.group(1).strip() if m else t
+
+
+def parse_protocol_json_safe(text: str) -> dict | None:
+    """Confirma que el texto es un JSON de protocolo válido con al menos un item.
+    Usado para descartar una validación secundaria que haya devuelto algo no usable."""
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict) and isinstance(parsed.get("items"), list) and len(parsed["items"]) > 0:
+            return parsed
+    except Exception:
+        pass
+    return None
 
 
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000) -> str:
@@ -363,6 +385,12 @@ async def run_traditional(
         val_prompt = get_secondary_validation_prompt(diagnosis)
         validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
 
+        update_analysis(visit_id, {
+            "diagnosis_traditional": diagnosis,
+            "validation_traditional": validation,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+
         return {
             "visit_id": visit_id,
             "step": "traditional",
@@ -465,6 +493,12 @@ async def run_functional(
         val_prompt = get_secondary_validation_prompt(diagnosis)
         validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
 
+        update_analysis(visit_id, {
+            "diagnosis_functional": diagnosis,
+            "validation_functional": validation,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+
         return {
             "visit_id": visit_id,
             "step": "functional",
@@ -537,6 +571,12 @@ async def run_longevity(
         val_prompt = get_secondary_validation_prompt(diagnosis)
         validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
 
+        update_analysis(visit_id, {
+            "diagnosis_longevity": diagnosis,
+            "validation_longevity": validation,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+
         return {
             "visit_id": visit_id,
             "step": "longevity",
@@ -585,9 +625,30 @@ async def run_protocol(
         if confirmed_lines:
             full_diagnosis += "\n\nDIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:\n" + "\n".join(confirmed_lines)
 
-        prompt = get_protocol_prompt(patient_data, full_diagnosis, body.protocol_type, visit_data=visit_record)
+        previous_protocols = {
+            "traditional": analysis.get("protocol_traditional") or "",
+            "functional":  analysis.get("protocol_functional") or "",
+            "longevity":   analysis.get("protocol_longevity") or "",
+        }
+        previous_protocols.pop(body.protocol_type, None)
+
+        prompt = get_protocol_prompt(
+            patient_data, full_diagnosis, body.protocol_type,
+            visit_data=visit_record, previous_protocols=previous_protocols,
+        )
         protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000)
         protocol = _strip_json_fences(protocol)
+
+        val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
+        validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000)
+        validated = _strip_json_fences(validated)
+        if parse_protocol_json_safe(validated) is not None:
+            protocol = validated
+
+        update_analysis(visit_id, {
+            f"protocol_{body.protocol_type}": protocol,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
 
         return {
             "visit_id": visit_id,
@@ -681,14 +742,29 @@ REGLAS:
 @router.post("/{visit_id}/close")
 async def close_visit(
     visit_id: str,
+    body: CloseRequest,
     doctor_id: str = Depends(get_doctor_id),
 ):
-    """Cierra la visita."""
+    """Cierra la visita y guarda la versión final confirmada por el médico de cada sección."""
     try:
-        update_analysis(visit_id, {
+        update_data = {
             "status": "closed",
-            "updated_at": datetime.utcnow().isoformat()
-        })
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        if body.doctor_traditional and body.doctor_traditional.strip():
+            update_data["doctor_traditional"] = body.doctor_traditional
+        if body.doctor_functional and body.doctor_functional.strip():
+            update_data["doctor_functional"] = body.doctor_functional
+        if body.doctor_longevity and body.doctor_longevity.strip():
+            update_data["doctor_longevity"] = body.doctor_longevity
+        if body.protocol_traditional and body.protocol_traditional.strip():
+            update_data["protocol_traditional"] = body.protocol_traditional
+        if body.protocol_functional and body.protocol_functional.strip():
+            update_data["protocol_functional"] = body.protocol_functional
+        if body.protocol_longevity and body.protocol_longevity.strip():
+            update_data["protocol_longevity"] = body.protocol_longevity
+
+        update_analysis(visit_id, update_data)
         return {
             "visit_id": visit_id,
             "status": "closed",

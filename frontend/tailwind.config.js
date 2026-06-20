@@ -6,6 +6,21 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        serif: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        mono: ['"SF Mono"', 'ui-monospace', 'Menlo', 'Consolas', 'monospace'],
+      },
+      fontSize: {
+        xs:   ['16px', { lineHeight: '1.5' }],
+        sm:   ['16px', { lineHeight: '1.5' }],
+        base: ['16px', { lineHeight: '1.6' }],
+        lg:   ['18px', { lineHeight: '1.6' }],
+        xl:   ['20px', { lineHeight: '1.5' }],
+        '2xl':  ['24px', { lineHeight: '1.4' }],
+        '3xl':  ['30px', { lineHeight: '1.3' }],
+        '4xl':  ['36px', { lineHeight: '1.2' }],
+      },
       colors: {
         bg: '#070a0e',
         'bg-2': '#0c1118',

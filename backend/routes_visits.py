@@ -63,11 +63,6 @@ def clean_visit_data(data: dict) -> dict:
     return cleaned
 
 
-async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
-    """Extrae doctor_id del JWT de Supabase."""
-    return get_doctor_id_from_token(authorization)
-
-
 @router.post("/")
 async def create_visit_root(
     visit_data: dict,
@@ -131,13 +126,9 @@ async def create_visit(
 @router.get("/{patient_id}")
 async def list_patient_visits(
     patient_id: str,
-    doctor_id: str = None,
 ):
     """Listar visitas de un paciente"""
     try:
-        if not doctor_id:
-            doctor_id = await get_doctor_id()
-
         visits = db_list_patient_visits(patient_id)
 
         return {
@@ -172,13 +163,9 @@ async def update_visit_data(
 @router.get("/{visit_id}/detail")
 async def get_visit_detail(
     visit_id: str,
-    doctor_id: str = None,
 ):
     """Obtener detalles de una visita"""
     try:
-        if not doctor_id:
-            doctor_id = await get_doctor_id()
-
         visit = get_visit(visit_id)
 
         if not visit:
