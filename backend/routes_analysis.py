@@ -771,3 +771,15 @@ async def close_visit(
         }
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+@router.get("/{visit_id}")
+async def get_visit_analysis(visit_id: str):
+    """Obtiene el diagnóstico y protocolo confirmados por el médico para una visita."""
+    try:
+        analysis = get_analysis(visit_id)
+        if not analysis:
+            return {"visit_id": visit_id, "status": None}
+        return analysis
+    except Exception as e:
+        raise HTTPException(500, str(e))

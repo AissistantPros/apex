@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useRevealScroll } from '@/app/lib/useRevealScroll';
+import PhotoCropModal from '@/app/components/PhotoCropModal';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -36,31 +37,33 @@ export default function PatientPage() {
   const [visitsError,     setVisitsError]     = useState<string | null>(null);
   const [expandedVisit,   setExpandedVisit]   = useState<string | null>(null);
   const [uploadingPhoto,  setUploadingPhoto]  = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoUpload = async (file: File) => {
-    if (file.size > 8 * 1024 * 1024) { alert('La imagen no debe superar 8 MB'); return; }
+  const handlePhotoSelected = (file: File) => {
+    if (!file.type.startsWith('image/')) { alert('Selecciona un archivo de imagen'); return; }
+    if (file.size > 25 * 1024 * 1024) { alert('La imagen no debe superar 25 MB'); return; }
+    setCropFile(file);
+  };
+
+  const handleCroppedUpload = async (base64: string) => {
+    setCropFile(null);
     setUploadingPhoto(true);
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const base64 = ev.target?.result as string;
-      try {
-        const session = await getSession();
-        const token   = session?.access_token;
-        const headers: Record<string,string> = {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        };
-        const res = await fetch(`${BACKEND()}/patients/${patientId}`, {
-          method: 'PUT', headers,
-          body: JSON.stringify({ photo_url: base64 }),
-        });
-        if (res.ok) setPatient((prev: any) => ({ ...prev, photo_url: base64 }));
-        else alert('Error al guardar la foto');
-      } catch { alert('Error de conexión'); }
-      setUploadingPhoto(false);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const session = await getSession();
+      const token   = session?.access_token;
+      const headers: Record<string,string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+      const res = await fetch(`${BACKEND()}/patients/${patientId}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ photo_url: base64 }),
+      });
+      if (res.ok) setPatient((prev: any) => ({ ...prev, photo_url: base64 }));
+      else alert('Error al guardar la foto');
+    } catch { alert('Error de conexión'); }
+    setUploadingPhoto(false);
   };
 
   useEffect(() => {
@@ -137,55 +140,58 @@ export default function PatientPage() {
       <main className="pt-16 max-w-4xl mx-auto px-6 py-8">
 
         {/* ── Header del paciente ── */}
-        <div className="flex items-start gap-5 mb-6 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6">
-          {/* Avatar clicable — cambia foto */}
-          <div className="relative flex-shrink-0 group cursor-pointer"
-            onClick={() => photoInputRef.current?.click()}
-            title="Cambiar foto del paciente">
-            <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f); e.target.value = ''; }} />
-            {patient.photo_url ? (
-              <img src={patient.photo_url} alt="foto"
-                className="w-20 h-20 rounded-2xl object-cover border-2 border-[#1e2d3d] group-hover:border-[#00e5a0] transition" />
-            ) : (
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-2xl font-black text-white group-hover:opacity-80 transition">
-                {uploadingPhoto ? '⏳' : (initials || '?')}
+        <div className="mb-6 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6">
+          <div className="flex items-start gap-5">
+            {/* Avatar clicable — cambia foto */}
+            <div className="relative flex-shrink-0 group cursor-pointer"
+              onClick={() => photoInputRef.current?.click()}
+              title="Cambiar foto del paciente">
+              <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelected(f); e.target.value = ''; }} />
+              {patient.photo_url ? (
+                <img src={patient.photo_url} alt="foto"
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-[#1e2d3d] group-hover:border-[#00e5a0] transition" />
+              ) : (
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-2xl font-black text-white group-hover:opacity-80 transition">
+                  {uploadingPhoto ? '⏳' : (initials || '?')}
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                <span className="text-white text-xs font-bold text-center leading-tight px-1">
+                  {uploadingPhoto ? 'Subiendo...' : '📷 Cambiar'}
+                </span>
               </div>
-            )}
-            <div className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-              <span className="text-white text-xs font-bold text-center leading-tight px-1">
-                {uploadingPhoto ? 'Subiendo...' : '📷 Cambiar'}
-              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl font-serif font-bold text-[#dde6ef] mb-0.5">{patient.full_name}</h1>
+              <p className="font-mono text-xs text-[#3d5870]">{patient.id}</p>
+            </div>
+            {/* Botones acción */}
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => router.push(`/dashboard/patient/${patientId}/new-visit`)}
+                className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
+              >
+                + Nueva Visita
+              </button>
+              <button
+                onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=1`)}
+                className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition"
+              >
+                ✏️ Editar
+              </button>
             </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-serif font-bold text-[#dde6ef] mb-0.5">{patient.full_name}</h1>
-            <p className="font-mono text-xs text-[#3d5870] mb-3">{patient.id}</p>
-            <div className="flex flex-wrap gap-2">
-              {age !== null && <Chip icon="🎂" text={`${age} años`} />}
-              {dob        && <Chip icon="📅" text={new Date(dob+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'})} />}
-              {patient.sexo_biologico && <Chip icon="🧬" text={patient.sexo_biologico} color={patient.sexo_biologico==='Masculino'?'#0ea5e9':'#ec4899'} />}
-              {patient.occupation    && <Chip icon="💼" text={patient.occupation} />}
-              {patient.city          && <Chip icon="📍" text={patient.city} />}
-              {patient.registration_phase === 'complete'
-                ? <Chip icon="✅" text="Registro completo" color="#00e5a0" />
-                : <Chip icon="⏳" text="Registro incompleto" color="#f59e0b" />}
-            </div>
-          </div>
-          {/* Botones acción */}
-          <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={() => router.push(`/dashboard/patient/${patientId}/new-visit`)}
-              className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
-            >
-              + Nueva Visita
-            </button>
-            <button
-              onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=1`)}
-              className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition"
-            >
-              ✏️ Editar
-            </button>
+          {/* Datos rápidos — fila completa, repartida con etiquetas */}
+          <div className="flex flex-wrap gap-2.5 mt-5 pt-5 border-t border-[#1e2d3d]">
+            {age !== null && <Chip icon="🎂" label="Edad" text={`${age} años`} />}
+            {dob        && <Chip icon="📅" label="Nacimiento" text={new Date(dob+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'})} />}
+            {patient.sexo_biologico && <Chip icon="🧬" label="Sexo" text={patient.sexo_biologico} color={patient.sexo_biologico==='Masculino'?'#0ea5e9':'#ec4899'} />}
+            {patient.occupation    && <Chip icon="💼" label="Ocupación" text={patient.occupation} />}
+            {patient.city          && <Chip icon="📍" label="Ciudad" text={patient.city} />}
+            {patient.registration_phase === 'complete'
+              ? <Chip icon="✅" label="Estado" text="Registro completo" color="#00e5a0" />
+              : <Chip icon="⏳" label="Estado" text="Registro incompleto" color="#f59e0b" />}
           </div>
         </div>
 
@@ -557,16 +563,24 @@ export default function PatientPage() {
         )}
 
       </main>
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onSave={handleCroppedUpload}
+        />
+      )}
     </div>
   );
 }
 
 // ─── Sub-componentes ───────────────────────────────────────────────────────
 
-const Chip = ({ icon, text, color }: { icon: string; text: string; color?: string }) => (
-  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#111820] border border-[#1e2d3d] rounded-full text-xs"
-    style={{ color: color || '#7a95aa' }}>
-    {icon} {text}
+const Chip = ({ icon, label, text, color }: { icon: string; label: string; text: string; color?: string }) => (
+  <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#111820] border border-[#1e2d3d] rounded-full text-sm">
+    <span>{icon}</span>
+    <span className="text-[#3d5870] text-xs uppercase tracking-wide">{label}</span>
+    <span style={{ color: color || '#dde6ef' }}>{text}</span>
   </span>
 );
 
@@ -608,6 +622,27 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
   const date = new Date(v.created_at).toLocaleDateString('es-MX', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
+
+  const [analysis, setAnalysis] = useState<any>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisFetched, setAnalysisFetched] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || analysisFetched) return;
+    setAnalysisLoading(true);
+    (async () => {
+      try {
+        const session = await getSession();
+        const token   = session?.access_token;
+        const res = await fetch(`${BACKEND()}/analyze/${v.id}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) setAnalysis(await res.json());
+      } catch { /* sin diagnóstico disponible */ }
+      setAnalysisFetched(true);
+      setAnalysisLoading(false);
+    })();
+  }, [expanded, analysisFetched, v.id]);
 
   // Resolución de campos (español y inglés para compatibilidad)
   const peso    = v.peso    || v.weight;
@@ -797,6 +832,34 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
             </VisitSection>
           )}
 
+          {/* Diagnóstico y protocolo autorizados por el doctor */}
+          {analysisLoading && (
+            <VisitSection title="Diagnóstico y protocolo" icon="🩺">
+              <p className="text-sm text-[#3d5870]">Cargando…</p>
+            </VisitSection>
+          )}
+          {!analysisLoading && analysis?.status === 'closed' && (
+            <VisitSection title="Diagnóstico y protocolo (autorizado por el doctor)" icon="🩺">
+              <div className="space-y-4">
+                {[
+                  { label: 'Diagnóstico convencional', dx: analysis.doctor_traditional, proto: analysis.protocol_traditional, color: '#0ea5e9' },
+                  { label: 'Diagnóstico funcional',     dx: analysis.doctor_functional,  proto: analysis.protocol_functional,  color: '#00e5a0' },
+                  { label: 'Diagnóstico de longevidad',  dx: analysis.doctor_longevity,   proto: analysis.protocol_longevity,   color: '#a78bfa' },
+                ].filter(s => (s.dx && s.dx.trim()) || (s.proto && s.proto.trim())).map(s => (
+                  <div key={s.label} className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-4">
+                    <p className="text-xs font-mono uppercase tracking-wider mb-2" style={{ color: s.color }}>{s.label}</p>
+                    {s.dx && s.dx.trim() && (
+                      <p className="text-sm text-[#dde6ef] whitespace-pre-wrap mb-3">{s.dx}</p>
+                    )}
+                    {s.proto && s.proto.trim() && (
+                      <ProtocolMiniList rawText={s.proto} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </VisitSection>
+          )}
+
           {/* Laboratorios */}
           {(v.labs_notas || v.dx_presuntivo || (Array.isArray(v.labs_files) && v.labs_files.length > 0)) && (
             <VisitSection title="Laboratorios y diagnóstico" icon="🧪">
@@ -829,6 +892,45 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
     </div>
   );
 }
+
+function parseProtocolItemsSafe(text: string): any[] {
+  if (!text) return [];
+  let raw = text.trim();
+  const fence = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fence) raw = fence[1].trim();
+  const start = raw.indexOf('{');
+  if (start === -1) return [];
+  raw = raw.slice(start);
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.items) ? parsed.items : [];
+  } catch {
+    return [];
+  }
+}
+
+const ProtocolMiniList = ({ rawText }: { rawText: string }) => {
+  const items = parseProtocolItemsSafe(rawText);
+  if (items.length === 0) {
+    return <p className="text-sm text-[#dde6ef] whitespace-pre-wrap">{rawText}</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {items.map((it: any, i: number) => (
+        <div key={i} className="flex items-start gap-2 bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2">
+          <span className="text-xs font-mono text-[#3d5870] mt-0.5">{it.tipo || 'Item'}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-[#dde6ef] font-medium">{it.nombre_generico}{it.nombre_comercial ? ` (${it.nombre_comercial})` : ''}</p>
+            {(it.dosis || it.frecuencia || it.via) && (
+              <p className="text-xs text-[#7a95aa] mt-0.5">{[it.dosis, it.via, it.frecuencia].filter(Boolean).join(' · ')}</p>
+            )}
+            {it.indicacion && <p className="text-xs text-[#3d5870] mt-0.5">{it.indicacion}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const VisitSection = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
   <div>

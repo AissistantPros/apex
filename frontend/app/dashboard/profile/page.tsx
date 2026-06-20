@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import { getRole, setRole, UserRole, ROLE_LABELS } from '@/app/lib/role';
 import { notifyDoctorProfileUpdated } from '@/app/lib/useDoctorProfile';
+import PhotoCropModal from '@/app/components/PhotoCropModal';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -17,17 +18,15 @@ export default function ProfilePage() {
   const [activeRole, setActiveRole] = useState<UserRole>('doctor');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
   const handlePhotoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) { alert('La imagen no debe superar 8 MB'); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const base64 = ev.target?.result as string;
-      setForm(prev => ({ ...prev, photo_url: base64 }));
-    };
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith('image/')) { alert('Selecciona un archivo de imagen'); return; }
+    if (file.size > 25 * 1024 * 1024) { alert('La imagen no debe superar 25 MB'); return; }
+    setCropFile(file);
   };
 
   const [form, setForm] = useState({
@@ -179,7 +178,7 @@ export default function ProfilePage() {
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full py-2 px-4 rounded-lg text-sm font-semibold border border-[#1e2d3d] text-[#0ea5e9] hover:border-[#0ea5e9] hover:bg-[rgba(14,165,233,.08)] transition"
                   >
-                    📷 Subir imagen (máx. 2 MB)
+                    📷 Subir y recortar imagen
                   </button>
                   <input
                     value={form.photo_url.startsWith('data:') ? '' : form.photo_url}
@@ -249,6 +248,13 @@ export default function ProfilePage() {
 
         </div>
       </main>
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onSave={(base64) => { setForm(prev => ({ ...prev, photo_url: base64 })); setCropFile(null); }}
+        />
+      )}
     </div>
   );
 }
