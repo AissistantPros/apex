@@ -262,8 +262,8 @@ function RankedDiagnosesBlock({ body, color, onToggleSelect }: {
   );
 }
 
-function AddDiagnosisForm({ onAdd, color }: {
-  onAdd: (input: { nombre: string; pct: string; detalle: string; estudio: string }) => void; color: string;
+function AddDiagnosisForm({ onAdd, color, big }: {
+  onAdd: (input: { nombre: string; pct: string; detalle: string; estudio: string }) => void; color: string; big?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [nombre, setNombre] = useState('');
@@ -279,7 +279,13 @@ function AddDiagnosisForm({ onAdd, color }: {
   };
 
   if (!open) {
-    return (
+    return big ? (
+      <button type="button" onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-2 text-sm font-bold px-4 py-3.5 rounded-xl border-2 border-dashed transition mt-2"
+        style={{ color, borderColor: `${color}55`, background: `${color}0d` }}>
+        + Agregar diagnóstico adicional propio
+      </button>
+    ) : (
       <button type="button" onClick={() => setOpen(true)}
         className="text-xs font-mono px-3 py-2 rounded-lg border transition mt-1"
         style={{ color, borderColor: `${color}40`, background: `${color}08` }}>
@@ -942,6 +948,318 @@ function ProtocolEditMode({ data, onSave, onCancel }: {
   );
 }
 
+// ─── Diagnosis Candidates — JSON estructurado (medicina convencional) ──────────
+
+interface DiagnosisCandidate {
+  nombre: string;
+  cie10?: string;
+  confianza?: number;
+  resumen_breve?: string;
+  explicacion_completa?: string;
+  fuentes?: string[];
+  estudios_sugeridos?: string[];
+  // Estado del doctor — no viene de la IA, se inyecta al normalizar la respuesta
+  aceptado?: boolean;
+  origen?: 'ia' | 'doctor';
+  estudios_aceptados?: boolean;
+  estudios_doctor?: string[];
+}
+
+interface DiagnosisListData {
+  diagnosticos: DiagnosisCandidate[];
+  alertas_clinicas?: string[];
+}
+
+function parseDiagnosisJson(text: string): DiagnosisListData | null {
+  if (!text) return null;
+  let raw = text.trim();
+  const fence = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fence) {
+    raw = fence[1].trim();
+  } else {
+    const openFence = raw.match(/^```(?:json)?\s*([\s\S]*)$/);
+    if (openFence) raw = openFence[1].trim();
+  }
+  const start = raw.indexOf('{');
+  if (start === -1) return null;
+  raw = raw.slice(start);
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.diagnosticos) && parsed.diagnosticos.length > 0)
+      return parsed as DiagnosisListData;
+    return null;
+  } catch {
+    // JSON truncado — recupera los candidatos que sí cerraron completos
+    const arrMatch = raw.match(/"diagnosticos"\s*:\s*\[/);
+    if (!arrMatch) return null;
+    const arrStart = arrMatch.index! + arrMatch[0].length;
+    const diagnosticos: DiagnosisCandidate[] = [];
+    let depth = 0, objStart = -1;
+    for (let i = arrStart; i < raw.length; i++) {
+      const ch = raw[i];
+      if (ch === '{') { if (depth === 0) objStart = i; depth++; }
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0 && objStart !== -1) {
+          try { diagnosticos.push(JSON.parse(raw.slice(objStart, i + 1))); } catch { /* incompleto */ }
+          objStart = -1;
+        }
+      }
+    }
+    return diagnosticos.length > 0 ? { diagnosticos } : null;
+  }
+}
+
+/** Inyecta valores por defecto de estado del doctor sin pisar los que ya existan.
+ *  El primer candidato empieza aceptado; el resto pendiente. */
+function withDxDefaults(data: DiagnosisListData): DiagnosisListData {
+  return {
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, i) => ({
+      ...d,
+      aceptado: d.aceptado ?? (i === 0),
+      origen: d.origen ?? 'ia',
+      estudios_aceptados: d.estudios_aceptados ?? false,
+      estudios_doctor: d.estudios_doctor ?? [],
+    })),
+  };
+}
+
+function DiagnosisCandidateCard({ item, color, onAccept, onSaveEdit, onRestore, onToggleStudies, onAddStudy }: {
+  item: DiagnosisCandidate; color: string;
+  onAccept: () => void;
+  onSaveEdit: (fields: Partial<DiagnosisCandidate>) => void;
+  onRestore: () => void;
+  onToggleStudies: () => void;
+  onAddStudy: (study: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<DiagnosisCandidate>(item);
+  const [newStudy, setNewStudy] = useState('');
+
+  const isDoctor = item.origen === 'doctor';
+  const accepted = !!item.aceptado;
+  const pctColor = item.confianza == null ? '#7a95aa'
+    : item.confianza >= 75 ? color
+    : item.confianza >= 50 ? '#f59e0b'
+    : '#7a95aa';
+  const allStudies = [...(item.estudios_sugeridos || []), ...(item.estudios_doctor || [])];
+
+  const startEdit = () => { setDraft(item); setEditing(true); setExpanded(true); };
+  const saveEdit = () => {
+    if (!draft.nombre?.trim()) return;
+    onSaveEdit({ ...draft, origen: 'doctor' });
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${color}50`, background: '#070a0e' }}>
+        <p className="text-xs font-mono" style={{ color }}>EDITANDO ESTE DIAGNÓSTICO — al guardar queda marcado como tuyo</p>
+        <div>
+          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">NOMBRE DEL DIAGNÓSTICO</label>
+          <input value={draft.nombre || ''} onChange={e => setDraft(d => ({ ...d, nombre: e.target.value }))}
+            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">CIE-10 (opcional)</label>
+            <input value={draft.cie10 || ''} onChange={e => setDraft(d => ({ ...d, cie10: e.target.value }))}
+              className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">% DE CONFIANZA</label>
+            <input type="number" min={0} max={100}
+              value={draft.confianza ?? ''}
+              onChange={e => setDraft(d => ({ ...d, confianza: e.target.value ? parseInt(e.target.value, 10) : undefined }))}
+              className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">RESUMEN BREVE</label>
+          <textarea rows={2} value={draft.resumen_breve || ''} onChange={e => setDraft(d => ({ ...d, resumen_breve: e.target.value }))}
+            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa] resize-none" />
+        </div>
+        <div>
+          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">EXPLICACIÓN COMPLETA (opcional)</label>
+          <textarea rows={3} value={draft.explicacion_completa || ''} onChange={e => setDraft(d => ({ ...d, explicacion_completa: e.target.value }))}
+            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] text-sm outline-none focus:border-[#7a95aa] resize-none" />
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={saveEdit}
+            className="px-4 py-2 text-black text-xs font-bold rounded-lg transition" style={{ background: color }}>
+            ✓ Guardar diagnóstico
+          </button>
+          <button type="button" onClick={() => setEditing(false)}
+            className="px-4 py-2 border border-[#1e2d3d] text-[#7a95aa] text-xs rounded-lg hover:border-[#7a95aa] transition">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl p-4 transition"
+      style={accepted
+        ? { background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.4)' }
+        : { background: '#070a0e', border: '1px solid #1e2d3d' }}>
+
+      {/* Encabezado: nombre + CIE-10 + % */}
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <span className="font-bold text-base leading-snug" style={{ color: accepted ? '#f59e0b' : '#dde6ef' }}>
+          {accepted ? '⭐ ' : ''}<Md text={item.nombre} />
+          {item.cie10 && (
+            <span className="text-xs font-mono text-[#3d5870] font-normal ml-1.5">({item.cie10})</span>
+          )}
+        </span>
+        {item.confianza != null && (
+          <span className="text-xs font-mono font-bold px-2 py-1 rounded whitespace-nowrap flex-shrink-0"
+            style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
+            {item.confianza}%
+          </span>
+        )}
+      </div>
+
+      {/* Resumen breve — siempre visible */}
+      {item.resumen_breve && (
+        <p className="text-[15px] text-[#dde6ef] leading-relaxed font-serif mb-2.5">{item.resumen_breve}</p>
+      )}
+
+      {/* Acordeón: explicación completa + fuentes */}
+      {item.explicacion_completa && (
+        <div className="mb-3">
+          <button type="button" onClick={() => setExpanded(o => !o)}
+            className="text-xs font-mono text-[#7a95aa] hover:text-[#dde6ef] transition flex items-center gap-1.5">
+            <span>{expanded ? '▲' : '▼'}</span>
+            {expanded ? 'Ocultar explicación y fuentes' : 'Ver explicación completa y fuentes'}
+          </button>
+          {expanded && (
+            <div className="mt-2.5 space-y-2.5 pl-0.5">
+              <p className="text-sm text-[#7a95aa] font-serif leading-relaxed">{item.explicacion_completa}</p>
+              {item.fuentes && item.fuentes.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {item.fuentes.map((f, fi) => (
+                    <span key={fi} className="text-[10px] font-mono px-2 py-1 rounded-full"
+                      style={{ color, background: `${color}12`, border: `1px solid ${color}35` }}>
+                      📖 {f}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Estudios para confirmar */}
+      {allStudies.length > 0 && (
+        <div className="bg-[rgba(14,165,233,.07)] border border-[rgba(14,165,233,.2)] rounded-lg px-3 py-2.5 mb-3">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <span className="text-[#0ea5e9] text-xs font-bold flex items-center gap-1.5">🔬 Estudios para confirmar</span>
+            <button type="button" onClick={onToggleStudies}
+              className="text-xs font-mono px-2 py-0.5 rounded border transition flex-shrink-0"
+              style={item.estudios_aceptados
+                ? { color: '#00e5a0', borderColor: 'rgba(0,229,160,.4)', background: 'rgba(0,229,160,.1)' }
+                : { color: '#3d5870', borderColor: '#1e2d3d', background: 'transparent' }}>
+              {item.estudios_aceptados ? '✓ Aceptados' : 'Aceptar estos estudios'}
+            </button>
+          </div>
+          <ul className="space-y-1 mb-2">
+            {allStudies.map((s, si) => (
+              <li key={si} className="text-xs text-[#7a95aa] font-mono flex items-start gap-1.5">
+                <span className="text-[#3d5870] flex-shrink-0">•</span>{s}
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-1.5">
+            <input value={newStudy} onChange={e => setNewStudy(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && newStudy.trim()) { onAddStudy(newStudy.trim()); setNewStudy(''); } }}
+              placeholder="Sumar estudio adicional…"
+              className="flex-1 bg-[#0d1520] border border-[#1e2d3d] rounded-md px-2 py-1 text-xs text-[#dde6ef] outline-none focus:border-[#0ea5e9] placeholder-[#3d5870]" />
+            <button type="button"
+              onClick={() => { if (newStudy.trim()) { onAddStudy(newStudy.trim()); setNewStudy(''); } }}
+              className="text-xs font-mono px-2.5 py-1 rounded border border-[rgba(14,165,233,.4)] text-[#0ea5e9] hover:bg-[rgba(14,165,233,.1)] transition">
+              + Sumar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Controles por diagnóstico + badge de procedencia */}
+      <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#1e2d3d]">
+        <div className="flex gap-2 flex-wrap">
+          <button type="button" onClick={onAccept}
+            className="text-xs font-mono px-3 py-1.5 rounded-lg border transition"
+            style={accepted
+              ? { color: '#f59e0b', borderColor: 'rgba(245,158,11,.5)', background: 'rgba(245,158,11,.12)' }
+              : { color: '#7a95aa', borderColor: '#1e2d3d', background: 'transparent' }}>
+            {accepted ? '⭐ Aceptado' : '✓ Aceptar este diagnóstico'}
+          </button>
+          <button type="button" onClick={startEdit}
+            className="text-xs font-mono px-3 py-1.5 rounded-lg border border-[#1e2d3d] text-[#7a95aa] hover:border-[#f97316] hover:text-[#f97316] transition">
+            ✎ Crear mi propio diagnóstico
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {isDoctor ? (
+            <>
+              <span className="text-[10px] font-mono text-[#f97316]">👤 CREADO POR EL DOCTOR</span>
+              <button type="button" onClick={onRestore} title="Restaurar versión de la IA"
+                className="text-xs text-[#3d5870] hover:text-[#7a95aa] transition px-1">↺</button>
+            </>
+          ) : (
+            <span className="text-[10px] font-mono text-[#3d5870]">GENERADO POR IA</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiagnosisStructuredView({ data, color, onAccept, onSaveEdit, onRestore, onToggleStudies, onAddStudy, onAddNew }: {
+  data: DiagnosisListData; color: string;
+  onAccept: (i: number) => void;
+  onSaveEdit: (i: number, fields: Partial<DiagnosisCandidate>) => void;
+  onRestore: (i: number) => void;
+  onToggleStudies: (i: number) => void;
+  onAddStudy: (i: number, study: string) => void;
+  onAddNew: (input: { nombre: string; pct: string; detalle: string; estudio: string }) => void;
+}) {
+  const alertas = (data.alertas_clinicas || []).filter(a => a && a.trim());
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-[#7a95aa] font-serif italic">
+        Diagnósticos posibles, del más al menos probable según la IA. Pueden coexistir más de uno — acepta el o los que consideres correctos.
+      </p>
+
+      {alertas.length > 0 && (
+        <div className="rounded-xl p-3.5 space-y-1.5"
+          style={{ background: 'rgba(244,63,94,.08)', border: '1px solid rgba(244,63,94,.3)' }}>
+          <p className="text-xs font-mono font-bold mb-1" style={{ color: '#f43f5e' }}>⚠ ALERTAS CLÍNICAS</p>
+          {alertas.map((a, ai) => (
+            <p key={ai} className="text-sm text-[#dde6ef] font-serif leading-relaxed">• {a}</p>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {data.diagnosticos.map((item, i) => (
+          <DiagnosisCandidateCard key={i} item={item} color={color}
+            onAccept={() => onAccept(i)}
+            onSaveEdit={fields => onSaveEdit(i, fields)}
+            onRestore={() => onRestore(i)}
+            onToggleStudies={() => onToggleStudies(i)}
+            onAddStudy={study => onAddStudy(i, study)} />
+        ))}
+      </div>
+
+      <AddDiagnosisForm onAdd={onAddNew} color={color} big />
+    </div>
+  );
+}
+
 function DefaultBlock({ body }: { body: string }) {
   const lines = body.split('\n');
   return (
@@ -1064,6 +1382,8 @@ function DiagnosisCard({
   setState: (fn: (prev: DiagnosisState) => DiagnosisState) => void;
 }) {
   const protocolData = parseProtocolJson(state.doctor_text);
+  const diagnosisData = !protocolData ? parseDiagnosisJson(state.doctor_text) : null;
+  const dxData = diagnosisData ? withDxDefaults(diagnosisData) : null;
   const sections = parseSections(state.doctor_text);
   const hasStructure = Object.keys(sections).length > 0;
   const SKIP_SECTIONS: string[] = [];
@@ -1071,6 +1391,64 @@ function DiagnosisCard({
   const approved = protocolData
     ? (state.approved && state.approved.length === protocolData.items.length ? state.approved : protocolData.items.map(() => true))
     : undefined;
+
+  // ── Mutación de diagnósticos estructurados (dxData) ──────────────────────────
+  const updateDx = (mutate: (data: DiagnosisListData) => DiagnosisListData) => {
+    setState(prev => {
+      const parsed = parseDiagnosisJson(prev.doctor_text);
+      if (!parsed) return prev;
+      const next = mutate(withDxDefaults(parsed));
+      return { ...prev, doctor_text: JSON.stringify(next) };
+    });
+  };
+
+  const handleAcceptDiagnosis = (i: number) => updateDx(data => ({
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, aceptado: !d.aceptado } : d),
+  }));
+
+  const handleSaveEditDiagnosis = (i: number, fields: Partial<DiagnosisCandidate>) => updateDx(data => ({
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, ...fields, origen: 'doctor' as const } : d),
+  }));
+
+  const handleRestoreDiagnosis = (i: number) => {
+    const original = parseDiagnosisJson(state.ai_text);
+    if (!original || !original.diagnosticos[i]) return;
+    const originalItem = withDxDefaults(original).diagnosticos[i];
+    updateDx(data => ({
+      ...data,
+      diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...originalItem } : d),
+    }));
+  };
+
+  const handleToggleStudiesAccepted = (i: number) => updateDx(data => ({
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, estudios_aceptados: !d.estudios_aceptados } : d),
+  }));
+
+  const handleAddStudyToDiagnosis = (i: number, study: string) => updateDx(data => ({
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, j) =>
+      j === i ? { ...d, estudios_doctor: [...(d.estudios_doctor || []), study] } : d),
+  }));
+
+  const handleAddNewDiagnosis = (input: { nombre: string; pct: string; detalle: string; estudio: string }) => {
+    if (!input.nombre.trim()) return;
+    updateDx(data => ({
+      ...data,
+      diagnosticos: [...data.diagnosticos, {
+        nombre: input.nombre.trim(),
+        confianza: input.pct.trim() ? parseInt(input.pct.trim(), 10) : undefined,
+        resumen_breve: input.detalle.trim(),
+        estudios_sugeridos: input.estudio.trim() ? [input.estudio.trim()] : [],
+        aceptado: true,
+        origen: 'doctor' as const,
+        estudios_aceptados: false,
+        estudios_doctor: [],
+      }],
+    }));
+  };
 
   const handleToggleApproved = (i: number) => {
     setState(prev => {
@@ -1134,7 +1512,10 @@ function DiagnosisCard({
     });
   };
 
-  if (editMode) {
+  // El modo edición global solo aplica a protocolos y diagnósticos funcional/longevidad
+  // (que usan texto con delimitadores). Para diagnósticos convencionales en JSON (dxData),
+  // la edición es per-candidato directamente en la card — nunca se activa el textarea global.
+  if (editMode && !dxData) {
     if (protocolData) {
       return (
         <ProtocolEditMode
@@ -1168,22 +1549,33 @@ function DiagnosisCard({
 
   return (
     <div className="mb-5">
-      {/* Edit bar */}
-      <div className="flex justify-between items-center px-1 mb-3">
-        <span className="text-xs font-mono text-[#3d5870]">
-          {state.confirmed ? '✓ CONFIRMADO' : 'GENERADO POR IA'}
-          {state.doctor_text !== state.ai_text && ' · ✏️ EDITADO'}
-        </span>
-        <button onClick={onEdit}
-          className="text-xs font-mono px-2 py-1 rounded border border-[#1e2d3d] text-[#7a95aa] hover:border-[#f97316] hover:text-[#f97316] transition">
-          ✏️ Editar
-        </button>
-      </div>
+      {/* Edit bar — solo para diagnósticos funcional/longevidad y protocolos, no para dxData */}
+      {!dxData && (
+        <div className="flex justify-between items-center px-1 mb-3">
+          <span className="text-xs font-mono text-[#3d5870]">
+            {state.confirmed ? '✓ CONFIRMADO' : 'GENERADO POR IA'}
+            {state.doctor_text !== state.ai_text && ' · ✏️ EDITADO'}
+          </span>
+          <button onClick={onEdit}
+            className="text-xs font-mono px-2 py-1 rounded border border-[#1e2d3d] text-[#7a95aa] hover:border-[#f97316] hover:text-[#f97316] transition">
+            ✏️ Editar
+          </button>
+        </div>
+      )}
 
-      {/* Protocolo estructurado (JSON) — prioridad sobre cualquier otro render */}
+      {/* Protocolo estructurado (JSON) — prioridad */}
       {protocolData ? (
         <ProtocolStructuredView data={protocolData} color={color}
           approved={approved} onToggle={handleToggleApproved} onAddItem={handleAddProtocolItem} />
+      ) : dxData ? (
+        /* Diagnóstico convencional estructurado (JSON) — nueva vista per-candidato */
+        <DiagnosisStructuredView data={dxData} color={color}
+          onAccept={handleAcceptDiagnosis}
+          onSaveEdit={handleSaveEditDiagnosis}
+          onRestore={handleRestoreDiagnosis}
+          onToggleStudies={handleToggleStudiesAccepted}
+          onAddStudy={handleAddStudyToDiagnosis}
+          onAddNew={handleAddNewDiagnosis} />
       ) : hasStructure ? (
         /* Structured sections (diagnósticos, formato de secciones ═══) */
         <div className="space-y-4">
@@ -1732,8 +2124,14 @@ export default function AnalysisPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
+      const rawFinal = json.diagnosis as string;
+      let doctorFinal = rawFinal;
+      if (first === 'traditional') {
+        const parsedFinal = parseDiagnosisJson(rawFinal);
+        if (parsedFinal) doctorFinal = JSON.stringify(withDxDefaults(parsedFinal));
+      }
       const result: DiagnosisState = {
-        ai_text: json.diagnosis, doctor_text: json.diagnosis,
+        ai_text: rawFinal, doctor_text: doctorFinal,
         validation: json.validation, confirmed: false, confidence: json.confidence || 75,
       };
       if (first === 'functional') setFunctional(result);
@@ -1768,7 +2166,10 @@ export default function AnalysisPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
-      setTraditional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
+      const rawTx = json.diagnosis as string;
+      const parsedTx = parseDiagnosisJson(rawTx);
+      const normalizedTx = parsedTx ? JSON.stringify(withDxDefaults(parsedTx)) : rawTx;
+      setTraditional({ ai_text: rawTx, doctor_text: normalizedTx, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       enterStep('review_traditional');
     } catch (e: any) { setError('Error: ' + e.message); setStep('select'); }
   };
@@ -2081,7 +2482,9 @@ export default function AnalysisPage() {
                 </div>
               )}
 
-              <ConfidenceBar pct={state.confidence} color={info.color} />
+              {step !== 'review_traditional' && (
+                <ConfidenceBar pct={state.confidence} color={info.color} />
+              )}
 
               <DiagnosisCard
                 state={state}

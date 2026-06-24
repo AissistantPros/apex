@@ -431,7 +431,128 @@ DATOS DE LA VISITA ACTUAL
 ── LABORATORIOS ──
   • Notas / resultados clave de laboratorios: {visit.get('labs_notes') or visit.get('lab_notas') or 'No se ingresaron laboratorios en esta visita'}
   • URL de PDF de laboratorios: {visit.get('labs_pdf_url') or 'No adjuntado'}
+
+── REGLAS DE INTERPRETACIÓN CLÍNICA Y CONFIABILIDAD DE LA INFORMACIÓN ──
+  Todo valor de esta sección es UNA medición en UN punto en el tiempo, no una serie confirmada.
+  Además, gran parte de este expediente (síntomas, hábitos, antecedentes "según refiere") es el
+  RELATO VERBAL del paciente, sujeto a su memoria, percepción y honestidad — el paciente no siempre
+  recuerda bien o dice todo con precisión. Trata ambos tipos de dato (medición puntual y relato
+  verbal) como una referencia fuerte para razonar, NUNCA como un hecho ya verificado al 100%.
+  Aplica este criterio antes de afirmar cualquier diagnóstico:
+  • No diagnostiques una condición crónica (ej. "hipertensión arterial", "diabetes mellitus") a partir
+    de una sola lectura o de un solo relato del paciente, salvo que el valor sea de gravedad real e
+    inmediata (crisis hipertensiva >180/120 mmHg; glucosa <50 o >400 mg/dL; SpO2 <90%). Para todo lo
+    demás, repórtalo como "hallazgo a confirmar / vigilar", nunca como diagnóstico cerrado — pero
+    repórtalo siempre, no lo descartes ni lo omitas solo por ser un dato aislado.
+  • Qué SÍ sube un hallazgo de "aislado" a "confirmado": que se repita de forma consistente en el
+    HISTORIAL DE VISITAS ANTERIORES de este paciente (más abajo, si está disponible), o que el
+    paciente traiga automonitoreo validado (registro casero sostenido, MAPA, glucómetro/CGM, estudio
+    de laboratorio repetido). Eso sí es evidencia fuerte — trátalo con la certeza que amerita un
+    patrón confirmado, no como si fuera la primera vez que se observa.
+  • Qué NO sube la certeza: que el paciente insista en algo, que el hallazgo "encaje" con su edad,
+    peso o factores de riesgo, o que sea un único dato de hoy — eso es motivo para preguntar, vigilar
+    o pedir confirmación, no para cerrar un diagnóstico.
+  • Presión arterial: una sola lectura elevada en consultorio (ej. 130/92) es "elevación aislada a
+    confirmar" — el diagnóstico real de hipertensión requiere ≥2 lecturas elevadas en ≥2 ocasiones
+    distintas (considera el efecto de bata blanca, propio del entorno clínico). Si el historial de
+    visitas anteriores ya muestra lecturas elevadas, ya tienes esas ≥2 ocasiones — dilo explícitamente
+    en vez de tratarlo otra vez como hallazgo nuevo. Si no hay historial que lo respalde, indica cómo
+    se confirmaría (repetir en esta misma consulta, monitoreo en casa, MAPA) en vez de declarar
+    hipertensión con un solo dato.
+  • Glucosa: interpreta SIEMPRE contra las horas en ayuno reportadas. Una glucosa postprandial
+    (poco tiempo desde la última comida) de 108-140 mg/dL es fisiológicamente normal, no es alerta.
+    Solo es hallazgo metabólico real si es en ayuno ≥8h y supera los cortes diagnósticos (ayuno
+    ≥100 mg/dL = prediabetes, ≥126 mg/dL = diabetes), o si es postprandial pero extrema (>200 mg/dL).
+  • No uses factores de riesgo del paciente (edad, peso/IMC, comorbilidades) para inflar la certeza
+    de un diagnóstico más allá de lo que sostiene la medición o el relato disponible — esos factores
+    justifican dar seguimiento, no adelantar un diagnóstico que un solo dato no sostiene por sí solo.
 """.strip()
+
+
+MAX_VISITAS_HISTORIAL = 10
+
+
+def _dias_desde(fecha_iso: str, hoy: date) -> str:
+    """Convierte una fecha ISO en un texto relativo corto ('hace 14 días', 'hace ~3 meses')."""
+    try:
+        f = date.fromisoformat(str(fecha_iso)[:10])
+        dias = (hoy - f).days
+        if dias < 0:
+            return ""
+        if dias == 0:
+            return "hoy mismo"
+        if dias < 30:
+            return f"hace {dias} día{'s' if dias != 1 else ''}"
+        if dias < 365:
+            meses = dias // 30
+            return f"hace ~{meses} mes{'es' if meses != 1 else ''}"
+        anios = dias // 365
+        return f"hace ~{anios} año{'s' if anios != 1 else ''}"
+    except Exception:
+        return ""
+
+
+def build_visit_history_context(visits: list, current_visit_id: str = "") -> str:
+    """
+    Construye un resumen compacto de las visitas ANTERIORES de este mismo paciente (peso, PA,
+    glucosa, labs, motivo, y cuánto tiempo ha pasado) para que cada especialista pueda cruzar
+    la visita de HOY contra el patrón histórico real, en vez de juzgar cada dato aislado.
+    No repite el detalle completo de cada visita pasada — eso ya se cubre en build_visit_context()
+    solo para la visita actual.
+    """
+    hoy = date.today()
+    header = f"""
+══════════════════════════════════════════════════
+HISTORIAL DE VISITAS ANTERIORES DEL PACIENTE
+══════════════════════════════════════════════════
+HOY ES: {hoy.isoformat()}. Úsalo para calcular cuánto tiempo ha pasado entre visitas."""
+
+    previas = [v for v in (visits or []) if v and v.get("id") != current_visit_id]
+    if not previas:
+        return header + "\n\nEsta es la PRIMERA visita registrada de este paciente en el sistema — no hay historial previo con el que comparar ni confirmar tendencias. Cualquier hallazgo de hoy es, por definición, un dato aislado."
+
+    previas = sorted(previas, key=lambda v: v.get("created_at") or "", reverse=True)
+    total_previas = len(previas)
+    mostradas = previas[:MAX_VISITAS_HISTORIAL]
+
+    lines = [
+        header,
+        "",
+        f"{total_previas} visita(s) previa(s) registrada(s), de la más a la menos reciente — "
+        "compara contra la visita de HOY para distinguir un hallazgo aislado de un patrón consistente:",
+    ]
+    for v in mostradas:
+        fecha = str(v.get("created_at") or "")[:10] or "Fecha N/D"
+        delta = _dias_desde(fecha, hoy)
+        delta_str = f" ({delta})" if delta else ""
+
+        peso = v.get("weight") or v.get("peso") or "N/D"
+        pad_s = v.get("pa_der_sistolica")
+        pad_d = v.get("pa_der_diastolica")
+        pa_str = f"{pad_s}/{pad_d} mmHg" if pad_s and pad_d else "N/D"
+
+        glucosa = v.get("glucose") or v.get("glucosa")
+        glucosa_ayuno = v.get("glucose_fasting_hours") or v.get("glucosa_ayuno")
+        if glucosa:
+            glucosa_str = f"{glucosa} mg/dL" + (f" (ayuno: {glucosa_ayuno}h)" if glucosa_ayuno else " (ayuno: N/D)")
+        else:
+            glucosa_str = "N/D"
+
+        motivo = v.get("visit_reason") or v.get("motivo_visita") or "No especificado"
+        labs = v.get("labs_notes") or v.get("labs_notas")
+
+        line = (
+            f"  • {fecha}{delta_str} — Motivo: {motivo} — Peso: {peso} kg — "
+            f"PA: {pa_str} — Glucosa: {glucosa_str}"
+        )
+        if labs:
+            line += f" — Labs: {labs}"
+        lines.append(line)
+
+    if total_previas > len(mostradas):
+        lines.append(f"  (+{total_previas - len(mostradas)} visita(s) más antigua(s) no mostradas por espacio)")
+
+    return "\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────
@@ -529,16 +650,43 @@ Si no necesitas preguntar nada:
 {{"questions": []}}"""
 
 
-def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "") -> str:
+# ─────────────────────────────────────────────────────────
+# IDENTIDAD DE CADA ESPECIALISTA (3 médicos IA aislados)
+# Cada tarjeta define rol + alcance + qué NO le toca, para que las 3 voces no se
+# traslapen ni se confundan entre sí. Se usa como apertura fija tanto en el
+# diagnóstico de ese especialista como en su protocolo, para mantener la misma voz.
+# ─────────────────────────────────────────────────────────
+
+IDENTITY_TRADITIONAL = """Eres el Dr. Gregory, médico internista de medicina convencional y JEFE del equipo de 3 especialistas de IA que analizan este caso: tú, el Dr. Jeffrey (medicina funcional) y el Dr. David (medicina de longevidad). Cada uno analiza el caso por su cuenta, sin mezclarse, pero los otros dos se ajustan alrededor de TU diagnóstico — dentro de tu alcance, tienes la última palabra.
+TU ALCANCE: diagnóstico diferencial basado en guías clínicas y evidencia, signos/síntomas, estudios para confirmar. Como jefe del equipo, dentro de la medicina convencional SÍ puedes indicar lo que el caso requiera: medicamentos, off-label con justificación científica, y suplementación basada en evidencia (ej. vitamina D, B12, hierro, omega-3) cuando esté clínicamente indicada — no estás limitado a fármacos.
+NO ES TU TRABAJO — lo cubren tus colegas, no te metas en su terreno: no expliques causa raíz funcional/sistémica (eje HPA, inflamación, microbioma, etc. — eso es del Dr. Jeffrey), no calcules edad biológica ni hables de longevidad o healthspan (eso es del Dr. David), no entres en terapias no convencionales o nutracéuticos especulativos sin respaldo en evidencia."""
+
+IDENTITY_FUNCTIONAL = """Eres el Dr. Jeffrey, médico de medicina funcional dentro de un equipo de 3 especialistas de IA que analizan este caso cada uno por su cuenta, sin mezclarse. El jefe del equipo es el Dr. Gregory (medicina convencional) — tu trabajo se ajusta alrededor de SU diagnóstico, sin contradecirlo ni reemplazarlo.
+TU ALCANCE: explicar la causa raíz del diagnóstico del Dr. Gregory usando los ejes de la matriz de salud (inflamación, metabolismo, eje HPA, digestión/microbioma, desintoxicación, mitocondria, sistema nervioso autónomo).
+NO ES TU TRABAJO: no renombres, re-diagnostiques ni contradigas el diagnóstico del Dr. Gregory ya confirmado por el médico tratante — tu trabajo es explicar su origen, no repetirlo. No calcules edad biológica ni hables de longevidad o riesgo a futuro — eso le toca al Dr. David."""
+
+IDENTITY_LONGEVITY = """Eres el Dr. David, especialista en medicina de longevidad dentro de un equipo de 3 especialistas de IA que analizan este caso cada uno por su cuenta, sin mezclarse. El jefe del equipo es el Dr. Gregory (medicina convencional) — tú y el Dr. Jeffrey se ajustan alrededor de su diagnóstico.
+TU ALCANCE: edad biológica, biomarcadores de envejecimiento, riesgo a 5-10 años, healthspan, potencial de mejora — construyendo sobre el diagnóstico del Dr. Gregory y la causa raíz del Dr. Jeffrey.
+NO ES TU TRABAJO: no repitas el diagnóstico agudo del Dr. Gregory ni la explicación de causa raíz del Dr. Jeffrey — construye sobre ambos sin reescribirlos ni contradecirlos."""
+
+
+def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "",
+                                     all_visits: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+    current_visit_id = (visit_data or {}).get("id", "")
+    history_ctx = build_visit_history_context(all_visits, current_visit_id=current_visit_id)
     extra = f"\n\n{extra_context}" if extra_context else ""
 
-    return f"""Eres un médico internista senior. Analiza este caso clínico — el médico está leyendo esto con el paciente enfrente. Sé técnico, breve, directo. Máximo 3 líneas por sección.{extra}
+    return f"""{IDENTITY_TRADITIONAL}
+
+Analiza este caso clínico — el médico está leyendo esto con el paciente enfrente. Sé técnico, breve, directo. Máximo 3 líneas por sección.{extra}
 
 {patient_ctx}
 
 {visit_ctx}
+
+{history_ctx}
 
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
@@ -549,22 +697,49 @@ REGLAS:
 - Máximo 4 diagnósticos. Si solo 2 o 3 son razonablemente probables, pon esos — no rellenes con opciones poco probables.
 - El primero (más probable) siempre se incluye, aunque su certeza sea menor al 50%.
 - A partir del segundo diagnóstico en adelante, NO lo incluyas si su certeza es menor al 50%.
-- Cada diagnóstico debe incluir el estudio o estudios específicos que lo confirmarían — no hagas una lista de estudios aparte.
+- Dos o más diagnósticos pueden coexistir — no son mutuamente excluyentes por el solo hecho de estar
+  ambos en la lista. No bajes artificialmente la certeza de uno porque hay otro candidato: cada
+  "confianza" refleja qué tan probable es ESE diagnóstico por sí mismo con la información disponible.
+- Cada diagnóstico debe incluir el/los estudio(s) específico(s) que lo confirmarían.
+- "fuentes": cita ÚNICAMENTE guías clínicas, criterios diagnósticos o consensos reconocidos POR NOMBRE
+  (ej. "Criterios ATP-III", "Guía ESC 2024", "ADA Standards of Care", "DSM-5", "KDIGO", "GOLD").
+  NUNCA inventes nombres de papers específicos, autores individuales, DOIs ni citas de estudios
+  puntuales — no se pueden verificar y no deben aparecer en un documento clínico. Si ninguna guía
+  reconocida aplica directamente, deja la lista vacía [].
 
-FORMATO DEL ANÁLISIS (después del JSON). Usa EXACTAMENTE estos delimitadores:
-═══ DIAGNÓSTICOS POSIBLES ═══
-1. [Diagnóstico + CIE-10] | [XX%]
-[1-2 líneas con los datos concretos que lo justifican]
-ESTUDIO PARA CONFIRMAR: [estudio(s) específico(s)]
+FORMATO DE SALIDA — ESTRICTO:
+Después de la línea de confidence de arriba, responde ÚNICAMENTE con un objeto JSON válido. Nada de
+texto antes o después, nada de ```json. Solo el JSON.
 
-2. [Diagnóstico + CIE-10] | [XX%]
-[1-2 líneas]
-ESTUDIO PARA CONFIRMAR: [estudio(s)]
+Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en las keys):
 
-═══ ALERTAS CLÍNICAS ═══
-• [Hallazgo urgente o "Sin alertas inmediatas"]
+{{
+  "diagnosticos": [
+    {{
+      "nombre": "Síndrome Metabólico",
+      "cie10": "E88.81",
+      "confianza": 85,
+      "resumen_breve": "1-2 líneas con los datos concretos del paciente que justifican este diagnóstico.",
+      "explicacion_completa": "Razonamiento clínico completo: qué datos suman, qué datos restan, qué diagnósticos diferenciales se descartaron y por qué.",
+      "fuentes": ["Criterios ATP-III"],
+      "estudios_sugeridos": ["Perfil lipídico completo", "HbA1c"]
+    }}
+  ],
+  "alertas_clinicas": []
+}}
 
-IMPORTANTE: No uses markdown (**negrita**). Escribe en texto plano. Sin introducciones ni despedidas."""
+REGLAS DE LLENADO (síguelas exactamente):
+1. Un objeto en "diagnosticos" por cada diagnóstico candidato, ordenados de mayor a menor "confianza".
+2. "cie10": código CIE-10 solo si lo conoces con certeza; si no, usa "".
+3. "resumen_breve": máximo 2 líneas — esto siempre va visible. "explicacion_completa": el razonamiento
+   clínico completo, va detrás de un botón "ver más" en la interfaz, ahí sí puedes extenderte.
+4. "fuentes": ver regla de arriba — solo guías/criterios reconocidos por nombre, nunca papers o
+   autores específicos. Usa [] si ninguna aplica.
+5. "estudios_sugeridos": lista de strings, cada uno un estudio o procedimiento concreto (no genérico
+   como "más estudios").
+6. "alertas_clinicas": lista de strings con hallazgos urgentes que requieren atención inmediata
+   (ej. "PA 190/120 — crisis hipertensiva, atender antes de continuar"). Si no hay ninguno, usa [].
+7. No agregues campos fuera de los listados. No omitas ningún campo — usa "" o [] cuando no aplique."""
 
 
 FUNCTIONAL_MEDICINE_AXES = """
@@ -580,24 +755,30 @@ EJES CAUSALES DE LA MATRIZ DE SALUD (medicina funcional) — evalúa cuáles apl
 
 
 def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str,
-                                   visit_data: dict = None, extra_context: str = "") -> str:
+                                   visit_data: dict = None, extra_context: str = "",
+                                   all_visits: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+    current_visit_id = (visit_data or {}).get("id", "")
+    history_ctx = build_visit_history_context(all_visits, current_visit_id=current_visit_id)
 
     traditional_block = (
         f"DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante — el funcional debe explicar el ORIGEN de esto, no repetirlo ni contradecirlo):\n{traditional_diagnosis}\n"
         if traditional_diagnosis and traditional_diagnosis.strip() else ""
     )
 
-    return f"""Eres un médico de medicina funcional. Tu trabajo NO es renombrar el diagnóstico tradicional — es explicar
-POR QUÉ apareció, regresando lo más posible en la cadena causal usando los ejes de la matriz de salud. Sé conciso —
-el médico tiene al paciente enfrente.
+    return f"""{IDENTITY_FUNCTIONAL}
+
+Tu trabajo es explicar POR QUÉ apareció el diagnóstico tradicional, regresando lo más posible en la cadena causal
+usando los ejes de la matriz de salud. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
 
 {patient_ctx}
 
 {visit_ctx}
+
+{history_ctx}
 
 {traditional_block}
 {FUNCTIONAL_MEDICINE_AXES}
@@ -632,16 +813,26 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 
 
 def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str,
-                                   visit_data: dict = None, extra_context: str = "") -> str:
+                                   traditional_diagnosis: str = "",
+                                   visit_data: dict = None, extra_context: str = "",
+                                   all_visits: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+    current_visit_id = (visit_data or {}).get("id", "")
+    history_ctx = build_visit_history_context(all_visits, current_visit_id=current_visit_id)
 
+    traditional_block = (
+        f"DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante — no lo repitas, es contexto):\n{traditional_diagnosis}\n"
+        if traditional_diagnosis and traditional_diagnosis.strip() else ""
+    )
     functional_block = (
-        f"DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante):\n{functional_diagnosis}\n"
+        f"DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante — no lo repitas, es contexto):\n{functional_diagnosis}\n"
         if functional_diagnosis and functional_diagnosis.strip() else ""
     )
 
-    return f"""Eres especialista en medicina de longevidad. Calcula edad biológica y proyecciones. Sé conciso — el médico tiene al paciente enfrente.
+    return f"""{IDENTITY_LONGEVITY}
+
+Calcula edad biológica y proyecciones de riesgo para ESTE paciente. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
 
@@ -649,6 +840,9 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
 
 {visit_ctx}
 
+{history_ctx}
+
+{traditional_block}
 {functional_block}
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
@@ -672,17 +866,26 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 
 
 def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
-                        visit_data: dict = None, previous_protocols: dict = None) -> str:
+                        visit_data: dict = None, previous_protocols: dict = None,
+                        all_visits: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
+    current_visit_id = (visit_data or {}).get("id", "")
+    history_ctx = build_visit_history_context(all_visits, current_visit_id=current_visit_id)
 
     alergias = patient_data.get("allergies_medications") or "No refiere"
     meds_actuales = _fmt_meds(patient_data.get("medications"))
 
     protocol_focus = {
-        "traditional": "medicamentos convencionales (incluyendo off-label con justificación científica), más hidratación, tipo de dieta y ejercicio",
+        "traditional": "medicamentos convencionales (incluyendo off-label con justificación científica) y suplementación basada en evidencia cuando esté clínicamente indicada (ej. déficits confirmados), más hidratación, tipo de dieta y ejercicio",
         "functional":  "suplementos, nutracéuticos y modificaciones de estilo de vida",
         "longevity":   "intervenciones anti-envejecimiento: péptidos, NAD+, hormonas bioidénticas, optimización metabólica, ejercicio terapéutico",
     }.get(diagnosis_type, "intervención terapéutica")
+
+    identity = {
+        "traditional": IDENTITY_TRADITIONAL,
+        "functional":  IDENTITY_FUNCTIONAL,
+        "longevity":   IDENTITY_LONGEVITY,
+    }.get(diagnosis_type, "Eres un médico experto en diseño de protocolos terapéuticos personalizados.")
 
     star_note = ""
     if "⭐ ELEGIDO POR EL MÉDICO" in diagnosis:
@@ -703,13 +906,18 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
                 "\"indicacion\" de un item relacionado, o en \"monitoreo_general\", solo como nota anecdótica."
             )
 
-    return f"""Eres un médico experto en diseño de protocolos terapéuticos personalizados.
+    return f"""{identity}
+
+Ahora no estás diagnosticando — estás diseñando el protocolo terapéutico de TU especialidad para este caso,
+manteniendo el mismo enfoque y los mismos límites de alcance que ya tienes como especialista.
 
 DIAGNÓSTICO BASE:
 {diagnosis}{star_note}
 
 CONTEXTO DEL PACIENTE:
 {patient_ctx}
+
+{history_ctx}
 
 MEDICAMENTOS ACTUALES DEL PACIENTE (para evitar duplicaciones e interacciones):
 {meds_actuales}
