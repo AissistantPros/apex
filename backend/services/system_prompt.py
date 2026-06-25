@@ -589,29 +589,36 @@ BORRADOR DE DIAGNÓSTICO QUE YA GENERASTE PARA ESTE CASO (con la información di
     )
 
     return f"""Eres APEX, asistente médico. Ya analizaste este caso clínico y generaste un borrador de diagnóstico.
-Ahora necesitas identificar si hay preguntas puntuales que, de contestarse, cambiarían o reforzarían ese borrador.
+Ahora necesitas identificar si hay preguntas clínicas breves que el médico pueda hacerle al paciente en este momento para reducir la incertidumbre diagnóstica.
 
 {patient_ctx}
 
 {visit_ctx}
 {draft_block}
-TAREA: Basándote ESPECÍFICAMENTE en las partes menos ciertas o con menor evidencia de tu borrador de diagnóstico,
-identifica hasta 3 preguntas que el médico pueda hacer AL PACIENTE AHORA MISMO, en el consultorio, que cambiarían
-o confirmarían significativamente ese diagnóstico.
+TAREA: Basándote ESPECÍFICAMENTE en las partes menos ciertas de tu borrador de diagnóstico, genera hasta 3 preguntas
+que el médico leerá en pantalla y le hará directamente al paciente, para aclarar síntomas, duración, patrón o contexto
+que NO está capturado en el expediente y que cambiaría materialmente el diagnóstico.
 
-REGLAS ESTRICTAS:
-- Las preguntas deben apuntar a lo que más incertidumbre le genera el borrador de diagnóstico, no preguntas genéricas
-- Solo preguntas sobre síntomas, sensaciones o historia que el paciente puede responder verbalmente en este momento
-- NO preguntes por laboratorios, estudios previos, imágenes ni pruebas diagnósticas — eso se solicita después
-- NO preguntes sobre nada que ya aparezca con un valor real (distinto de N/D) en el contexto del paciente o la visita — ya lo sabes
-- Si el dato ya está en el formulario (ronquidos, pausas al respirar, horas de sueño, síntomas digestivos, etc.), NO lo vuelvas a preguntar
-- Si el borrador ya tiene suficiente certeza, haz 0 preguntas
-- Máximo 3 preguntas. Si son 1 ó 2, mejor.
-- Preguntas cortas, directas, clínicamente relevantes para ESTE caso específico
-- Cada pregunta debe cambiar materialmente el diagnóstico o su porcentaje de certeza si la respuesta cambia
+FORMATO DE LAS PREGUNTAS — MUY IMPORTANTE:
+- Las preguntas las lee el MÉDICO en pantalla y las hace AL PACIENTE. Redáctalas en tercera persona desde la perspectiva del médico.
+- Correcto: "¿El paciente ha notado que los síntomas empeoran después de comer grasas?"
+- Correcto: "¿El paciente tuvo fiebre o infección reciente antes de que empezaran los síntomas?"
+- Incorrecto: "¿Has notado que tus síntomas empeoran?" (tú directo al paciente — PROHIBIDO)
+- Incorrecto: "¿Recuerdas exactamente qué comiste?" (tú directo — PROHIBIDO)
+
+REGLAS DE CONTENIDO:
+- Solo preguntas sobre síntomas, sensaciones, historia o contexto que el paciente puede responder verbalmente ahora mismo
+- NO preguntes por laboratorios, estudios previos, imágenes ni pruebas diagnósticas — eso va en estudios sugeridos
+- NO preguntes nada que ya tenga un valor real (distinto de N/D) en el expediente — si ya está capturado, NO lo repitas
+- Los antecedentes familiares YA están en el expediente — NO preguntes por enfermedades de familiares
+- Las horas desde la última comida YA están en el formulario si se capturaron — NO las preguntes
+- Los datos de ronquidos, pausas al respirar, digestión, sueño: si aparecen con valor real en el contexto, NO los vuelvas a preguntar
+- Si el borrador ya tiene suficiente certeza, devuelve 0 preguntas
+- Máximo 3 preguntas. Menos es mejor.
+- Cada pregunta debe cambiar materialmente el diagnóstico si la respuesta es diferente a lo esperado
 
 Responde SOLO con este JSON (nada más, sin explicaciones):
-{{"questions": ["¿Pregunta 1?", "¿Pregunta 2?"]}}
+{{"questions": ["¿El paciente ha...?", "¿El paciente nota...?"]}}
 
 Si no necesitas preguntar nada:
 {{"questions": []}}"""
