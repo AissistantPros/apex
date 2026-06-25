@@ -282,6 +282,7 @@ export default function NewVisitPage() {
     daytime_nap: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
     bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
+    digestion_onset: '', digestion_pattern: '', digestion_blood: '',
     stress_level: 5, racing_mind: '', anxiety_panic: '', stress_coping: '', can_relax: '',
     recent_chemical_exposure: '', water_source: '', plastic_in_microwave: '', recent_tattoo_amalgam: '',
     water_intake_liters: '', food_cravings: '', screen_eating: '', meals_per_day: '',
@@ -390,6 +391,7 @@ export default function NewVisitPage() {
         daytime_nap: form.daytime_nap,
         mood: animo, libido: form.libido_hoy, digestion,
         bristol_scale: form.bristol_scale, bowel_movements_per_day: form.bowel_movements_per_day,
+        digestion_onset: form.digestion_onset, digestion_pattern: form.digestion_pattern, digestion_blood: form.digestion_blood,
         recent_antibiotics: form.recent_antibiotics, probiotics_use: form.probiotics_use,
         stress_level: form.stress_level, racing_mind: form.racing_mind,
         anxiety_panic: form.anxiety_panic, stress_coping: form.stress_coping, can_relax: form.can_relax,
@@ -1328,6 +1330,53 @@ export default function NewVisitPage() {
                           <NumInput value={form.bowel_movements_per_day} onChange={v => set('bowel_movements_per_day', v)} placeholder="1" tablet={tb} />
                         </Field>
                       </div>
+                      {/* Follow-ups condicionales de digestión */}
+                      {(digestion.some(d => ['Diarrea','Estreñimiento','Distensión','Reflujo','Náuseas'].includes(d)) ||
+                        (form.bristol_scale && (parseInt(form.bristol_scale) <= 2 || parseInt(form.bristol_scale) >= 6))) && (
+                        <div className="mt-3 space-y-3 pl-3 border-l-2 border-[#a78bfa]/30">
+                          <div>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-xs' : 'text-[10px]'}`}>¿HACE CUÁNTO TIEMPO TIENE ESTOS SÍNTOMAS?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Días','1-2 semanas','1 mes o más','Crónico (meses/años)'] as const).map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-2 text-xs' : 'py-1.5 text-xs'}`}
+                                  style={{ background: form.digestion_onset === o ? '#a78bfa' : '#1e2d3d', borderColor: form.digestion_onset === o ? '#a78bfa' : '#2a3a4d', color: form.digestion_onset === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="digestion_onset" value={o} checked={form.digestion_onset === o}
+                                    onChange={e => set('digestion_onset', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-xs' : 'text-[10px]'}`}>¿ES CONTINUO O INTERMITENTE?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Continuo','Intermitente','Solo después de comer','Variable'] as const).map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-2 text-xs' : 'py-1.5 text-xs'}`}
+                                  style={{ background: form.digestion_pattern === o ? '#a78bfa' : '#1e2d3d', borderColor: form.digestion_pattern === o ? '#a78bfa' : '#2a3a4d', color: form.digestion_pattern === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="digestion_pattern" value={o} checked={form.digestion_pattern === o}
+                                    onChange={e => set('digestion_pattern', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          {(digestion.includes('Diarrea') || (form.bristol_scale && parseInt(form.bristol_scale) >= 6)) && (
+                            <div>
+                              <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-xs' : 'text-[10px]'}`}>¿SANGRE O MOCO EN HECES?</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {(['Sí — sangre','Sí — moco','No','No sé'] as const).map(o => (
+                                  <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-2 text-xs' : 'py-1.5 text-xs'}`}
+                                    style={{ background: form.digestion_blood === o ? '#a78bfa' : '#1e2d3d', borderColor: form.digestion_blood === o ? '#a78bfa' : '#2a3a4d', color: form.digestion_blood === o ? '#000' : '#dde6ef' }}>
+                                    <input type="radio" name="digestion_blood" value={o} checked={form.digestion_blood === o}
+                                      onChange={e => set('digestion_blood', e.target.value)} className="sr-only" />
+                                    {o}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-3 mt-3">
                         {([
                           { key: 'recent_antibiotics', label: '¿ANTIBIÓTICOS ÚLTIMO AÑO?' },

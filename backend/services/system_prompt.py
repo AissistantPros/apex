@@ -380,12 +380,16 @@ DATOS DE LA VISITA ACTUAL
   Digestión:
   • Escala de Bristol (tipo de heces, 1-7): {visit.get('bristol_scale') or 'N/D'}
   • Deposiciones por día: {visit.get('bowel_movements_per_day') or 'N/D'}
+  • Tiempo desde inicio de síntomas digestivos: {visit.get('digestion_onset') or 'N/D'}
+  • Patrón (continuo/intermitente/postprandial): {visit.get('digestion_pattern') or 'N/D'}
+  • Sangre o moco en heces: {visit.get('digestion_blood') or 'N/D'}
   • Antibióticos en el último año: {visit.get('recent_antibiotics') or 'N/D'}
   • Uso de probióticos: {visit.get('probiotics_use') or 'N/D'}
   Sueño:
   • Hora de acostarse / despertar: {visit.get('bedtime') or 'N/D'} / {visit.get('wake_time') or 'N/D'}
   • Despertares nocturnos: {visit.get('night_awakenings') or 'N/D'}
-  • Ronquidos / sospecha de apnea: {visit.get('snoring') or 'N/D'}
+  • Ronca: {visit.get('snoring') or 'N/D'}{f" — intensidad (¿se escucha a través de la pared?): {visit.get('snoring_intensity')}" if visit.get('snoring_intensity') else ""}{f" — frecuencia: {visit.get('snoring_frequency')}" if visit.get('snoring_frequency') else ""}
+  • Pausas de respiración al dormir (apnea observada): {visit.get('apnea_observed') or 'N/D'}{f" — frecuencia: {visit.get('apnea_frequency')}" if visit.get('apnea_frequency') else ""}{f" — duración de pausas: {visit.get('apnea_duration')}" if visit.get('apnea_duration') else ""}
   • Siesta durante el día: {visit.get('daytime_nap') or 'N/D'}
   Estrés (eje HPA):
   • Nivel de estrés percibido (1-10): {visit.get('stress_level') or 'N/D'}
@@ -596,13 +600,15 @@ identifica hasta 3 preguntas que el médico pueda hacer AL PACIENTE AHORA MISMO,
 o confirmarían significativamente ese diagnóstico.
 
 REGLAS ESTRICTAS:
-- Las preguntas deben apuntar a lo que más incertidumbre le genera al borrador de diagnóstico, no preguntas genéricas
-- Solo preguntas sobre síntomas, sensaciones o historia que el paciente puede responder verbalmente
-- NO preguntes por laboratorios, estudios o pruebas
+- Las preguntas deben apuntar a lo que más incertidumbre le genera el borrador de diagnóstico, no preguntas genéricas
+- Solo preguntas sobre síntomas, sensaciones o historia que el paciente puede responder verbalmente en este momento
+- NO preguntes por laboratorios, estudios previos, imágenes ni pruebas diagnósticas — eso se solicita después
+- NO preguntes sobre nada que ya aparezca con un valor real (distinto de N/D) en el contexto del paciente o la visita — ya lo sabes
+- Si el dato ya está en el formulario (ronquidos, pausas al respirar, horas de sueño, síntomas digestivos, etc.), NO lo vuelvas a preguntar
 - Si el borrador ya tiene suficiente certeza, haz 0 preguntas
 - Máximo 3 preguntas. Si son 1 ó 2, mejor.
-- Preguntas cortas, directas, clínicamente relevantes para ESTE caso
-- Cada pregunta debe cambiar materialmente el diagnóstico o su porcentaje de certeza si la respuesta es sí o no
+- Preguntas cortas, directas, clínicamente relevantes para ESTE caso específico
+- Cada pregunta debe cambiar materialmente el diagnóstico o su porcentaje de certeza si la respuesta cambia
 
 Responde SOLO con este JSON (nada más, sin explicaciones):
 {{"questions": ["¿Pregunta 1?", "¿Pregunta 2?"]}}

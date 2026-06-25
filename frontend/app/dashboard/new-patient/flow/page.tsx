@@ -229,6 +229,7 @@ function FlowPageInner() {
     daytime_nap: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
     bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
+    digestion_onset: '', digestion_pattern: '', digestion_blood: '',
     stress_level: 5, racing_mind: '', anxiety_panic: '', stress_coping: '', can_relax: '',
     recent_chemical_exposure: '', water_source: '', plastic_in_microwave: '', recent_tattoo_amalgam: '',
     water_intake_liters: '', food_cravings: '', screen_eating: '', meals_per_day: '',
@@ -797,6 +798,7 @@ function FlowPageInner() {
             mood: animo, libido: f.libido_hoy, digestion,
             bristol_scale: f.bristol_scale, bowel_movements_per_day: f.bowel_movements_per_day,
             recent_antibiotics: f.recent_antibiotics, probiotics_use: f.probiotics_use,
+            digestion_onset: f.digestion_onset, digestion_pattern: f.digestion_pattern, digestion_blood: f.digestion_blood,
             stress_level: f.stress_level, racing_mind: f.racing_mind,
             anxiety_panic: f.anxiety_panic, stress_coping: f.stress_coping, can_relax: f.can_relax,
             recent_chemical_exposure: f.recent_chemical_exposure, water_source: f.water_source,
@@ -2011,6 +2013,53 @@ function FlowPageInner() {
                             onChange={e=>set('bowel_movements_per_day',e.target.value)} placeholder="1" />
                         </Field>
                       </div>
+                      {/* Follow-ups condicionales de digestión */}
+                      {(digestion.some(d => ['Diarrea','Estreñimiento','Distensión','Reflujo','Náuseas'].includes(d)) ||
+                        (f.bristol_scale && (parseInt(f.bristol_scale) <= 2 || parseInt(f.bristol_scale) >= 6))) && (
+                        <div className="mt-3 space-y-3 pl-3 border-l-2 border-[#a78bfa]/30">
+                          <div>
+                            <p className="text-[10px] font-mono text-[#7a95aa] mb-2">¿HACE CUÁNTO TIEMPO TIENE ESTOS SÍNTOMAS?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Días','1-2 semanas','1 mes o más','Crónico (meses/años)'] as const).map(o => (
+                                <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
+                                  style={{ background: f.digestion_onset === o ? '#a78bfa' : '#1e2d3d', borderColor: f.digestion_onset === o ? '#a78bfa' : '#2a3a4d', color: f.digestion_onset === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="digestion_onset" value={o} checked={f.digestion_onset === o}
+                                    onChange={e=>set('digestion_onset', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-mono text-[#7a95aa] mb-2">¿ES CONTINUO O INTERMITENTE?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Continuo','Intermitente','Solo después de comer','Variable'] as const).map(o => (
+                                <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
+                                  style={{ background: f.digestion_pattern === o ? '#a78bfa' : '#1e2d3d', borderColor: f.digestion_pattern === o ? '#a78bfa' : '#2a3a4d', color: f.digestion_pattern === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="digestion_pattern" value={o} checked={f.digestion_pattern === o}
+                                    onChange={e=>set('digestion_pattern', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          {(digestion.includes('Diarrea') || (f.bristol_scale && parseInt(f.bristol_scale) >= 6)) && (
+                            <div>
+                              <p className="text-[10px] font-mono text-[#7a95aa] mb-2">¿SANGRE O MOCO EN HECES?</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {(['Sí — sangre','Sí — moco','No','No sé'] as const).map(o => (
+                                  <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
+                                    style={{ background: f.digestion_blood === o ? '#a78bfa' : '#1e2d3d', borderColor: f.digestion_blood === o ? '#a78bfa' : '#2a3a4d', color: f.digestion_blood === o ? '#000' : '#dde6ef' }}>
+                                    <input type="radio" name="digestion_blood" value={o} checked={f.digestion_blood === o}
+                                      onChange={e=>set('digestion_blood', e.target.value)} className="sr-only" />
+                                    {o}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-3 mt-3">
                         {([
                           { key: 'recent_antibiotics' as const, label: '¿ANTIBIÓTICOS ÚLTIMO AÑO?' },
