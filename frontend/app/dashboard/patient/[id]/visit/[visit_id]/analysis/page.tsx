@@ -954,15 +954,16 @@ interface DiagnosisCandidate {
   nombre: string;
   cie10?: string;
   confianza?: number;
+  por_que_confianza?: string;
   resumen_breve?: string;
   explicacion_completa?: string;
   fuentes?: string[];
   estudios_sugeridos?: string[];
   // Estado del doctor — no viene de la IA, se inyecta al normalizar la respuesta
-  dx_aceptado?: boolean;               // doctor aceptó este diagnóstico
-  estudios_seleccionados?: boolean[];  // un bool por cada item en estudios_sugeridos
-  estudios_doctor?: string[];          // estudios que el doctor agregó manualmente
-  estudios_finalizados?: boolean;      // doctor confirmó los estudios de esta card
+  dx_aceptado?: boolean;
+  estudios_seleccionados?: boolean[];
+  estudios_doctor?: string[];
+  estudios_finalizados?: boolean;
 }
 
 interface DiagnosisListData {
@@ -1027,16 +1028,21 @@ function withDxDefaults(data: DiagnosisListData): DiagnosisListData {
   };
 }
 
-function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAcceptBoth, onToggleStudy, onAddStudy }: {
+function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAcceptBoth, onToggleStudy, onAddStudy, onEditStudy, onRemoveStudy }: {
   item: DiagnosisCandidate; color: string;
   onAcceptDx: () => void;
   onAcceptStudies: () => void;
   onAcceptBoth: () => void;
   onToggleStudy: (studyIdx: number) => void;
   onAddStudy: (study: string) => void;
+  onEditStudy: (idx: number, val: string) => void;
+  onRemoveStudy: (idx: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [pctOpen, setPctOpen] = useState(false);
   const [studyInput, setStudyInput] = useState('');
+  const [editingStudyIdx, setEditingStudyIdx] = useState<number | null>(null);
+  const [editStudyVal, setEditStudyVal] = useState('');
 
   const dxAceptado = !!item.dx_aceptado;
   const estudiosFinalizados = !!item.estudios_finalizados;
@@ -1052,6 +1058,16 @@ function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAc
     if (!studyInput.trim()) return;
     onAddStudy(studyInput.trim());
     setStudyInput('');
+  };
+
+  const startEditStudy = (idx: number) => {
+    setEditingStudyIdx(idx);
+    setEditStudyVal(doctorStudies[idx]);
+  };
+
+  const saveEditStudy = (idx: number, onEdit: (idx: number, val: string) => void) => {
+    if (editStudyVal.trim()) onEdit(idx, editStudyVal.trim());
+    setEditingStudyIdx(null);
   };
 
   return (
@@ -1070,10 +1086,24 @@ function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAc
             )}
           </span>
           {item.confianza != null && (
-            <span className="text-xs font-mono font-bold px-2 py-1 rounded whitespace-nowrap flex-shrink-0"
-              style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
-              {item.confianza}%
-            </span>
+            <div className="relative flex-shrink-0">
+              <button type="button" onClick={() => setPctOpen(o => !o)}
+                className="text-xs font-mono font-bold px-2 py-1 rounded flex items-center gap-1 transition hover:opacity-80"
+                style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
+                {item.confianza}% <span className="text-[10px] opacity-60">?</span>
+              </button>
+              {pctOpen && (
+                <div className="absolute right-0 top-8 z-20 w-72 rounded-xl p-3 shadow-2xl"
+                  style={{ background: '#0d1520', border: `1px solid ${pctColor}50` }}>
+                  <p className="font-mono text-[10px] mb-1.5" style={{ color: pctColor }}>POR QUÉ {item.confianza}%</p>
+                  <p className="text-xs font-serif leading-relaxed text-[#dde6ef]">
+                    {item.por_que_confianza || 'Basado en los hallazgos disponibles en el expediente.'}
+                  </p>
+                  <button type="button" onClick={() => setPctOpen(false)}
+                    className="mt-2 text-[10px] font-mono text-[#3d5870] hover:text-[#7a95aa]">cerrar ✕</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -1130,15 +1160,33 @@ function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAc
             </div>
           )}
 
-          {/* Estudios que el doctor ya agregó */}
+          {/* Estudios que el doctor ya agregó — editables */}
           {doctorStudies.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[10px] font-mono text-[#3d5870]">ESTUDIOS QUE AGREGASTE</p>
               {doctorStudies.map((s, si) => (
-                <div key={si} className="flex items-start gap-2 px-3 py-2 rounded-lg"
+                <div key={si} className="flex items-center gap-2 px-3 py-2 rounded-lg group"
                   style={{ background: 'rgba(0,229,160,.07)', border: '1px solid rgba(0,229,160,.25)' }}>
-                  <span className="text-[#00e5a0] text-xs flex-shrink-0 mt-0.5">✓</span>
-                  <span className="text-sm text-[#dde6ef] font-serif leading-relaxed">{s}</span>
+                  {editingStudyIdx === si ? (
+                    <>
+                      <input autoFocus value={editStudyVal} onChange={e => setEditStudyVal(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveEditStudy(si, onEditStudy); if (e.key === 'Escape') setEditingStudyIdx(null); }}
+                        className="flex-1 bg-transparent text-sm text-[#dde6ef] outline-none border-b border-[#00e5a0]/40" />
+                      <button type="button" onClick={() => saveEditStudy(si, onEditStudy)}
+                        className="text-[10px] font-mono text-[#00e5a0] hover:opacity-70 px-1">guardar</button>
+                      <button type="button" onClick={() => setEditingStudyIdx(null)}
+                        className="text-[10px] font-mono text-[#3d5870] hover:opacity-70 px-1">✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[#00e5a0] text-xs flex-shrink-0">✓</span>
+                      <span className="text-sm text-[#dde6ef] font-serif leading-relaxed flex-1">{s}</span>
+                      <button type="button" onClick={() => startEditStudy(si)}
+                        className="text-[10px] text-[#3d5870] hover:text-[#0ea5e9] opacity-0 group-hover:opacity-100 transition px-1">✎</button>
+                      <button type="button" onClick={() => onRemoveStudy(si)}
+                        className="text-[10px] text-[#3d5870] hover:text-[#f43f5e] opacity-0 group-hover:opacity-100 transition px-1">✕</button>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -1163,14 +1211,6 @@ function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAc
             </div>
           </div>
 
-          {/* Botón Aceptar estudios */}
-          <button type="button" onClick={onAcceptStudies}
-            className="w-full py-3 rounded-xl font-semibold text-sm transition"
-            style={estudiosFinalizados
-              ? { background: 'rgba(0,229,160,.15)', border: '1px solid rgba(0,229,160,.5)', color: '#00e5a0' }
-              : { background: 'rgba(14,165,233,.1)', border: '1px solid rgba(14,165,233,.4)', color: '#0ea5e9' }}>
-            {estudiosFinalizados ? '✓ Estudios aceptados' : 'Aceptar estudios'}
-          </button>
         </div>
       )}
 
@@ -1208,18 +1248,21 @@ function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAc
   );
 }
 
-function DiagnosisStructuredView({ data, color, onAcceptDx, onAcceptStudies, onAcceptBoth, onToggleStudy, onAddStudy, onAddNew, onAddExtraStudies }: {
+function DiagnosisStructuredView({ data, color, onAcceptDx, onAcceptStudies, onAcceptBoth, onToggleStudy, onAddStudy, onEditStudy, onRemoveStudy, onAddNew, onAddExtraStudies }: {
   data: DiagnosisListData; color: string;
   onAcceptDx: (i: number) => void;
   onAcceptStudies: (i: number) => void;
   onAcceptBoth: (i: number) => void;
   onToggleStudy: (i: number, si: number) => void;
   onAddStudy: (i: number, study: string) => void;
+  onEditStudy: (i: number, si: number, val: string) => void;
+  onRemoveStudy: (i: number, si: number) => void;
   onAddNew: (input: { nombre: string; pct: string; detalle: string; estudio: string }) => void;
   onAddExtraStudies: (study: string) => void;
 }) {
   const alertas = (data.alertas_clinicas || []).filter(a => a && a.trim());
   const extraStudies = data.estudios_adicionales || [];
+  const [extraOpen, setExtraOpen] = useState(false);
   const [extraInput, setExtraInput] = useState('');
 
   const commitExtra = () => {
@@ -1251,36 +1294,51 @@ function DiagnosisStructuredView({ data, color, onAcceptDx, onAcceptStudies, onA
             onAcceptStudies={() => onAcceptStudies(i)}
             onAcceptBoth={() => onAcceptBoth(i)}
             onToggleStudy={si => onToggleStudy(i, si)}
-            onAddStudy={study => onAddStudy(i, study)} />
+            onAddStudy={study => onAddStudy(i, study)}
+            onEditStudy={(si, val) => onEditStudy(i, si, val)}
+            onRemoveStudy={si => onRemoveStudy(i, si)} />
         ))}
       </div>
 
-      {/* Estudios adicionales sin diagnóstico */}
-      <div className="rounded-xl border-2 border-dashed p-4 space-y-3"
-        style={{ borderColor: '#1e2d3d', background: '#050810' }}>
-        <p className="text-xs font-mono text-[#3d5870]">ESTUDIOS ADICIONALES SIN DIAGNÓSTICO</p>
-        {extraStudies.length > 0 && (
-          <div className="space-y-1.5">
-            {extraStudies.map((s, si) => (
-              <div key={si} className="flex items-start gap-2 text-xs text-[#7a95aa] font-mono">
-                <span className="text-[#3d5870]">•</span>{s}
-              </div>
-            ))}
+      {/* + Agregar Estudios (sin diagnóstico) */}
+      {!extraOpen && extraStudies.length === 0 ? (
+        <button type="button" onClick={() => setExtraOpen(true)}
+          className="w-full py-3 rounded-xl font-semibold text-sm border-2 border-dashed transition hover:border-[#7a95aa] hover:text-[#7a95aa]"
+          style={{ borderColor: '#1e2d3d', color: '#3d5870', background: 'transparent' }}>
+          + Agregar Estudios
+        </button>
+      ) : (
+        <div className="rounded-xl border-2 border-dashed p-4 space-y-3"
+          style={{ borderColor: '#1e2d3d', background: '#050810' }}>
+          <p className="text-xs font-mono text-[#3d5870]">ESTUDIOS ADICIONALES SIN DIAGNÓSTICO</p>
+          {extraStudies.length > 0 && (
+            <div className="space-y-1.5">
+              {extraStudies.map((s, si) => (
+                <div key={si} className="flex items-center gap-2 text-xs text-[#7a95aa] font-mono group">
+                  <span className="text-[#3d5870]">•</span>
+                  <span className="flex-1">{s}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input autoFocus={extraOpen} value={extraInput} onChange={e => setExtraInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') commitExtra(); if (e.key === 'Escape') setExtraOpen(false); }}
+              placeholder="Estudio que quieres pedir sin diagnóstico específico…"
+              className="flex-1 bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa] placeholder-[#3d5870] transition" />
+            {extraInput.trim() && (
+              <button type="button" onClick={commitExtra}
+                className="text-xs font-mono px-3 py-2 rounded-lg border border-[#1e2d3d] text-[#7a95aa] hover:border-[#7a95aa] transition whitespace-nowrap">
+                + Agregar
+              </button>
+            )}
           </div>
-        )}
-        <div className="flex gap-2">
-          <input value={extraInput} onChange={e => setExtraInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') commitExtra(); }}
-            placeholder="Estudio que quieres pedir sin diagnóstico específico…"
-            className="flex-1 bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa] placeholder-[#3d5870] transition" />
-          {extraInput.trim() && (
-            <button type="button" onClick={commitExtra}
-              className="text-xs font-mono px-3 py-2 rounded-lg border border-[#1e2d3d] text-[#7a95aa] hover:border-[#7a95aa] transition whitespace-nowrap">
-              + Agregar
-            </button>
+          {!extraStudies.length && (
+            <button type="button" onClick={() => setExtraOpen(false)}
+              className="text-[10px] font-mono text-[#3d5870] hover:text-[#7a95aa]">cancelar</button>
           )}
         </div>
-      </div>
+      )}
 
       {/* + Agregar Mi Diagnóstico */}
       <AddDiagnosisForm onAdd={onAddNew} color={color} big />
@@ -1464,6 +1522,26 @@ function DiagnosisCard({
       j === i ? { ...d, estudios_doctor: [...(d.estudios_doctor || []), study] } : d),
   }));
 
+  const handleEditStudy = (i: number, si: number, val: string) => updateDx(data => ({
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, j) => {
+      if (j !== i) return d;
+      const arr = [...(d.estudios_doctor || [])];
+      arr[si] = val;
+      return { ...d, estudios_doctor: arr };
+    }),
+  }));
+
+  const handleRemoveStudy = (i: number, si: number) => updateDx(data => ({
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, j) => {
+      if (j !== i) return d;
+      const arr = [...(d.estudios_doctor || [])];
+      arr.splice(si, 1);
+      return { ...d, estudios_doctor: arr };
+    }),
+  }));
+
   const handleAddExtraStudies = (study: string) => updateDx(data => ({
     ...data,
     estudios_adicionales: [...(data.estudios_adicionales || []), study],
@@ -1611,6 +1689,8 @@ function DiagnosisCard({
           onAcceptBoth={handleAcceptBoth}
           onToggleStudy={handleToggleStudy}
           onAddStudy={handleAddStudyToDiagnosis}
+          onEditStudy={handleEditStudy}
+          onRemoveStudy={handleRemoveStudy}
           onAddNew={handleAddNewDiagnosis}
           onAddExtraStudies={handleAddExtraStudies} />
       ) : hasStructure ? (

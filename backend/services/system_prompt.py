@@ -732,6 +732,7 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
       "nombre": "Síndrome Metabólico",
       "cie10": "E88.81",
       "confianza": 85,
+      "por_que_confianza": "1-2 líneas: qué datos concretos del caso justifican ese porcentaje y qué falta para llegar al 100%.",
       "resumen_breve": "1-2 líneas con los datos concretos del paciente que justifican este diagnóstico.",
       "explicacion_completa": "Razonamiento clínico completo: qué datos suman, qué datos restan, qué diagnósticos diferenciales se descartaron y por qué.",
       "fuentes": ["Criterios ATP-III"],
@@ -744,8 +745,10 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
 REGLAS DE LLENADO (síguelas exactamente):
 1. Un objeto en "diagnosticos" por cada diagnóstico candidato, ordenados de mayor a menor "confianza".
 2. "cie10": código CIE-10 solo si lo conoces con certeza; si no, usa "".
-3. "resumen_breve": máximo 2 líneas — esto siempre va visible. "explicacion_completa": el razonamiento
-   clínico completo, va detrás de un botón "ver más" en la interfaz, ahí sí puedes extenderte.
+3. "por_que_confianza": 1-2 líneas breves — explica por qué ese número y no 100%: qué datos sustentan
+   la certeza actual y qué información o estudio elevaría la confianza. Máximo 40 palabras.
+   "resumen_breve": máximo 2 líneas — siempre visible. "explicacion_completa": razonamiento clínico
+   completo, va detrás de un botón "ver más" en la interfaz, ahí sí puedes extenderte.
 4. "fuentes": ver regla de arriba — solo guías/criterios reconocidos por nombre, nunca papers o
    autores específicos. Usa [] si ninguna aplica.
 5. "estudios_sugeridos": lista de strings, cada uno un estudio o procedimiento concreto (no genérico
