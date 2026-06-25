@@ -1422,15 +1422,8 @@ function FlowPageInner() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="GLUCOSA (mg/dL)"><input type="number" className={`${inp} ${fOrng}`} value={f.glucosa} onChange={e=>set('glucosa',e.target.value)} placeholder="95" /></Field>
-                    <Field label="¿EN AYUNO?">
-                      <div className="flex gap-4 pt-2">
-                        {['Sí','No'].map(v => (
-                          <label key={v} className="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" name="ayuno" value={v} checked={f.glucosa_ayuno===v} onChange={e=>set('glucosa_ayuno',e.target.value)} className="w-4 h-4 accent-[#f97316]" />
-                            <span className="text-sm text-[#dde6ef]">{v}</span>
-                          </label>
-                        ))}
-                      </div>
+                    <Field label="HORAS DESDE ÚLTIMA COMIDA">
+                      <input type="number" min="0" max="24" className={`${inp} ${fOrng}`} value={f.glucosa_ayuno} onChange={e=>set('glucosa_ayuno',e.target.value)} placeholder="8" />
                     </Field>
                   </div>
                   <label className="flex items-center gap-3 cursor-pointer">
