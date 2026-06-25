@@ -63,7 +63,7 @@ export default function NursePage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-14 flex justify-center">
-        <div className="w-full max-w-3xl px-6 py-8 pb-40">
+        <div className="w-full max-w-5xl px-6 py-8 pb-40">
           {/* Progress */}
           <div className="mb-8">
             <div className="text-sm font-mono text-[#f97316] mb-2">BLOQUE {step + 2} DE 4</div>

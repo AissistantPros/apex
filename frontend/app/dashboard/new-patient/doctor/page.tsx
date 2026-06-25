@@ -76,7 +76,7 @@ export default function DoctorPage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-14 flex justify-center">
-        <div className="w-full max-w-3xl px-6 py-8 pb-40">
+        <div className="w-full max-w-5xl px-6 py-8 pb-40">
           {/* Progress */}
           <div className="mb-8">
             <div className="text-sm font-mono text-[#a78bfa] mb-2">BLOQUE {step + 4} DE 6</div>

@@ -276,7 +276,10 @@ export default function NewVisitPage() {
     // Subjetivo
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
-    bedtime: '', wake_time: '', night_awakenings: '', snoring: '', daytime_nap: '',
+    bedtime: '', wake_time: '', night_awakenings: '', snoring: '',
+    snoring_intensity: '', snoring_frequency: '',
+    apnea_observed: '', apnea_frequency: '', apnea_duration: '',
+    daytime_nap: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
     bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
     stress_level: 5, racing_mind: '', anxiety_panic: '', stress_coping: '', can_relax: '',
@@ -380,7 +383,11 @@ export default function NewVisitPage() {
         energy_evening: form.energia_tarde, sleep_quality: form.sueno_calidad,
         sleep_hours: form.sueno_horas, wakes_rested: form.sueno_reparador,
         bedtime: form.bedtime, wake_time: form.wake_time,
-        night_awakenings: form.night_awakenings, snoring: form.snoring, daytime_nap: form.daytime_nap,
+        night_awakenings: form.night_awakenings, snoring: form.snoring,
+        snoring_intensity: form.snoring_intensity, snoring_frequency: form.snoring_frequency,
+        apnea_observed: form.apnea_observed, apnea_frequency: form.apnea_frequency,
+        apnea_duration: form.apnea_duration,
+        daytime_nap: form.daytime_nap,
         mood: animo, libido: form.libido_hoy, digestion,
         bristol_scale: form.bristol_scale, bowel_movements_per_day: form.bowel_movements_per_day,
         recent_antibiotics: form.recent_antibiotics, probiotics_use: form.probiotics_use,
@@ -476,7 +483,7 @@ export default function NewVisitPage() {
 
       <main className="pt-16 pb-36">
         {/* Contenedor responsive: se expande con el monitor */}
-        <div className="mx-auto px-4 py-8 w-full max-w-xl md:max-w-3xl lg:max-w-5xl xl:max-w-6xl">
+        <div className="mx-auto px-4 py-8 w-full max-w-3xl md:max-w-5xl lg:max-w-7xl">
 
           {/* ─── Indicador de fases ─── */}
           <div className="flex items-center gap-3 mb-8">
@@ -1141,10 +1148,10 @@ export default function NewVisitPage() {
                         <input type="time" className={inp(tb)} value={form.wake_time} onChange={e => set('wake_time', e.target.value)} />
                       </Field>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Despertares + siesta */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {([
                         { key: 'night_awakenings', label: '¿DESPERTARES NOCTURNOS?', opts: ['Sí','No'] },
-                        { key: 'snoring',          label: '¿RONQUIDOS / APNEA?',     opts: ['Sí','No','No sé'] },
                         { key: 'daytime_nap',      label: '¿SIESTA DURANTE EL DÍA?', opts: ['Sí','No'] },
                       ] as const).map(({ key, label, opts }) => (
                         <div key={key}>
@@ -1161,6 +1168,100 @@ export default function NewVisitPage() {
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    {/* ── Ronquidos ── */}
+                    <div className="space-y-3 rounded-xl bg-[#070a0e] border border-[#1e2d3d] p-4">
+                      <div>
+                        <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿RONCA USTED?</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {(['Sí','No','A veces'] as const).map(o => (
+                            <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                              style={{ background: form.snoring === o ? '#a78bfa' : '#1e2d3d', borderColor: form.snoring === o ? '#a78bfa' : '#2a3a4d', color: form.snoring === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="snoring" value={o} checked={form.snoring === o}
+                                onChange={e => set('snoring', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {(form.snoring === 'Sí' || form.snoring === 'A veces') && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-3 border-l-2 border-[#a78bfa]/30">
+                          <div>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿SE ESCUCHA A TRAVÉS DE LA PARED?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Sí','No','A veces'] as const).map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                  style={{ background: form.snoring_intensity === o ? '#a78bfa' : '#1e2d3d', borderColor: form.snoring_intensity === o ? '#a78bfa' : '#2a3a4d', color: form.snoring_intensity === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="snoring_intensity" value={o} checked={form.snoring_intensity === o}
+                                    onChange={e => set('snoring_intensity', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿CON QUÉ FRECUENCIA RONCA?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Casi siempre','Frecuentemente','A veces'] as const).map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                  style={{ background: form.snoring_frequency === o ? '#a78bfa' : '#1e2d3d', borderColor: form.snoring_frequency === o ? '#a78bfa' : '#2a3a4d', color: form.snoring_frequency === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="snoring_frequency" value={o} checked={form.snoring_frequency === o}
+                                    onChange={e => set('snoring_frequency', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Apnea ── */}
+                    <div className="space-y-3 rounded-xl bg-[#070a0e] border border-[#1e2d3d] p-4">
+                      <div>
+                        <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿USTED O ALGUIEN HA NOTADO PAUSAS AL RESPIRAR MIENTRAS DUERME?</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {(['Sí','No','No sé'] as const).map(o => (
+                            <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                              style={{ background: form.apnea_observed === o ? '#a78bfa' : '#1e2d3d', borderColor: form.apnea_observed === o ? '#a78bfa' : '#2a3a4d', color: form.apnea_observed === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="apnea_observed" value={o} checked={form.apnea_observed === o}
+                                onChange={e => set('apnea_observed', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {form.apnea_observed === 'Sí' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-3 border-l-2 border-[#a78bfa]/30">
+                          <div>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿CON QUÉ FRECUENCIA?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['<1/sem','1-2/sem','3+/sem'] as const).map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                  style={{ background: form.apnea_frequency === o ? '#a78bfa' : '#1e2d3d', borderColor: form.apnea_frequency === o ? '#a78bfa' : '#2a3a4d', color: form.apnea_frequency === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="apnea_frequency" value={o} checked={form.apnea_frequency === o}
+                                    onChange={e => set('apnea_frequency', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿CUÁNTO DURAN LAS PAUSAS?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Segundos','Más de 10 seg','No sabe'] as const).map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                  style={{ background: form.apnea_duration === o ? '#a78bfa' : '#1e2d3d', borderColor: form.apnea_duration === o ? '#a78bfa' : '#2a3a4d', color: form.apnea_duration === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="apnea_duration" value={o} checked={form.apnea_duration === o}
+                                    onChange={e => set('apnea_duration', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

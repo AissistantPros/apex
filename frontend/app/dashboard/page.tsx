@@ -83,7 +83,7 @@ export default function DashboardPage() {
   return (
     <>
     <div className="min-h-screen bg-[#070a0e]">
-      <main className="pt-16 max-w-5xl mx-auto px-6 flex flex-col gap-7 pb-24">
+      <main className="pt-16 max-w-7xl mx-auto px-6 flex flex-col gap-7 pb-24">
 
         {/* ── Encabezado ── */}
         <div className="flex flex-col items-center pt-12 pb-2 text-center">

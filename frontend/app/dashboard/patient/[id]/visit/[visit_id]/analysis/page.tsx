@@ -959,15 +959,16 @@ interface DiagnosisCandidate {
   fuentes?: string[];
   estudios_sugeridos?: string[];
   // Estado del doctor — no viene de la IA, se inyecta al normalizar la respuesta
-  aceptado?: boolean;
-  origen?: 'ia' | 'doctor';
-  estudios_aceptados?: boolean;
-  estudios_doctor?: string[];
+  dx_aceptado?: boolean;               // doctor aceptó este diagnóstico
+  estudios_seleccionados?: boolean[];  // un bool por cada item en estudios_sugeridos
+  estudios_doctor?: string[];          // estudios que el doctor agregó manualmente
+  estudios_finalizados?: boolean;      // doctor confirmó los estudios de esta card
 }
 
 interface DiagnosisListData {
   diagnosticos: DiagnosisCandidate[];
   alertas_clinicas?: string[];
+  estudios_adicionales?: string[];     // estudios sin diagnóstico específico asociado
 }
 
 function parseDiagnosisJson(text: string): DiagnosisListData | null {
@@ -1010,224 +1011,223 @@ function parseDiagnosisJson(text: string): DiagnosisListData | null {
   }
 }
 
-/** Inyecta valores por defecto de estado del doctor sin pisar los que ya existan.
- *  El primer candidato empieza aceptado; el resto pendiente. */
+/** Inyecta valores por defecto de estado del doctor sin pisar los que ya existan. */
 function withDxDefaults(data: DiagnosisListData): DiagnosisListData {
   return {
     ...data,
-    diagnosticos: data.diagnosticos.map((d, i) => ({
+    diagnosticos: data.diagnosticos.map((d) => ({
       ...d,
-      aceptado: d.aceptado ?? (i === 0),
-      origen: d.origen ?? 'ia',
-      estudios_aceptados: d.estudios_aceptados ?? false,
+      dx_aceptado: d.dx_aceptado ?? false,
+      estudios_seleccionados: d.estudios_seleccionados
+        ?? (d.estudios_sugeridos || []).map(() => false),
       estudios_doctor: d.estudios_doctor ?? [],
+      estudios_finalizados: d.estudios_finalizados ?? false,
     })),
+    estudios_adicionales: data.estudios_adicionales ?? [],
   };
 }
 
-function DiagnosisCandidateCard({ item, color, onAccept, onSaveEdit, onRestore, onToggleStudies, onAddStudy }: {
+function DiagnosisCandidateCard({ item, color, onAcceptDx, onAcceptStudies, onAcceptBoth, onToggleStudy, onAddStudy }: {
   item: DiagnosisCandidate; color: string;
-  onAccept: () => void;
-  onSaveEdit: (fields: Partial<DiagnosisCandidate>) => void;
-  onRestore: () => void;
-  onToggleStudies: () => void;
+  onAcceptDx: () => void;
+  onAcceptStudies: () => void;
+  onAcceptBoth: () => void;
+  onToggleStudy: (studyIdx: number) => void;
   onAddStudy: (study: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<DiagnosisCandidate>(item);
-  const [newStudy, setNewStudy] = useState('');
+  const [studyInput, setStudyInput] = useState('');
 
-  const isDoctor = item.origen === 'doctor';
-  const accepted = !!item.aceptado;
+  const dxAceptado = !!item.dx_aceptado;
+  const estudiosFinalizados = !!item.estudios_finalizados;
   const pctColor = item.confianza == null ? '#7a95aa'
     : item.confianza >= 75 ? color
     : item.confianza >= 50 ? '#f59e0b'
     : '#7a95aa';
-  const allStudies = [...(item.estudios_sugeridos || []), ...(item.estudios_doctor || [])];
+  const sugeridos = item.estudios_sugeridos || [];
+  const seleccionados = item.estudios_seleccionados || sugeridos.map(() => false);
+  const doctorStudies = item.estudios_doctor || [];
 
-  const startEdit = () => { setDraft(item); setEditing(true); setExpanded(true); };
-  const saveEdit = () => {
-    if (!draft.nombre?.trim()) return;
-    onSaveEdit({ ...draft, origen: 'doctor' });
-    setEditing(false);
+  const commitStudy = () => {
+    if (!studyInput.trim()) return;
+    onAddStudy(studyInput.trim());
+    setStudyInput('');
   };
 
-  if (editing) {
-    return (
-      <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${color}50`, background: '#070a0e' }}>
-        <p className="text-xs font-mono" style={{ color }}>EDITANDO ESTE DIAGNÓSTICO — al guardar queda marcado como tuyo</p>
-        <div>
-          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">NOMBRE DEL DIAGNÓSTICO</label>
-          <input value={draft.nombre || ''} onChange={e => setDraft(d => ({ ...d, nombre: e.target.value }))}
-            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">CIE-10 (opcional)</label>
-            <input value={draft.cie10 || ''} onChange={e => setDraft(d => ({ ...d, cie10: e.target.value }))}
-              className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
-          </div>
-          <div>
-            <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">% DE CONFIANZA</label>
-            <input type="number" min={0} max={100}
-              value={draft.confianza ?? ''}
-              onChange={e => setDraft(d => ({ ...d, confianza: e.target.value ? parseInt(e.target.value, 10) : undefined }))}
-              className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa]" />
-          </div>
-        </div>
-        <div>
-          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">RESUMEN BREVE</label>
-          <textarea rows={2} value={draft.resumen_breve || ''} onChange={e => setDraft(d => ({ ...d, resumen_breve: e.target.value }))}
-            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] outline-none focus:border-[#7a95aa] resize-none" />
-        </div>
-        <div>
-          <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">EXPLICACIÓN COMPLETA (opcional)</label>
-          <textarea rows={3} value={draft.explicacion_completa || ''} onChange={e => setDraft(d => ({ ...d, explicacion_completa: e.target.value }))}
-            className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-[#dde6ef] text-sm outline-none focus:border-[#7a95aa] resize-none" />
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={saveEdit}
-            className="px-4 py-2 text-black text-xs font-bold rounded-lg transition" style={{ background: color }}>
-            ✓ Guardar diagnóstico
-          </button>
-          <button type="button" onClick={() => setEditing(false)}
-            className="px-4 py-2 border border-[#1e2d3d] text-[#7a95aa] text-xs rounded-lg hover:border-[#7a95aa] transition">
-            Cancelar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="rounded-xl p-4 transition"
-      style={accepted
-        ? { background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.4)' }
+    <div className="rounded-xl overflow-hidden transition"
+      style={dxAceptado
+        ? { background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.4)' }
         : { background: '#070a0e', border: '1px solid #1e2d3d' }}>
 
-      {/* Encabezado: nombre + CIE-10 + % */}
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <span className="font-bold text-base leading-snug" style={{ color: accepted ? '#f59e0b' : '#dde6ef' }}>
-          {accepted ? '⭐ ' : ''}<Md text={item.nombre} />
-          {item.cie10 && (
-            <span className="text-xs font-mono text-[#3d5870] font-normal ml-1.5">({item.cie10})</span>
-          )}
-        </span>
-        {item.confianza != null && (
-          <span className="text-xs font-mono font-bold px-2 py-1 rounded whitespace-nowrap flex-shrink-0"
-            style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
-            {item.confianza}%
+      {/* ── Bloque 1: Diagnóstico ── */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <span className="font-bold text-base leading-snug" style={{ color: dxAceptado ? '#f59e0b' : '#dde6ef' }}>
+            {dxAceptado ? '⭐ ' : ''}<Md text={item.nombre} />
+            {item.cie10 && (
+              <span className="text-xs font-mono text-[#3d5870] font-normal ml-1.5">({item.cie10})</span>
+            )}
           </span>
+          {item.confianza != null && (
+            <span className="text-xs font-mono font-bold px-2 py-1 rounded whitespace-nowrap flex-shrink-0"
+              style={{ color: pctColor, background: `${pctColor}15`, border: `1px solid ${pctColor}40` }}>
+              {item.confianza}%
+            </span>
+          )}
+        </div>
+
+        {item.resumen_breve && (
+          <p className="text-[15px] text-[#dde6ef] leading-relaxed font-serif mb-2.5">{item.resumen_breve}</p>
+        )}
+
+        {item.explicacion_completa && (
+          <div>
+            <button type="button" onClick={() => setExpanded(o => !o)}
+              className="text-xs font-mono text-[#7a95aa] hover:text-[#dde6ef] transition flex items-center gap-1.5">
+              <span>{expanded ? '▲' : '▼'}</span>
+              {expanded ? 'Ocultar explicación y fuentes' : 'Ver explicación completa y fuentes'}
+            </button>
+            {expanded && (
+              <div className="mt-2.5 space-y-2.5">
+                <p className="text-sm text-[#7a95aa] font-serif leading-relaxed">{item.explicacion_completa}</p>
+                {item.fuentes && item.fuentes.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {item.fuentes.map((f, fi) => (
+                      <span key={fi} className="text-[10px] font-mono px-2 py-1 rounded-full"
+                        style={{ color, background: `${color}12`, border: `1px solid ${color}35` }}>
+                        📖 {f}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Resumen breve — siempre visible */}
-      {item.resumen_breve && (
-        <p className="text-[15px] text-[#dde6ef] leading-relaxed font-serif mb-2.5">{item.resumen_breve}</p>
-      )}
+      {/* ── Bloque 2: Estudios sugeridos ── */}
+      {(sugeridos.length > 0 || doctorStudies.length > 0) && (
+        <div className="border-t border-[#1e2d3d] bg-[#050810] p-4 space-y-3">
+          <p className="text-xs font-mono text-[#0ea5e9] font-bold">🔬 ESTUDIOS SUGERIDOS</p>
 
-      {/* Acordeón: explicación completa + fuentes */}
-      {item.explicacion_completa && (
-        <div className="mb-3">
-          <button type="button" onClick={() => setExpanded(o => !o)}
-            className="text-xs font-mono text-[#7a95aa] hover:text-[#dde6ef] transition flex items-center gap-1.5">
-            <span>{expanded ? '▲' : '▼'}</span>
-            {expanded ? 'Ocultar explicación y fuentes' : 'Ver explicación completa y fuentes'}
-          </button>
-          {expanded && (
-            <div className="mt-2.5 space-y-2.5 pl-0.5">
-              <p className="text-sm text-[#7a95aa] font-serif leading-relaxed">{item.explicacion_completa}</p>
-              {item.fuentes && item.fuentes.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {item.fuentes.map((f, fi) => (
-                    <span key={fi} className="text-[10px] font-mono px-2 py-1 rounded-full"
-                      style={{ color, background: `${color}12`, border: `1px solid ${color}35` }}>
-                      📖 {f}
-                    </span>
-                  ))}
-                </div>
-              )}
+          {/* Estudios de la IA — uno por uno con checkbox */}
+          {sugeridos.length > 0 && (
+            <div className="space-y-2">
+              {sugeridos.map((s, si) => {
+                const sel = seleccionados[si] ?? false;
+                return (
+                  <label key={si}
+                    className="flex items-start gap-3 rounded-lg px-3 py-2.5 cursor-pointer transition"
+                    style={{ background: sel ? 'rgba(14,165,233,.1)' : '#0d1520', border: `1px solid ${sel ? 'rgba(14,165,233,.35)' : '#1e2d3d'}` }}>
+                    <input type="checkbox" checked={sel} onChange={() => onToggleStudy(si)}
+                      className="mt-0.5 w-4 h-4 flex-shrink-0 rounded accent-[#0ea5e9]" />
+                    <span className="text-sm text-[#dde6ef] font-serif leading-relaxed">{s}</span>
+                  </label>
+                );
+              })}
             </div>
           )}
-        </div>
-      )}
 
-      {/* Estudios para confirmar */}
-      {allStudies.length > 0 && (
-        <div className="bg-[rgba(14,165,233,.07)] border border-[rgba(14,165,233,.2)] rounded-lg px-3 py-2.5 mb-3">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-[#0ea5e9] text-xs font-bold flex items-center gap-1.5">🔬 Estudios para confirmar</span>
-            <button type="button" onClick={onToggleStudies}
-              className="text-xs font-mono px-2 py-0.5 rounded border transition flex-shrink-0"
-              style={item.estudios_aceptados
-                ? { color: '#00e5a0', borderColor: 'rgba(0,229,160,.4)', background: 'rgba(0,229,160,.1)' }
-                : { color: '#3d5870', borderColor: '#1e2d3d', background: 'transparent' }}>
-              {item.estudios_aceptados ? '✓ Aceptados' : 'Aceptar estos estudios'}
-            </button>
-          </div>
-          <ul className="space-y-1 mb-2">
-            {allStudies.map((s, si) => (
-              <li key={si} className="text-xs text-[#7a95aa] font-mono flex items-start gap-1.5">
-                <span className="text-[#3d5870] flex-shrink-0">•</span>{s}
-              </li>
-            ))}
-          </ul>
-          <div className="flex gap-1.5">
-            <input value={newStudy} onChange={e => setNewStudy(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && newStudy.trim()) { onAddStudy(newStudy.trim()); setNewStudy(''); } }}
-              placeholder="Sumar estudio adicional…"
-              className="flex-1 bg-[#0d1520] border border-[#1e2d3d] rounded-md px-2 py-1 text-xs text-[#dde6ef] outline-none focus:border-[#0ea5e9] placeholder-[#3d5870]" />
-            <button type="button"
-              onClick={() => { if (newStudy.trim()) { onAddStudy(newStudy.trim()); setNewStudy(''); } }}
-              className="text-xs font-mono px-2.5 py-1 rounded border border-[rgba(14,165,233,.4)] text-[#0ea5e9] hover:bg-[rgba(14,165,233,.1)] transition">
-              + Sumar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Controles por diagnóstico + badge de procedencia */}
-      <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#1e2d3d]">
-        <div className="flex gap-2 flex-wrap">
-          <button type="button" onClick={onAccept}
-            className="text-xs font-mono px-3 py-1.5 rounded-lg border transition"
-            style={accepted
-              ? { color: '#f59e0b', borderColor: 'rgba(245,158,11,.5)', background: 'rgba(245,158,11,.12)' }
-              : { color: '#7a95aa', borderColor: '#1e2d3d', background: 'transparent' }}>
-            {accepted ? '⭐ Aceptado' : '✓ Aceptar este diagnóstico'}
-          </button>
-          <button type="button" onClick={startEdit}
-            className="text-xs font-mono px-3 py-1.5 rounded-lg border border-[#1e2d3d] text-[#7a95aa] hover:border-[#f97316] hover:text-[#f97316] transition">
-            ✎ Crear mi propio diagnóstico
-          </button>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {isDoctor ? (
-            <>
-              <span className="text-[10px] font-mono text-[#f97316]">👤 CREADO POR EL DOCTOR</span>
-              <button type="button" onClick={onRestore} title="Restaurar versión de la IA"
-                className="text-xs text-[#3d5870] hover:text-[#7a95aa] transition px-1">↺</button>
-            </>
-          ) : (
-            <span className="text-[10px] font-mono text-[#3d5870]">GENERADO POR IA</span>
+          {/* Estudios que el doctor ya agregó */}
+          {doctorStudies.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-mono text-[#3d5870]">ESTUDIOS QUE AGREGASTE</p>
+              {doctorStudies.map((s, si) => (
+                <div key={si} className="flex items-start gap-2 px-3 py-2 rounded-lg"
+                  style={{ background: 'rgba(0,229,160,.07)', border: '1px solid rgba(0,229,160,.25)' }}>
+                  <span className="text-[#00e5a0] text-xs flex-shrink-0 mt-0.5">✓</span>
+                  <span className="text-sm text-[#dde6ef] font-serif leading-relaxed">{s}</span>
+                </div>
+              ))}
+            </div>
           )}
+
+          {/* Ingresar estudio adicional */}
+          <div className="pt-1 border-t border-[#1e2d3d]">
+            <p className="text-[10px] font-mono text-[#3d5870] mb-2">INGRESAR ESTUDIO ADICIONAL</p>
+            <div className="flex gap-2">
+              <input
+                value={studyInput}
+                onChange={e => setStudyInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitStudy(); }}
+                placeholder="Escribe el nombre del estudio…"
+                className="flex-1 bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#0ea5e9] placeholder-[#3d5870] transition" />
+              {studyInput.trim() && (
+                <button type="button" onClick={commitStudy}
+                  className="text-xs font-mono px-3 py-2 rounded-lg border border-[rgba(14,165,233,.4)] text-[#0ea5e9] hover:bg-[rgba(14,165,233,.1)] transition whitespace-nowrap">
+                  Ingresar otro estudio
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Botón Aceptar estudios */}
+          <button type="button" onClick={onAcceptStudies}
+            className="w-full py-3 rounded-xl font-semibold text-sm transition"
+            style={estudiosFinalizados
+              ? { background: 'rgba(0,229,160,.15)', border: '1px solid rgba(0,229,160,.5)', color: '#00e5a0' }
+              : { background: 'rgba(14,165,233,.1)', border: '1px solid rgba(14,165,233,.4)', color: '#0ea5e9' }}>
+            {estudiosFinalizados ? '✓ Estudios aceptados' : 'Aceptar estudios'}
+          </button>
         </div>
+      )}
+
+      {/* ── Bloque 3: Botones de aceptación ── */}
+      <div className="border-t border-[#1e2d3d] bg-[#050810] px-4 py-3 space-y-2">
+        {/* Secundarios */}
+        <div className="flex gap-2 justify-end">
+          <button type="button" onClick={onAcceptDx}
+            className="text-xs font-mono px-3 py-1.5 rounded-lg border transition"
+            style={dxAceptado && !estudiosFinalizados
+              ? { color: '#f59e0b', borderColor: 'rgba(245,158,11,.5)', background: 'rgba(245,158,11,.1)' }
+              : { color: '#7a95aa', borderColor: '#1e2d3d', background: 'transparent' }}>
+            Aceptar solo diagnóstico
+          </button>
+          <button type="button" onClick={onAcceptStudies}
+            className="text-xs font-mono px-3 py-1.5 rounded-lg border transition"
+            style={estudiosFinalizados && !dxAceptado
+              ? { color: '#0ea5e9', borderColor: 'rgba(14,165,233,.5)', background: 'rgba(14,165,233,.1)' }
+              : { color: '#7a95aa', borderColor: '#1e2d3d', background: 'transparent' }}>
+            Aceptar solo estudios
+          </button>
+        </div>
+        {/* Primario */}
+        <button type="button" onClick={onAcceptBoth}
+          className="w-full py-3 rounded-xl font-bold text-sm transition"
+          style={dxAceptado && estudiosFinalizados
+            ? { background: 'rgba(245,158,11,.2)', border: '2px solid rgba(245,158,11,.7)', color: '#f59e0b' }
+            : { background: color + '18', border: `2px solid ${color}60`, color }}>
+          {dxAceptado && estudiosFinalizados
+            ? '⭐ Diagnóstico y estudios aceptados'
+            : 'Aceptar Diagnóstico y Estudios'}
+        </button>
       </div>
     </div>
   );
 }
 
-function DiagnosisStructuredView({ data, color, onAccept, onSaveEdit, onRestore, onToggleStudies, onAddStudy, onAddNew }: {
+function DiagnosisStructuredView({ data, color, onAcceptDx, onAcceptStudies, onAcceptBoth, onToggleStudy, onAddStudy, onAddNew, onAddExtraStudies }: {
   data: DiagnosisListData; color: string;
-  onAccept: (i: number) => void;
-  onSaveEdit: (i: number, fields: Partial<DiagnosisCandidate>) => void;
-  onRestore: (i: number) => void;
-  onToggleStudies: (i: number) => void;
+  onAcceptDx: (i: number) => void;
+  onAcceptStudies: (i: number) => void;
+  onAcceptBoth: (i: number) => void;
+  onToggleStudy: (i: number, si: number) => void;
   onAddStudy: (i: number, study: string) => void;
   onAddNew: (input: { nombre: string; pct: string; detalle: string; estudio: string }) => void;
+  onAddExtraStudies: (study: string) => void;
 }) {
   const alertas = (data.alertas_clinicas || []).filter(a => a && a.trim());
+  const extraStudies = data.estudios_adicionales || [];
+  const [extraInput, setExtraInput] = useState('');
+
+  const commitExtra = () => {
+    if (!extraInput.trim()) return;
+    onAddExtraStudies(extraInput.trim());
+    setExtraInput('');
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-[#7a95aa] font-serif italic">
@@ -1244,17 +1244,45 @@ function DiagnosisStructuredView({ data, color, onAccept, onSaveEdit, onRestore,
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {data.diagnosticos.map((item, i) => (
           <DiagnosisCandidateCard key={i} item={item} color={color}
-            onAccept={() => onAccept(i)}
-            onSaveEdit={fields => onSaveEdit(i, fields)}
-            onRestore={() => onRestore(i)}
-            onToggleStudies={() => onToggleStudies(i)}
+            onAcceptDx={() => onAcceptDx(i)}
+            onAcceptStudies={() => onAcceptStudies(i)}
+            onAcceptBoth={() => onAcceptBoth(i)}
+            onToggleStudy={si => onToggleStudy(i, si)}
             onAddStudy={study => onAddStudy(i, study)} />
         ))}
       </div>
 
+      {/* Estudios adicionales sin diagnóstico */}
+      <div className="rounded-xl border-2 border-dashed p-4 space-y-3"
+        style={{ borderColor: '#1e2d3d', background: '#050810' }}>
+        <p className="text-xs font-mono text-[#3d5870]">ESTUDIOS ADICIONALES SIN DIAGNÓSTICO</p>
+        {extraStudies.length > 0 && (
+          <div className="space-y-1.5">
+            {extraStudies.map((s, si) => (
+              <div key={si} className="flex items-start gap-2 text-xs text-[#7a95aa] font-mono">
+                <span className="text-[#3d5870]">•</span>{s}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input value={extraInput} onChange={e => setExtraInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commitExtra(); }}
+            placeholder="Estudio que quieres pedir sin diagnóstico específico…"
+            className="flex-1 bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#7a95aa] placeholder-[#3d5870] transition" />
+          {extraInput.trim() && (
+            <button type="button" onClick={commitExtra}
+              className="text-xs font-mono px-3 py-2 rounded-lg border border-[#1e2d3d] text-[#7a95aa] hover:border-[#7a95aa] transition whitespace-nowrap">
+              + Agregar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* + Agregar Mi Diagnóstico */}
       <AddDiagnosisForm onAdd={onAddNew} color={color} big />
     </div>
   );
@@ -1402,35 +1430,43 @@ function DiagnosisCard({
     });
   };
 
-  const handleAcceptDiagnosis = (i: number) => updateDx(data => ({
+  const handleAcceptDx = (i: number) => updateDx(data => ({
     ...data,
-    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, aceptado: !d.aceptado } : d),
+    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, dx_aceptado: !d.dx_aceptado } : d),
   }));
 
-  const handleSaveEditDiagnosis = (i: number, fields: Partial<DiagnosisCandidate>) => updateDx(data => ({
+  const handleAcceptStudies = (i: number) => updateDx(data => ({
     ...data,
-    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, ...fields, origen: 'doctor' as const } : d),
+    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, estudios_finalizados: !d.estudios_finalizados } : d),
   }));
 
-  const handleRestoreDiagnosis = (i: number) => {
-    const original = parseDiagnosisJson(state.ai_text);
-    if (!original || !original.diagnosticos[i]) return;
-    const originalItem = withDxDefaults(original).diagnosticos[i];
-    updateDx(data => ({
-      ...data,
-      diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...originalItem } : d),
-    }));
-  };
-
-  const handleToggleStudiesAccepted = (i: number) => updateDx(data => ({
+  const handleAcceptBoth = (i: number) => updateDx(data => ({
     ...data,
-    diagnosticos: data.diagnosticos.map((d, j) => j === i ? { ...d, estudios_aceptados: !d.estudios_aceptados } : d),
+    diagnosticos: data.diagnosticos.map((d, j) => {
+      if (j !== i) return d;
+      const already = d.dx_aceptado && d.estudios_finalizados;
+      return { ...d, dx_aceptado: !already, estudios_finalizados: !already };
+    }),
+  }));
+
+  const handleToggleStudy = (i: number, si: number) => updateDx(data => ({
+    ...data,
+    diagnosticos: data.diagnosticos.map((d, j) => {
+      if (j !== i) return d;
+      const base = d.estudios_seleccionados ?? (d.estudios_sugeridos || []).map(() => false);
+      return { ...d, estudios_seleccionados: base.map((v, k) => k === si ? !v : v) };
+    }),
   }));
 
   const handleAddStudyToDiagnosis = (i: number, study: string) => updateDx(data => ({
     ...data,
     diagnosticos: data.diagnosticos.map((d, j) =>
       j === i ? { ...d, estudios_doctor: [...(d.estudios_doctor || []), study] } : d),
+  }));
+
+  const handleAddExtraStudies = (study: string) => updateDx(data => ({
+    ...data,
+    estudios_adicionales: [...(data.estudios_adicionales || []), study],
   }));
 
   const handleAddNewDiagnosis = (input: { nombre: string; pct: string; detalle: string; estudio: string }) => {
@@ -1442,9 +1478,9 @@ function DiagnosisCard({
         confianza: input.pct.trim() ? parseInt(input.pct.trim(), 10) : undefined,
         resumen_breve: input.detalle.trim(),
         estudios_sugeridos: input.estudio.trim() ? [input.estudio.trim()] : [],
-        aceptado: true,
-        origen: 'doctor' as const,
-        estudios_aceptados: false,
+        estudios_seleccionados: input.estudio.trim() ? [true] : [],
+        dx_aceptado: true,
+        estudios_finalizados: false,
         estudios_doctor: [],
       }],
     }));
@@ -1570,12 +1606,13 @@ function DiagnosisCard({
       ) : dxData ? (
         /* Diagnóstico convencional estructurado (JSON) — nueva vista per-candidato */
         <DiagnosisStructuredView data={dxData} color={color}
-          onAccept={handleAcceptDiagnosis}
-          onSaveEdit={handleSaveEditDiagnosis}
-          onRestore={handleRestoreDiagnosis}
-          onToggleStudies={handleToggleStudiesAccepted}
+          onAcceptDx={handleAcceptDx}
+          onAcceptStudies={handleAcceptStudies}
+          onAcceptBoth={handleAcceptBoth}
+          onToggleStudy={handleToggleStudy}
           onAddStudy={handleAddStudyToDiagnosis}
-          onAddNew={handleAddNewDiagnosis} />
+          onAddNew={handleAddNewDiagnosis}
+          onAddExtraStudies={handleAddExtraStudies} />
       ) : hasStructure ? (
         /* Structured sections (diagnósticos, formato de secciones ═══) */
         <div className="space-y-4">
@@ -2357,7 +2394,7 @@ export default function AnalysisPage() {
       {step === 'loading' && <LoadingScreen label={loadingLabel} />}
 
       <main className="pt-16 pb-32">
-        <div className="max-w-[860px] mx-auto px-6 py-8">
+        <div className="max-w-6xl mx-auto px-6 py-8">
 
           {/* ── INIT ── */}
           {step === 'init' && (

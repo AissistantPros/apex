@@ -8,9 +8,9 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-import json, re
+import json, re, time
 from anthropic import Anthropic
-from db import insert_analysis, get_analysis, update_analysis, get_visit, get_patient
+from db import insert_analysis, get_analysis, update_analysis, get_visit, get_patient, insert_ai_call_log, list_ai_call_logs, list_patient_visits
 
 from services.system_prompt import (
     get_traditional_diagnosis_prompt,
@@ -29,6 +29,10 @@ client = Anthropic()
 MODEL_DIAGNOSE  = "claude-sonnet-4-5"
 MODEL_VALIDATE  = "claude-haiku-4-5"
 MODEL_CHAT      = "claude-haiku-4-5"
+
+# Validación secundaria (chequeo de alucinaciones/seguridad) — desactivada temporalmente
+# durante pruebas para acelerar el flujo. Reactivar antes de producción.
+ENABLE_SECONDARY_VALIDATION = False
 
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
@@ -89,13 +93,14 @@ class ClarifyFunctionalRequest(BaseModel):
     patient_id: str = ""
 
 
-def build_diagnosis_prompt(diagnosis_type: str, full_patient: dict, full_visit: dict, extra_context: str = "") -> str:
+def build_diagnosis_prompt(diagnosis_type: str, full_patient: dict, full_visit: dict, extra_context: str = "",
+                            all_visits: list = None) -> str:
     """Genera el prompt de diagnóstico correspondiente sin depender de un diagnóstico previo."""
     if diagnosis_type == "functional":
-        return get_functional_medicine_prompt(full_patient, "", visit_data=full_visit, extra_context=extra_context)
+        return get_functional_medicine_prompt(full_patient, "", visit_data=full_visit, extra_context=extra_context, all_visits=all_visits)
     if diagnosis_type == "longevity":
-        return get_longevity_diagnosis_prompt(full_patient, "", visit_data=full_visit, extra_context=extra_context)
-    return get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context)
+        return get_longevity_diagnosis_prompt(full_patient, "", visit_data=full_visit, extra_context=extra_context, all_visits=all_visits)
+    return get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context, all_visits=all_visits)
 
 
 def build_doctor_context(ai_original: str, doctor_version: str, label: str) -> str:
@@ -149,7 +154,8 @@ def parse_protocol_json_safe(text: str) -> dict | None:
     return None
 
 
-def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000) -> str:
+def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
+                 visit_id: str = "", step: str = "") -> str:
     kwargs = {
         "model": model,
         "max_tokens": max_tokens,
@@ -157,8 +163,32 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
     }
     if system:
         kwargs["system"] = system
+    start = time.monotonic()
     response = client.messages.create(**kwargs)
-    return response.content[0].text
+    text = response.content[0].text
+    if visit_id:
+        latency_ms = int((time.monotonic() - start) * 1000)
+        try:
+            insert_ai_call_log({
+                "visit_id": visit_id,
+                "step": step,
+                "model": model,
+                "prompt": prompt,
+                "response": text,
+                "latency_ms": latency_ms,
+                "created_at": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            # El logging nunca debe tumbar el flujo de diagnóstico
+            print(f"[WARN] no se pudo guardar ai_call_log ({step}): {e}")
+    return text
+
+
+def maybe_validate(prompt_text: str, visit_id: str = "", step: str = "") -> str:
+    """Corre la validación secundaria (chequeo de alucinaciones) solo si está activada."""
+    if not ENABLE_SECONDARY_VALIDATION:
+        return ""
+    return call_claude(prompt_text, model=MODEL_VALIDATE, max_tokens=800, visit_id=visit_id, step=step)
 
 
 def extract_structured_header(raw_text: str) -> tuple[dict, str]:
@@ -212,6 +242,7 @@ async def get_clarifying_questions(
 
         full_patient = {**body.patient_data, **patient_record}
         full_visit = visit_record
+        all_visits = list_patient_visits(patient_id) if patient_id else []
         diagnosis_type = body.selected_type if body.selected_type in ("traditional", "functional", "longevity") else "traditional"
 
         if not get_analysis(visit_id):
@@ -227,12 +258,11 @@ async def get_clarifying_questions(
             })
 
         # 1) Analiza el caso completo y guarda el borrador (no se muestra aún al médico)
-        draft_prompt = build_diagnosis_prompt(diagnosis_type, full_patient, full_visit)
-        raw_draft = call_claude(draft_prompt, model=MODEL_DIAGNOSE)
+        draft_prompt = build_diagnosis_prompt(diagnosis_type, full_patient, full_visit, all_visits=all_visits)
+        raw_draft = call_claude(draft_prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"draft_{diagnosis_type}")
         draft_metadata, draft_diagnosis = extract_structured_header(raw_draft)
 
-        val_prompt = get_secondary_validation_prompt(draft_diagnosis)
-        draft_validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+        draft_validation = maybe_validate(get_secondary_validation_prompt(draft_diagnosis), visit_id=visit_id, step=f"validate_draft_{diagnosis_type}")
 
         update_analysis(visit_id, {
             "draft_diagnosis": draft_diagnosis,
@@ -245,7 +275,7 @@ async def get_clarifying_questions(
         # 2) Con el borrador ya generado, identifica si hace falta preguntar algo al paciente
         from services.system_prompt import get_clarifying_questions_prompt
         prompt = get_clarifying_questions_prompt(full_patient, full_visit, draft_diagnosis=draft_diagnosis)
-        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400)
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400, visit_id=visit_id, step="clarify_questions")
 
         questions = []
         try:
@@ -303,6 +333,7 @@ async def finalize_first_diagnosis(
         visit_record = get_visit(visit_id) or {}
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
+        all_visits = list_patient_visits(patient_id) if patient_id else []
 
         extra_context = f"""
 BORRADOR DE DIAGNÓSTICO GENERADO ANTES DE LAS PREGUNTAS DE ACLARACIÓN:
@@ -316,12 +347,11 @@ diagnóstico y los mismos porcentajes de certeza del borrador. Si SÍ cambian al
 diagnóstico y/o los porcentajes de certeza en consecuencia.
 """
 
-        prompt = build_diagnosis_prompt(draft_type, patient_data, visit_record, extra_context=extra_context)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        prompt = build_diagnosis_prompt(draft_type, patient_data, visit_record, extra_context=extra_context, all_visits=all_visits)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}")
         metadata, diagnosis = extract_structured_header(raw)
 
-        val_prompt = get_secondary_validation_prompt(diagnosis)
-        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+        validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step=f"validate_finalize_{draft_type}")
 
         return {
             "visit_id": visit_id,
@@ -364,6 +394,7 @@ async def run_traditional(
         # Mezclar lo que venga del frontend con lo de Supabase (Supabase tiene precedencia)
         full_patient = {**patient_data, **patient_record}
         full_visit = visit_record
+        all_visits = list_patient_visits(patient_id) if patient_id else []
 
         # Crear registro en Supabase si aún no existe (puede ya existir desde /clarify)
         if not get_analysis(visit_id):
@@ -378,12 +409,11 @@ async def run_traditional(
                 "updated_at": datetime.utcnow().isoformat(),
             })
 
-        prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context, all_visits=all_visits)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional")
         metadata, diagnosis = extract_structured_header(raw)
 
-        val_prompt = get_secondary_validation_prompt(diagnosis)
-        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+        validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_traditional")
 
         update_analysis(visit_id, {
             "diagnosis_traditional": diagnosis,
@@ -421,7 +451,7 @@ async def get_functional_clarifying_questions(
         patient_record = get_patient(patient_id) if patient_id else {}
 
         prompt = get_functional_clarifying_questions_prompt(patient_record, visit_record, body.doctor_traditional)
-        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400)
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400, visit_id=visit_id, step="clarify_functional")
 
         questions = []
         try:
@@ -465,6 +495,7 @@ async def run_functional(
         visit_record = get_visit(visit_id) or {}
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
+        all_visits = list_patient_visits(patient_id) if patient_id else []
 
         doctor_context = ""
         if body.doctor_traditional and body.doctor_traditional.strip():
@@ -485,13 +516,13 @@ async def run_functional(
             patient_data,
             body.doctor_traditional,
             visit_data=visit_record,
-            extra_context=doctor_context + chat_snippet
+            extra_context=doctor_context + chat_snippet,
+            all_visits=all_visits,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional")
         metadata, diagnosis = extract_structured_header(raw)
 
-        val_prompt = get_secondary_validation_prompt(diagnosis)
-        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+        validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
 
         update_analysis(visit_id, {
             "diagnosis_functional": diagnosis,
@@ -539,6 +570,7 @@ async def run_longevity(
         visit_record = get_visit(visit_id) or {}
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
+        all_visits = list_patient_visits(patient_id) if patient_id else []
 
         ctx_trad = ""
         if body.doctor_traditional and body.doctor_traditional.strip():
@@ -562,14 +594,15 @@ async def run_longevity(
         prompt = get_longevity_diagnosis_prompt(
             patient_data,
             body.doctor_functional,
+            traditional_diagnosis=body.doctor_traditional,
             visit_data=visit_record,
-            extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet
+            extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet,
+            all_visits=all_visits,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity")
         metadata, diagnosis = extract_structured_header(raw)
 
-        val_prompt = get_secondary_validation_prompt(diagnosis)
-        validation = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=800)
+        validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_longevity")
 
         update_analysis(visit_id, {
             "diagnosis_longevity": diagnosis,
@@ -605,6 +638,7 @@ async def run_protocol(
         visit_record = get_visit(visit_id) or {}
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
+        all_visits = list_patient_visits(patient_id) if patient_id else []
 
         diagnosis_map = {
             "traditional": body.doctor_traditional,
@@ -635,15 +669,17 @@ async def run_protocol(
         prompt = get_protocol_prompt(
             patient_data, full_diagnosis, body.protocol_type,
             visit_data=visit_record, previous_protocols=previous_protocols,
+            all_visits=all_visits,
         )
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000)
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}")
         protocol = _strip_json_fences(protocol)
 
-        val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
-        validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000)
-        validated = _strip_json_fences(validated)
-        if parse_protocol_json_safe(validated) is not None:
-            protocol = validated
+        if ENABLE_SECONDARY_VALIDATION:
+            val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
+            validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id, step=f"validate_protocol_{body.protocol_type}")
+            validated = _strip_json_fences(validated)
+            if parse_protocol_json_safe(validated) is not None:
+                protocol = validated
 
         update_analysis(visit_id, {
             f"protocol_{body.protocol_type}": protocol,
@@ -781,5 +817,15 @@ async def get_visit_analysis(visit_id: str):
         if not analysis:
             return {"visit_id": visit_id, "status": None}
         return analysis
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.get("/{visit_id}/logs")
+async def get_analysis_logs(visit_id: str):
+    """Lista, en orden cronológico, cada llamada a la IA de esta visita (prompt, respuesta,
+    modelo y latencia) — para poder verificar exactamente qué información se le mandó."""
+    try:
+        return {"visit_id": visit_id, "logs": list_ai_call_logs(visit_id)}
     except Exception as e:
         raise HTTPException(500, str(e))

@@ -16,7 +16,7 @@ export default function StatsPage() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto pt-14 flex justify-center">
-        <div className="w-full max-w-4xl px-6 py-8">
+        <div className="w-full max-w-6xl px-6 py-8">
           <h1 className="text-3xl font-serif font-semibold text-[#dde6ef] mb-4">Estadísticas</h1>
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-8 text-center">
             <p className="text-[#7a95aa]">Módulo en desarrollo. Aquí irán tus métricas clínicas.</p>

@@ -122,3 +122,13 @@ def update_analysis(visit_id: str, data: dict) -> dict:
     """Actualiza un análisis"""
     result = supabase.table("analyses").update(data).eq("visit_id", visit_id).execute()
     return result.data[0] if result.data else None
+
+def insert_ai_call_log(data: dict) -> dict:
+    """Registra una llamada a la IA (prompt/respuesta/latencia) para poder auditarla después"""
+    result = supabase.table("ai_call_logs").insert(data).execute()
+    return result.data[0] if result.data else None
+
+def list_ai_call_logs(visit_id: str) -> list:
+    """Lista las llamadas a la IA de una visita, en orden cronológico"""
+    result = supabase.table("ai_call_logs").select("*").eq("visit_id", visit_id).order("created_at", desc=False).execute()
+    return result.data if result.data else []

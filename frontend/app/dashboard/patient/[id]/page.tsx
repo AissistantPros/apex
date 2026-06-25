@@ -137,7 +137,7 @@ export default function PatientPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <main className="pt-16 max-w-4xl mx-auto px-6 py-8">
+      <main className="pt-16 max-w-6xl mx-auto px-6 py-8">
 
         {/* ── Header del paciente ── */}
         <div className="mb-6 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6">

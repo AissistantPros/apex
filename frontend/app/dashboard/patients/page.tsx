@@ -42,7 +42,7 @@ export default function PatientsPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <main className="pt-16 max-w-5xl mx-auto px-6 py-10">
+      <main className="pt-16 max-w-7xl mx-auto px-6 py-10">
 
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
