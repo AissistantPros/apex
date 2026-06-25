@@ -223,7 +223,10 @@ function FlowPageInner() {
     // FASE 3 — Visita: Reporte subjetivo (idéntico a visitas posteriores)
     energia_manana: 5, energia_mediodia: 5, energia_tarde: 5,
     sueno_calidad: 5, sueno_horas: '', sueno_reparador: '',
-    bedtime: '', wake_time: '', night_awakenings: '', snoring: '', daytime_nap: '',
+    bedtime: '', wake_time: '', night_awakenings: '', snoring: '',
+    snoring_intensity: '', snoring_frequency: '',
+    apnea_observed: '', apnea_frequency: '', apnea_duration: '',
+    daytime_nap: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
     bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
     stress_level: 5, racing_mind: '', anxiety_panic: '', stress_coping: '', can_relax: '',
@@ -431,8 +434,13 @@ function FlowPageInner() {
               bedtime:           str(v.bedtime),
               wake_time:         str(v.wake_time),
               night_awakenings:  str(v.night_awakenings),
-              snoring:           str(v.snoring),
-              daytime_nap:       str(v.daytime_nap),
+              snoring:            str(v.snoring),
+              snoring_intensity:  str(v.snoring_intensity),
+              snoring_frequency:  str(v.snoring_frequency),
+              apnea_observed:     str(v.apnea_observed),
+              apnea_frequency:    str(v.apnea_frequency),
+              apnea_duration:     str(v.apnea_duration),
+              daytime_nap:        str(v.daytime_nap),
               libido_hoy:        num(v.libido),
               bristol_scale:           str(v.bristol_scale),
               bowel_movements_per_day: str(v.bowel_movements_per_day),
@@ -781,7 +789,11 @@ function FlowPageInner() {
             energy_evening: f.energia_tarde, sleep_quality: f.sueno_calidad,
             sleep_hours: f.sueno_horas, wakes_rested: f.sueno_reparador,
             bedtime: f.bedtime, wake_time: f.wake_time,
-            night_awakenings: f.night_awakenings, snoring: f.snoring, daytime_nap: f.daytime_nap,
+            night_awakenings: f.night_awakenings, snoring: f.snoring,
+            snoring_intensity: f.snoring_intensity, snoring_frequency: f.snoring_frequency,
+            apnea_observed: f.apnea_observed, apnea_frequency: f.apnea_frequency,
+            apnea_duration: f.apnea_duration,
+            daytime_nap: f.daytime_nap,
             mood: animo, libido: f.libido_hoy, digestion,
             bristol_scale: f.bristol_scale, bowel_movements_per_day: f.bowel_movements_per_day,
             recent_antibiotics: f.recent_antibiotics, probiotics_use: f.probiotics_use,
@@ -1817,10 +1829,10 @@ function FlowPageInner() {
                         <input type="time" className={`${inp} ${fPurp}`} value={f.wake_time} onChange={e=>set('wake_time',e.target.value)} />
                       </Field>
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
+                    {/* Despertares + siesta */}
+                    <div className="grid grid-cols-2 gap-3">
                       {([
                         { key: 'night_awakenings' as const, label: '¿DESPERTARES NOCTURNOS?', opts: ['Sí','No'] },
-                        { key: 'snoring' as const,          label: '¿RONQUIDOS / APNEA?',     opts: ['Sí','No','No sé'] },
                         { key: 'daytime_nap' as const,      label: '¿SIESTA DURANTE EL DÍA?', opts: ['Sí','No'] },
                       ]).map(({ key, label, opts }) => (
                         <div key={key}>
@@ -1837,6 +1849,100 @@ function FlowPageInner() {
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    {/* ── Ronquidos ── */}
+                    <div className="space-y-3 rounded-xl bg-[#0d1520] border border-[#1e2d3d] p-4">
+                      <div>
+                        <p className="text-xs font-mono text-[#7a95aa] mb-2">¿RONCA USTED?</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {(['Sí','No','A veces'] as const).map(o => (
+                            <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                              style={{ background: f.snoring === o ? '#a78bfa' : '#1e2d3d', borderColor: f.snoring === o ? '#a78bfa' : '#2a3a4d', color: f.snoring === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="snoring" value={o} checked={f.snoring === o}
+                                onChange={e=>set('snoring', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {(f.snoring === 'Sí' || f.snoring === 'A veces') && (
+                        <div className="grid grid-cols-2 gap-3 pl-3 border-l-2 border-[#a78bfa]/30">
+                          <div>
+                            <p className="text-xs font-mono text-[#7a95aa] mb-2">¿SE ESCUCHA A TRAVÉS DE LA PARED?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Sí','No','A veces'] as const).map(o => (
+                                <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                                  style={{ background: f.snoring_intensity === o ? '#a78bfa' : '#1e2d3d', borderColor: f.snoring_intensity === o ? '#a78bfa' : '#2a3a4d', color: f.snoring_intensity === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="snoring_intensity" value={o} checked={f.snoring_intensity === o}
+                                    onChange={e=>set('snoring_intensity', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-mono text-[#7a95aa] mb-2">¿CON QUÉ FRECUENCIA RONCA?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Casi siempre','Frecuentemente','A veces'] as const).map(o => (
+                                <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                                  style={{ background: f.snoring_frequency === o ? '#a78bfa' : '#1e2d3d', borderColor: f.snoring_frequency === o ? '#a78bfa' : '#2a3a4d', color: f.snoring_frequency === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="snoring_frequency" value={o} checked={f.snoring_frequency === o}
+                                    onChange={e=>set('snoring_frequency', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Apnea ── */}
+                    <div className="space-y-3 rounded-xl bg-[#0d1520] border border-[#1e2d3d] p-4">
+                      <div>
+                        <p className="text-xs font-mono text-[#7a95aa] mb-2">¿USTED O ALGUIEN HA NOTADO PAUSAS AL RESPIRAR MIENTRAS DUERME?</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {(['Sí','No','No sé'] as const).map(o => (
+                            <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                              style={{ background: f.apnea_observed === o ? '#a78bfa' : '#1e2d3d', borderColor: f.apnea_observed === o ? '#a78bfa' : '#2a3a4d', color: f.apnea_observed === o ? '#000' : '#dde6ef' }}>
+                              <input type="radio" name="apnea_observed" value={o} checked={f.apnea_observed === o}
+                                onChange={e=>set('apnea_observed', e.target.value)} className="sr-only" />
+                              {o}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {f.apnea_observed === 'Sí' && (
+                        <div className="grid grid-cols-2 gap-3 pl-3 border-l-2 border-[#a78bfa]/30">
+                          <div>
+                            <p className="text-xs font-mono text-[#7a95aa] mb-2">¿CON QUÉ FRECUENCIA?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['<1/sem','1-2/sem','3+/sem'] as const).map(o => (
+                                <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                                  style={{ background: f.apnea_frequency === o ? '#a78bfa' : '#1e2d3d', borderColor: f.apnea_frequency === o ? '#a78bfa' : '#2a3a4d', color: f.apnea_frequency === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="apnea_frequency" value={o} checked={f.apnea_frequency === o}
+                                    onChange={e=>set('apnea_frequency', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-mono text-[#7a95aa] mb-2">¿CUÁNTO DURAN LAS PAUSAS?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Segundos','Más de 10 seg','No sabe'] as const).map(o => (
+                                <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
+                                  style={{ background: f.apnea_duration === o ? '#a78bfa' : '#1e2d3d', borderColor: f.apnea_duration === o ? '#a78bfa' : '#2a3a4d', color: f.apnea_duration === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="apnea_duration" value={o} checked={f.apnea_duration === o}
+                                    onChange={e=>set('apnea_duration', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
