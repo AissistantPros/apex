@@ -298,7 +298,7 @@ export default function VisitPage() {
   return (
     <div className="min-h-screen bg-[#070a0e]">
       <main className="pt-16 pb-36">
-        <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="page-content px-4 py-8">
 
           {/* Stepper */}
           <div className="flex gap-1 mb-2">

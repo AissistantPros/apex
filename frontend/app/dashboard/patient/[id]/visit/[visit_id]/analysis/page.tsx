@@ -2394,7 +2394,7 @@ export default function AnalysisPage() {
       {step === 'loading' && <LoadingScreen label={loadingLabel} />}
 
       <main className="pt-16 pb-32">
-        <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="page-content px-6 py-8">
 
           {/* ── INIT ── */}
           {step === 'init' && (

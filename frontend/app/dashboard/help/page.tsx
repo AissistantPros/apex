@@ -16,7 +16,7 @@ export default function HelpPage() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto pt-14 flex justify-center">
-        <div className="w-full max-w-4xl px-6 py-8">
+        <div className="page-content px-6 py-8">
           <h1 className="text-3xl font-serif font-semibold text-[#dde6ef] mb-4">Ayuda</h1>
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-8">
             <h2 className="text-xl font-semibold text-[#dde6ef] mb-4">Bienvenido a APEX</h2>

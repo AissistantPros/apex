@@ -854,7 +854,7 @@ function FlowPageInner() {
     <div className="bg-[#070a0e] min-h-screen">
 
       <main className="pt-16 min-h-screen">
-        <div className="max-w-3xl mx-auto px-4 py-8 pb-36">
+        <div className="page-content px-4 py-8 pb-36">
 
           {/* Stepper */}
           <div className="flex gap-2 mb-2">

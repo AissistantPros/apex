@@ -12,7 +12,7 @@ export default function StaffPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <main className="pt-16 max-w-6xl mx-auto px-6 py-10">
+      <main className="page-content pt-16 px-6 py-10">
         <h1 className="text-2xl font-serif font-semibold text-[#dde6ef] mb-2">🩺 Gestión de Staff</h1>
         <p className="text-[#7a95aa] mb-8">Administra los permisos de tu equipo de trabajo.</p>
         <div className="bg-[#0d1520] border border-[#a78bfa]/30 rounded-2xl p-10 text-center">

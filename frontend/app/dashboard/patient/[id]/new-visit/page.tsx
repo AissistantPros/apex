@@ -483,7 +483,7 @@ export default function NewVisitPage() {
 
       <main className="pt-16 pb-36">
         {/* Contenedor responsive: se expande con el monitor */}
-        <div className="mx-auto px-4 py-8 w-full max-w-3xl md:max-w-5xl lg:max-w-7xl">
+        <div className="page-content px-4 py-8">
 
           {/* ─── Indicador de fases ─── */}
           <div className="flex items-center gap-3 mb-8">

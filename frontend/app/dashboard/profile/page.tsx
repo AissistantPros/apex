@@ -101,7 +101,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-[#070a0e]">
 
-      <main className="pt-16 max-w-2xl mx-auto px-6 py-10">
+      <main className="page-content pt-16 px-6 py-10">
 
         <div className="mb-8">
           <h1 className="text-2xl font-serif font-bold text-[#dde6ef] mb-1">👤 Mi Perfil</h1>
