@@ -33,3 +33,10 @@ export async function getUser(): Promise<User | null> {
 export function onAuthStateChange(callback: (session: Session | null) => void) {
   return supabase.auth.onAuthStateChange((_event, session) => callback(session));
 }
+
+export async function resetPassword(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/auth/reset-password`,
+  });
+  return { error };
+}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn, getSession } from '@/app/lib/auth';
+import { signIn, getSession, resetPassword } from '@/app/lib/auth';
 
 // ─── Tipos de fase ────────────────────────────────────────────────────────────
 type Phase = 'login' | 'booting' | 'done';
@@ -75,6 +75,12 @@ export default function LoginPage() {
   const [phase, setPhase]       = useState<Phase>('login');
   const [loginOut, setLoginOut] = useState(false);
   const [bootIn, setBootIn]     = useState(false);
+
+  const [forgotOpen, setForgotOpen]     = useState(false);
+  const [forgotEmail, setForgotEmail]   = useState('');
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSent, setForgotSent]     = useState(false);
+  const [forgotError, setForgotError]   = useState('');
 
   // Animación de pasos
   const [activeStep, setActiveStep]    = useState(-1);
@@ -383,10 +389,7 @@ export default function LoginPage() {
             <button type="submit"
               disabled={!email || !password}
               className="w-full py-[13px] mt-1 rounded-xl font-bold text-[15px] tracking-[0.5px] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{
-                background: '#00e5a0',
-                color: '#000',
-              }}
+              style={{ background: '#00e5a0', color: '#000' }}
               onMouseEnter={e => {
                 if (email && password) {
                   (e.target as HTMLButtonElement).style.background = '#00ffb0';
@@ -401,6 +404,54 @@ export default function LoginPage() {
               }}>
               Iniciar sesión
             </button>
+
+            {/* ── Recuperar contraseña ── */}
+            <div className="text-center mt-1">
+              <button type="button" onClick={() => { setForgotOpen(o => !o); setForgotSent(false); setForgotError(''); }}
+                className="text-xs font-mono text-[#3d5870] hover:text-[#7a95aa] transition">
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+
+            {forgotOpen && (
+              <div className="rounded-xl border border-[#1e2d3d] bg-[#070a0e] p-4 space-y-3 mt-1">
+                {forgotSent ? (
+                  <p className="text-xs font-mono text-[#00e5a0] text-center leading-relaxed">
+                    ✓ Link enviado a <span className="text-[#dde6ef]">{forgotEmail}</span><br/>
+                    <span className="text-[#3d5870]">Revisa tu bandeja de entrada.</span>
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[10px] font-mono text-[#3d5870] tracking-wider">RECUPERAR CONTRASEÑA</p>
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={e => setForgotEmail(e.target.value)}
+                      placeholder="tu@correo.com"
+                      className="w-full px-3.5 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0] placeholder-[#3d5870] transition"
+                    />
+                    {forgotError && (
+                      <p className="text-[11px] font-mono text-[#f43f5e] text-center">{forgotError}</p>
+                    )}
+                    <button type="button"
+                      disabled={!forgotEmail.trim() || forgotSending}
+                      onClick={async () => {
+                        if (!forgotEmail.trim()) return;
+                        setForgotSending(true);
+                        setForgotError('');
+                        const { error } = await resetPassword(forgotEmail.trim());
+                        setForgotSending(false);
+                        if (error) { setForgotError('Error al enviar. Verifica el correo.'); }
+                        else { setForgotSent(true); }
+                      }}
+                      className="w-full py-2.5 rounded-lg font-semibold text-sm transition disabled:opacity-40"
+                      style={{ background: 'rgba(0,229,160,.12)', color: '#00e5a0', border: '1px solid rgba(0,229,160,.3)' }}>
+                      {forgotSending ? 'Enviando...' : 'Enviar link de recuperación'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </form>
         </div>
       </div>
