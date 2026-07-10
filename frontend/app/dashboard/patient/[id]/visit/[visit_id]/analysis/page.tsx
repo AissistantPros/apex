@@ -959,6 +959,7 @@ interface DiagnosisCandidate {
   explicacion_completa?: string;
   fuentes?: string[];
   estudios_sugeridos?: string[];
+  es_complicacion_de?: string;   // nombre del diagnóstico raíz del que este es consecuencia/complicación
   // Estado del doctor — no viene de la IA, se inyecta al normalizar la respuesta
   dx_aceptado?: boolean;
   estudios_seleccionados?: boolean[];
@@ -1073,6 +1074,11 @@ function DiagnosisCandidateCard({ item, color, onAcceptBoth, onToggleStudy, onAd
                 style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', borderColor: 'rgba(245,158,11,.3)' }}>
                 ✓ ACEPTADO
               </span>
+            )}
+            {item.es_complicacion_de && (
+              <p className="text-[11px] font-mono text-[#7a95aa] mb-1 flex items-center gap-1">
+                <span style={{ color }}>↳</span> Complicación de <span className="font-bold" style={{ color }}>{item.es_complicacion_de}</span>
+              </p>
             )}
             <p className="font-bold text-[17px] leading-snug" style={{ color: accepted ? '#f59e0b' : '#dde6ef' }}>
               <Md text={item.nombre} />

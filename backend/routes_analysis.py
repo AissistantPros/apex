@@ -20,13 +20,15 @@ from services.system_prompt import (
     get_protocol_validation_prompt,
     get_secondary_validation_prompt,
     get_functional_clarifying_questions_prompt,
+    get_lean_draft_prompt,
 )
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
 client = Anthropic()
 
 # Modelos por tarea (costo vs calidad)
-MODEL_DIAGNOSE  = "claude-sonnet-4-5"
+MODEL_DIAGNOSE  = "claude-opus-4-8"    # diagnóstico final, protocolos — máxima profundidad de razonamiento
+MODEL_DRAFT     = "claude-sonnet-4-6"  # borrador ligero — tarea estructuralmente simple, prioriza velocidad
 MODEL_VALIDATE  = "claude-haiku-4-5"
 MODEL_CHAT      = "claude-haiku-4-5"
 
@@ -142,6 +144,38 @@ def _strip_json_fences(text: str) -> str:
     return m.group(1).strip() if m else t
 
 
+def parse_lean_draft_json(text: str) -> dict:
+    """
+    Parsea la salida del borrador ligero (razonamiento_breve, hipotesis, preguntas).
+    Nunca lanza — si no se puede parsear, regresa una estructura vacía y el flujo
+    sigue con 0 preguntas en vez de tumbar el análisis.
+    """
+    raw = _strip_json_fences(text)
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict) and isinstance(parsed.get("hipotesis"), list):
+            return {
+                "razonamiento_breve": parsed.get("razonamiento_breve", ""),
+                "hipotesis": parsed["hipotesis"],
+                "preguntas": parsed.get("preguntas") or [],
+            }
+    except Exception:
+        pass
+    return {"razonamiento_breve": "", "hipotesis": [], "preguntas": []}
+
+
+def render_lean_draft_for_context(draft: dict) -> str:
+    """Renderiza el borrador ligero como texto compacto para pasarlo como contexto a la
+    pasada final — no es lo que ve el médico, solo insumo para el razonamiento del modelo."""
+    lines = []
+    if draft.get("razonamiento_breve"):
+        lines.append(f"Razonamiento preliminar: {draft['razonamiento_breve']}")
+    for h in draft.get("hipotesis", []):
+        comp = f" (complicación de: {h['es_complicacion_de']})" if h.get("es_complicacion_de") else ""
+        lines.append(f"  • {h.get('nombre','?')} — confianza preliminar {h.get('confianza','?')}%{comp}")
+    return "\n".join(lines) if lines else "(sin hipótesis preliminares)"
+
+
 def parse_protocol_json_safe(text: str) -> dict | None:
     """Confirma que el texto es un JSON de protocolo válido con al menos un item.
     Usado para descartar una validación secundaria que haya devuelto algo no usable."""
@@ -155,17 +189,21 @@ def parse_protocol_json_safe(text: str) -> dict | None:
 
 
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
-                 visit_id: str = "", step: str = "") -> str:
+                 visit_id: str = "", step: str = "", thinking: bool = False) -> str:
     kwargs = {
         "model": model,
-        "max_tokens": max_tokens,
+        "max_tokens": max(max_tokens, 4096) if thinking else max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }
     if system:
         kwargs["system"] = system
+    if thinking:
+        kwargs["thinking"] = {"type": "adaptive"}
     start = time.monotonic()
     response = client.messages.create(**kwargs)
-    text = response.content[0].text
+    # Con thinking activado, el primer bloque de contenido es el razonamiento, no la
+    # respuesta — hay que buscar el primer bloque de tipo "text".
+    text = next((b.text for b in response.content if b.type == "text"), "")
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
         try:
@@ -229,12 +267,13 @@ async def get_clarifying_questions(
     doctor_id: str = Depends(get_doctor_id),
 ):
     """
-    Analiza el caso completo PRIMERO (borrador silencioso, no se muestra al médico),
-    y luego genera hasta 3 preguntas de aclaración basadas en lo que ese borrador
-    encontró menos certero. El borrador se guarda en el registro de análisis para
-    usarse en /finalize_first sin tener que repetir el análisis.
+    Borrador LIGERO (hipótesis preliminares + preguntas ya filtradas por valor de
+    información) en UNA sola llamada — no genera explicación completa, fuentes ni
+    estudios, eso solo pasa en /finalize_first. El borrador ligero se guarda para
+    usarse como contexto en /finalize_first, que siempre corre la pasada completa
+    (con o sin respuestas del médico) para que lo que ve el médico nunca sea el
+    borrador incompleto.
     """
-    import json as json_lib
     try:
         visit_record = get_visit(visit_id) or {}
         patient_id = body.patient_data.get("patient_id") or visit_record.get("patient_id", "")
@@ -257,34 +296,26 @@ async def get_clarifying_questions(
                 "updated_at": datetime.utcnow().isoformat(),
             })
 
-        # 1) Analiza el caso completo y guarda el borrador (no se muestra aún al médico)
-        draft_prompt = build_diagnosis_prompt(diagnosis_type, full_patient, full_visit, all_visits=all_visits)
-        raw_draft = call_claude(draft_prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"draft_{diagnosis_type}")
-        draft_metadata, draft_diagnosis = extract_structured_header(raw_draft)
+        # Borrador ligero: hipótesis preliminares + preguntas con criterio de valor de
+        # información, en una sola llamada rápida. Solo soporta "traditional" por ahora
+        # (funcional/longevidad tienen su propio flujo de aclaración, sin cambios).
+        draft_prompt = get_lean_draft_prompt(full_patient, full_visit, all_visits=all_visits)
+        raw_draft = call_claude(draft_prompt, model=MODEL_DRAFT, visit_id=visit_id, step=f"draft_{diagnosis_type}")
+        lean_draft = parse_lean_draft_json(raw_draft)
 
-        draft_validation = maybe_validate(get_secondary_validation_prompt(draft_diagnosis), visit_id=visit_id, step=f"validate_draft_{diagnosis_type}")
+        hipotesis = lean_draft["hipotesis"]
+        draft_confidence = hipotesis[0].get("confianza", 75) if hipotesis else 75
+        draft_context = render_lean_draft_for_context(lean_draft)
 
         update_analysis(visit_id, {
-            "draft_diagnosis": draft_diagnosis,
-            "draft_confidence": draft_metadata["confidence"],
-            "draft_validation": draft_validation,
+            "draft_diagnosis": draft_context,
+            "draft_confidence": draft_confidence,
+            "draft_validation": "",
             "draft_type": diagnosis_type,
             "updated_at": datetime.utcnow().isoformat(),
         })
 
-        # 2) Con el borrador ya generado, identifica si hace falta preguntar algo al paciente
-        from services.system_prompt import get_clarifying_questions_prompt
-        prompt = get_clarifying_questions_prompt(full_patient, full_visit, draft_diagnosis=draft_diagnosis)
-        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400, visit_id=visit_id, step="clarify_questions")
-
-        questions = []
-        try:
-            m = re.search(r'\{[\s\S]*?"questions"[\s\S]*?\}', raw)
-            if m:
-                data = json_lib.loads(m.group())
-                questions = [q for q in data.get("questions", []) if q][:3]
-        except Exception:
-            questions = []
+        questions = [q["pregunta"] for q in lean_draft["preguntas"] if q.get("pregunta")][:4]
 
         return {"visit_id": visit_id, "questions": questions}
     except Exception as e:
@@ -300,10 +331,10 @@ async def finalize_first_diagnosis(
     doctor_id: str = Depends(get_doctor_id),
 ):
     """
-    Cierra el ciclo de la primera pregunta/respuesta del médico:
-    - Si el médico no respondió nada, usa el borrador tal cual (sin gastar otra llamada a la IA).
-    - Si respondió, cruza las respuestas con el borrador y solo ajusta el diagnóstico/certeza
-      si las respuestas cambian algo materialmente.
+    Cierra el ciclo de la primera pregunta/respuesta del médico. El borrador que se guardó
+    en /clarify es LIGERO (hipótesis preliminares, sin explicación/fuentes/estudios) — por
+    eso esta pasada SIEMPRE corre completa, con o sin respuestas del médico, para que lo que
+    ve el médico sea siempre el diagnóstico completo, nunca el borrador incompleto.
     """
     try:
         analysis = get_analysis(visit_id)
@@ -312,43 +343,39 @@ async def finalize_first_diagnosis(
 
         draft_diagnosis = analysis.get("draft_diagnosis") or ""
         draft_type = analysis.get("draft_type") or "traditional"
-        draft_confidence = analysis.get("draft_confidence", 75)
-        draft_validation = analysis.get("draft_validation") or ""
 
         if not draft_diagnosis:
             raise HTTPException(404, "No hay un borrador de diagnóstico para esta visita")
 
         doctor_answers = (body.doctor_answers or "").strip()
 
-        if not doctor_answers:
-            # El médico no agregó nada nuevo — usamos el borrador sin volver a llamar a la IA
-            return {
-                "visit_id": visit_id,
-                "step": draft_type,
-                "diagnosis": draft_diagnosis,
-                "validation": draft_validation,
-                "confidence": draft_confidence,
-            }
-
         visit_record = get_visit(visit_id) or {}
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
         all_visits = list_patient_visits(patient_id) if patient_id else []
 
-        extra_context = f"""
-BORRADOR DE DIAGNÓSTICO GENERADO ANTES DE LAS PREGUNTAS DE ACLARACIÓN:
-{draft_diagnosis}
-
+        respuestas_block = (
+            f"""
 RESPUESTAS DEL MÉDICO A LAS PREGUNTAS DE ACLARACIÓN:
 {doctor_answers}
+"""
+            if doctor_answers else
+            "\nEl médico no agregó respuestas adicionales — procede con la información disponible.\n"
+        )
 
-INSTRUCCIÓN: Si estas respuestas NO cambian el diagnóstico de forma material, repite el mismo
-diagnóstico y los mismos porcentajes de certeza del borrador. Si SÍ cambian algo, ajusta el
-diagnóstico y/o los porcentajes de certeza en consecuencia.
+        extra_context = f"""
+HIPÓTESIS PRELIMINARES DE TU PROPIO BORRADOR RÁPIDO (razonamiento previo, no lo repitas tal cual —
+úsalo como punto de partida y complétalo con la explicación, fuentes y estudios que le faltan):
+{draft_diagnosis}
+{respuestas_block}
+INSTRUCCIÓN: Genera ahora el diagnóstico COMPLETO (con explicación, fuentes y estudios sugeridos).
+Si las respuestas del médico NO cambian el diagnóstico de forma material, mantén el mismo ranking
+y porcentajes de certeza de tu borrador. Si SÍ cambian algo, ajusta el diagnóstico y/o los
+porcentajes en consecuencia.
 """
 
         prompt = build_diagnosis_prompt(draft_type, patient_data, visit_record, extra_context=extra_context, all_visits=all_visits)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}")
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}", thinking=True)
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step=f"validate_finalize_{draft_type}")
@@ -410,7 +437,7 @@ async def run_traditional(
             })
 
         prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context, all_visits=all_visits)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional")
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional", thinking=True)
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_traditional")
@@ -519,7 +546,7 @@ async def run_functional(
             extra_context=doctor_context + chat_snippet,
             all_visits=all_visits,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional")
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional", thinking=True)
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
@@ -599,7 +626,7 @@ async def run_longevity(
             extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet,
             all_visits=all_visits,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity")
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity", thinking=True)
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_longevity")
@@ -671,7 +698,7 @@ async def run_protocol(
             visit_data=visit_record, previous_protocols=previous_protocols,
             all_visits=all_visits,
         )
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}")
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True)
         protocol = _strip_json_fences(protocol)
 
         if ENABLE_SECONDARY_VALIDATION:

@@ -197,6 +197,27 @@ SALUD MENTAL (confidencial):
 """.strip()
 
 
+CRITERIO_DE_IMPORTANCIA_CLINICA = """
+── CRITERIO DE IMPORTANCIA CLÍNICA — LEE ESTO ANTES DE ANALIZAR EL EXPEDIENTE ──
+El expediente completo que sigue captura decenas de variables (motivo de consulta, signos
+vitales, antropometría, hábitos, sueño, digestión, estrés, exploración, laboratorios, etc.).
+Todas están en el mismo formato, con el mismo nivel de detalle disponible cuando aplica —
+ninguna sección recibió más o menos texto porque sea más o menos importante; la cantidad de
+subcampos que tiene una sección (ej. que "sueño" tenga varias líneas y "motivo de consulta"
+sea una sola) es un artefacto de cómo se captura ese tipo de dato en el formulario, NO una
+señal de relevancia clínica.
+Tu ventaja como IA frente a un médico leyendo esto en orden es que puedes evaluar TODAS las
+variables al mismo tiempo, no una tras otra. Úsala: no le des más peso a un hallazgo por
+aparecer primero, por repetirse, ni por venir acompañado de más subcampos o más líneas de
+texto. Determina la importancia de cada dato ÚNICAMENTE con criterio médico real: qué tan
+alejado está de un rango de referencia normal, qué tan específico o patognomónico es para
+una condición concreta, qué tan grave sería si se confirma, y qué tanto explica o conecta
+el resto del cuadro. Un solo dato objetivo (ej. un IMC o una cifra de laboratorio) puede
+pesar clínicamente más que varias líneas de síntomas subjetivos, y viceversa — decide eso
+con criterio médico, no con la cantidad de texto que cada uno ocupa aquí.
+""".strip()
+
+
 def build_visit_context(visit: dict) -> str:
     """
     Construye el bloque de contexto completo de la visita actual
@@ -575,6 +596,96 @@ Usa términos médicos, no expliques lo obvio. Máximo 400 palabras por sección
 """
 
 
+def get_lean_draft_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "",
+                          all_visits: list = None) -> str:
+    """
+    Borrador RÁPIDO — no es el diagnóstico que ve el médico. Su único propósito es (a) formar
+    hipótesis preliminares y (b) decidir, con criterio de valor de información, qué preguntas
+    realmente moverían la aguja. No genera explicacion_completa/fuentes/estudios_sugeridos —
+    esos solo existen en get_traditional_diagnosis_prompt (la pasada final, pesada).
+    """
+    patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
+    current_visit_id = (visit_data or {}).get("id", "")
+    history_ctx = build_visit_history_context(all_visits, current_visit_id=current_visit_id)
+    extra = f"\n\n{extra_context}" if extra_context else ""
+
+    return f"""{IDENTITY_TRADITIONAL}
+
+Esta es una pasada de BORRADOR RÁPIDO, no el diagnóstico final que verá el médico. Tu único
+propósito aquí es (a) formar hipótesis diagnósticas preliminares y (b) decidir qué preguntas al
+médico realmente cambiarían tu conclusión. NO generes explicaciones completas, fuentes ni estudios
+sugeridos — eso es trabajo de la pasada final, que ocurre después de que el médico responda (o no)
+tus preguntas.{extra}
+
+{CRITERIO_DE_IMPORTANCIA_CLINICA}
+
+{patient_ctx}
+
+{visit_ctx}
+
+{history_ctx}
+
+JERARQUÍA CLÍNICA — RAÍZ ANTES QUE SÍNTOMA:
+La enfermedad de base va por encima de sus complicaciones — una complicación nunca compite por el
+primer lugar con su causa. Si los datos objetivos del caso ya sostienen una enfermedad de base de
+la que otro hallazgo es consecuencia conocida, esa enfermedad de base es la hipótesis #1. Usa
+"es_complicacion_de" para marcar esa relación.
+
+TAREA — sigue este orden:
+1. Piensa en 2-4 frases (campo "razonamiento_breve"): qué hallazgos del expediente son más
+   relevantes, cuál es la enfermedad raíz más probable y cuáles son complicaciones de esa raíz.
+   Este razonamiento se descarta después — es solo para que pienses antes de comprometerte con
+   hipótesis y preguntas, no necesita estar pulido ni citar fuentes.
+2. Lista tus hipótesis diagnósticas preliminares (máximo 4, ordenadas de mayor a menor confianza;
+   la primera siempre se incluye aunque su certeza sea menor al 50%; a partir de la segunda, solo
+   si supera 50%).
+3. Para cada pregunta que consideres hacerle al médico, evalúa el CONTRAFACTUAL antes de incluirla:
+   si el médico contesta una cosa vs. la contraria, ¿cambia el ranking de hipótesis, entra o sale
+   un diagnóstico, o cambia qué estudio pedirías? Si ambas respuestas posibles llevan al mismo
+   lugar, NO incluyas la pregunta — no tiene caso preguntar algo que no mueve la aguja.
+   EXCEPCIÓN a la regla anterior: inclúyela igual, aunque parezca de bajo valor informativo, si
+   sirve para descartar un diagnóstico grave aunque sea poco probable (bandera roja clínica) —
+   marca ese caso con "descarta_grave": true.
+4. El número de preguntas es VARIABLE — puede ser cero si el caso ya es claro con la información
+   disponible, o hasta 4 si el caso es ambiguo. No rellenes hasta un número fijo ni preguntes por
+   preguntar.
+
+FORMATO DE LAS PREGUNTAS — MUY IMPORTANTE:
+- Las preguntas las lee el MÉDICO en pantalla y las hace AL PACIENTE. Redáctalas en tercera
+  persona desde la perspectiva del médico.
+- Correcto: "¿El paciente ha notado que los síntomas empeoran después de comer grasas?"
+- Incorrecto: "¿Has notado que tus síntomas empeoran?" (tú directo al paciente — PROHIBIDO)
+- Solo preguntas sobre síntomas, sensaciones, historia o contexto que el paciente puede responder
+  verbalmente ahora mismo. NO preguntes por laboratorios, estudios previos, imágenes ni pruebas
+  diagnósticas — eso va en estudios sugeridos de la pasada final.
+- NO preguntes nada que ya tenga un valor real (distinto de N/D) en el expediente de arriba —
+  incluye antecedentes familiares, horas de ayuno, ronquidos/apnea/digestión/sueño si ya vinieron
+  con valor real.
+
+FORMATO DE SALIDA — ESTRICTO. Responde ÚNICAMENTE con este JSON, nada de texto antes o después,
+nada de ```json:
+
+{{
+  "razonamiento_breve": "2-4 frases de razonamiento crudo, se descarta después de esta pasada",
+  "hipotesis": [
+    {{"nombre": "...", "cie10": "...", "confianza": 70, "es_complicacion_de": ""}}
+  ],
+  "preguntas": [
+    {{
+      "pregunta": "la pregunta concreta, en tercera persona",
+      "hipotesis_afectada": "nombre exacto de la hipótesis del arreglo de arriba a la que apunta",
+      "por_que_mueve_la_aguja": "qué cambiaría según la respuesta",
+      "descarta_grave": false
+    }}
+  ]
+}}
+
+Reglas de llenado: "cie10" usa "" si no lo conoces con certeza. "es_complicacion_de" usa el nombre
+EXACTO de otra hipótesis de esta misma lista si aplica, o "" si es independiente/raíz. "preguntas"
+puede ser un arreglo vacío []. No agregues campos fuera de los listados."""
+
+
 def get_clarifying_questions_prompt(patient_data: dict, visit_data: dict, draft_diagnosis: str = "") -> str:
     """Genera hasta 3 preguntas de aclaración basadas en un borrador de diagnóstico YA generado."""
     patient_ctx = build_patient_context(patient_data)
@@ -695,6 +806,8 @@ def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None
 
 Analiza este caso clínico — el médico está leyendo esto con el paciente enfrente. Sé técnico, breve, directo. Máximo 3 líneas por sección.{extra}
 
+{CRITERIO_DE_IMPORTANCIA_CLINICA}
+
 {patient_ctx}
 
 {visit_ctx}
@@ -705,6 +818,26 @@ Analiza este caso clínico — el médico está leyendo esto con el paciente enf
 
 TAREA: Lista los diagnósticos más probables para este caso, del más al menos probable, cada uno
 con su porcentaje de certeza según LA INFORMACIÓN DISPONIBLE.
+
+JERARQUÍA CLÍNICA — RAÍZ ANTES QUE SÍNTOMA (léelo con cuidado, es un error común):
+- El paciente suele consultar por un SÍNTOMA o molestia puntual (ej. ronquidos, pausas al respirar,
+  dolor, cansancio). Ese síntoma NO es automáticamente el diagnóstico principal.
+- Antes de listar nada, pregúntate: ¿los datos objetivos de ESTE caso (antropometría — IMC, cintura,
+  cuello —, laboratorios, signos vitales, patrón de síntomas) ya sostienen el diagnóstico de una
+  enfermedad de base (ej. obesidad, diabetes, hipotiroidismo) de la que el síntoma de consulta es
+  una CONSECUENCIA o complicación fisiopatológica conocida?
+- Si sí: esa enfermedad de base va PRIMERO como diagnóstico principal, aunque no sea el motivo de
+  consulta textual del paciente — el motivo de consulta es el disparador de la visita, no
+  necesariamente el diagnóstico correcto. El síntoma que trajo al paciente se lista DESPUÉS,
+  marcado explícitamente como complicación/consecuencia de la enfermedad de base (usa el campo
+  "es_complicacion_de" — ver estructura JSON abajo).
+- Excepción: si la enfermedad de base YA fue diagnosticada y confirmada en una visita anterior de
+  este paciente (ver HISTORIAL DE VISITAS ANTERIORES) y ya está en manejo, no la vuelvas a diagnosticar
+  como si fuera nueva — en ese caso el diagnóstico de hoy es la complicación/hallazgo nuevo, y debes
+  decir explícitamente que ocurre en el contexto de la enfermedad de base ya conocida (usa
+  "es_complicacion_de" con el nombre de esa enfermedad de base, y menciónalo en "resumen_breve").
+- No inviertas el orden por conveniencia narrativa: la urgencia terapéutica de un síntoma (ej. "hay
+  que confirmar SAOS ya") no cambia que la enfermedad de base es el diagnóstico #1 de la lista.
 
 REGLAS:
 - Máximo 4 diagnósticos. Si solo 2 o 3 son razonablemente probables, pon esos — no rellenes con opciones poco probables.
@@ -736,7 +869,8 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
       "resumen_breve": "1-2 líneas con los datos concretos del paciente que justifican este diagnóstico.",
       "explicacion_completa": "Razonamiento clínico completo: qué datos suman, qué datos restan, qué diagnósticos diferenciales se descartaron y por qué.",
       "fuentes": ["Criterios ATP-III"],
-      "estudios_sugeridos": ["Perfil lipídico completo", "HbA1c"]
+      "estudios_sugeridos": ["Perfil lipídico completo", "HbA1c"],
+      "es_complicacion_de": ""
     }}
   ],
   "alertas_clinicas": []
@@ -755,7 +889,12 @@ REGLAS DE LLENADO (síguelas exactamente):
    como "más estudios").
 6. "alertas_clinicas": lista de strings con hallazgos urgentes que requieren atención inmediata
    (ej. "PA 190/120 — crisis hipertensiva, atender antes de continuar"). Si no hay ninguno, usa [].
-7. No agregues campos fuera de los listados. No omitas ningún campo — usa "" o [] cuando no aplique."""
+7. "es_complicacion_de": si este diagnóstico es una consecuencia/complicación fisiopatológica de OTRO
+   diagnóstico de esta misma lista (o de una enfermedad de base ya confirmada en el historial), pon
+   aquí el "nombre" EXACTO de ese diagnóstico raíz (debe coincidir con el "nombre" de otro objeto en
+   esta lista, o con el nombre de la enfermedad de base del historial si no la vuelves a listar). Si
+   es un diagnóstico independiente/raíz, usa "" (string vacío) — nunca lo dejes fuera.
+8. No agregues campos fuera de los listados. No omitas ningún campo — usa "" o [] cuando no aplique."""
 
 
 FUNCTIONAL_MEDICINE_AXES = """
@@ -789,6 +928,8 @@ Tu trabajo es explicar POR QUÉ apareció el diagnóstico tradicional, regresand
 usando los ejes de la matriz de salud. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
+
+{CRITERIO_DE_IMPORTANCIA_CLINICA}
 
 {patient_ctx}
 
@@ -851,6 +992,8 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
 Calcula edad biológica y proyecciones de riesgo para ESTE paciente. Sé conciso — el médico tiene al paciente enfrente.
 
 {extra_context}
+
+{CRITERIO_DE_IMPORTANCIA_CLINICA}
 
 {patient_ctx}
 
