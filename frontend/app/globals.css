@@ -204,6 +204,17 @@ input, select, textarea {
   font-size: 1rem !important;
 }
 
+/* Checkboxes y radios nativos — más grandes y táctiles para operar desde tablet.
+   !important para ganarle a las utilidades w-4/h-4 de Tailwind donde aún existan. */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px;
+  min-height: 20px;
+  cursor: pointer;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    LAYOUT — Contenedor de página centralizado
    Ajusta max-width aquí para cambiar todo el sistema de una vez.

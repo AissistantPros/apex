@@ -68,6 +68,29 @@ const Field = ({ label, required = false, hint, children }: {
   </div>
 );
 
+// Grupo de opciones tipo "pill" — grande y táctil (reemplaza radios diminutos).
+const PillGroup = ({ options, value, onChange, accent = '#f97316' }: {
+  options: string[]; value: string; onChange: (v: string) => void; accent?: string;
+}) => (
+  <div className="flex flex-wrap gap-2.5">
+    {options.map(o => {
+      const on = value === o;
+      return (
+        <button key={o} type="button" onClick={() => onChange(o)}
+          className="px-4 py-2.5 rounded-xl text-sm font-medium transition border select-none"
+          style={{
+            minHeight: '44px',
+            background: on ? `${accent}22` : '#0d1520',
+            borderColor: on ? accent : '#1e2d3d',
+            color: on ? accent : '#7a95aa',
+          }}>
+          {o}
+        </button>
+      );
+    })}
+  </div>
+);
+
 const Card = ({ title, icon, color, children }: {
   title: string; icon: string; color: string; children: React.ReactNode;
 }) => (
@@ -1153,39 +1176,55 @@ function FlowPageInner() {
                   {FAMILIARES.map(fam => {
                     const row = family[fam.key];
                     return (
-                      <div key={fam.key} className="bg-[#111820] border border-[#1e2d3d] rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm font-semibold text-[#dde6ef]">{fam.label}</span>
-                          <div className="flex gap-3">
-                            {[{val:true,l:'Vive'},{val:false,l:'Falleció'}].map(o => (
-                              <label key={String(o.val)} className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name={`vivo_${fam.key}`} checked={row.vivo===o.val}
-                                  onChange={() => setFamField(fam.key,'vivo',o.val)}
-                                  className="w-3.5 h-3.5 accent-[#f97316]" />
-                                <span className="text-xs text-[#dde6ef]">{o.l}</span>
-                              </label>
-                            ))}
+                      <div key={fam.key} className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-4 sm:p-5">
+                        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                          <span className="text-base font-semibold text-[#dde6ef]">{fam.label}</span>
+                          {/* Control segmentado grande Vive / Falleció */}
+                          <div className="flex rounded-xl overflow-hidden border border-[#1e2d3d]">
+                            {[{val:true,l:'Vive'},{val:false,l:'Falleció'}].map(o => {
+                              const active = row.vivo === o.val;
+                              return (
+                                <button key={String(o.val)} type="button"
+                                  onClick={() => setFamField(fam.key,'vivo',o.val)}
+                                  className="px-5 py-2.5 text-sm font-semibold transition min-w-[92px]"
+                                  style={{
+                                    background: active ? (o.val ? '#00e5a0' : '#f43f5e') : 'transparent',
+                                    color: active ? '#000' : '#7a95aa',
+                                  }}>
+                                  {o.l}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-3 mb-3">
-                          {ENFERMEDADES.map(e => (
-                            <label key={e.key} className="flex items-center gap-1.5 cursor-pointer">
-                              <input type="checkbox" checked={row[e.key]}
-                                onChange={() => toggleFamily(fam.key, e.key)}
-                                className="w-4 h-4 accent-[#f97316]" />
-                              <span className="text-xs text-[#dde6ef]">{e.label}</span>
-                            </label>
-                          ))}
+                        {/* Enfermedades como chips grandes tipo toggle (touch-friendly) */}
+                        <div className="flex flex-wrap gap-2.5 mb-4">
+                          {ENFERMEDADES.map(e => {
+                            const on = row[e.key];
+                            return (
+                              <button key={e.key} type="button"
+                                onClick={() => toggleFamily(fam.key, e.key)}
+                                className="px-4 py-2.5 rounded-xl text-sm font-medium transition border select-none"
+                                style={{
+                                  minHeight: '44px',
+                                  background: on ? 'rgba(249,115,22,.15)' : '#0d1520',
+                                  borderColor: on ? '#f97316' : '#1e2d3d',
+                                  color: on ? '#f97316' : '#7a95aa',
+                                }}>
+                                <span className="mr-1.5">{on ? '✓' : '+'}</span>{e.label}
+                              </button>
+                            );
+                          })}
                         </div>
-                        <input className="w-full px-2 py-1.5 bg-[#0d1520] border border-[#1e2d3d] rounded text-xs text-[#dde6ef] focus:border-[#f97316] outline-none mb-2 placeholder-[#3d5870]"
+                        <input className="w-full px-3.5 py-3 bg-[#0d1520] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] focus:border-[#f97316] outline-none placeholder-[#3d5870]"
                           value={row.otra} placeholder="Otra enfermedad relevante..."
                           onChange={e => setFamField(fam.key,'otra',e.target.value)} />
                         {!row.vivo && (
-                          <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-[#1e2d3d]">
-                            <input className="px-2 py-1.5 bg-[#0d1520] border border-[#1e2d3d] rounded text-xs text-[#dde6ef] focus:border-[#f97316] outline-none placeholder-[#3d5870]"
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3 pt-3 border-t border-[#1e2d3d]">
+                            <input className="px-3.5 py-3 bg-[#0d1520] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] focus:border-[#f97316] outline-none placeholder-[#3d5870]"
                               value={row.causa_muerte} placeholder="Causa de muerte"
                               onChange={e => setFamField(fam.key,'causa_muerte',e.target.value)} />
-                            <input type="number" className="px-2 py-1.5 bg-[#0d1520] border border-[#1e2d3d] rounded text-xs text-[#dde6ef] focus:border-[#f97316] outline-none placeholder-[#3d5870]"
+                            <input type="number" className="px-3.5 py-3 bg-[#0d1520] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] focus:border-[#f97316] outline-none placeholder-[#3d5870]"
                               value={row.edad_muerte} placeholder="Edad al fallecer"
                               onChange={e => setFamField(fam.key,'edad_muerte',e.target.value)} />
                           </div>
@@ -1627,27 +1666,13 @@ function FlowPageInner() {
                   <div className="space-y-5">
                     <div>
                       <p className="text-xs font-mono text-[#7a95aa] mb-3">DISFUNCIÓN ERÉCTIL</p>
-                      <div className="flex gap-4 flex-wrap">
-                        {['No refiere','Ocasional','Frecuente','Siempre'].map(o => (
-                          <label key={o} className="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" name="ed" value={o} checked={f.erectile_dysfunction===o}
-                              onChange={e=>set('erectile_dysfunction',e.target.value)} className="w-4 h-4 accent-[#a78bfa]" />
-                            <span className="text-sm text-[#dde6ef]">{o}</span>
-                          </label>
-                        ))}
-                      </div>
+                      <PillGroup options={['No refiere','Ocasional','Frecuente','Siempre']}
+                        value={f.erectile_dysfunction} onChange={v => set('erectile_dysfunction', v)} accent="#a78bfa" />
                     </div>
                     <div>
                       <p className="text-xs font-mono text-[#7a95aa] mb-3">USO DE TESTOSTERONA EXÓGENA</p>
-                      <div className="flex gap-4">
-                        {['No','En el pasado','Actualmente'].map(o => (
-                          <label key={o} className="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" name="test" value={o} checked={f.testosterone_use===o}
-                              onChange={e=>set('testosterone_use',e.target.value)} className="w-4 h-4 accent-[#a78bfa]" />
-                            <span className="text-sm text-[#dde6ef]">{o}</span>
-                          </label>
-                        ))}
-                      </div>
+                      <PillGroup options={['No','En el pasado','Actualmente']}
+                        value={f.testosterone_use} onChange={v => set('testosterone_use', v)} accent="#a78bfa" />
                       {(f.testosterone_use==='En el pasado'||f.testosterone_use==='Actualmente') && (
                         <textarea rows={2} className={`${inp} ${fPurp} mt-3`} value={f.testosterone_detalle}
                           onChange={e=>set('testosterone_detalle',e.target.value)} placeholder="Cuándo, cuánto tiempo, tipo de compuesto..." />
@@ -2425,7 +2450,7 @@ function FlowPageInner() {
                 <button onClick={savePhase3} disabled={saving || !f.sexo_biologico}
                   className="px-6 py-2.5 text-sm font-bold rounded-xl disabled:opacity-40 transition"
                   style={{ background: f.sexo_biologico ? '#00e5a0' : '#3d5870', color: f.sexo_biologico ? '#000' : '#7a95aa' }}>
-                  {saving ? 'Guardando...' : 'Completar registro y ver paciente ✓'}
+                  {saving ? 'Guardando...' : 'Completar registro ✓'}
                 </button>
               )}
             </div>

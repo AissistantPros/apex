@@ -5,6 +5,7 @@ Cada paso recibe la versión CONFIRMADA por el médico del paso anterior.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -31,6 +32,51 @@ MODEL_DIAGNOSE  = "claude-opus-4-8"    # diagnóstico final, protocolos — máx
 MODEL_DRAFT     = "claude-sonnet-4-6"  # borrador ligero — tarea estructuralmente simple, prioriza velocidad
 MODEL_VALIDATE  = "claude-haiku-4-5"
 MODEL_CHAT      = "claude-haiku-4-5"
+
+# Dominios oficiales permitidos para la herramienta de búsqueda web — todas fuentes
+# gratuitas, sin licencia, mantenidas por agencias/organismos reconocidos. Nada de
+# foros, blogs ni sitios de opinión.
+ALLOWED_MEDICAL_DOMAINS = [
+    "pubmed.ncbi.nlm.nih.gov",   # PubMed/NCBI — literatura revisada por pares
+    "ncbi.nlm.nih.gov",
+    "dailymed.nlm.nih.gov",      # DailyMed (FDA/NLM) — etiquetas oficiales de medicamentos
+    "rxnav.nlm.nih.gov",         # RxNorm/RxNav (NLM) — normalización de medicamentos, interacciones
+    "fda.gov",                  # FDA — aprobaciones, alertas, retiros
+    "cdc.gov",                  # CDC — guías de salud pública y prevención
+    "who.int",                  # OMS — guías internacionales
+    "nice.org.uk",              # NICE (Reino Unido) — guías clínicas basadas en evidencia
+    "medlineplus.gov",          # MedlinePlus (NLM) — información clínica de enfermedades
+]
+
+# Fuentes oficiales mexicanas — SOLO para medicina tradicional (diagnóstico + protocolo).
+# Funcional y longevidad NO las usan: casi no hay guías/regulación mexicana para esos
+# enfoques, así que agregar estos dominios ahí solo diluiría la búsqueda sin aportar nada.
+ALLOWED_MEXICO_MEDICAL_DOMAINS = [
+    "cofepris.gob.mx",       # COFEPRIS — medicamentos registrados/autorizados en México, alertas sanitarias
+    "gob.mx",                # gob.mx/salud, gob.mx/cofepris, etc. — Secretaría de Salud y organismos federales
+    "dof.gob.mx",            # Diario Oficial de la Federación — NOMs (Normas Oficiales Mexicanas), reglamentos
+    "imss.gob.mx",           # IMSS — guías y catálogos del instituto
+    "cenetec-difusion.com",  # CENETEC — Guías de Práctica Clínica México (catálogo maestro IMSS/Salud)
+]
+
+# Herramienta de búsqueda web server-side de Claude, restringida a dominios oficiales —
+# Anthropic ejecuta la búsqueda, no requiere loop de tool-use del lado nuestro.
+# "global": fuentes internacionales — usa esta para funcional y longevidad.
+# "mx": internacionales + mexicanas — SOLO para medicina tradicional (diagnóstico y protocolo),
+# porque ahí es donde importa si un medicamento existe en México, con qué nombre, y bajo qué
+# regulación de COFEPRIS — algo que las guías internacionales no cubren.
+WEB_SEARCH_TOOLS = {
+    "global": {
+        "type": "web_search_20260209",
+        "name": "web_search",
+        "allowed_domains": ALLOWED_MEDICAL_DOMAINS,
+    },
+    "mx": {
+        "type": "web_search_20260209",
+        "name": "web_search",
+        "allowed_domains": ALLOWED_MEDICAL_DOMAINS + ALLOWED_MEXICO_MEDICAL_DOMAINS,
+    },
+}
 
 # Validación secundaria (chequeo de alucinaciones/seguridad) — desactivada temporalmente
 # durante pruebas para acelerar el flujo. Reactivar antes de producción.
@@ -189,7 +235,9 @@ def parse_protocol_json_safe(text: str) -> dict | None:
 
 
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
-                 visit_id: str = "", step: str = "", thinking: bool = False) -> str:
+                 visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "") -> str:
+    """web_search: "" (sin búsqueda), "global" (fuentes internacionales) o "mx"
+    (internacionales + mexicanas — solo medicina tradicional)."""
     kwargs = {
         "model": model,
         "max_tokens": max(max_tokens, 4096) if thinking else max_tokens,
@@ -199,10 +247,13 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
         kwargs["system"] = system
     if thinking:
         kwargs["thinking"] = {"type": "adaptive"}
+    if web_search:
+        kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
     start = time.monotonic()
     response = client.messages.create(**kwargs)
     # Con thinking activado, el primer bloque de contenido es el razonamiento, no la
-    # respuesta — hay que buscar el primer bloque de tipo "text".
+    # respuesta — hay que buscar el primer bloque de tipo "text". Con web_search puede
+    # haber bloques server_tool_use/web_search_tool_result antes del texto también.
     text = next((b.text for b in response.content if b.type == "text"), "")
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -220,6 +271,47 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
             # El logging nunca debe tumbar el flujo de diagnóstico
             print(f"[WARN] no se pudo guardar ai_call_log ({step}): {e}")
     return text
+
+
+def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
+                        visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = ""):
+    """
+    Igual que call_claude, pero yield-ea el texto de la respuesta en deltas conforme
+    llegan (para mostrarlo en vivo al médico en vez de una espera ciega). text_stream
+    ya filtra los deltas de thinking — solo entrega texto de la respuesta final.
+    Al agotarse el generador, ya se guardó el log en ai_call_logs con el texto completo.
+    web_search: "" / "global" / "mx" — ver call_claude().
+    """
+    kwargs = {
+        "model": model,
+        "max_tokens": max(max_tokens, 4096) if thinking else max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if thinking:
+        kwargs["thinking"] = {"type": "adaptive"}
+    if web_search:
+        kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
+    start = time.monotonic()
+    chunks = []
+    with client.messages.stream(**kwargs) as stream:
+        for delta in stream.text_stream:
+            chunks.append(delta)
+            yield delta
+    text = "".join(chunks)
+    if visit_id:
+        latency_ms = int((time.monotonic() - start) * 1000)
+        try:
+            insert_ai_call_log({
+                "visit_id": visit_id,
+                "step": step,
+                "model": model,
+                "prompt": prompt,
+                "response": text,
+                "latency_ms": latency_ms,
+                "created_at": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            print(f"[WARN] no se pudo guardar ai_call_log ({step}): {e}")
 
 
 def maybe_validate(prompt_text: str, visit_id: str = "", step: str = "") -> str:
@@ -324,6 +416,94 @@ async def get_clarifying_questions(
         return {"visit_id": visit_id, "questions": []}
 
 
+def _build_finalize_first_prompt(visit_id: str, body: FinalizeFirstRequest) -> tuple[str, str]:
+    """Arma el prompt completo de finalize_first. Devuelve (prompt, draft_type).
+    Lanza HTTPException si no hay análisis/borrador. Compartido entre la ruta normal
+    y la de streaming para no duplicar la lógica de armado del prompt."""
+    analysis = get_analysis(visit_id)
+    if not analysis:
+        raise HTTPException(404, "Análisis no encontrado")
+
+    draft_diagnosis = analysis.get("draft_diagnosis") or ""
+    draft_type = analysis.get("draft_type") or "traditional"
+
+    if not draft_diagnosis:
+        raise HTTPException(404, "No hay un borrador de diagnóstico para esta visita")
+
+    doctor_answers = (body.doctor_answers or "").strip()
+
+    visit_record = get_visit(visit_id) or {}
+    patient_id = analysis.get("patient_id")
+    patient_data = get_patient(patient_id) if patient_id else {}
+    all_visits = list_patient_visits(patient_id) if patient_id else []
+
+    respuestas_block = (
+        f"""
+RESPUESTAS DEL MÉDICO A LAS PREGUNTAS DE ACLARACIÓN:
+{doctor_answers}
+"""
+        if doctor_answers else
+        "\nEl médico no agregó respuestas adicionales — procede con la información disponible.\n"
+    )
+
+    extra_context = f"""
+HIPÓTESIS PRELIMINARES DE TU PROPIO BORRADOR RÁPIDO (razonamiento previo, no lo repitas tal cual —
+úsalo como punto de partida y complétalo con la explicación, fuentes y estudios que le faltan):
+{draft_diagnosis}
+{respuestas_block}
+INSTRUCCIÓN: Genera ahora el diagnóstico COMPLETO (con explicación, fuentes y estudios sugeridos).
+Si las respuestas del médico NO cambian el diagnóstico de forma material, mantén el mismo ranking
+y porcentajes de certeza de tu borrador. Si SÍ cambian algo, ajusta el diagnóstico y/o los
+porcentajes en consecuencia.
+"""
+
+    prompt = build_diagnosis_prompt(draft_type, patient_data, visit_record, extra_context=extra_context, all_visits=all_visits)
+    return prompt, draft_type
+
+
+def _search_scope_for(diagnosis_type: str) -> str:
+    """Fuentes mexicanas (COFEPRIS, CENETEC, etc.) solo aplican a medicina tradicional —
+    para funcional/longevidad casi no hay guías ni regulación mexicana relevante."""
+    return "mx" if diagnosis_type == "traditional" else "global"
+
+
+@router.post("/{visit_id}/finalize_first/stream")
+async def finalize_first_diagnosis_stream(
+    visit_id: str,
+    body: FinalizeFirstRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """
+    Misma lógica que /finalize_first, pero transmite el texto de la respuesta en vivo
+    vía Server-Sent Events, para que el médico vea el diagnóstico apareciendo en pantalla
+    en vez de una pantalla de carga ciega durante ~30-45s.
+    """
+    prompt, draft_type = _build_finalize_first_prompt(visit_id, body)
+
+    def event_stream():
+        chunks = []
+        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+                                         step=f"finalize_{draft_type}", thinking=True,
+                                         web_search=_search_scope_for(draft_type)):
+            chunks.append(delta)
+            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+        raw = "".join(chunks)
+        metadata, diagnosis = extract_structured_header(raw)
+        validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id,
+                                     step=f"validate_finalize_{draft_type}")
+        final = {
+            "type": "done",
+            "visit_id": visit_id,
+            "step": draft_type,
+            "diagnosis": diagnosis,
+            "validation": validation,
+            "confidence": metadata["confidence"],
+        }
+        yield f"data: {json.dumps(final)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.post("/{visit_id}/finalize_first")
 async def finalize_first_diagnosis(
     visit_id: str,
@@ -335,47 +515,12 @@ async def finalize_first_diagnosis(
     en /clarify es LIGERO (hipótesis preliminares, sin explicación/fuentes/estudios) — por
     eso esta pasada SIEMPRE corre completa, con o sin respuestas del médico, para que lo que
     ve el médico sea siempre el diagnóstico completo, nunca el borrador incompleto.
+
+    Se mantiene como fallback no-streaming (ej. si el navegador no soporta SSE bien).
     """
     try:
-        analysis = get_analysis(visit_id)
-        if not analysis:
-            raise HTTPException(404, "Análisis no encontrado")
-
-        draft_diagnosis = analysis.get("draft_diagnosis") or ""
-        draft_type = analysis.get("draft_type") or "traditional"
-
-        if not draft_diagnosis:
-            raise HTTPException(404, "No hay un borrador de diagnóstico para esta visita")
-
-        doctor_answers = (body.doctor_answers or "").strip()
-
-        visit_record = get_visit(visit_id) or {}
-        patient_id = analysis.get("patient_id")
-        patient_data = get_patient(patient_id) if patient_id else {}
-        all_visits = list_patient_visits(patient_id) if patient_id else []
-
-        respuestas_block = (
-            f"""
-RESPUESTAS DEL MÉDICO A LAS PREGUNTAS DE ACLARACIÓN:
-{doctor_answers}
-"""
-            if doctor_answers else
-            "\nEl médico no agregó respuestas adicionales — procede con la información disponible.\n"
-        )
-
-        extra_context = f"""
-HIPÓTESIS PRELIMINARES DE TU PROPIO BORRADOR RÁPIDO (razonamiento previo, no lo repitas tal cual —
-úsalo como punto de partida y complétalo con la explicación, fuentes y estudios que le faltan):
-{draft_diagnosis}
-{respuestas_block}
-INSTRUCCIÓN: Genera ahora el diagnóstico COMPLETO (con explicación, fuentes y estudios sugeridos).
-Si las respuestas del médico NO cambian el diagnóstico de forma material, mantén el mismo ranking
-y porcentajes de certeza de tu borrador. Si SÍ cambian algo, ajusta el diagnóstico y/o los
-porcentajes en consecuencia.
-"""
-
-        prompt = build_diagnosis_prompt(draft_type, patient_data, visit_record, extra_context=extra_context, all_visits=all_visits)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}", thinking=True)
+        prompt, draft_type = _build_finalize_first_prompt(visit_id, body)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}", thinking=True, web_search=_search_scope_for(draft_type))
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step=f"validate_finalize_{draft_type}")
@@ -437,7 +582,7 @@ async def run_traditional(
             })
 
         prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context, all_visits=all_visits)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional", thinking=True)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional", thinking=True, web_search="mx")
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_traditional")
@@ -546,7 +691,7 @@ async def run_functional(
             extra_context=doctor_context + chat_snippet,
             all_visits=all_visits,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional", thinking=True)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional", thinking=True, web_search="global")
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
@@ -626,7 +771,7 @@ async def run_longevity(
             extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet,
             all_visits=all_visits,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity", thinking=True)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity", thinking=True, web_search="global")
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_longevity")
@@ -650,55 +795,108 @@ async def run_longevity(
         raise HTTPException(500, str(e))
 
 
+def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, dict]:
+    """Arma el prompt completo de protocolo. Devuelve (prompt, previous_protocols).
+    Compartido entre la ruta normal y la de streaming."""
+    analysis = get_analysis(visit_id)
+    if not analysis:
+        raise HTTPException(404, "Análisis no encontrado")
+
+    visit_record = get_visit(visit_id) or {}
+    patient_id = analysis.get("patient_id")
+    patient_data = get_patient(patient_id) if patient_id else {}
+    all_visits = list_patient_visits(patient_id) if patient_id else []
+
+    diagnosis_map = {
+        "traditional": body.doctor_traditional,
+        "functional":  body.doctor_functional,
+        "longevity":   body.doctor_longevity,
+    }
+    diagnosis = diagnosis_map.get(body.protocol_type, body.doctor_traditional)
+
+    confirmed_lines = []
+    if body.doctor_traditional and body.doctor_traditional.strip():
+        confirmed_lines.append(f"• Convencional: {body.doctor_traditional}")
+    if body.doctor_functional and body.doctor_functional.strip():
+        confirmed_lines.append(f"• Funcional: {body.doctor_functional}")
+    if body.doctor_longevity and body.doctor_longevity.strip():
+        confirmed_lines.append(f"• Longevidad: {body.doctor_longevity}")
+
+    full_diagnosis = diagnosis
+    if confirmed_lines:
+        full_diagnosis += "\n\nDIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:\n" + "\n".join(confirmed_lines)
+
+    previous_protocols = {
+        "traditional": analysis.get("protocol_traditional") or "",
+        "functional":  analysis.get("protocol_functional") or "",
+        "longevity":   analysis.get("protocol_longevity") or "",
+    }
+    previous_protocols.pop(body.protocol_type, None)
+
+    prompt = get_protocol_prompt(
+        patient_data, full_diagnosis, body.protocol_type,
+        visit_data=visit_record, previous_protocols=previous_protocols,
+        all_visits=all_visits,
+    )
+    return prompt, previous_protocols
+
+
+@router.post("/{visit_id}/protocol/stream")
+async def run_protocol_stream(
+    visit_id: str,
+    body: ProtocolRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """
+    Misma lógica que /protocol, pero transmite el texto en vivo vía SSE — este es el
+    paso más lento del sistema (~90s+ con Opus + thinking generando 9+ items detallados),
+    así que es el que más se beneficia de que el médico vea que algo está pasando.
+    """
+    prompt, previous_protocols = _build_protocol_prompt(visit_id, body)
+
+    def event_stream():
+        chunks = []
+        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id,
+                                         step=f"protocol_{body.protocol_type}", thinking=True,
+                                         web_search=_search_scope_for(body.protocol_type)):
+            chunks.append(delta)
+            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+        protocol = _strip_json_fences("".join(chunks))
+
+        if ENABLE_SECONDARY_VALIDATION:
+            val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
+            validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id,
+                                     step=f"validate_protocol_{body.protocol_type}")
+            validated = _strip_json_fences(validated)
+            if parse_protocol_json_safe(validated) is not None:
+                protocol = validated
+
+        update_analysis(visit_id, {
+            f"protocol_{body.protocol_type}": protocol,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+
+        final = {
+            "type": "done",
+            "visit_id": visit_id,
+            "step": f"protocol_{body.protocol_type}",
+            "protocol": protocol,
+        }
+        yield f"data: {json.dumps(final)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.post("/{visit_id}/protocol")
 async def run_protocol(
     visit_id: str,
     body: ProtocolRequest,
     doctor_id: str = Depends(get_doctor_id),
 ):
-    """Genera el protocolo."""
+    """Genera el protocolo. Se mantiene como fallback no-streaming."""
     try:
-        analysis = get_analysis(visit_id)
-        if not analysis:
-            raise HTTPException(404, "Análisis no encontrado")
-
-        visit_record = get_visit(visit_id) or {}
-        patient_id = analysis.get("patient_id")
-        patient_data = get_patient(patient_id) if patient_id else {}
-        all_visits = list_patient_visits(patient_id) if patient_id else []
-
-        diagnosis_map = {
-            "traditional": body.doctor_traditional,
-            "functional":  body.doctor_functional,
-            "longevity":   body.doctor_longevity,
-        }
-        diagnosis = diagnosis_map.get(body.protocol_type, body.doctor_traditional)
-
-        confirmed_lines = []
-        if body.doctor_traditional and body.doctor_traditional.strip():
-            confirmed_lines.append(f"• Convencional: {body.doctor_traditional}")
-        if body.doctor_functional and body.doctor_functional.strip():
-            confirmed_lines.append(f"• Funcional: {body.doctor_functional}")
-        if body.doctor_longevity and body.doctor_longevity.strip():
-            confirmed_lines.append(f"• Longevidad: {body.doctor_longevity}")
-
-        full_diagnosis = diagnosis
-        if confirmed_lines:
-            full_diagnosis += "\n\nDIAGNÓSTICOS PREVIOS CONFIRMADOS POR EL MÉDICO:\n" + "\n".join(confirmed_lines)
-
-        previous_protocols = {
-            "traditional": analysis.get("protocol_traditional") or "",
-            "functional":  analysis.get("protocol_functional") or "",
-            "longevity":   analysis.get("protocol_longevity") or "",
-        }
-        previous_protocols.pop(body.protocol_type, None)
-
-        prompt = get_protocol_prompt(
-            patient_data, full_diagnosis, body.protocol_type,
-            visit_data=visit_record, previous_protocols=previous_protocols,
-            all_visits=all_visits,
-        )
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True)
+        prompt, previous_protocols = _build_protocol_prompt(visit_id, body)
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True, web_search=_search_scope_for(body.protocol_type))
         protocol = _strip_json_fences(protocol)
 
         if ENABLE_SECONDARY_VALIDATION:

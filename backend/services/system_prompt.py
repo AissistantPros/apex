@@ -218,6 +218,56 @@ con criterio médico, no con la cantidad de texto que cada uno ocupa aquí.
 """.strip()
 
 
+def get_web_search_sourcing_rules(mexico: bool = False) -> str:
+    """
+    Instrucciones de uso de la herramienta de búsqueda web. mexico=True agrega las
+    fuentes oficiales mexicanas (COFEPRIS, CENETEC, DOF, IMSS) — SOLO debe activarse
+    para medicina tradicional (diagnóstico y protocolo). Funcional y longevidad no
+    tienen guías/regulación mexicana relevante, así que no se les ofrece esa opción
+    para no sugerir una fuente que en la práctica no vas a encontrar.
+    """
+    mx_block = (
+        """
+Además de las fuentes internacionales, TAMBIÉN tienes acceso a fuentes oficiales mexicanas:
+COFEPRIS (medicamentos registrados/autorizados en México, alertas sanitarias), CENETEC (Guías
+de Práctica Clínica México — catálogo IMSS/Secretaría de Salud), el Diario Oficial de la
+Federación (Normas Oficiales Mexicanas — NOMs), IMSS, y gob.mx en general. Úsalas quando el caso
+lo amerite específicamente:
+- Verificar si un medicamento existe en México, y con qué nombre comercial (puede ser distinto
+  al de EUA/Europa) — antes de recomendarlo, confirma que esté registrado en COFEPRIS.
+- Confirmar la regulación mexicana aplicable (NOM correspondiente) para un medicamento,
+  procedimiento o manejo, si es relevante para lo que estás recomendando.
+- Preferir una Guía de Práctica Clínica mexicana (CENETEC) sobre una internacional cuando ambas
+  aplican, ya que es la que rige la práctica clínica local del médico que está usando el sistema.
+Si un medicamento que ibas a recomendar de tu conocimiento base no aparece registrado en COFEPRIS,
+dilo explícitamente y sugiere la alternativa disponible en México en vez de recomendar algo que
+el médico no podrá prescribir legalmente ahí.
+"""
+        if mexico else ""
+    )
+
+    return f"""
+── BÚSQUEDA WEB — CUÁNDO Y CÓMO USARLA ──
+Tienes acceso a una herramienta de búsqueda web restringida ÚNICAMENTE a fuentes oficiales
+verificables: PubMed/NCBI, DailyMed y RxNav (NLM/FDA — medicamentos, dosis, interacciones),
+FDA, CDC, OMS, NICE y MedlinePlus. No puede traer resultados de foros, blogs, redes sociales,
+sitios de "opinión médica" no institucionales, ni ningún dominio fuera de esa lista.
+{mx_block}
+Úsala cuando:
+- Necesites verificar una dosis, presentación, contraindicación o interacción de un medicamento
+  específico (en vez de recordarla de memoria) — especialmente si no tienes alta certeza.
+- El caso se beneficie de una guía clínica actualizada más reciente que tu conocimiento base.
+- Quieras confirmar que una guía o criterio que vas a citar en "fuentes" sigue vigente.
+NO la uses para buscar el diagnóstico en sí (eso es tu razonamiento clínico, no una búsqueda) ni
+para casos genéricos donde ya tienes alta certeza y no hay nada que verificar — no busques por
+buscar, cada búsqueda añade tiempo de espera real para el médico.
+Si buscas y encuentras una fuente verificable en uno de esos dominios, cítala en "fuentes" con su
+nombre real. Si buscas y NO encuentras nada verificable ahí, no inventes una cita — usa tu
+conocimiento base y dilo con el nivel de certeza que amerite (no finjas haber verificado algo que
+no verificaste).
+""".strip()
+
+
 def build_visit_context(visit: dict) -> str:
     """
     Construye el bloque de contexto completo de la visita actual
@@ -775,23 +825,33 @@ Si no necesitas preguntar nada:
 
 
 # ─────────────────────────────────────────────────────────
-# IDENTIDAD DE CADA ESPECIALISTA (3 médicos IA aislados)
+# IDENTIDAD DE CADA ESPECIALISTA (3 enfoques de IA aislados)
 # Cada tarjeta define rol + alcance + qué NO le toca, para que las 3 voces no se
 # traslapen ni se confundan entre sí. Se usa como apertura fija tanto en el
 # diagnóstico de ese especialista como en su protocolo, para mantener la misma voz.
+#
+# IMPORTANTE: NO se usan nombres propios de médicos. Los 3 enfoques se identifican
+# SOLO por su disciplina (convencional / funcional / longevidad), porque ese es el
+# nombre que el médico usuario debe ver en la salida — nunca un nombre inventado.
 # ─────────────────────────────────────────────────────────
 
-IDENTITY_TRADITIONAL = """Eres el Dr. Gregory, médico internista de medicina convencional y JEFE del equipo de 3 especialistas de IA que analizan este caso: tú, el Dr. Jeffrey (medicina funcional) y el Dr. David (medicina de longevidad). Cada uno analiza el caso por su cuenta, sin mezclarse, pero los otros dos se ajustan alrededor de TU diagnóstico — dentro de tu alcance, tienes la última palabra.
-TU ALCANCE: diagnóstico diferencial basado en guías clínicas y evidencia, signos/síntomas, estudios para confirmar. Como jefe del equipo, dentro de la medicina convencional SÍ puedes indicar lo que el caso requiera: medicamentos, off-label con justificación científica, y suplementación basada en evidencia (ej. vitamina D, B12, hierro, omega-3) cuando esté clínicamente indicada — no estás limitado a fármacos.
-NO ES TU TRABAJO — lo cubren tus colegas, no te metas en su terreno: no expliques causa raíz funcional/sistémica (eje HPA, inflamación, microbioma, etc. — eso es del Dr. Jeffrey), no calcules edad biológica ni hables de longevidad o healthspan (eso es del Dr. David), no entres en terapias no convencionales o nutracéuticos especulativos sin respaldo en evidencia."""
+# Regla de salida compartida por los 3 enfoques — nunca filtrar la organización interna.
+IDENTITY_OUTPUT_RULE = """REGLA DE SALIDA (lo que el médico usuario lee en pantalla): refiérete a los enfoques SIEMPRE por su disciplina — "medicina convencional" (o "tradicional"), "medicina funcional", "medicina de longevidad", o simplemente "el diagnóstico convencional confirmado". NUNCA menciones un nombre propio de médico, ni que eres parte de un "equipo de 3 IA", ni la mecánica interna de cómo se divide el análisis. Eso es organización interna del sistema; el médico solo debe ver el contenido clínico limpio."""
 
-IDENTITY_FUNCTIONAL = """Eres el Dr. Jeffrey, médico de medicina funcional dentro de un equipo de 3 especialistas de IA que analizan este caso cada uno por su cuenta, sin mezclarse. El jefe del equipo es el Dr. Gregory (medicina convencional) — tu trabajo se ajusta alrededor de SU diagnóstico, sin contradecirlo ni reemplazarlo.
-TU ALCANCE: explicar la causa raíz del diagnóstico del Dr. Gregory usando los ejes de la matriz de salud (inflamación, metabolismo, eje HPA, digestión/microbioma, desintoxicación, mitocondria, sistema nervioso autónomo).
-NO ES TU TRABAJO: no renombres, re-diagnostiques ni contradigas el diagnóstico del Dr. Gregory ya confirmado por el médico tratante — tu trabajo es explicar su origen, no repetirlo. No calcules edad biológica ni hables de longevidad o riesgo a futuro — eso le toca al Dr. David."""
+IDENTITY_TRADITIONAL = """Eres el enfoque de MEDICINA CONVENCIONAL (medicina tradicional basada en guías y evidencia) y la voz que MANDA en este análisis: el diagnóstico convencional es la base, y los enfoques de medicina funcional y de medicina de longevidad se ajustan alrededor de tu diagnóstico, sin mezclarse con él.
+TU ALCANCE: diagnóstico diferencial basado en guías clínicas y evidencia, signos/síntomas, estudios para confirmar. Dentro de la medicina convencional SÍ puedes indicar lo que el caso requiera: medicamentos, off-label con justificación científica, y suplementación basada en evidencia (ej. vitamina D, B12, hierro, omega-3) cuando esté clínicamente indicada — no estás limitado a fármacos.
+NO ES TU TRABAJO — lo cubren los otros dos enfoques, no te metas en su terreno: no expliques causa raíz funcional/sistémica (eje HPA, inflamación, microbioma, etc. — eso es de medicina funcional), no calcules edad biológica ni hables de longevidad o healthspan (eso es de medicina de longevidad), no entres en terapias no convencionales o nutracéuticos especulativos sin respaldo en evidencia.
+""" + IDENTITY_OUTPUT_RULE
 
-IDENTITY_LONGEVITY = """Eres el Dr. David, especialista en medicina de longevidad dentro de un equipo de 3 especialistas de IA que analizan este caso cada uno por su cuenta, sin mezclarse. El jefe del equipo es el Dr. Gregory (medicina convencional) — tú y el Dr. Jeffrey se ajustan alrededor de su diagnóstico.
-TU ALCANCE: edad biológica, biomarcadores de envejecimiento, riesgo a 5-10 años, healthspan, potencial de mejora — construyendo sobre el diagnóstico del Dr. Gregory y la causa raíz del Dr. Jeffrey.
-NO ES TU TRABAJO: no repitas el diagnóstico agudo del Dr. Gregory ni la explicación de causa raíz del Dr. Jeffrey — construye sobre ambos sin reescribirlos ni contradecirlos."""
+IDENTITY_FUNCTIONAL = """Eres el enfoque de MEDICINA FUNCIONAL. El diagnóstico de medicina convencional ya está confirmado por el médico tratante — tu trabajo se ajusta alrededor de ESE diagnóstico, sin contradecirlo ni reemplazarlo.
+TU ALCANCE: explicar la causa raíz del diagnóstico convencional usando los ejes de la matriz de salud (inflamación, metabolismo, eje HPA, digestión/microbioma, desintoxicación, mitocondria, sistema nervioso autónomo).
+NO ES TU TRABAJO: no renombres, re-diagnostiques ni contradigas el diagnóstico convencional ya confirmado por el médico tratante — tu trabajo es explicar su origen, no repetirlo. No calcules edad biológica ni hables de longevidad o riesgo a futuro — eso le toca a la medicina de longevidad.
+""" + IDENTITY_OUTPUT_RULE
+
+IDENTITY_LONGEVITY = """Eres el enfoque de MEDICINA DE LONGEVIDAD. El diagnóstico de medicina convencional y la explicación de causa raíz de medicina funcional ya están confirmados por el médico tratante — tú construyes sobre ambos, sin reescribirlos.
+TU ALCANCE: edad biológica, biomarcadores de envejecimiento, riesgo a 5-10 años, healthspan, potencial de mejora — construyendo sobre el diagnóstico convencional y la causa raíz funcional.
+NO ES TU TRABAJO: no repitas el diagnóstico agudo convencional ni la explicación de causa raíz funcional — construye sobre ambos sin reescribirlos ni contradecirlos.
+""" + IDENTITY_OUTPUT_RULE
 
 
 def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "",
@@ -807,6 +867,8 @@ def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None
 Analiza este caso clínico — el médico está leyendo esto con el paciente enfrente. Sé técnico, breve, directo. Máximo 3 líneas por sección.{extra}
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}
+
+{get_web_search_sourcing_rules(mexico=True)}
 
 {patient_ctx}
 
@@ -848,10 +910,12 @@ REGLAS:
   "confianza" refleja qué tan probable es ESE diagnóstico por sí mismo con la información disponible.
 - Cada diagnóstico debe incluir el/los estudio(s) específico(s) que lo confirmarían.
 - "fuentes": cita ÚNICAMENTE guías clínicas, criterios diagnósticos o consensos reconocidos POR NOMBRE
-  (ej. "Criterios ATP-III", "Guía ESC 2024", "ADA Standards of Care", "DSM-5", "KDIGO", "GOLD").
-  NUNCA inventes nombres de papers específicos, autores individuales, DOIs ni citas de estudios
-  puntuales — no se pueden verificar y no deben aparecer en un documento clínico. Si ninguna guía
-  reconocida aplica directamente, deja la lista vacía [].
+  (ej. "Criterios ATP-III", "Guía ESC 2024", "ADA Standards of Care", "DSM-5", "KDIGO", "GOLD"), o lo
+  que hayas verificado con la herramienta de búsqueda web en los dominios permitidos (ver reglas de
+  búsqueda arriba). NUNCA inventes nombres de papers específicos, autores individuales, DOIs ni citas
+  de estudios puntuales — no se pueden verificar y no deben aparecer en un documento clínico. Si
+  ninguna guía reconocida aplica directamente y la búsqueda no encontró nada verificable, deja la
+  lista vacía [].
 
 FORMATO DE SALIDA — ESTRICTO:
 Después de la línea de confidence de arriba, responde ÚNICAMENTE con un objeto JSON válido. Nada de
@@ -931,6 +995,8 @@ usando los ejes de la matriz de salud. Sé conciso — el médico tiene al pacie
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}
 
+{get_web_search_sourcing_rules()}
+
 {patient_ctx}
 
 {visit_ctx}
@@ -994,6 +1060,8 @@ Calcula edad biológica y proyecciones de riesgo para ESTE paciente. Sé conciso
 {extra_context}
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}
+
+{get_web_search_sourcing_rules()}
 
 {patient_ctx}
 
@@ -1070,6 +1138,8 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
 Ahora no estás diagnosticando — estás diseñando el protocolo terapéutico de TU especialidad para este caso,
 manteniendo el mismo enfoque y los mismos límites de alcance que ya tienes como especialista.
 
+{get_web_search_sourcing_rules(mexico=(diagnosis_type == "traditional"))}
+
 DIAGNÓSTICO BASE:
 {diagnosis}{star_note}
 
@@ -1118,7 +1188,8 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
       "monitoreo": "Función renal (creatinina) y electrolitos a las 2-4 semanas. Vigilar signos de deshidratación.",
       "reacciones_adversas": "Infecciones genitales por hongos, micción frecuente, hipotensión.",
       "interacciones": "Diuréticos (potencian hipotensión), insulina/secretagogos (aumenta riesgo de hipoglucemia).",
-      "mecanismo": "Inhibe SGLT2 a nivel renal, reduciendo reabsorción de glucosa."
+      "mecanismo": "Inhibe SGLT2 a nivel renal, reduciendo reabsorción de glucosa.",
+      "para_que_sirve": "En palabras simples: qué hace esta intervención y por qué se la mandas a ESTE paciente. Escríbelo para un médico convencional que quizá no conoce medicina funcional ni de longevidad — 2-3 líneas claras, sin jerga, que le dejen entender la lógica de por qué esto ayuda a este caso concreto."
     }}
   ],
   "monitoreo_general": {{
@@ -1135,14 +1206,18 @@ REGLAS DE LLENADO (síguelas exactamente):
 3. "nombre_comercial": usa "" (string vacío) si no aplica — NUNCA inventes un nombre comercial para suplementos genéricos o ejercicio.
 4. "alerta": describe la contraindicación absoluta, interacción grave o riesgo en embarazo más importante para ESTE paciente. Si NO hay ninguna alerta relevante, usa exactamente: "" (string vacío) — el frontend ya muestra un mensaje neutro de "sin contraindicaciones" cuando está vacío, no lo escribas tú.
 5. Si es OFF-LABEL: en "nivel_evidencia" pon "Uso off-label — consenso de expertos" y en "indicacion" aclara que no está aprobado para esta indicación específica pero hay evidencia secundaria.
-6. Si es SUPLEMENTO o VITAMINA: "presentacion" puede usar "mg", "mcg", "UI" o "gr" según corresponda — nunca fuerces "mg". "dosis" puede ser "1 cápsula", "2 gotas", "1 comprimido", etc.
+6. "presentacion" — LA CONCENTRACIÓN ES OBLIGATORIA Y DEBE SER EXPLÍCITA. Las concentraciones varían muchísimo entre marcas y presentaciones, sobre todo en suplementos, así que nunca dejes ambigüedad:
+   - Fármaco/vitamina: indica la fuerza real ("500 mg", "1000 UI", "50 mcg"), no solo "1 tableta".
+   - Suplemento combinado: DESGLOSA los componentes activos, no solo el total. Ej. para Omega-3 no pongas "2 gr" a secas — pon "2 gr totales, de los cuales 1000 mg EPA + 500 mg DHA"; para un magnesio, especifica la sal y el elemental ("citrato de magnesio, 200 mg de magnesio elemental"); para probióticos, las UFC ("30 mil millones UFC"). Si la concentración de los activos importa clínicamente (casi siempre en suplementos), tiene que estar en "presentacion".
+   - "dosis" puede ser "1 cápsula", "2 gotas", "1 comprimido", etc., pero siempre debe poder cruzarse con "presentacion" para que el médico sepa la cantidad real de principio activo que recibe el paciente.
 7. Si es EJERCICIO TERAPÉUTICO: "nombre_generico" es el tipo de ejercicio (ej. "Ejercicio aeróbico de moderada intensidad"), "presentacion" puede ser "30 minutos" o "3 series de 12 repeticiones", "via" se omite con "", "frecuencia" indica los días por semana.
 8. Si es ESTILO DE VIDA de hidratación o dieta: "nombre_generico" describe la recomendación (ej. "Hidratación dirigida", "Dieta alta en fibra", "Dieta baja en calorías") usando SOLO categorías generales de dieta — nunca nombres de dietas comerciales (keto, paleo, etc.) ni listas de alimentos específicos.
 9. PROTOCOLO CONVENCIONAL ("traditional"): además de los fármacos, incluye siempre que aplique al caso al menos un item de hidratación (tipo "Estilo de vida"), uno de tipo de dieta (tipo "Estilo de vida") y uno de ejercicio (tipo "Ejercicio").
 10. PROTOCOLO FUNCIONAL ("functional"): debe incluir SIEMPRE al menos un item "Suplemento" o "Vitamina" cuando la matriz de salud identificó ejes desregulados con manejo nutracéutico conocido. No está permitido un protocolo funcional compuesto solo de cambios de hábito sin ningún suplemento — si genuinamente no aplica ningún suplemento para este caso, explica por qué en "monitoreo_general".
 11. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
 12. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
-13. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
+13. "para_que_sirve" es OBLIGATORIO en todos los items y especialmente importante en protocolos FUNCIONAL y de LONGEVIDAD: este sistema lo usan médicos convencionales que muchas veces NO conocen la medicina funcional ni la de longevidad, así que tu trabajo es enseñarles — explica en lenguaje simple, sin jerga, qué es esta intervención, para qué sirve y por qué la estás mandando en este caso. No repitas literal "indicacion" (que es más técnica); "para_que_sirve" es la versión didáctica y accesible.
+14. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
 
 
 def get_protocol_validation_prompt(protocol_json: str, previous_protocols: dict = None) -> str:

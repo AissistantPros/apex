@@ -77,18 +77,57 @@ const EMPTY_DX: DiagnosisState = {
 };
 
 // ─── Loading steps ────────────────────────────────────────────────────────────
-const LOAD_MSGS = [
+// Mensajes de carga por contexto — cada pantalla de espera describe lo que REALMENTE
+// se está procesando en ese paso, no una lista genérica.
+const LOAD_MSGS_DIAGNOSTICO = [
   'Cargando historial clínico completo',
   'Analizando signos vitales y datos de la visita',
   'Revisando antecedentes y medicamentos actuales',
-  'Consultando base de conocimiento clínico',
-  'Procesando con IA médica especializada',
+  'Consultando guías clínicas y evidencia',
   'Cruzando datos con patrones clínicos',
   'Calculando diagnósticos diferenciales',
-  'Verificando fuentes y evidencia',
-  'Filtrando alucinaciones clínicas',
+  'Verificando fuentes en bases oficiales',
+  'Jerarquizando causa raíz sobre complicaciones',
   'Preparando diagnóstico estructurado',
 ];
+const LOAD_MSGS_FUNCIONAL = [
+  'Cargando el diagnóstico convencional confirmado',
+  'Revisando antecedentes, hábitos y situación actual',
+  'Evaluando ejes de la matriz de salud',
+  'Rastreando la cascada de causalidad',
+  'Ubicando la causa raíz más probable',
+  'Identificando factores perpetuantes',
+  'Seleccionando estudios que confirmarían la raíz',
+  'Preparando explicación de causa raíz',
+];
+const LOAD_MSGS_LONGEVIDAD = [
+  'Cargando diagnóstico y causa raíz confirmados',
+  'Analizando biomarcadores de envejecimiento',
+  'Estimando edad biológica vs cronológica',
+  'Proyectando riesgos a 5–10 años',
+  'Comparando estado actual vs óptimo',
+  'Calculando potencial de mejora',
+  'Preparando perfil de longevidad',
+];
+const LOAD_MSGS_PROTOCOLO = [
+  'Cargando el diagnóstico confirmado por el médico',
+  'Revisando medicamentos actuales, alergias e interacciones',
+  'Diseñando el protocolo terapéutico personalizado',
+  'Verificando dosis y concentraciones',
+  'Confirmando disponibilidad y registro sanitario',
+  'Revisando traslapes entre intervenciones',
+  'Ajustando monitoreo y señales de alarma',
+  'Preparando el protocolo estructurado',
+];
+
+// Elige el set de mensajes según lo que dice el label de carga.
+function pickLoadMsgs(label: string): string[] {
+  const l = (label || '').toUpperCase();
+  if (l.includes('PROTOCOLO') || l.includes('GENERANDO')) return LOAD_MSGS_PROTOCOLO;
+  if (l.includes('LONGEVIDAD')) return LOAD_MSGS_LONGEVIDAD;
+  if (l.includes('CAUSA RAÍZ') || l.includes('FUNCIONAL')) return LOAD_MSGS_FUNCIONAL;
+  return LOAD_MSGS_DIAGNOSTICO;
+}
 
 // ─── Markdown / Section Parsers ───────────────────────────────────────────────
 
@@ -120,6 +159,22 @@ function parseSections(text: string): Record<string, string> {
   if (Object.keys(sections).length > 0) return sections;
 
   return sections;
+}
+
+/** Extrae la edad biológica del cuerpo de la sección "EDAD BIOLÓGICA ESTIMADA".
+ *  Formato esperado: "[X] años (cronológica: [Y] años = [+/-Z] años). Biomarcadores clave: ..." */
+function parseBioAge(body: string): { bio: number | null; crono: number | null; deltaTxt: string; rest: string } {
+  const clean = body.replace(/^[·•\-\s]+/, '');
+  const bioM = clean.match(/(\d{1,3})\s*años/);
+  const cronoM = clean.match(/cronol[oó]gica:\s*(\d{1,3})\s*años/i);
+  const deltaM = clean.match(/=\s*([+\-]?\s*\d{1,3})\s*años/);
+  const bio = bioM ? parseInt(bioM[1], 10) : null;
+  const crono = cronoM ? parseInt(cronoM[1], 10) : null;
+  const deltaTxt = deltaM ? deltaM[1].replace(/\s+/g, '') : (bio != null && crono != null ? (bio - crono >= 0 ? `+${bio - crono}` : `${bio - crono}`) : '');
+  // Explicación: la parte después del primer paréntesis de cierre "). "
+  const closeIdx = clean.indexOf(').');
+  const rest = closeIdx >= 0 ? clean.slice(closeIdx + 2).trim() : clean.replace(/Biomarcadores/i, 'Biomarcadores').trim();
+  return { bio, crono, deltaTxt, rest };
 }
 
 // ─── Section Renderers ────────────────────────────────────────────────────────
@@ -562,6 +617,7 @@ interface ProtocolItem {
   reacciones_adversas?: string;
   interacciones?: string;
   mecanismo?: string;
+  para_que_sirve?: string;
 }
 
 interface ProtocolData {
@@ -682,10 +738,20 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
           </div>
         )}
 
+        {/* ¿Para qué sirve? — explicación didáctica en lenguaje simple para el médico */}
+        {item.para_que_sirve && (
+          <div className="rounded-lg px-3.5 py-3" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
+            <p className="text-[10px] font-mono mb-1.5 flex items-center gap-1.5" style={{ color }}>
+              <span>💡</span> ¿PARA QUÉ SIRVE?
+            </p>
+            <p className="text-[15px] text-[#dde6ef] font-serif leading-relaxed">{item.para_que_sirve}</p>
+          </div>
+        )}
+
         {/* Indicación */}
         {item.indicacion && (
           <div>
-            <p className="text-[10px] font-mono text-[#3d5870] mb-1">INDICACIÓN</p>
+            <p className="text-[10px] font-mono text-[#3d5870] mb-1">INDICACIÓN CLÍNICA</p>
             <p className="text-lg text-[#dde6ef] font-serif leading-relaxed">{item.indicacion}</p>
             {item.ajuste_especial && (
               <p className="text-xs text-[#7a95aa] italic mt-1.5 bg-[#070a0e] border border-[#1e2d3d] rounded-md px-2.5 py-1.5">
@@ -1506,6 +1572,108 @@ function ConfidenceBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
+// ─── Longevity Hero — edad biológica como número grande con animación ─────────
+function LongevityHero({ body, color }: { body: string; color: string }) {
+  const { bio, crono, deltaTxt, rest } = parseBioAge(body);
+  const [display, setDisplay] = useState(crono ?? 0);
+
+  useEffect(() => {
+    if (bio == null) return;
+    const from = crono ?? Math.max(0, bio - 12);
+    const to = bio;
+    const dur = 1400;
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [bio, crono]);
+
+  const older = bio != null && crono != null && bio > crono;
+  const deltaColor = older ? '#f43f5e' : '#00e5a0';
+
+  if (bio == null) {
+    // Sin número parseable — cae al render normal de sección
+    return <SectionContent title="EDAD BIOLÓGICA ESTIMADA" body={body} color={color} onToggleSelect={() => {}} />;
+  }
+
+  return (
+    <div className="rounded-2xl p-6 text-center relative overflow-hidden"
+      style={{ background: `radial-gradient(circle at 50% 0%, ${color}18, transparent 70%), #07101e`, border: `1px solid ${color}33` }}>
+      <div className="text-[10px] font-mono tracking-[3px] mb-3" style={{ color }}>EDAD BIOLÓGICA ESTIMADA</div>
+      <div className="flex items-end justify-center gap-2 leading-none">
+        <span className="font-black tabular-nums" style={{ fontSize: '76px', color, textShadow: `0 0 40px ${color}55` }}>{display}</span>
+        <span className="text-2xl font-bold text-[#7a95aa] mb-3">años</span>
+      </div>
+      <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
+        {crono != null && (
+          <span className="text-sm font-mono text-[#7a95aa]">Cronológica: <span className="text-[#dde6ef] font-bold">{crono}</span></span>
+        )}
+        {deltaTxt && (
+          <span className="text-sm font-mono font-bold px-2.5 py-1 rounded-full"
+            style={{ color: deltaColor, background: `${deltaColor}18`, border: `1px solid ${deltaColor}40` }}>
+            {deltaTxt} años {older ? '↑' : '↓'}
+          </span>
+        )}
+      </div>
+      {rest && (
+        <p className="text-sm text-[#7a95aa] font-serif leading-relaxed mt-5 text-left max-w-2xl mx-auto border-t border-[#1e2d3d] pt-4">
+          {rest}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Cascada de causalidad — flujo vertical raíz → lo que se ve ────────────────
+function CausalityFlow({ body, color }: { body: string; color: string }) {
+  // El cuerpo viene como "raíz → disfunción A → disfunción B → síntoma visible".
+  // Puede venir en varias líneas; nos quedamos con la línea que tenga flechas.
+  const line = body.split('\n').map(l => l.trim()).filter(Boolean).find(l => l.includes('→')) || body;
+  const nodes = line.split('→').map(n => n.replace(/^[·•\-\s]+/, '').trim()).filter(Boolean);
+
+  if (nodes.length < 2) {
+    return <SectionContent title="CASCADA DE CAUSALIDAD" body={body} color={color} onToggleSelect={() => {}} />;
+  }
+
+  return (
+    <div className="flex flex-col items-stretch gap-0">
+      {nodes.map((node, i) => {
+        const isRoot = i === 0;
+        const isVisible = i === nodes.length - 1;
+        const tag = isRoot ? 'RAÍZ DEL PROBLEMA' : isVisible ? 'LO QUE SE VE (diagnóstico)' : `PASO ${i}`;
+        const nodeColor = isRoot ? color : isVisible ? '#f43f5e' : '#7a95aa';
+        return (
+          <div key={i}>
+            <div className="rounded-xl px-4 py-3 flex items-start gap-3"
+              style={{
+                background: isRoot ? `${color}12` : isVisible ? 'rgba(244,63,94,.08)' : '#07101e',
+                border: `1px solid ${isRoot ? `${color}44` : isVisible ? 'rgba(244,63,94,.3)' : '#1a2a3a'}`,
+              }}>
+              <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-black mt-0.5"
+                style={{ background: nodeColor, color: '#000' }}>{i + 1}</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[9px] font-mono tracking-widest mb-0.5" style={{ color: nodeColor }}>{tag}</div>
+                <div className="text-[15px] text-[#dde6ef] font-serif leading-snug">{node}</div>
+              </div>
+            </div>
+            {!isVisible && (
+              <div className="flex justify-center py-1">
+                <span className="text-2xl leading-none" style={{ color: `${color}99` }}>↓</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Diagnosis Card ───────────────────────────────────────────────────────────
 function DiagnosisCard({
   state, color, onEdit, onRestore, editMode, setEditMode, setState,
@@ -1745,6 +1913,19 @@ function DiagnosisCard({
         <div className="space-y-4">
           {Object.entries(sections).map(([title, body]) => {
             if (SKIP_SECTIONS.some(s => title.toUpperCase().includes(s))) return null;
+            // La edad biológica se presenta como número grande animado (es el dato que "vende")
+            if (title.toUpperCase().includes('EDAD BIOLÓGICA') || title.toUpperCase().includes('EDAD BIOLOGICA')) {
+              return <div key={title}><LongevityHero body={body} color={color} /></div>;
+            }
+            // La cascada de causalidad se presenta como flujo gráfico raíz → síntoma
+            if (title.toUpperCase().includes('CASCADA DE CAUSALIDAD') || title.toUpperCase().includes('CASCADA')) {
+              return (
+                <div key={title}>
+                  <div className="text-[10px] font-mono tracking-widest mb-2 px-1" style={{ color }}>{title}</div>
+                  <CausalityFlow body={body} color={color} />
+                </div>
+              );
+            }
             return (
               <div key={title}>
                 <div className="text-[10px] font-mono tracking-widest mb-2 px-1"
@@ -1782,13 +1963,24 @@ function DiagnosisCard({
 }
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
-function LoadingScreen({ label }: { label: string }) {
+function LoadingScreen({ label, streamedText }: { label: string; streamedText?: string }) {
   const [activeIdx, setActiveIdx] = useState(0);
+  const liveRef = useRef<HTMLDivElement>(null);
+  const isStreaming = !!streamedText && streamedText.length > 0;
+  const msgs = pickLoadMsgs(label);
+
   useEffect(() => {
+    setActiveIdx(0);
+    if (isStreaming) return; // ya hay contenido real llegando — no simular pasos falsos
     let i = 0;
-    const iv = setInterval(() => { i++; if (i < LOAD_MSGS.length) setActiveIdx(i); else clearInterval(iv); }, 1800);
+    const iv = setInterval(() => { i++; if (i < msgs.length) setActiveIdx(i); else clearInterval(iv); }, 1800);
     return () => clearInterval(iv);
-  }, []);
+  }, [isStreaming, label]);
+
+  useEffect(() => {
+    if (liveRef.current) liveRef.current.scrollTop = liveRef.current.scrollHeight;
+  }, [streamedText]);
+
   return (
     <div className="fixed inset-0 bg-[#070a0e] z-50 flex flex-col items-center justify-center px-6">
       <div className="fixed left-0 right-0 h-px pointer-events-none"
@@ -1796,31 +1988,57 @@ function LoadingScreen({ label }: { label: string }) {
       <div className="w-full max-w-md">
         <div className="text-[#00e5a0] text-3xl font-black tracking-widest mb-1">APEX</div>
         <div className="font-mono text-[10px] tracking-[4px] text-[#3d5870] mb-8 uppercase">{label}</div>
-        <div className="flex flex-col gap-2 mb-6">
-          {LOAD_MSGS.map((msg, i) => (
-            <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border font-mono text-xs transition-all duration-500 ${
-              i === activeIdx ? 'border-[rgba(0,229,160,.3)] bg-[rgba(0,229,160,.05)] text-[#00e5a0]'
-              : i < activeIdx ? 'border-[rgba(14,165,233,.15)] text-[#3d5870]'
-              : 'border-[#111820] text-[#1e2d3d]'
-            }`}>
-              <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${
-                i === activeIdx ? 'bg-[#00e5a0] text-black' : i < activeIdx ? 'bg-[#0ea5e9] text-white' : 'bg-[#1e2d3d] text-[#3d5870]'
-              }`} style={i === activeIdx ? { animation: 'pulse 0.8s ease-in-out infinite' } : {}}>
-                {i < activeIdx ? '✓' : i === activeIdx ? '●' : '—'}
+
+        {isStreaming ? (
+          <div ref={liveRef}
+            className="h-64 overflow-y-auto rounded-lg border border-[rgba(0,229,160,.2)] bg-[rgba(0,229,160,.03)] p-4 font-mono text-[11px] leading-relaxed text-[#7a95aa] whitespace-pre-wrap">
+            {streamedText}
+            <span className="inline-block w-1.5 h-3.5 bg-[#00e5a0] ml-0.5 align-middle" style={{ animation: 'blink 1s step-end infinite' }} />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 mb-6">
+            {msgs.map((msg, i) => (
+              <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border font-mono text-xs transition-all duration-500 ${
+                i === activeIdx ? 'border-[rgba(0,229,160,.3)] bg-[rgba(0,229,160,.05)] text-[#00e5a0]'
+                : i < activeIdx ? 'border-[rgba(14,165,233,.15)] text-[#3d5870]'
+                : 'border-[#111820] text-[#1e2d3d]'
+              }`}>
+                <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${
+                  i === activeIdx ? 'bg-[#00e5a0] text-black' : i < activeIdx ? 'bg-[#0ea5e9] text-white' : 'bg-[#1e2d3d] text-[#3d5870]'
+                }`} style={i === activeIdx ? { animation: 'pulse 0.8s ease-in-out infinite' } : {}}>
+                  {i < activeIdx ? '✓' : i === activeIdx ? '●' : '—'}
+                </div>
+                {msg}
               </div>
-              {msg}
-            </div>
-          ))}
-        </div>
-        <div className="h-0.5 bg-[#1e2d3d] rounded overflow-hidden">
-          <div className="h-full rounded transition-all duration-[1800ms] ease-out"
-            style={{ width: `${((activeIdx + 1) / LOAD_MSGS.length) * 100}%`, background: 'linear-gradient(90deg, #0ea5e9, #00e5a0)' }} />
-        </div>
+            ))}
+          </div>
+        )}
+
+        {!isStreaming && (
+          <div className="h-0.5 bg-[#1e2d3d] rounded overflow-hidden">
+            <div className="h-full rounded transition-all duration-[1800ms] ease-out"
+              style={{ width: `${((activeIdx + 1) / msgs.length) * 100}%`, background: 'linear-gradient(90deg, #0ea5e9, #00e5a0)' }} />
+          </div>
+        )}
       </div>
       <style>{`
         @keyframes scan { 0% { top: 0 } 100% { top: 100vh } }
         @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,160,.4)} 60%{box-shadow:0 0 0 6px rgba(0,229,160,0)} }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
       `}</style>
+    </div>
+  );
+}
+
+// ─── Disclaimer clínico ───────────────────────────────────────────────────────
+// Se muestra en toda pantalla donde el sistema sugiere un diagnóstico o un protocolo.
+function AIDisclaimer() {
+  return (
+    <div className="flex items-start gap-2.5 bg-[rgba(245,158,11,.07)] border border-[rgba(245,158,11,.25)] rounded-xl px-4 py-3 mb-5">
+      <span className="text-[#f59e0b] flex-shrink-0 mt-0.5">⚠</span>
+      <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
+        <strong className="text-[#f59e0b]">Resultado generado con apoyo de Inteligencia Artificial.</strong> Sin los estudios de laboratorio correspondientes no es posible alcanzar el 100% de certeza. El médico tratante es responsable de revisar, validar y aceptar cada diagnóstico y cada intervención conforme a su juicio clínico, la evaluación directa del paciente y la normativa vigente. Esta herramienta no sustituye el criterio médico.
+      </p>
     </div>
   );
 }
@@ -2102,8 +2320,9 @@ export default function AnalysisPage() {
   const patient_id = params.id as string;
 
   const [token, setToken]   = useState<string | null>(null);
-  const [step, setStep]     = useState<Step>('init');
+  const [step, setStep]     = useState<Step>('select');   // entra directo al selector de análisis (sin pantalla intermedia)
   const [loadingLabel, setLoadingLabel] = useState('');
+  const [streamedText, setStreamedText] = useState('');
   const [patientData, setPatientData]   = useState<any>(null);
   const [error, setError]   = useState('');
   const [editMode, setEditMode] = useState(false);
@@ -2148,6 +2367,33 @@ export default function AnalysisPage() {
     Authorization: `Bearer ${token || ''}`,
     'Content-Type': 'application/json',
   }), [token]);
+
+  // Consume un endpoint de streaming SSE (deltas de texto en vivo + un evento final
+  // "done" con el JSON completo). onDelta actualiza la UI en vivo; el retorno es el
+  // JSON del evento "done".
+  const streamSSE = useCallback(async (url: string, body: any, onDelta: (text: string) => void): Promise<any> => {
+    const res = await fetch(url, { method: 'POST', headers: authH(), body: JSON.stringify(body) });
+    if (!res.ok || !res.body) throw new Error(await res.text().catch(() => 'Error de streaming'));
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let done: any = null;
+    while (true) {
+      const { value, done: readerDone } = await reader.read();
+      if (readerDone) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = JSON.parse(line.slice(6));
+        if (payload.type === 'delta') onDelta(payload.text);
+        else if (payload.type === 'done') done = payload;
+      }
+    }
+    if (!done) throw new Error('El stream terminó sin un resultado final');
+    return done;
+  }, [authH]);
 
   useEffect(() => {
     const init = async () => {
@@ -2277,17 +2523,17 @@ export default function AnalysisPage() {
     const first = activeTypes[0] || 'traditional';
     setStep('loading');
     setLoadingLabel('FINALIZANDO DIAGNÓSTICO...');
+    setStreamedText('');
     setError('');
     setChatMessages([]);
     setEditMode(false);
     try {
       const doctorAnswers = buildDoctorAnswersText(answers);
-      const res = await fetch(`${apiBase}/analyze/${visit_id}/finalize_first`, {
-        method: 'POST', headers: authH(),
-        body: JSON.stringify({ doctor_answers: doctorAnswers }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
+      const json = await streamSSE(
+        `${apiBase}/analyze/${visit_id}/finalize_first/stream`,
+        { doctor_answers: doctorAnswers },
+        (delta) => setStreamedText(prev => prev + delta),
+      );
       const rawFinal = json.diagnosis as string;
       let doctorFinal = rawFinal;
       if (first === 'traditional') {
@@ -2422,15 +2668,15 @@ export default function AnalysisPage() {
   const startProtocol = async (type: AnalysisType) => {
     setStep('loading');
     setLoadingLabel(`GENERANDO — ${TYPE_META[type].protoBadge}`);
+    setStreamedText('');
     addDivider(`── ${TYPE_META[type].protoLabel} ──`);
     setEditMode(false);
     try {
-      const res = await fetch(`${apiBase}/analyze/${visit_id}/protocol`, {
-        method: 'POST', headers: authH(),
-        body: JSON.stringify({ protocol_type: type, doctor_traditional: traditional.doctor_text, doctor_functional: functional.doctor_text, doctor_longevity: longevity.doctor_text }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
+      const json = await streamSSE(
+        `${apiBase}/analyze/${visit_id}/protocol/stream`,
+        { protocol_type: type, doctor_traditional: traditional.doctor_text, doctor_functional: functional.doctor_text, doctor_longevity: longevity.doctor_text },
+        (delta) => setStreamedText(prev => prev + delta),
+      );
       const s: DiagnosisState = { ai_text: json.protocol, doctor_text: json.protocol, validation: '', confirmed: false, confidence: 90 };
       if (type === 'traditional') setProtTrad(s);
       else if (type === 'functional') setProtFunc(s);
@@ -2518,7 +2764,7 @@ export default function AnalysisPage() {
   return (
     <div className="min-h-screen bg-[#070a0e]">
 
-      {step === 'loading' && <LoadingScreen label={loadingLabel} />}
+      {step === 'loading' && <LoadingScreen label={loadingLabel} streamedText={streamedText} />}
 
       <main className="pt-16 pb-32">
         <div className="page-content px-6 py-8">
@@ -2619,20 +2865,14 @@ export default function AnalysisPage() {
                 <h2 className="text-xl font-serif text-[#dde6ef]">{info.label}</h2>
               </div>
 
-              {step.startsWith('review_protocol_') && (
-                <div className="flex items-start gap-2.5 bg-[rgba(245,158,11,.07)] border border-[rgba(245,158,11,.25)] rounded-xl px-4 py-3 mb-5">
-                  <span className="text-[#f59e0b] flex-shrink-0 mt-0.5">⚠</span>
-                  <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
-                    <strong className="text-[#f59e0b]">Sugerencia generada con apoyo de Inteligencia Artificial.</strong> El médico tratante es responsable de validar, ajustar y prescribir cada intervención conforme a su juicio clínico, la evaluación directa del paciente y la normativa vigente. Esta herramienta no sustituye el criterio médico.
-                  </p>
-                </div>
-              )}
+              {/* Disclaimer clínico — aparece en TODA sugerencia de diagnóstico o protocolo */}
+              <AIDisclaimer />
 
               {(step === 'review_functional' || step === 'review_protocol_functional') && (
                 <div className="flex items-start gap-2.5 bg-[rgba(167,139,250,.07)] border border-[rgba(167,139,250,.25)] rounded-xl px-4 py-3 mb-5">
                   <span className="text-[#a78bfa] flex-shrink-0 mt-0.5">ⓘ</span>
                   <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
-                    <strong className="text-[#a78bfa]">Medicina funcional: hipótesis de causa raíz.</strong> Es normal no alcanzar 100% de certeza sin estudios de laboratorio. Texto genérico — pendiente de revisión legal.
+                    <strong className="text-[#a78bfa]">Medicina funcional: hipótesis de causa raíz.</strong> La medicina funcional busca el ORIGEN del diagnóstico convencional, no solo nombrarlo. La certeza aumenta con los estudios dirigidos que se sugieren en cada hallazgo.
                   </p>
                 </div>
               )}
@@ -2641,7 +2881,7 @@ export default function AnalysisPage() {
                 <div className="flex items-start gap-2.5 bg-[rgba(245,158,11,.07)] border border-[rgba(245,158,11,.25)] rounded-xl px-4 py-3 mb-5">
                   <span className="text-[#f59e0b] flex-shrink-0 mt-0.5">⚠</span>
                   <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
-                    <strong className="text-[#f59e0b]">Aviso COFEPRIS.</strong> Algunos suplementos o usos sugeridos pueden ser off-label o no estar registrados en México. Verifique el registro sanitario antes de prescribir. Texto genérico — pendiente de revisión legal.
+                    <strong className="text-[#f59e0b]">Aviso COFEPRIS.</strong> Algunos suplementos o usos sugeridos pueden ser off-label o no estar registrados en México. Verifique el registro sanitario antes de prescribir.
                   </p>
                 </div>
               )}
