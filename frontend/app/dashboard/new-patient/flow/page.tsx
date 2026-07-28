@@ -711,6 +711,9 @@ function FlowPageInner() {
         fuerza_mano_der: f.fuerza_mano_der, fuerza_mano_izq: f.fuerza_mano_izq,
         marcha_4m: f.marcha_4m, equilibrio_seg: f.equilibrio_seg,
         sentarse_levantarse: f.sentarse_levantarse,
+        // Estudios (se capturan aquí para transcribirlos en 2do plano durante la fase 3)
+        labs_notes: f.lab_notas,
+        labs_files: labFiles.length > 0 ? labFiles.map(lf => ({ name: lf.name, type: lf.type, size: lf.size, data: lf.data })) : null,
         status: 'nursing_done',
       };
 
@@ -740,6 +743,11 @@ function FlowPageInner() {
         const vData = await vRes.json();
         savedVisitId = vData.id || vData.visit_id;
         setVisitId(savedVisitId);
+      }
+      // Con los estudios ya guardados: arranca la transcripción en segundo plano, así queda
+      // lista mientras se llena toda la fase 3 (médico) y no hay espera en el análisis.
+      if (savedVisitId && labFiles.length > 0) {
+        fetch(`${B()}/analyze/${savedVisitId}/extract_labs`, { method: 'POST', headers: authH2 }).catch(() => {});
       }
       // Actualizar URL para que un reload conserve el progreso
       router.replace(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=3`);
@@ -836,9 +844,8 @@ function FlowPageInner() {
             imaging_findings: f.img_interpretacion, minicog_done: f.cognitivo_realizado,
             minicog_words: f.cognitivo_palabras, minicog_clock: f.cognitivo_reloj,
             minicog_notes: f.cognitivo_notas,
-            // Labs
-            labs_notes: f.lab_notas && f.lab_notas.trim() !== '' ? f.lab_notas : 'Sin laboratorios recientes',
-            labs_files: labFiles.map(lf => ({ name: lf.name, type: lf.type, size: lf.size, data: lf.data })),
+            // (Los estudios/labs se capturan y transcriben en la fase 2 — no se reenvían aquí
+            //  para no re-inflar el binario que ya se soltó tras la extracción.)
             status: 'complete',
           }),
         });
@@ -846,12 +853,6 @@ function FlowPageInner() {
           const errBody = await vRes3.json().catch(() => ({}));
           throw new Error(errBody.detail || `HTTP ${vRes3.status}`);
         }
-      }
-
-      // Al dejar la sección de estudios: dispara la transcripción de PDFs/fotos en segundo
-      // plano (fire-and-forget) para que ya esté lista al llegar al análisis, sin espera.
-      if (visitId && labFiles.length > 0) {
-        fetch(`${B()}/analyze/${visitId}/extract_labs`, { method: 'POST', headers: authH3 }).catch(() => {});
       }
 
       // Redirigir al análisis de IA si hay visitId, o a la ficha si no
@@ -1553,6 +1554,72 @@ function FlowPageInner() {
                     <Field label="MARCHA 4m (seg)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.marcha_4m} onChange={e=>set('marcha_4m',e.target.value)} placeholder="3.5" /></Field>
                     <Field label="EQUILIBRIO (seg)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.equilibrio_seg} onChange={e=>set('equilibrio_seg',e.target.value)} placeholder="15" /></Field>
                     <Field label="SENTARSE / LEVANTARSE (×30s)"><input type="number" className={`${inp} ${fOrng}`} value={f.sentarse_levantarse} onChange={e=>set('sentarse_levantarse',e.target.value)} placeholder="14" /></Field>
+                  </div>
+                </div>
+              </Card>
+
+              {/* — Laboratorios y estudios (aquí para que la IA empiece a transcribirlos
+                    en segundo plano mientras se llena la fase del médico) — */}
+              <Card title="Laboratorios y estudios" icon="🧪" color={pc.color}>
+                <div className="space-y-4">
+
+                  {/* Notas de labs */}
+                  <Field label="NOTAS SOBRE LOS LABORATORIOS">
+                    <textarea rows={4} className={`${inp} ${fOrng} resize-none`} value={f.lab_notas}
+                      onChange={e=>set('lab_notas',e.target.value)}
+                      placeholder="Resultados relevantes, valores que llaman la atención..." />
+                  </Field>
+
+                  {/* Subida de archivos */}
+                  <div>
+                    <label className="text-xs font-mono text-[#7a95aa] mb-1.5 block">
+                      ARCHIVOS — PDF, FOTO, DOCUMENTO (máx. 5 MB c/u)
+                    </label>
+                    <div
+                      className="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition"
+                      style={{ borderColor: labFiles.length ? '#f9731655' : '#1e2d3d' }}
+                      onClick={() => labFileInputRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        const dt = e.dataTransfer;
+                        const fakeEvent = { target: { files: dt.files, value: '' } } as any;
+                        handleLabFiles(fakeEvent as React.ChangeEvent<HTMLInputElement>);
+                      }}>
+                      <input
+                        ref={labFileInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*"
+                        className="hidden"
+                        onChange={handleLabFiles}
+                      />
+                      <p className="text-2xl mb-1">📎</p>
+                      <p className="text-sm text-[#7a95aa] font-medium">Arrastra archivos aquí o haz clic para seleccionar</p>
+                      <p className="text-xs text-[#3d5870] mt-1">PDF · Imágenes · Word · Excel — la IA los analiza directamente</p>
+                    </div>
+
+                    {labFiles.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {labFiles.map((lf, i) => (
+                          <div key={i} className="flex items-center gap-3 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2">
+                            <span className="text-xl flex-shrink-0">
+                              {lf.type.includes('pdf') ? '📄' : lf.type.startsWith('image') ? '🖼️' : '📝'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-[#dde6ef] truncate font-medium">{lf.name}</p>
+                              <p className="text-xs text-[#3d5870]">{(lf.size / 1024).toFixed(0)} KB</p>
+                            </div>
+                            <button type="button"
+                              onClick={() => setLabFiles(p => p.filter((_,j) => j !== i))}
+                              className="text-[#f43f5e] text-lg leading-none hover:opacity-80 flex-shrink-0">
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <p className="text-xs text-[#3d5870] text-right">{labFiles.length} archivo{labFiles.length !== 1 ? 's' : ''} adjunto{labFiles.length !== 1 ? 's' : ''}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -2308,70 +2375,6 @@ function FlowPageInner() {
                       </Field>
                     </div>
                   )}
-                </div>
-              </Card>
-
-              <Card title="Laboratorios y estudios" icon="🧪" color={pc.color}>
-                <div className="space-y-4">
-
-                  {/* Notas de labs */}
-                  <Field label="NOTAS SOBRE LOS LABORATORIOS">
-                    <textarea rows={4} className={`${inp} ${fPurp} resize-none`} value={f.lab_notas}
-                      onChange={e=>set('lab_notas',e.target.value)}
-                      placeholder="Resultados relevantes, valores que llaman la atención..." />
-                  </Field>
-
-                  {/* Subida de archivos */}
-                  <div>
-                    <label className="text-xs font-mono text-[#7a95aa] mb-1.5 block">
-                      ARCHIVOS — PDF, FOTO, DOCUMENTO (máx. 5 MB c/u)
-                    </label>
-                    <div
-                      className="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition"
-                      style={{ borderColor: labFiles.length ? '#a78bfa55' : '#1e2d3d' }}
-                      onClick={() => labFileInputRef.current?.click()}
-                      onDragOver={e => { e.preventDefault(); }}
-                      onDrop={e => {
-                        e.preventDefault();
-                        const dt = e.dataTransfer;
-                        const fakeEvent = { target: { files: dt.files, value: '' } } as any;
-                        handleLabFiles(fakeEvent as React.ChangeEvent<HTMLInputElement>);
-                      }}>
-                      <input
-                        ref={labFileInputRef}
-                        type="file"
-                        multiple
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*"
-                        className="hidden"
-                        onChange={handleLabFiles}
-                      />
-                      <p className="text-2xl mb-1">📎</p>
-                      <p className="text-sm text-[#7a95aa] font-medium">Arrastra archivos aquí o haz clic para seleccionar</p>
-                      <p className="text-xs text-[#3d5870] mt-1">PDF · Imágenes · Word · Excel — la IA los analiza directamente</p>
-                    </div>
-
-                    {labFiles.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {labFiles.map((lf, i) => (
-                          <div key={i} className="flex items-center gap-3 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2">
-                            <span className="text-xl flex-shrink-0">
-                              {lf.type.includes('pdf') ? '📄' : lf.type.startsWith('image') ? '🖼️' : '📝'}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs text-[#dde6ef] truncate font-medium">{lf.name}</p>
-                              <p className="text-xs text-[#3d5870]">{(lf.size / 1024).toFixed(0)} KB</p>
-                            </div>
-                            <button type="button"
-                              onClick={() => setLabFiles(p => p.filter((_,j) => j !== i))}
-                              className="text-[#f43f5e] text-lg leading-none hover:opacity-80 flex-shrink-0">
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                        <p className="text-xs text-[#3d5870] text-right">{labFiles.length} archivo{labFiles.length !== 1 ? 's' : ''} adjunto{labFiles.length !== 1 ? 's' : ''}</p>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </Card>
 
