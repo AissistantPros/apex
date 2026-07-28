@@ -11,7 +11,7 @@ from typing import Optional
 from datetime import datetime
 import json, re, time
 from anthropic import Anthropic
-from db import insert_analysis, get_analysis, update_analysis, get_visit, get_patient, insert_ai_call_log, list_ai_call_logs, list_patient_visits
+from db import insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient, insert_ai_call_log, list_ai_call_logs, list_patient_visits
 
 from services.system_prompt import (
     get_traditional_diagnosis_prompt,
@@ -406,6 +406,77 @@ def maybe_validate(prompt_text: str, visit_id: str = "", step: str = "") -> str:
     return call_claude(prompt_text, model=MODEL_VALIDATE, max_tokens=800, visit_id=visit_id, step=step)
 
 
+# ── Extracción de estudios: leer el PDF/foto UNA vez, guardar los datos, soltar el binario ──
+LABS_EXTRACTION_PROMPT = """Eres un asistente clínico transcribiendo estudios de laboratorio y de gabinete.
+Adjunto van uno o más documentos/fotos (resultados de laboratorio, estudios de imagen, reportes).
+
+TU TAREA: TRANSCRIBIR fielmente TODOS los datos, no interpretarlos ni diagnosticar (eso lo hará otro médico después).
+- Extrae CADA parámetro con: nombre del analito, resultado, unidades y rango de referencia (si aparece).
+- Marca con (↑) o (↓) los valores fuera de rango cuando el propio documento lo indique o sea evidente por el rango.
+- Anota el tipo de estudio, la fecha del estudio y el laboratorio/institución si son visibles.
+- Para estudios de imagen o reportes narrativos, transcribe los hallazgos y la conclusión textual.
+- Si un valor está ilegible o dudoso, escríbelo como "[ilegible]" — nunca inventes un número.
+- NO agregues diagnóstico, interpretación clínica ni recomendaciones. Solo los datos.
+
+FORMATO: texto claro y estructurado, agrupado por estudio. Encabeza cada estudio con su nombre y fecha.
+Sé completo pero sin relleno. Si no hay ningún dato legible, responde exactamente: SIN DATOS LEGIBLES."""
+
+
+def extract_labs_data(visit: dict, visit_id: str = "") -> str:
+    """Lee los archivos adjuntos de la visita (PDF/imagen) y devuelve una transcripción
+    estructurada de sus valores. Devuelve "" si no hay nada legible."""
+    files = (visit or {}).get("labs_files")
+    blocks, skipped = build_file_content_blocks(files)
+    if not blocks:
+        return ""
+    prompt = LABS_EXTRACTION_PROMPT
+    if skipped:
+        prompt += "\n\n(Archivos no legibles automáticamente, ignóralos: " + "; ".join(skipped) + ")"
+    text = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=4000,
+                       visit_id=visit_id, step="extract_labs", attachments=blocks)
+    text = (text or "").strip()
+    if not text or text.upper().startswith("SIN DATOS LEGIBLES"):
+        return ""
+    return text
+
+
+def _labs_need_extraction(visit: dict) -> bool:
+    """True si hay archivos con binario aún sin transcribir."""
+    if not visit or visit.get("labs_extracted"):
+        return False
+    files = visit.get("labs_files") or []
+    return any(isinstance(f, dict) and f.get("data") for f in files)
+
+
+def _ensure_labs_extracted(visit_id: str, visit: dict) -> dict:
+    """Extrae los datos de los estudios adjuntos UNA vez, los persiste en labs_extracted
+    y SUELTA el binario (data) para ahorrar espacio. Idempotente: si ya se extrajo, no
+    hace nada. Si la extracción falla, deja el binario intacto (los adjuntos siguen como
+    fallback). Devuelve el visit (posiblemente actualizado) para usarlo en esta misma corrida."""
+    if not _labs_need_extraction(visit):
+        return visit
+    try:
+        text = extract_labs_data(visit, visit_id=visit_id)
+    except Exception as e:
+        print(f"[WARN] extracción de estudios falló ({visit_id}): {e}")
+        return visit
+    if not text:
+        return visit  # nada legible — conserva el binario por si acaso
+    # Conserva solo metadatos del archivo (para la ficha), suelta el binario pesado.
+    stripped = []
+    for f in (visit.get("labs_files") or []):
+        if isinstance(f, dict):
+            meta = {k: f.get(k) for k in ("name", "type", "size") if f.get(k) is not None}
+            meta["extracted"] = True
+            stripped.append(meta)
+    updated = {**visit, "labs_extracted": text, "labs_files": stripped}
+    try:
+        update_visit(visit_id, {"labs_extracted": text, "labs_files": stripped})
+    except Exception as e:
+        print(f"[WARN] no se pudo persistir labs_extracted ({visit_id}): {e}")
+    return updated
+
+
 def extract_structured_header(raw_text: str) -> tuple[dict, str]:
     """
     Extrae el JSON de la primera línea y retorna (metadata, resto_del_texto).
@@ -453,6 +524,7 @@ async def get_clarifying_questions(
     """
     try:
         visit_record = get_visit(visit_id) or {}
+        visit_record = _ensure_labs_extracted(visit_id, visit_record)
         patient_id = body.patient_data.get("patient_id") or visit_record.get("patient_id", "")
         patient_record = get_patient(patient_id) if patient_id else {}
 
@@ -519,6 +591,7 @@ def _build_finalize_first_prompt(visit_id: str, body: FinalizeFirstRequest) -> t
     doctor_answers = (body.doctor_answers or "").strip()
 
     visit_record = get_visit(visit_id) or {}
+    visit_record = _ensure_labs_extracted(visit_id, visit_record)
     patient_id = analysis.get("patient_id")
     patient_data = get_patient(patient_id) if patient_id else {}
     all_visits = list_patient_visits(patient_id) if patient_id else []
@@ -648,6 +721,7 @@ async def run_traditional(
 
         # Cargar visita y paciente completos desde Supabase
         visit_record = get_visit(visit_id) or {}
+        visit_record = _ensure_labs_extracted(visit_id, visit_record)
         patient_id = patient_data.get("patient_id") or visit_record.get("patient_id", "")
         patient_record = get_patient(patient_id) if patient_id else {}
 
@@ -708,6 +782,7 @@ async def get_functional_clarifying_questions(
     import json as json_lib
     try:
         visit_record = get_visit(visit_id) or {}
+        visit_record = _ensure_labs_extracted(visit_id, visit_record)
         patient_id = body.patient_id or visit_record.get("patient_id", "")
         patient_record = get_patient(patient_id) if patient_id else {}
 
@@ -754,6 +829,7 @@ async def run_functional(
             analysis = get_analysis(visit_id)
 
         visit_record = get_visit(visit_id) or {}
+        visit_record = _ensure_labs_extracted(visit_id, visit_record)
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
         all_visits = list_patient_visits(patient_id) if patient_id else []
@@ -831,6 +907,7 @@ async def run_longevity(
             analysis = get_analysis(visit_id)
 
         visit_record = get_visit(visit_id) or {}
+        visit_record = _ensure_labs_extracted(visit_id, visit_record)
         patient_id = analysis.get("patient_id")
         patient_data = get_patient(patient_id) if patient_id else {}
         all_visits = list_patient_visits(patient_id) if patient_id else []
@@ -897,6 +974,7 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
         raise HTTPException(404, "Análisis no encontrado")
 
     visit_record = get_visit(visit_id) or {}
+    visit_record = _ensure_labs_extracted(visit_id, visit_record)
     patient_id = analysis.get("patient_id")
     patient_data = get_patient(patient_id) if patient_id else {}
     all_visits = list_patient_visits(patient_id) if patient_id else []

@@ -358,10 +358,15 @@ def build_visit_context(visit: dict) -> str:
     orina = visit.get("urine_color") or visit.get("orina_color") or "No registrado"
     orina_tarde = visit.get("urine_color_afternoon") or visit.get("orina_color_tarde") or ""
 
-    # Archivos de laboratorio/estudios adjuntos (PDFs, fotos). Sus CONTENIDOS se envían
-    # aparte como documentos/imágenes en la misma petición; aquí solo se anuncian.
+    # Estudios adjuntos: idealmente ya se transcribieron una vez a texto (labs_extracted)
+    # y se soltó el binario para ahorrar espacio. Si aún hay binario sin transcribir, sus
+    # contenidos viajan como documentos/imágenes en esta misma petición.
     _labs_files = visit.get("labs_files") or []
-    if isinstance(_labs_files, list) and _labs_files:
+    _labs_extracted = (visit.get("labs_extracted") or "").strip()
+    if _labs_extracted:
+        labs_adjuntos_str = ("Datos transcritos de los estudios adjuntos (extraídos del PDF/imagen "
+                             "original):\n" + _labs_extracted)
+    elif isinstance(_labs_files, list) and _labs_files:
         _nombres = ", ".join((f.get("name") or "archivo") for f in _labs_files if isinstance(f, dict))
         labs_adjuntos_str = (f"{len(_labs_files)} archivo(s) adjunto(s) — {_nombres}. "
                              "Sus contenidos se incluyen como documentos/imágenes en esta misma petición: "
