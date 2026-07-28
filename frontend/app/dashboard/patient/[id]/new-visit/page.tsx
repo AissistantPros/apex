@@ -221,6 +221,9 @@ export default function NewVisitPage() {
   const [visits,  setVisits]  = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  // Se crea la visita al pasar de enfermería a fase médica (para transcribir los estudios en
+  // segundo plano durante la consulta). Si existe, el guardado final ACTUALIZA en vez de crear.
+  const [visitId, setVisitId] = useState<string>('');
 
   // Modo tablet (touch-optimizado)
   const [tabletMode, setTabletMode] = useState(false);
@@ -345,18 +348,17 @@ export default function NewVisitPage() {
     if (e.target) e.target.value = '';
   };
 
-  // Guardar visita
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const session = await getSession();
-      const token   = session?.access_token;
-      const headers: Record<string,string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
+  const authHeaders = async (): Promise<Record<string,string>> => {
+    const session = await getSession();
+    const token   = session?.access_token;
+    return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  };
+
+  // Arma el payload de la visita. includeLabs=false cuando los estudios ya se guardaron y
+  // transcribieron en enfermería, para no re-inflar el binario que ya se soltó.
+  const buildVisitPayload = (includeLabs: boolean) => {
       const patientHeight = patient?.height || patient?.talla_cm || null;
-      const mapped = {
+      const mapped: Record<string, any> = {
         reception_notes: receptionNotes,
         nursing_notes:   nursingNotes,
         visit_reason: form.motivo_visita, discomfort_intensity: form.motivo_intensidad,
@@ -414,28 +416,65 @@ export default function NewVisitPage() {
         imaging_findings: form.img_interpretacion, minicog_done: form.cognitivo_realizado,
         minicog_words: form.cognitivo_palabras, minicog_clock: form.cognitivo_reloj,
         minicog_notes: form.cognitivo_notas,
-        labs_pdf_url: form.labs_pdf_url, labs_notes: form.lab_notas,
-        labs_files: labFiles.length > 0 ? labFiles.map(f => ({ name: f.name, type: f.type, size: f.size, data: f.data })) : null,
         patient_id: patientId,
       };
-      const clean = Object.fromEntries(
+      if (includeLabs) {
+        mapped.labs_pdf_url = form.labs_pdf_url;
+        mapped.labs_notes   = form.lab_notas;
+        mapped.labs_files   = labFiles.length > 0 ? labFiles.map(f => ({ name: f.name, type: f.type, size: f.size, data: f.data })) : null;
+      }
+      return Object.fromEntries(
         Object.entries(mapped).map(([k, v]) => {
           if (v === '' || v === null || v === undefined) return [k, null];
           if (typeof v === 'string' && /^\d+(\.\d+)?$/.test(v)) return [k, parseFloat(v)];
           return [k, v];
         })
       );
-      const res = await fetch(`${BACKEND()}/visits/${patientId}`, {
-        method: 'POST', headers, body: JSON.stringify(clean),
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Error'); }
-      const visit = await res.json();
-      // Al dejar la sección de estudios: dispara la transcripción de PDFs/fotos en segundo
-      // plano (fire-and-forget) para que ya esté lista al llegar al análisis, sin espera.
-      if (labFiles.length > 0 && visit?.id) {
-        fetch(`${BACKEND()}/analyze/${visit.id}/extract_labs`, { method: 'POST', headers }).catch(() => {});
+  };
+
+  // Al pasar de enfermería a la fase médica: crea la visita con lo capturado (incluidos los
+  // estudios) y dispara la transcripción en segundo plano, para que corra durante la consulta.
+  const saveNursingAndTrigger = async () => {
+    try {
+      const headers = await authHeaders();
+      const clean = buildVisitPayload(true);
+      let vid = visitId;
+      if (vid) {
+        await fetch(`${BACKEND()}/visits/${vid}`, { method: 'PUT', headers, body: JSON.stringify(clean) });
+      } else {
+        const res = await fetch(`${BACKEND()}/visits/${patientId}`, { method: 'POST', headers, body: JSON.stringify(clean) });
+        if (res.ok) { const v = await res.json(); vid = v.id || v.visit_id; setVisitId(vid); }
       }
-      router.push(`/dashboard/patient/${patientId}/visit/${visit.id}/analysis`);
+      if (vid && labFiles.length > 0) {
+        fetch(`${BACKEND()}/analyze/${vid}/extract_labs`, { method: 'POST', headers }).catch(() => {});
+      }
+    } catch {
+      // No bloquear el avance del formulario si el guardado temprano falla; el guardado final
+      // (handleSave) creará/actualizará la visita de todos modos.
+    }
+  };
+
+  // Guardar visita (final). Si ya se creó en enfermería, ACTUALIZA (y omite labs para no
+  // re-inflar el binario ya transcrito); si no, la crea y dispara la transcripción aquí.
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const headers = await authHeaders();
+      const clean = buildVisitPayload(!visitId);
+      let visitIdFinal = visitId;
+      if (visitId) {
+        const res = await fetch(`${BACKEND()}/visits/${visitId}`, { method: 'PUT', headers, body: JSON.stringify(clean) });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error'); }
+      } else {
+        const res = await fetch(`${BACKEND()}/visits/${patientId}`, { method: 'POST', headers, body: JSON.stringify(clean) });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error'); }
+        const visit = await res.json();
+        visitIdFinal = visit.id || visit.visit_id;
+        if (labFiles.length > 0 && visitIdFinal) {
+          fetch(`${BACKEND()}/analyze/${visitIdFinal}/extract_labs`, { method: 'POST', headers }).catch(() => {});
+        }
+      }
+      router.push(`/dashboard/patient/${patientId}/visit/${visitIdFinal}/analysis`);
     } catch (e: any) {
       alert('Error al guardar: ' + e.message);
       setSaving(false);
@@ -869,6 +908,54 @@ export default function NewVisitPage() {
                     <textarea rows={tb ? 4 : 3} value={nursingNotes} onChange={e => setNursingNotes(e.target.value)}
                       className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] outline-none focus:border-[#0ea5e9] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
                       placeholder="Paciente tuvo dificultad en equilibrio. PA brazo derecho notablemente mayor. Se notó edema leve en MMII..." />
+                  </div>
+
+                  {/* Estudios / laboratorios — aquí (fin de enfermería) para que la IA los
+                      transcriba en 2do plano durante toda la consulta médica */}
+                  <div className="bg-[#0d1520] border border-[#a78bfa]/30 rounded-xl p-5">
+                    <p className={`font-mono text-[#a78bfa] mb-1 ${tb ? 'text-sm' : 'text-xs'}`}>🧪 SUBIR ESTUDIOS / LABORATORIOS</p>
+                    <p className="text-xs text-[#3d5870] mb-4">PDF, imágenes, Word o Excel de resultados. La IA los analiza directamente.</p>
+                    <input ref={labInputRef} type="file" multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*"
+                      className="hidden" onChange={handleLabFiles} />
+                    <button type="button"
+                      onClick={() => labInputRef.current?.click()}
+                      className={`w-full border-2 border-dashed border-[#a78bfa]/40 rounded-xl text-[#7a95aa] hover:border-[#a78bfa] hover:text-[#a78bfa] transition flex flex-col items-center justify-center gap-2 ${tb ? 'py-8 text-base' : 'py-6 text-sm'}`}>
+                      <span className="text-3xl">📎</span>
+                      <span className="font-semibold">Toca para subir archivos</span>
+                      <span className="text-xs text-[#3d5870]">PDF · fotos · Word · Excel</span>
+                    </button>
+                    {labFiles.length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        {labFiles.map((f, i) => (
+                          <div key={i} className="flex items-center gap-3 bg-[#111820] rounded-lg px-3 py-2.5">
+                            <span className="text-xl flex-shrink-0">
+                              {f.type.includes('pdf') ? '📄' : f.type.startsWith('image') ? '🖼️' : '📝'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-[#dde6ef] truncate ${tb ? 'text-sm' : 'text-xs'}`}>{f.name}</p>
+                              <p className="text-[10px] text-[#3d5870]">{(f.size / 1024).toFixed(0)} KB</p>
+                            </div>
+                            <button type="button"
+                              onClick={() => setLabFiles(prev => prev.filter((_, j) => j !== i))}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#1e2d3d] hover:bg-[#f43f5e]/20 text-[#3d5870] hover:text-[#f43f5e] transition text-base">
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <Field label="O PEGA UNA URL DE DRIVE / CLOUD" tablet={tb}>
+                        <input type="url" className={inp(tb)} placeholder="https://drive.google.com/..."
+                          value={form.labs_pdf_url} onChange={e => set('labs_pdf_url', e.target.value)} />
+                      </Field>
+                      <Field label="NOTAS SOBRE LOS LABORATORIOS" tablet={tb}>
+                        <textarea rows={tb ? 4 : 3} className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
+                          value={form.lab_notas} onChange={e => set('lab_notas', e.target.value)}
+                          placeholder="Resultados relevantes, valores que llaman la atención..." />
+                      </Field>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1636,65 +1723,24 @@ export default function NewVisitPage() {
                 </div>
               )}
 
-              {/* D4: Laboratorios */}
+              {/* D4: Resumen y confirmación (los estudios se suben en enfermería) */}
               {doctorStep === 4 && (
                 <div className="space-y-5">
-                  <h2 className={`font-serif text-[#dde6ef] ${tb ? 'text-2xl' : 'text-xl'}`}>🧪 Laboratorios</h2>
+                  <h2 className={`font-serif text-[#dde6ef] ${tb ? 'text-2xl' : 'text-xl'}`}>✅ Resumen y confirmación</h2>
 
-                  {/* Subida de archivos */}
-                  <div className="bg-[#0d1520] border border-[#a78bfa]/30 rounded-xl p-5">
-                    <p className={`font-mono text-[#a78bfa] mb-1 ${tb ? 'text-sm' : 'text-xs'}`}>SUBIR ESTUDIOS</p>
-                    <p className="text-xs text-[#3d5870] mb-4">PDF, imágenes o fotos de resultados. Máx. 8 MB por archivo.</p>
-
-                    {/* Input oculto */}
-                    <input ref={labInputRef} type="file" multiple
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*"
-                      className="hidden" onChange={handleLabFiles} />
-
-                    {/* Botón subir + zona drop */}
-                    <button type="button"
-                      onClick={() => labInputRef.current?.click()}
-                      className={`w-full border-2 border-dashed border-[#a78bfa]/40 rounded-xl text-[#7a95aa] hover:border-[#a78bfa] hover:text-[#a78bfa] transition flex flex-col items-center justify-center gap-2 ${tb ? 'py-8 text-base' : 'py-6 text-sm'}`}>
-                      <span className="text-3xl">📎</span>
-                      <span className="font-semibold">Toca para subir archivos</span>
-                      <span className="text-xs text-[#3d5870]">PDF, fotos de resultados, imágenes</span>
-                    </button>
-
-                    {/* Archivos subidos */}
-                    {labFiles.length > 0 && (
-                      <div className="mt-4 space-y-2">
+                  {labFiles.length > 0 && (
+                    <div className="bg-[#0d1520] border border-[#a78bfa]/30 rounded-xl p-4">
+                      <p className={`font-mono text-[#a78bfa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>🧪 ESTUDIOS ADJUNTOS ({labFiles.length}) — la IA ya los está transcribiendo</p>
+                      <div className="space-y-1.5">
                         {labFiles.map((f, i) => (
-                          <div key={i} className="flex items-center gap-3 bg-[#111820] rounded-lg px-3 py-2.5">
-                            <span className="text-xl flex-shrink-0">
-                              {f.type.includes('pdf') ? '📄' : f.type.startsWith('image') ? '🖼️' : '📝'}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-[#dde6ef] truncate ${tb ? 'text-sm' : 'text-xs'}`}>{f.name}</p>
-                              <p className="text-[10px] text-[#3d5870]">{(f.size / 1024).toFixed(0)} KB</p>
-                            </div>
-                            <button type="button"
-                              onClick={() => setLabFiles(prev => prev.filter((_, j) => j !== i))}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#1e2d3d] hover:bg-[#f43f5e]/20 text-[#3d5870] hover:text-[#f43f5e] transition text-base">
-                              ×
-                            </button>
+                          <div key={i} className="flex items-center gap-2 text-xs text-[#7a95aa]">
+                            <span>{f.type.includes('pdf') ? '📄' : f.type.startsWith('image') ? '🖼️' : '📝'}</span>
+                            <span className="truncate">{f.name}</span>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-
-                  {/* URL como alternativa */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Field label="O PEGA UNA URL DE DRIVE / CLOUD" tablet={tb}>
-                      <input type="url" className={inp(tb)} placeholder="https://drive.google.com/..."
-                        value={form.labs_pdf_url} onChange={e => set('labs_pdf_url', e.target.value)} />
-                    </Field>
-                    <Field label="NOTAS SOBRE LOS LABORATORIOS" tablet={tb}>
-                      <textarea rows={tb ? 4 : 3} className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
-                        value={form.lab_notas} onChange={e => set('lab_notas', e.target.value)}
-                        placeholder="Resultados relevantes, valores que llaman la atención..." />
-                    </Field>
-                  </div>
+                    </div>
+                  )}
 
                   {/* Resumen final */}
                   <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/30 rounded-xl p-5">
@@ -1755,7 +1801,7 @@ export default function NewVisitPage() {
           </button>
         )}
         {phase === 'nursing' && nursingStep === 3 && (
-          <button onClick={() => { setPhase('doctor'); setDoctorStep(0); }}
+          <button onClick={async () => { await saveNursingAndTrigger(); setPhase('doctor'); setDoctorStep(0); }}
             className={btn('#a78bfa', tb)}
             style={{ background: '#a78bfa', color: '#000' }}>
             Continuar → Médico
