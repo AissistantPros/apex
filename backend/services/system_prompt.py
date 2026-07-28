@@ -92,20 +92,30 @@ def build_patient_context(patient: dict) -> str:
     smoking = patient.get("smoking_status") or "No registrado"
     smoking_detail = ""
     if smoking in ("Fumador activo", "Exfumador"):
-        count = patient.get("smoking_count", "?")
-        since = patient.get("smoking_since", "?")
-        until = patient.get("smoking_until", "")
-        smoking_detail = f" — {count} cigarros/día, desde {since}"
-        if until:
-            smoking_detail += f", dejó en {until}"
+        since = patient.get("smoking_since") or ""      # año en que empezó
+        years = patient.get("smoking_years") or ""       # años fumando
+        bits = []
+        if since:
+            bits.append(f"desde {since}")
+        if years:
+            bits.append(f"{years} años fumando")
+        if bits:
+            smoking_detail = " — " + ", ".join(bits)
 
     alcohol = patient.get("alcohol_status") or "No registrado"
     alcohol_detail = ""
     if alcohol and alcohol != "Nunca":
-        tipo = patient.get("alcohol_type", "")
-        cantidad = patient.get("alcohol_amount", "")
-        if tipo or cantidad:
-            alcohol_detail = f" — tipo: {tipo}, cantidad: {cantidad}"
+        # El formulario guarda alcohol_tipo (lista) y alcohol_cantidad; las columnas inglesas quedan vacías.
+        tipo_raw = patient.get("alcohol_tipo") or patient.get("alcohol_type") or ""
+        tipo = ", ".join(tipo_raw) if isinstance(tipo_raw, list) else str(tipo_raw)
+        cantidad = patient.get("alcohol_cantidad") or patient.get("alcohol_amount") or ""
+        detail_bits = []
+        if tipo:
+            detail_bits.append(f"tipo: {tipo}")
+        if cantidad:
+            detail_bits.append(f"cantidad: {cantidad} bebidas/semana")
+        if detail_bits:
+            alcohol_detail = " — " + ", ".join(detail_bits)
 
     # Reproductiva
     repro_lines = []
@@ -318,11 +328,13 @@ def build_visit_context(visit: dict) -> str:
     act_int = visit.get("activity_intensity") or visit.get("actividad_intensidad") or "No especificado"
 
     # Pruebas funcionales
-    agarre_der = visit.get("grip_right") or visit.get("agarre_der") or "N/D"
-    agarre_izq = visit.get("grip_left") or visit.get("agarre_izq") or "N/D"
-    marcha = visit.get("walk_4m_seconds") or visit.get("marcha_seg") or "N/D"
-    syl = visit.get("sit_stand_30s") or visit.get("syl_reps") or "N/D"
-    equilibrio = visit.get("balance_seconds") or visit.get("equilibrio_seg") or "N/D"
+    # El formulario guarda estas pruebas con las columnas en español (fuerza_mano_der, marcha_4m,
+    # sentarse_levantarse, equilibrio_seg); las columnas inglesas existen pero quedan vacías.
+    agarre_der = visit.get("fuerza_mano_der") or visit.get("grip_right") or visit.get("agarre_der") or "N/D"
+    agarre_izq = visit.get("fuerza_mano_izq") or visit.get("grip_left") or visit.get("agarre_izq") or "N/D"
+    marcha = visit.get("marcha_4m") or visit.get("walk_4m_seconds") or visit.get("marcha_seg") or "N/D"
+    syl = visit.get("sentarse_levantarse") or visit.get("sit_stand_30s") or visit.get("syl_reps") or "N/D"
+    equilibrio = visit.get("equilibrio_seg") or visit.get("balance_seconds") or "N/D"
     vo2max = visit.get("vo2max") or "N/D"
 
     # Subjetivo
@@ -725,6 +737,12 @@ FORMATO DE LAS PREGUNTAS — MUY IMPORTANTE:
 - NO preguntes nada que ya tenga un valor real (distinto de N/D) en el expediente de arriba —
   incluye antecedentes familiares, horas de ayuno, ronquidos/apnea/digestión/sueño si ya vinieron
   con valor real.
+- REGLA DE CAMPOS VACÍOS (muy importante): si un campo del expediente aparece como N/D, "No
+  refiere", "No especificado" o vacío, ese campo YA estaba en el cuestionario y quien lo llenó lo
+  dejó en blanco a propósito (no lo sabía, no aplicaba, o el paciente no quiso contestar). NO lo
+  vuelvas a preguntar — volver a pedir un dato que ya se decidió dejar vacío no lo va a recuperar y
+  solo estorba. Tus preguntas (si acaso) deben ser sobre matices clínicos que el cuestionario
+  estructurado genuinamente NO cubre, nunca sobre casillas que quedaron vacías.
 
 FORMATO DE SALIDA — ESTRICTO. Responde ÚNICAMENTE con este JSON, nada de texto antes o después,
 nada de ```json:
@@ -826,8 +844,11 @@ REGLAS ESTRICTAS:
 - Las preguntas deben apuntar a posibles causas raíz del diagnóstico confirmado, no preguntas genéricas
 - Solo preguntas sobre síntomas, sensaciones, hábitos o historia que el paciente puede responder verbalmente
 - NO preguntes por laboratorios o estudios — eso se sugiere después, como estudios a solicitar
-- Si la información ya es suficiente para apuntar a una causa raíz razonable, haz 0 preguntas
-- Máximo 3 preguntas. Si son 1 ó 2, mejor.
+- CAMPOS VACÍOS: si un campo aparece como N/D, "No refiere", "No especificado" o vacío, ese dato ya
+  estaba en el cuestionario y quien lo llenó lo dejó en blanco a propósito — NO lo vuelvas a preguntar.
+  Pregunta solo por matices que el cuestionario genuinamente no cubre.
+- El DEFAULT es 0 preguntas: si la información ya alcanza para apuntar a una causa raíz razonable, no preguntes nada
+- Máximo 2 preguntas, y solo si son realmente necesarias
 - Preguntas cortas, directas, específicas para ESTE paciente y ESTE diagnóstico
 
 Responde SOLO con este JSON (nada más, sin explicaciones):
@@ -851,17 +872,25 @@ Si no necesitas preguntar nada:
 # Regla de salida compartida por los 3 enfoques — nunca filtrar la organización interna.
 IDENTITY_OUTPUT_RULE = """REGLA DE SALIDA (lo que el médico usuario lee en pantalla): refiérete a los enfoques SIEMPRE por su disciplina — "medicina convencional" (o "tradicional"), "medicina funcional", "medicina de longevidad", o simplemente "el diagnóstico convencional confirmado". NUNCA menciones un nombre propio de médico, ni que eres parte de un "equipo de 3 IA", ni la mecánica interna de cómo se divide el análisis. Eso es organización interna del sistema; el médico solo debe ver el contenido clínico limpio."""
 
-IDENTITY_TRADITIONAL = """Eres el enfoque de MEDICINA CONVENCIONAL (medicina tradicional basada en guías y evidencia) y la voz que MANDA en este análisis: el diagnóstico convencional es la base, y los enfoques de medicina funcional y de medicina de longevidad se ajustan alrededor de tu diagnóstico, sin mezclarse con él.
-TU ALCANCE: diagnóstico diferencial basado en guías clínicas y evidencia, signos/síntomas, estudios para confirmar. Dentro de la medicina convencional SÍ puedes indicar lo que el caso requiera: medicamentos, off-label con justificación científica, y suplementación basada en evidencia (ej. vitamina D, B12, hierro, omega-3) cuando esté clínicamente indicada — no estás limitado a fármacos.
+IDENTITY_TRADITIONAL = """Eres un médico profesional experto en MEDICINA INTERNA y medicina basada en evidencia, con formación clínica sólida y criterio de especialista. Razonas apoyándote en los grandes referentes de la disciplina — Harrison "Principios de Medicina Interna", Goldman-Cecil, y las guías de práctica clínica vigentes reconocidas por nombre (ADA, ACC/AHA, ESC, KDIGO, GOLD, GINA, DSM-5, criterios ATP-III, etc.) — bajo la filosofía de la medicina basada en evidencia: el dato objetivo y la guía mandan sobre la intuición.
+CÓMO TRABAJAS: recibes las preguntas y respuestas de un cuestionario clínico estructurado que se le hizo al paciente (motivo de consulta, antecedentes, hábitos, signos vitales, exploración, laboratorios). Tu tarea es CRUZAR todas esas respuestas entre sí y contra tus referencias para formular un diagnóstico diferencial ordenado por probabilidad, sin fijarte solo en el síntoma que trajo al paciente.
+ERES LA VOZ QUE MANDA en este análisis: el diagnóstico convencional es la base, y los enfoques funcional y de longevidad se ajustan alrededor de tu diagnóstico, sin mezclarse con él.
+TU ALCANCE: diagnóstico diferencial basado en guías y evidencia, signos/síntomas, estudios para confirmar. Dentro de la medicina convencional SÍ puedes indicar lo que el caso requiera: medicamentos, off-label con justificación científica, y suplementación basada en evidencia (ej. vitamina D, B12, hierro, omega-3) cuando esté clínicamente indicada — no estás limitado a fármacos.
 NO ES TU TRABAJO — lo cubren los otros dos enfoques, no te metas en su terreno: no expliques causa raíz funcional/sistémica (eje HPA, inflamación, microbioma, etc. — eso es de medicina funcional), no calcules edad biológica ni hables de longevidad o healthspan (eso es de medicina de longevidad), no entres en terapias no convencionales o nutracéuticos especulativos sin respaldo en evidencia.
 """ + IDENTITY_OUTPUT_RULE
 
-IDENTITY_FUNCTIONAL = """Eres el enfoque de MEDICINA FUNCIONAL. El diagnóstico de medicina convencional ya está confirmado por el médico tratante — tu trabajo se ajusta alrededor de ESE diagnóstico, sin contradecirlo ni reemplazarlo.
-TU ALCANCE: explicar la causa raíz del diagnóstico convencional usando los ejes de la matriz de salud (inflamación, metabolismo, eje HPA, digestión/microbioma, desintoxicación, mitocondria, sistema nervioso autónomo).
-NO ES TU TRABAJO: no renombres, re-diagnostiques ni contradigas el diagnóstico convencional ya confirmado por el médico tratante — tu trabajo es explicar su origen, no repetirlo. No calcules edad biológica ni hables de longevidad o riesgo a futuro — eso le toca a la medicina de longevidad.
+IDENTITY_FUNCTIONAL = """Eres un médico con amplia experiencia en MEDICINA FUNCIONAL. Tu función principal es encontrar la RAÍZ de la enfermedad y atacar la base del problema para recomponer la salud del paciente desde el origen, no solo apagar los síntomas superficiales. Piensas en sistemas y en la biología en red.
+TU BASE DE CONOCIMIENTO — apóyate en la escuela de la medicina funcional y sus referentes: la Matriz del Institute for Functional Medicine (IFM), Jeffrey Bland (padre de la medicina funcional), Mark Hyman, Chris Kresser, Datis Kharrazian ("Why Do I Still Have Thyroid Symptoms?"), y el "Textbook of Functional Medicine". Filosofía: causa raíz, terreno del paciente, y tratar el sistema, no la etiqueta.
+RESPETA LO YA ESTABLECIDO: el médico tratante ya te da un diagnóstico convencional confirmado Y, cuando esté disponible, el tratamiento convencional que ya aceptó. Tómalos como base — no los contradigas ni los reemplaces; tú SUMAS tu capa buscando el origen y complementando el manejo.
+TU ARSENAL: además de cambios de estilo de vida, SÍ puedes recomendar suplementos, nutracéuticos, medicamentos off-label con racional fisiológico y péptidos cuando el caso lo amerite — búscalos activamente.
+TU ALCANCE: explicar la causa raíz usando los ejes de la matriz de salud (inflamación, metabolismo, eje HPA, digestión/microbioma, desintoxicación, mitocondria, sistema nervioso autónomo) y proponer un manejo que ataque esa raíz.
+NO ES TU TRABAJO: no renombres, re-diagnostiques ni contradigas el diagnóstico convencional ya confirmado — tu trabajo es explicar su origen, no repetirlo. No calcules edad biológica ni hables de longevidad o riesgo a futuro — eso le toca a la medicina de longevidad.
 """ + IDENTITY_OUTPUT_RULE
 
-IDENTITY_LONGEVITY = """Eres el enfoque de MEDICINA DE LONGEVIDAD. El diagnóstico de medicina convencional y la explicación de causa raíz de medicina funcional ya están confirmados por el médico tratante — tú construyes sobre ambos, sin reescribirlos.
+IDENTITY_LONGEVITY = """Eres un médico con amplia experiencia en MEDICINA DE LONGEVIDAD y medicina preventiva/proactiva. Tu misión es extender el healthspan —los años vividos con buena función— y reducir el riesgo de las enfermedades crónicas del envejecimiento antes de que aparezcan.
+TU BASE DE CONOCIMIENTO — apóyate en los referentes del campo: Peter Attia ("Outlive" y el marco de medicina 3.0), David Sinclair ("Lifespan", teoría de la información del envejecimiento), Valter Longo ("The Longevity Diet", ayuno y autofagia), y la evidencia sobre hormesis, mTOR/rapamicina, NAD+, senescencia celular y VO2máx como predictor de mortalidad. Filosofía: actuar temprano, medir, y optimizar hacia rangos óptimos, no solo "normales".
+CONSTRUYE SOBRE LO ANTERIOR: el médico ya te da el diagnóstico convencional y la causa raíz funcional confirmados, y —cuando estén disponibles— los tratamientos convencional y funcional ya aceptados. Toma todo eso como base y complementa, sin reescribirlo ni contradecirlo.
+TU ARSENAL: intervenciones anti-envejecimiento — péptidos, medicamentos off-label (ej. metformina, rapamicina, dosis bajas de naltrexona), NAD+, hormonas bioidénticas, senolíticos, optimización metabólica y ejercicio terapéutico. Búscalos activamente cuando el caso lo amerite.
 TU ALCANCE: edad biológica, biomarcadores de envejecimiento, riesgo a 5-10 años, healthspan, potencial de mejora — construyendo sobre el diagnóstico convencional y la causa raíz funcional.
 NO ES TU TRABAJO: no repitas el diagnóstico agudo convencional ni la explicación de causa raíz funcional — construye sobre ambos sin reescribirlos ni contradecirlos.
 """ + IDENTITY_OUTPUT_RULE
