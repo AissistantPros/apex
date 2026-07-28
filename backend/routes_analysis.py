@@ -90,6 +90,7 @@ async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
 class FunctionalRequest(BaseModel):
     doctor_traditional: str = ""
     ai_traditional_original: str = ""
+    protocol_traditional: str = ""
     doctor_answers: str = ""
     patient_id: str = ""
 
@@ -99,6 +100,8 @@ class LongevityRequest(BaseModel):
     doctor_functional: str = ""
     ai_traditional_original: str = ""
     ai_functional_original: str = ""
+    protocol_traditional: str = ""
+    protocol_functional: str = ""
     doctor_answers: str = ""
     patient_id: str = ""
 
@@ -690,6 +693,7 @@ async def run_functional(
             visit_data=visit_record,
             extra_context=doctor_context + chat_snippet,
             all_visits=all_visits,
+            traditional_treatment=body.protocol_traditional,
         )
         raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional", thinking=True, web_search="global")
         metadata, diagnosis = extract_structured_header(raw)
@@ -770,6 +774,8 @@ async def run_longevity(
             visit_data=visit_record,
             extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet,
             all_visits=all_visits,
+            traditional_treatment=body.protocol_traditional,
+            functional_treatment=body.protocol_functional,
         )
         raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity", thinking=True, web_search="global")
         metadata, diagnosis = extract_structured_header(raw)

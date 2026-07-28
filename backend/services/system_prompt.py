@@ -140,9 +140,6 @@ def build_patient_context(patient: dict) -> str:
 
     repro_str = "\n".join(repro_lines) if repro_lines else "  No aplica"
 
-    libido_basal = patient.get("libido_basal", "N/D")
-    libido_nota = "(escala 1–10, en condiciones normales — no el día de hoy)"
-
     return f"""
 ══════════════════════════════════════════════════
 DATOS DEL PACIENTE — REGISTRO CLÍNICO INICIAL
@@ -186,7 +183,6 @@ HÁBITOS:
 
 HISTORIA REPRODUCTIVA Y SEXUAL:
 {repro_str}
-  • Libido en condiciones normales {libido_nota}: {libido_basal}/10
   • Notas de salud sexual (ETS previas, disfunciones, preocupaciones):
     {patient.get('salud_sexual_notas', 'Sin notas') or 'Sin notas'}
 
@@ -334,6 +330,8 @@ def build_visit_context(visit: dict) -> str:
     animo_str = ", ".join(animo) if isinstance(animo, list) else str(animo)
     digestion = visit.get("digestion") or []
     digestion_str = ", ".join(digestion) if isinstance(digestion, list) else str(digestion)
+    cognitive = visit.get("cognitive_symptoms") or []
+    cognitive_str = ", ".join(cognitive) if isinstance(cognitive, list) else str(cognitive)
 
     orina = visit.get("urine_color") or visit.get("orina_color") or "No registrado"
 
@@ -371,10 +369,23 @@ def build_visit_context(visit: dict) -> str:
         "episodios": "Problema recurrente / por episodios",
     }.get(str(primera_vez).lower(), primera_vez)
 
+    _meses_es = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                 "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    _fecha_visita = visit.get("created_at") or visit.get("fecha")
+    try:
+        _fv = date.fromisoformat(str(_fecha_visita)[:10]) if _fecha_visita else date.today()
+    except Exception:
+        _fv = date.today()
+    fecha_consulta_str = f"{_fv.day} de {_meses_es[_fv.month]} de {_fv.year}"
+
     return f"""
 ══════════════════════════════════════════════════
 DATOS DE LA VISITA ACTUAL
 ══════════════════════════════════════════════════
+
+── FECHA DE LA CONSULTA ──
+  • Fecha en que se registra esta visita: {fecha_consulta_str}
+    (crúzala con la ciudad/estado del paciente para inferir estación y clima —p. ej. verano caluroso y húmedo en la costa, temporada de lluvias, frío de altiplano— cuando sea clínicamente relevante.)
 
 ── MOTIVO DE CONSULTA ──
   • Motivo principal de la visita (texto libre del médico): {visit.get('visit_reason') or visit.get('motivo_visita') or 'No especificado'}
@@ -437,8 +448,8 @@ DATOS DE LA VISITA ACTUAL
     Respuesta: {visit.get('wakes_rested') or visit.get('sueno_reparador') or 'N/D'}
   • Pregunta hecha al paciente: "¿Cómo describirías tu estado de ánimo esta semana?" (múltiple selección, opciones: Estable / Ansioso / Irritable / Triste / Sin motivación / Bien / Otro)
     Respuesta: {animo_str or 'No especificado'}
-  • Pregunta hecha al paciente: "En los últimos días, ¿cómo calificarías tu libido?" (escala 1–10, distinto del basal registrado al ingreso del paciente)
-    Respuesta: {visit.get('libido') or visit.get('libido_hoy') or 'N/D'}/10
+  • Pregunta hecha al paciente: "En los últimos días, ¿cómo calificarías tu libido?" (escala 1–10)
+    Respuesta: {visit.get('libido') or visit.get('libido_hoy') or 'N/D'}/10{f" — comparado con lo normal: {visit.get('libido_tendencia')}" if visit.get('libido_tendencia') else ""}
   • Pregunta hecha al paciente: "¿Cómo ha estado tu digestión?" (múltiple selección, opciones: Sin problemas / Distensión / Estreñimiento / Diarrea / Reflujo / Náuseas / Otro)
     Respuesta: {digestion_str or 'No especificado'}
   • Pregunta hecha al paciente: "¿De qué color es tu orina?" (escala visual, del más pálido al más oscuro)
@@ -468,14 +479,13 @@ DATOS DE LA VISITA ACTUAL
   • Ansiedad / pánico: {visit.get('anxiety_panic') or 'N/D'}
   • Cómo maneja el estrés: {visit.get('stress_coping') or 'N/D'}
   • ¿Puede relajarse?: {visit.get('can_relax') or 'N/D'}
+  • Síntomas cognitivos autorreportados (neblina mental / dificultad para recordar / dificultad para concentrarse): {cognitive_str or 'Ninguno reportado'}
   Sedentarismo:
   • Horas sentado al día: {visit.get('sitting_hours') or 'N/D'}
   • Tipo de actividad laboral: {visit.get('work_activity_level') or 'N/D'}
   Exposición ambiental actual:
-  • Exposición reciente a químicos/pesticidas: {visit.get('recent_chemical_exposure') or 'N/D'}
   • Agua que consume: {visit.get('water_source') or 'N/D'}
   • Calienta comida en plástico en microondas: {visit.get('plastic_in_microwave') or 'N/D'}
-  • Tatuajes / amalgamas recientes: {visit.get('recent_tattoo_amalgam') or 'N/D'}
   Alimentación:
   • Agua que bebe al día: {visit.get('water_intake_liters') or 'N/D'} L
   • Comidas al día: {visit.get('meals_per_day') or 'N/D'}
@@ -697,9 +707,12 @@ TAREA — sigue este orden:
    EXCEPCIÓN a la regla anterior: inclúyela igual, aunque parezca de bajo valor informativo, si
    sirve para descartar un diagnóstico grave aunque sea poco probable (bandera roja clínica) —
    marca ese caso con "descarta_grave": true.
-4. El número de preguntas es VARIABLE — puede ser cero si el caso ya es claro con la información
-   disponible, o hasta 4 si el caso es ambiguo. No rellenes hasta un número fijo ni preguntes por
-   preguntar.
+4. El número de preguntas es VARIABLE y el DEFAULT ES CERO. Máximo 2 preguntas, y SOLO si son
+   ABSOLUTAMENTE necesarias para cambiar o confirmar el diagnóstico principal. Si el caso ya es
+   razonablemente claro con la información disponible, entrega [] y no preguntes nada. No rellenes
+   hasta un número fijo, no preguntes "por si acaso", y no hagas preguntas de bajo impacto: cada
+   pregunta le cuesta tiempo al médico con el paciente enfrente, así que solo vale la pena si su
+   respuesta realmente mueve la aguja diagnóstica.
 
 FORMATO DE LAS PREGUNTAS — MUY IMPORTANTE:
 - Las preguntas las lee el MÉDICO en pantalla y las hace AL PACIENTE. Redáctalas en tercera
@@ -881,6 +894,14 @@ Analiza este caso clínico — el médico está leyendo esto con el paciente enf
 TAREA: Lista los diagnósticos más probables para este caso, del más al menos probable, cada uno
 con su porcentaje de certeza según LA INFORMACIÓN DISPONIBLE.
 
+CONTEXTO GEO-ESTACIONAL (parte del análisis, no un adorno):
+- Cruza la ciudad/estado del paciente con la FECHA DE LA CONSULTA para inferir estación y clima
+  (verano caluroso/húmedo en la costa, temporada de lluvias, frío de altiplano, etc.).
+- Úsalo SOLO cuando cambie de verdad la probabilidad de algún diagnóstico: patología endémica o
+  estacional de esa región (dengue y otras arbovirosis en época de lluvias en zonas tropicales,
+  golpe de calor/deshidratación en verano costero, virosis respiratorias en frío, etc.). Es un
+  criterio epidemiológico real, no un factor que debas forzar si el cuadro no lo sugiere.
+
 JERARQUÍA CLÍNICA — RAÍZ ANTES QUE SÍNTOMA (léelo con cuidado, es un error común):
 - El paciente suele consultar por un SÍNTOMA o molestia puntual (ej. ronquidos, pausas al respirar,
   dolor, cansancio). Ese síntoma NO es automáticamente el diagnóstico principal.
@@ -975,7 +996,7 @@ EJES CAUSALES DE LA MATRIZ DE SALUD (medicina funcional) — evalúa cuáles apl
 
 def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str,
                                    visit_data: dict = None, extra_context: str = "",
-                                   all_visits: list = None) -> str:
+                                   all_visits: list = None, traditional_treatment: str = "") -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
     current_visit_id = (visit_data or {}).get("id", "")
@@ -984,6 +1005,10 @@ def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: st
     traditional_block = (
         f"DIAGNÓSTICO TRADICIONAL (confirmado por el médico tratante — el funcional debe explicar el ORIGEN de esto, no repetirlo ni contradecirlo):\n{traditional_diagnosis}\n"
         if traditional_diagnosis and traditional_diagnosis.strip() else ""
+    )
+    traditional_tx_block = (
+        f"\nTRATAMIENTO CONVENCIONAL YA ACEPTADO POR EL MÉDICO (esta es la BASE — tómalo en cuenta: no lo repitas, no lo contradigas, y evita duplicar o generar interacciones con lo que ya está prescrito; tu trabajo complementa esta base atacando la causa raíz):\n{traditional_treatment}\n"
+        if traditional_treatment and traditional_treatment.strip() else ""
     )
 
     return f"""{IDENTITY_FUNCTIONAL}
@@ -1003,7 +1028,7 @@ usando los ejes de la matriz de salud. Sé conciso — el médico tiene al pacie
 
 {history_ctx}
 
-{traditional_block}
+{traditional_block}{traditional_tx_block}
 {FUNCTIONAL_MEDICINE_AXES}
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
@@ -1038,7 +1063,8 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str,
                                    traditional_diagnosis: str = "",
                                    visit_data: dict = None, extra_context: str = "",
-                                   all_visits: list = None) -> str:
+                                   all_visits: list = None,
+                                   traditional_treatment: str = "", functional_treatment: str = "") -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
     current_visit_id = (visit_data or {}).get("id", "")
@@ -1051,6 +1077,16 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
     functional_block = (
         f"DIAGNÓSTICO FUNCIONAL (confirmado por el médico tratante — no lo repitas, es contexto):\n{functional_diagnosis}\n"
         if functional_diagnosis and functional_diagnosis.strip() else ""
+    )
+    tx_parts = []
+    if traditional_treatment and traditional_treatment.strip():
+        tx_parts.append(f"• Tratamiento convencional ya aceptado:\n{traditional_treatment}")
+    if functional_treatment and functional_treatment.strip():
+        tx_parts.append(f"• Tratamiento funcional ya aceptado:\n{functional_treatment}")
+    treatments_block = (
+        "TRATAMIENTOS YA ACEPTADOS POR EL MÉDICO (son la base sobre la que construyes — tómalos en cuenta: complementa sin duplicar ni contradecir, y cuida interacciones con lo ya prescrito):\n"
+        + "\n\n".join(tx_parts) + "\n"
+        if tx_parts else ""
     )
 
     return f"""{IDENTITY_LONGEVITY}
@@ -1071,6 +1107,7 @@ Calcula edad biológica y proyecciones de riesgo para ESTE paciente. Sé conciso
 
 {traditional_block}
 {functional_block}
+{treatments_block}
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
 FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
@@ -1090,6 +1127,30 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 ═══ POTENCIAL DE MEJORA ═══
 • Edad biológica: -[X] años estimado con protocolo
 • [2 mejoras concretas y cuantificadas]"""
+
+
+PEPTIDOS_OFFLABEL_RULE = """
+ARSENAL AMPLIADO (medicina funcional y de longevidad) — RECORDATORIO:
+No te limites a lo convencional. En tu especialidad SÍ puedes —y debes cuando aplique al caso—
+recomendar péptidos (BPC-157, TB-500, CJC-1295/Ipamorelin, etc.), medicamentos OFF-LABEL con
+racional fisiológico (metformina, dosis bajas de naltrexona, rapamicina, etc.) y suplementos /
+nutracéuticos. Usa la búsqueda web (dominios permitidos) para buscar ESPECÍFICAMENTE péptidos,
+suplementos y usos off-label con evidencia —aunque sea preliminar o anecdótica— que puedan ayudar a
+ESTE paciente. No los descartes por no tener aún aprobación regulatoria.
+
+COFEPRIS (regulación mexicana) — cómo marcarlo:
+- Muchos péptidos, usos off-label y suplementos NO cuentan con aprobación de COFEPRIS para esta
+  indicación; su respaldo es preliminar o anecdótico. Eso NO es motivo para omitirlos —el médico
+  decide—, pero SÍ debes ser transparente: marca esos items con "cofepris": "no_aprobado".
+- Los fármacos aprobados y con indicación formal en México van con "cofepris": "aprobado".
+- Cuando el concepto de aprobación no aplica (ejercicio, hidratación, dieta, hábitos), usa
+  "cofepris": "na".
+- Para todo item marcado "no_aprobado", el campo "mecanismo" DEBE explicar de forma clara y honesta
+  la TEORÍA de cómo funcionaría y cuál es el nivel de evidencia (preliminar/anecdótico/estudios en
+  animales/series pequeñas). El frontend muestra un badge discreto "(no aprobado por COFEPRIS)" y
+  despliega esa teoría en un desplegable — no hace falta que satures el resto de los campos con
+  advertencias, basta con marcar el campo y dar la teoría en "mecanismo".
+"""
 
 
 def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
@@ -1118,6 +1179,8 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
     if "⭐ ELEGIDO POR EL MÉDICO" in diagnosis:
         star_note = "\n\nIMPORTANTE: dentro del diagnóstico base, la(s) línea(s) marcadas con ⭐ ELEGIDO POR EL MÉDICO son las que el médico seleccionó manualmente como correctas (puede no ser la de mayor % de confianza calculado por la IA). Diseña el protocolo basándote en ESA selección — el criterio clínico del médico tiene prioridad sobre el ranking automático."
 
+    arsenal_block = PEPTIDOS_OFFLABEL_RULE if diagnosis_type in ("functional", "longevity") else ""
+
     previous_block = ""
     if previous_protocols:
         entries = [(k, v) for k, v in previous_protocols.items() if v and str(v).strip()]
@@ -1139,7 +1202,7 @@ Ahora no estás diagnosticando — estás diseñando el protocolo terapéutico d
 manteniendo el mismo enfoque y los mismos límites de alcance que ya tienes como especialista.
 
 {get_web_search_sourcing_rules(mexico=(diagnosis_type == "traditional"))}
-
+{arsenal_block}
 DIAGNÓSTICO BASE:
 {diagnosis}{star_note}
 
@@ -1189,6 +1252,7 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
       "reacciones_adversas": "Infecciones genitales por hongos, micción frecuente, hipotensión.",
       "interacciones": "Diuréticos (potencian hipotensión), insulina/secretagogos (aumenta riesgo de hipoglucemia).",
       "mecanismo": "Inhibe SGLT2 a nivel renal, reduciendo reabsorción de glucosa.",
+      "cofepris": "aprobado",
       "para_que_sirve": "En palabras simples: qué hace esta intervención y por qué se la mandas a ESTE paciente. Escríbelo para un médico convencional que quizá no conoce medicina funcional ni de longevidad — 2-3 líneas claras, sin jerga, que le dejen entender la lógica de por qué esto ayuda a este caso concreto."
     }}
   ],
@@ -1217,7 +1281,8 @@ REGLAS DE LLENADO (síguelas exactamente):
 11. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
 12. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
 13. "para_que_sirve" es OBLIGATORIO en todos los items y especialmente importante en protocolos FUNCIONAL y de LONGEVIDAD: este sistema lo usan médicos convencionales que muchas veces NO conocen la medicina funcional ni la de longevidad, así que tu trabajo es enseñarles — explica en lenguaje simple, sin jerga, qué es esta intervención, para qué sirve y por qué la estás mandando en este caso. No repitas literal "indicacion" (que es más técnica); "para_que_sirve" es la versión didáctica y accesible.
-14. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
+14. "cofepris" debe ser uno de exactamente tres valores: "aprobado" (fármaco con registro e indicación formal en México), "no_aprobado" (péptido, uso off-label o suplemento sin aprobación de COFEPRIS para esta indicación — respaldo preliminar/anecdótico) o "na" (no aplica el concepto de aprobación: ejercicio, hidratación, dieta, hábitos). Para CADA item marcado "no_aprobado", el campo "mecanismo" DEBE contener la teoría honesta de cómo funcionaría y el nivel de evidencia; el frontend lo muestra en un desplegable junto a un badge pequeño "(no aprobado por COFEPRIS)".
+15. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
 
 
 def get_protocol_validation_prompt(protocol_json: str, previous_protocols: dict = None) -> str:

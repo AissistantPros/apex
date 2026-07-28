@@ -50,9 +50,12 @@ function stepCfgFor(s: Step): { label: string; color: string; badge: string } {
 }
 
 function buildStepperLabels(types: AnalysisType[]): { label: string; color: string }[] {
-  const dx    = types.map(t => ({ label: `Dx ${TYPE_META[t].short}`,    color: TYPE_META[t].color }));
-  const proto = types.map(t => ({ label: `Proto ${TYPE_META[t].short}`, color: TYPE_META[t].color }));
-  return [...dx, ...proto, { label: 'Documentos', color: '#f59e0b' }];
+  // Intercalado: Dx → Proto por cada especialidad, en el mismo orden que stepOrder.
+  const seq = types.flatMap(t => [
+    { label: `Dx ${TYPE_META[t].short}`,    color: TYPE_META[t].color },
+    { label: `Proto ${TYPE_META[t].short}`, color: TYPE_META[t].color },
+  ]);
+  return [...seq, { label: 'Documentos', color: '#f59e0b' }];
 }
 
 interface DiagnosisState {
@@ -403,9 +406,9 @@ function AlertsBlock({ body }: { body: string }) {
       {lines.map((line, i) => {
         const clean = line.replace(/^[•\-\*]\s*/, '');
         return (
-          <div key={i} className="flex items-start gap-2.5 bg-[rgba(249,115,22,.07)] border border-[rgba(249,115,22,.25)] rounded-xl px-4 py-3">
-            <span className="text-[#f97316] flex-shrink-0 mt-0.5 text-base">⚠</span>
-            <p className="text-lg text-[#dde6ef] leading-relaxed font-serif"><Md text={clean} /></p>
+          <div key={i} className="flex items-start gap-2.5 bg-[rgba(249,115,22,.06)] border border-[rgba(249,115,22,.2)] rounded-xl px-4 py-2.5">
+            <span className="text-[#f97316] flex-shrink-0 mt-0.5 text-sm">⚠</span>
+            <p className="text-base text-[#dde6ef] leading-relaxed font-serif"><Md text={clean} /></p>
           </div>
         );
       })}
@@ -617,6 +620,7 @@ interface ProtocolItem {
   reacciones_adversas?: string;
   interacciones?: string;
   mecanismo?: string;
+  cofepris?: string; // "aprobado" | "no_aprobado" | "na"
   para_que_sirve?: string;
 }
 
@@ -675,9 +679,12 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
   item: ProtocolItem; color: string; selected?: boolean; onToggle?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [theoryOpen, setTheoryOpen] = useState(false);
   const hasAlert = !!(item.alerta && item.alerta.trim());
   const hasDosis = !!(item.presentacion || item.dosis || item.frecuencia);
-  const hasExtra = !!(item.reacciones_adversas || item.interacciones || item.mecanismo);
+  const notApproved = (item.cofepris || '').toLowerCase() === 'no_aprobado';
+  // El mecanismo del no-aprobado ya se muestra como "teoría" arriba; no lo repitas en el acordeón.
+  const hasExtra = !!(item.reacciones_adversas || item.interacciones || (item.mecanismo && !notApproved));
   const selectable = typeof onToggle === 'function';
 
   return (
@@ -686,15 +693,14 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
         borderColor: hasAlert ? 'rgba(244,63,94,.35)' : '#1e2d3d',
         opacity: selectable && !selected ? 0.45 : 1,
       }}>
-      {/* Franja de alerta — siempre presente, cambia de estilo según haya o no riesgo */}
-      <div className="px-4 py-2 text-base font-semibold flex items-start gap-2"
-        style={{
-          background: hasAlert ? 'rgba(244,63,94,.12)' : 'rgba(0,229,160,.08)',
-          color: hasAlert ? '#f43f5e' : '#00e5a0',
-        }}>
-        <span className="flex-shrink-0">{hasAlert ? '⚠' : '✓'}</span>
-        <span className="leading-snug">{hasAlert ? item.alerta : 'Sin contraindicaciones absolutas reportadas'}</span>
-      </div>
+      {/* Franja de alerta — solo cuando hay riesgo real; discreta, no gritada */}
+      {hasAlert && (
+        <div className="px-4 py-2 text-sm font-medium flex items-start gap-2"
+          style={{ background: 'rgba(244,63,94,.08)', color: '#f43f5e' }}>
+          <span className="flex-shrink-0 mt-0.5">⚠</span>
+          <span className="leading-snug">{item.alerta}</span>
+        </div>
+      )}
 
       <div className="bg-[#0d1520] p-4 space-y-4">
         {/* Identificación */}
@@ -707,12 +713,20 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
             <div>
               <p className="text-lg font-bold leading-snug" style={{ color }}>{item.nombre_generico}</p>
               {item.nombre_comercial && <p className="text-base text-[#7a95aa]">{item.nombre_comercial}</p>}
-              {item.tipo && (
-                <span className="inline-block mt-1.5 text-xs font-mono px-2 py-0.5 rounded-full"
-                  style={{ color, background: `${color}15`, border: `1px solid ${color}40` }}>
-                  {item.tipo}
-                </span>
-              )}
+              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                {item.tipo && (
+                  <span className="inline-block text-xs font-mono px-2 py-0.5 rounded-full"
+                    style={{ color, background: `${color}15`, border: `1px solid ${color}40` }}>
+                    {item.tipo}
+                  </span>
+                )}
+                {notApproved && (
+                  <span className="inline-block text-[10px] font-mono px-2 py-0.5 rounded-full"
+                    style={{ color: '#f59e0b', background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.30)' }}>
+                    no aprobado por COFEPRIS
+                  </span>
+                )}
+              </div>
             </div>
           </label>
           {item.nivel_evidencia && (
@@ -734,6 +748,21 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
             )}
             {(item.frecuencia || item.duracion) && (
               <p><span className="text-[#3d5870] font-mono text-xs">Frecuencia: </span><span className="text-[#dde6ef]">{item.frecuencia}{item.duracion ? ` · Duración: ${item.duracion}` : ''}</span></p>
+            )}
+          </div>
+        )}
+
+        {/* Teoría COFEPRIS — solo para items sin aprobación: badge discreto + teoría plegable */}
+        {notApproved && item.mecanismo && (
+          <div className="rounded-lg border" style={{ borderColor: 'rgba(245,158,11,.25)', background: 'rgba(245,158,11,.05)' }}>
+            <button onClick={() => setTheoryOpen(o => !o)}
+              className="w-full text-left px-3.5 py-2.5 flex items-center gap-2 text-xs font-mono transition"
+              style={{ color: '#f59e0b' }}>
+              <span>{theoryOpen ? '▲' : '▼'}</span>
+              <span>Sin aprobación COFEPRIS — evidencia preliminar. Ver teoría de cómo funciona</span>
+            </button>
+            {theoryOpen && (
+              <p className="px-3.5 pb-3 text-sm text-[#dde6ef] font-serif leading-relaxed">{item.mecanismo}</p>
             )}
           </div>
         )}
@@ -765,7 +794,7 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
         {item.monitoreo && (
           <div>
             <p className="text-[10px] font-mono text-[#3d5870] mb-1">MONITORIZACIÓN REQUERIDA</p>
-            <p className="text-lg text-[#dde6ef] font-serif leading-relaxed">{item.monitoreo}</p>
+            <p className="text-base text-[#7a95aa] font-serif leading-relaxed">{item.monitoreo}</p>
           </div>
         )}
 
@@ -1473,12 +1502,12 @@ function DefaultBlock({ body }: { body: string }) {
           return (
             <div key={i} className="flex items-start gap-2">
               <span className="text-[#3d5870] flex-shrink-0 mt-1 text-xs">•</span>
-              <p className="text-lg text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
+              <p className="text-base text-[#dde6ef] font-serif leading-relaxed"><Md text={clean} /></p>
             </div>
           );
         }
         return (
-          <p key={i} className="text-lg text-[#dde6ef] font-serif leading-relaxed">
+          <p key={i} className="text-base text-[#dde6ef] font-serif leading-relaxed">
             <Md text={t} />
           </p>
         );
@@ -2340,9 +2369,10 @@ export default function AnalysisPage() {
   const [selectedTypes, setSelectedTypes] = useState<AnalysisType[]>(['traditional', 'functional', 'longevity']);
   const activeTypes = useMemo(() => ALL_TYPES.filter(t => selectedTypes.includes(t)), [selectedTypes]);
   const stepOrder = useMemo<Step[]>(() => {
-    const dx    = activeTypes.map(t => `review_${t}` as Step);
-    const proto = activeTypes.map(t => `review_protocol_${t}` as Step);
-    return [...dx, ...proto, 'documents'];
+    // Flujo intercalado por especialidad: diagnóstico → tratamiento → (siguiente especialidad).
+    // Así cada voz posterior recibe el diagnóstico Y el tratamiento ya aceptados de las anteriores.
+    const seq = activeTypes.flatMap(t => [`review_${t}` as Step, `review_protocol_${t}` as Step]);
+    return [...seq, 'documents'];
   }, [activeTypes]);
   const stepperLabels = useMemo(() => buildStepperLabels(activeTypes), [activeTypes]);
 
@@ -2626,6 +2656,7 @@ export default function AnalysisPage() {
         body: JSON.stringify({
           doctor_traditional: traditional.doctor_text,
           ai_traditional_original: traditional.ai_text,
+          protocol_traditional: protTrad.doctor_text,
           doctor_answers: doctorAnswersOverride || '',
           patient_id,
         }),
@@ -2651,6 +2682,8 @@ export default function AnalysisPage() {
           doctor_functional: functional.doctor_text,
           ai_traditional_original: traditional.ai_text,
           ai_functional_original: functional.ai_text,
+          protocol_traditional: protTrad.doctor_text,
+          protocol_functional: protFunc.doctor_text,
           doctor_answers: doctorAnswersOverride || '',
           patient_id,
         }),

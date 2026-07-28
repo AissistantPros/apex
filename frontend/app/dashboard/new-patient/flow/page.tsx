@@ -177,6 +177,7 @@ function FlowPageInner() {
   const [animo,       setAnimo]       = useState<string[]>([]);
   const [digestion,   setDigestion]   = useState<string[]>([]);
   const [alcoholTipo, setAlcoholTipo] = useState<string[]>([]);  // cerveza/vino/destilados
+  const [cognitive,   setCognitive]   = useState<string[]>([]);  // niebla mental / memoria / concentración
 
   // ── Archivos de laboratorio ───────────────────────────────────────────────
   type LabFile = { name: string; type: string; size: number; data: string };
@@ -201,9 +202,8 @@ function FlowPageInner() {
     med_notas: '',
 
     // FASE 2 — Enfermería: Antecedentes lejanos (medicina funcional)
-    childhood_infections: '', childhood_antibiotics: '',
     toxic_exposure_occupational: '', dental_amalgams: '',
-    tattoos_piercings: '', childhood_residence_exposure: '',
+    tattoos_piercings: '',
     secondhand_smoke_exposure: '',
     smoking_status: '', smoking_since: '', smoking_years: '',
     alcohol_status: '', alcohol_cantidad: '',
@@ -229,7 +229,7 @@ function FlowPageInner() {
 
     // FASE 3 — Médico: Historia privada
     sexo_biologico: '', genero_identidad: '',
-    sust_recreativas: '', libido_basal: '5', salud_sexual_notas: '',
+    sust_recreativas: '', salud_sexual_notas: '',
     dx_psiquiatrico: '', med_psiquiatrica: '', trauma_relevante: '',
     // Reproductiva femenina
     menarca_age: '', ciclos_regulares: '', pregnancies: '', births: '', miscarriages: '',
@@ -250,11 +250,11 @@ function FlowPageInner() {
     snoring_intensity: '', snoring_frequency: '',
     apnea_observed: '', apnea_frequency: '', apnea_duration: '',
     daytime_nap: '',
-    libido_hoy: 5, orina_color: '', orina_color_tarde: '',
+    libido_hoy: 5, libido_tendencia: '', orina_color: '', orina_color_tarde: '',
     bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
     digestion_onset: '', digestion_pattern: '', digestion_blood: '',
     stress_level: 5, racing_mind: '', anxiety_panic: '', stress_coping: '', can_relax: '',
-    recent_chemical_exposure: '', water_source: '', plastic_in_microwave: '', recent_tattoo_amalgam: '',
+    water_source: '', plastic_in_microwave: '',
     water_intake_liters: '', food_cravings: '', screen_eating: '', meals_per_day: '',
     cooking_oil: '', ultraprocessed_frequency: '',
     self_skin_issues: '', hair_loss: '', brittle_nails: '',
@@ -345,12 +345,9 @@ function FlowPageInner() {
               allergies_foods:                p.allergies_foods               || '',
               allergies_environmental:        p.allergies_environmental       || '',
               med_notas:                      p.med_notas                     || '',
-              childhood_infections:           p.childhood_infections          || '',
-              childhood_antibiotics:          p.childhood_antibiotics         || '',
               toxic_exposure_occupational:    p.toxic_exposure_occupational   || '',
               dental_amalgams:                p.dental_amalgams               || '',
               tattoos_piercings:              p.tattoos_piercings             || '',
-              childhood_residence_exposure:   p.childhood_residence_exposure  || '',
               secondhand_smoke_exposure:      p.secondhand_smoke_exposure     || '',
               smoking_status:                 p.smoking_status                || '',
               smoking_since:                  p.smoking_since                 || '',
@@ -361,7 +358,6 @@ function FlowPageInner() {
               sexo_biologico:                 p.sexo_biologico                || '',
               genero_identidad:               p.genero_identidad              || '',
               sust_recreativas:               p.sust_recreativas              || '',
-              libido_basal:                   p.libido_basal                  || '5',
               salud_sexual_notas:             p.salud_sexual_notas            || '',
               dx_psiquiatrico:                p.dx_psiquiatrico               || '',
               med_psiquiatrica:               p.med_psiquiatrica              || '',
@@ -466,6 +462,7 @@ function FlowPageInner() {
               apnea_duration:     str(v.apnea_duration),
               daytime_nap:        str(v.daytime_nap),
               libido_hoy:        num(v.libido),
+              libido_tendencia:  str(v.libido_tendencia),
               bristol_scale:           str(v.bristol_scale),
               bowel_movements_per_day: str(v.bowel_movements_per_day),
               recent_antibiotics:      str(v.recent_antibiotics),
@@ -475,10 +472,8 @@ function FlowPageInner() {
               anxiety_panic:     str(v.anxiety_panic),
               stress_coping:     str(v.stress_coping),
               can_relax:         str(v.can_relax),
-              recent_chemical_exposure: str(v.recent_chemical_exposure),
               water_source:             str(v.water_source),
               plastic_in_microwave:     str(v.plastic_in_microwave),
-              recent_tattoo_amalgam:    str(v.recent_tattoo_amalgam),
               water_intake_liters:      str(v.water_intake_liters),
               food_cravings:            str(v.food_cravings),
               screen_eating:            str(v.screen_eating),
@@ -679,9 +674,8 @@ function FlowPageInner() {
           transfusions: f.transfusions, childhood_diseases: f.childhood_diseases,
           allergies_medications: f.allergies_medications, allergies_foods: f.allergies_foods,
           allergies_environmental: f.allergies_environmental, med_notas: f.med_notas,
-          childhood_infections: f.childhood_infections, childhood_antibiotics: f.childhood_antibiotics,
           toxic_exposure_occupational: f.toxic_exposure_occupational, dental_amalgams: f.dental_amalgams,
-          tattoos_piercings: f.tattoos_piercings, childhood_residence_exposure: f.childhood_residence_exposure,
+          tattoos_piercings: f.tattoos_piercings,
           secondhand_smoke_exposure: f.secondhand_smoke_exposure,
           smoking_status: f.smoking_status,
           smoking_since: f.smoking_since, smoking_years: f.smoking_years,
@@ -775,7 +769,7 @@ function FlowPageInner() {
         headers: authH3,
         body: JSON.stringify({
           sexo_biologico: f.sexo_biologico, genero_identidad: f.genero_identidad,
-          sust_recreativas: f.sust_recreativas, libido_basal: f.libido_basal,
+          sust_recreativas: f.sust_recreativas,
           salud_sexual_notas: f.salud_sexual_notas,
           dx_psiquiatrico: f.dx_psiquiatrico, med_psiquiatrica: f.med_psiquiatrica,
           trauma_relevante: f.trauma_relevante,
@@ -818,14 +812,15 @@ function FlowPageInner() {
             apnea_observed: f.apnea_observed, apnea_frequency: f.apnea_frequency,
             apnea_duration: f.apnea_duration,
             daytime_nap: f.daytime_nap,
-            mood: animo, libido: f.libido_hoy, digestion,
+            mood: animo, libido: f.libido_hoy, libido_tendencia: f.libido_tendencia,
+            cognitive_symptoms: cognitive, digestion,
             bristol_scale: f.bristol_scale, bowel_movements_per_day: f.bowel_movements_per_day,
             recent_antibiotics: f.recent_antibiotics, probiotics_use: f.probiotics_use,
             digestion_onset: f.digestion_onset, digestion_pattern: f.digestion_pattern, digestion_blood: f.digestion_blood,
             stress_level: f.stress_level, racing_mind: f.racing_mind,
             anxiety_panic: f.anxiety_panic, stress_coping: f.stress_coping, can_relax: f.can_relax,
-            recent_chemical_exposure: f.recent_chemical_exposure, water_source: f.water_source,
-            plastic_in_microwave: f.plastic_in_microwave, recent_tattoo_amalgam: f.recent_tattoo_amalgam,
+            water_source: f.water_source,
+            plastic_in_microwave: f.plastic_in_microwave,
             water_intake_liters: f.water_intake_liters, food_cravings: f.food_cravings,
             screen_eating: f.screen_eating, meals_per_day: f.meals_per_day,
             cooking_oil: f.cooking_oil, ultraprocessed_frequency: f.ultraprocessed_frequency,
@@ -1247,7 +1242,7 @@ function FlowPageInner() {
                     <textarea rows={2} className={`${inp} ${fOrng}`} value={f.surgeries}
                       onChange={e => set('surgeries', e.target.value)} placeholder="Apendicectomía (2010)..." />
                   </Field>
-                  <Field label="HOSPITALIZACIONES">
+                  <Field label="HOSPITALIZACIONES POR ENFERMEDAD">
                     <textarea rows={2} className={`${inp} ${fOrng}`} value={f.hospitalizations}
                       onChange={e => set('hospitalizations', e.target.value)} placeholder="Neumonía (2019)..." />
                   </Field>
@@ -1261,9 +1256,9 @@ function FlowPageInner() {
                         onChange={e => set('transfusions', e.target.value)} placeholder="Post-op 2018..." />
                     </Field>
                   </div>
-                  <Field label="ENFERMEDADES RELEVANTES DE LA INFANCIA">
+                  <Field label="ENFERMEDADES FUERTES EN LA INFANCIA (¿de qué tipo?)">
                     <input className={`${inp} ${fOrng}`} value={f.childhood_diseases}
-                      onChange={e => set('childhood_diseases', e.target.value)} placeholder="Fiebre reumática, meningitis..." />
+                      onChange={e => set('childhood_diseases', e.target.value)} placeholder="Neumonías o infecciones frecuentes, fiebre reumática, hepatitis, meningitis..." />
                   </Field>
                 </div>
               </Card>
@@ -1272,27 +1267,11 @@ function FlowPageInner() {
               <Card title="Antecedentes lejanos" icon="🔎" color={pc.color}>
                 <p className="text-xs text-[#7a95aa] mb-4">Útiles para medicina funcional — buscan el origen, no solo el diagnóstico. Opcionales.</p>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="INFECCIONES RECURRENTES EN LA INFANCIA">
-                      <input className={`${inp} ${fOrng}`} value={f.childhood_infections}
-                        onChange={e => set('childhood_infections', e.target.value)} placeholder="Otitis, amigdalitis, neumonías frecuentes..." />
-                    </Field>
-                    <Field label="ANTIBIÓTICOS EN LA INFANCIA">
-                      <input className={`${inp} ${fOrng}`} value={f.childhood_antibiotics}
-                        onChange={e => set('childhood_antibiotics', e.target.value)} placeholder="Cuántos ciclos aprox., si los recuerda..." />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="EXPOSICIÓN LABORAL A QUÍMICOS">
-                      <input className={`${inp} ${fOrng}`} value={f.toxic_exposure_occupational}
-                        onChange={e => set('toxic_exposure_occupational', e.target.value)} placeholder="Pinturas, disolventes, pesticidas, herbicidas..." />
-                    </Field>
-                    <Field label="RESIDENCIA EN INFANCIA / JUVENTUD">
-                      <input className={`${inp} ${fOrng}`} value={f.childhood_residence_exposure}
-                        onChange={e => set('childhood_residence_exposure', e.target.value)} placeholder="Cerca de industrias, minas, zonas con fumigación..." />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
+                  <Field label="CONTACTO CON CONTAMINANTES (vivienda o trabajo, hoy o en el pasado)">
+                    <input className={`${inp} ${fOrng}`} value={f.toxic_exposure_occupational}
+                      onChange={e => set('toxic_exposure_occupational', e.target.value)} placeholder="Vivió cerca de industrias/minas/zonas fumigadas, o trabajó con pinturas, disolventes, pesticidas..." />
+                  </Field>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <Field label="AMALGAMAS DENTALES">
                       <input className={`${inp} ${fOrng}`} value={f.dental_amalgams}
                         onChange={e => set('dental_amalgams', e.target.value)} placeholder="Cuántas, ¿las tiene aún?" />
@@ -1363,14 +1342,9 @@ function FlowPageInner() {
                   {/* Tabaquismo */}
                   <div>
                     <p className="text-xs font-mono text-[#7a95aa] mb-3">TABAQUISMO</p>
-                    <div className="flex gap-4 flex-wrap mb-3">
-                      {['Nunca fumó','Exfumador','Fumador activo'].map(s => (
-                        <label key={s} className="flex items-center gap-2 cursor-pointer">
-                          <input type="radio" name="smoking" value={s} checked={f.smoking_status===s}
-                            onChange={e=>set('smoking_status',e.target.value)} className="w-4 h-4 accent-[#f97316]" />
-                          <span className="text-sm text-[#dde6ef]">{s}</span>
-                        </label>
-                      ))}
+                    <div className="mb-3">
+                      <PillGroup options={['Nunca fumó','Exfumador','Fumador activo']}
+                        value={f.smoking_status} onChange={v => set('smoking_status', v)} />
                     </div>
                     {f.smoking_status==='Fumador activo' && (
                       <Field label="¿DESDE QUÉ AÑO FUMA?">
@@ -1389,29 +1363,26 @@ function FlowPageInner() {
                   {/* Alcohol */}
                   <div>
                     <p className="text-xs font-mono text-[#7a95aa] mb-3">ALCOHOL</p>
-                    <div className="flex gap-4 flex-wrap mb-4">
-                      {['Nunca','Ocasional','Frecuente','Diario'].map(s => (
-                        <label key={s} className="flex items-center gap-2 cursor-pointer">
-                          <input type="radio" name="alcohol" value={s} checked={f.alcohol_status===s}
-                            onChange={e=>set('alcohol_status',e.target.value)} className="w-4 h-4 accent-[#f97316]" />
-                          <span className="text-sm text-[#dde6ef]">{s}</span>
-                        </label>
-                      ))}
+                    <div className="mb-4">
+                      <PillGroup options={['Nunca','Ocasional','Frecuente','Diario']}
+                        value={f.alcohol_status} onChange={v => set('alcohol_status', v)} />
                     </div>
                     {f.alcohol_status && f.alcohol_status!=='Nunca' && (
                       <div className="space-y-4">
                         <div>
                           <p className="text-xs font-mono text-[#7a95aa] mb-2">TIPO DE BEBIDA (puede marcar varias)</p>
-                          <div className="flex gap-3 flex-wrap">
-                            {['Cerveza','Vino','Destilados (whisky, ron, tequila...)'].map(tipo => (
-                              <label key={tipo} className="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox"
-                                  checked={alcoholTipo.includes(tipo)}
-                                  onChange={() => setAlcoholTipo(p => p.includes(tipo) ? p.filter(x=>x!==tipo) : [...p,tipo])}
-                                  className="w-4 h-4 accent-[#f97316]" />
-                                <span className="text-sm text-[#dde6ef]">{tipo}</span>
-                              </label>
-                            ))}
+                          <div className="flex flex-wrap gap-2.5">
+                            {['Cerveza','Vino','Destilados (whisky, ron, tequila...)'].map(tipo => {
+                              const on = alcoholTipo.includes(tipo);
+                              return (
+                                <button key={tipo} type="button"
+                                  onClick={() => setAlcoholTipo(p => p.includes(tipo) ? p.filter(x=>x!==tipo) : [...p,tipo])}
+                                  className="px-4 py-2.5 rounded-xl text-sm font-medium transition border select-none"
+                                  style={{ minHeight:'44px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#7a95aa' }}>
+                                  <span className="mr-1.5">{on ? '✓' : '+'}</span>{tipo}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                         <div>
@@ -1423,16 +1394,17 @@ function FlowPageInner() {
                               { v:'11-15',  l:'11–15 bebidas',          note:'Riesgo elevado' },
                               { v:'16-20',  l:'16–20 bebidas',          note:'Riesgo alto' },
                               { v:'20+',    l:'Más de 20 bebidas',      note:'⚠️ Consumo problemático' },
-                            ].map(opt => (
-                              <label key={opt.v} className="flex items-center gap-3 cursor-pointer">
-                                <input type="radio" name="alcohol_cant" value={opt.v}
-                                  checked={f.alcohol_cantidad===opt.v}
-                                  onChange={e=>set('alcohol_cantidad',e.target.value)}
-                                  className="w-4 h-4 accent-[#f97316]" />
-                                <span className="text-sm text-[#dde6ef]">{opt.l}</span>
-                                <span className="text-xs text-[#3d5870]">{opt.note}</span>
-                              </label>
-                            ))}
+                            ].map(opt => {
+                              const on = f.alcohol_cantidad === opt.v;
+                              return (
+                                <button key={opt.v} type="button" onClick={() => set('alcohol_cantidad', opt.v)}
+                                  className="flex items-center gap-3 px-4 py-3 rounded-xl border transition text-left select-none"
+                                  style={{ minHeight:'48px', background: on ? 'rgba(249,115,22,.12)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d' }}>
+                                  <span className="text-sm" style={{ color: on ? '#f97316' : '#dde6ef' }}>{opt.l}</span>
+                                  <span className="text-xs text-[#3d5870] ml-auto">{opt.note}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
@@ -1692,13 +1664,6 @@ function FlowPageInner() {
                 <Card title="Salud sexual" icon="💛" color={pc.color}>
                   <p className="text-xs text-[#7a95aa] mb-4">Confidencial — solo visible para el médico tratante.</p>
                   <div className="space-y-4">
-                    <Field label="LIBIDO BASAL — EN CONDICIONES NORMALES (1-10)">
-                      <div className="flex items-center gap-4">
-                        <input type="range" min={1} max={10} value={f.libido_basal}
-                          onChange={e=>set('libido_basal',e.target.value)} className="flex-1" />
-                        <span className="text-[#a78bfa] font-mono text-lg min-w-[30px]">{f.libido_basal}</span>
-                      </div>
-                    </Field>
                     <Field label="NOTAS DE SALUD SEXUAL">
                       <textarea rows={3} className={`${inp} ${fPurp}`} value={f.salud_sexual_notas}
                         onChange={e=>set('salud_sexual_notas',e.target.value)}
@@ -2001,6 +1966,18 @@ function FlowPageInner() {
                       <input className={`${inp} ${fPurp}`} placeholder="Ejercicio, meditación, nada en particular..."
                         value={f.stress_coping} onChange={e=>set('stress_coping',e.target.value)} />
                     </Field>
+                    <div>
+                      <p className="text-xs font-mono text-[#7a95aa] mb-2">SÍNTOMAS COGNITIVOS — marca los que apliquen</p>
+                      <div className="flex flex-wrap gap-2">
+                        {['Neblina mental','Le cuesta recordar cosas','Le cuesta concentrarse'].map(o => (
+                          <button key={o} type="button" onClick={() => toggleMulti(cognitive, setCognitive, o)}
+                            className="px-3 py-2 rounded-xl text-xs font-semibold transition border"
+                            style={{ background: cognitive.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: cognitive.includes(o) ? '#a78bfa' : '#2a3a4d', color: cognitive.includes(o) ? '#000' : '#dde6ef' }}>
+                            {o}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Ánimo + Digestión lado a lado */}
@@ -2108,7 +2085,14 @@ function FlowPageInner() {
                     </div>
                   </div>
 
-                  <Slider label="LIBIDO EN LOS ÚLTIMOS DÍAS" value={f.libido_hoy} onChange={v=>set('libido_hoy',v)} color="#a78bfa" />
+                  <div className="space-y-3">
+                    <Slider label="LIBIDO ÚLTIMAMENTE (1-10)" value={f.libido_hoy} onChange={v=>set('libido_hoy',v)} color="#a78bfa" />
+                    <div>
+                      <p className="text-xs font-mono text-[#7a95aa] mb-2">COMPARADO CON LO NORMAL</p>
+                      <PillGroup options={['Normal','Más alto de lo normal','Más bajo de lo normal']}
+                        value={f.libido_tendencia} onChange={v => set('libido_tendencia', v)} accent="#a78bfa" />
+                    </div>
+                  </div>
 
                   {/* Color orina — mañana y tarde lado a lado */}
                   <div className="grid grid-cols-2 gap-4">
@@ -2179,11 +2163,7 @@ function FlowPageInner() {
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
                     <p className="text-xs font-mono text-[#a78bfa]">EXPOSICIÓN AMBIENTAL ACTUAL</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="EXPOSICIÓN RECIENTE A QUÍMICOS/PESTICIDAS">
-                        <input className={`${inp} ${fPurp}`} placeholder="Trabajo, jardín, limpieza..."
-                          value={f.recent_chemical_exposure} onChange={e=>set('recent_chemical_exposure',e.target.value)} />
-                      </Field>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs font-mono text-[#7a95aa] mb-2">AGUA QUE CONSUME</p>
                         <select className={`${inp} ${fPurp}`} value={f.water_source}
@@ -2192,25 +2172,11 @@ function FlowPageInner() {
                           <option>De la llave</option><option>Embotellada</option><option>Filtrada</option>
                         </select>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-xs font-mono text-[#7a95aa] mb-2">¿CALIENTA COMIDA EN PLÁSTICO EN MICROONDAS?</p>
-                        <div className="flex gap-2 flex-wrap">
-                          {['Sí','No'].map(o => (
-                            <label key={o} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
-                              style={{ background: f.plastic_in_microwave === o ? '#a78bfa' : '#1e2d3d', borderColor: f.plastic_in_microwave === o ? '#a78bfa' : '#2a3a4d', color: f.plastic_in_microwave === o ? '#000' : '#dde6ef' }}>
-                              <input type="radio" name="plastic_in_microwave" value={o} checked={f.plastic_in_microwave === o}
-                                onChange={e=>set('plastic_in_microwave', e.target.value)} className="sr-only" />
-                              {o}
-                            </label>
-                          ))}
-                        </div>
+                        <PillGroup options={['Sí','No']} value={f.plastic_in_microwave}
+                          onChange={v => set('plastic_in_microwave', v)} accent="#a78bfa" />
                       </div>
-                      <Field label="TATUAJES / AMALGAMAS RECIENTES">
-                        <input className={`${inp} ${fPurp}`} placeholder="Si aplica..."
-                          value={f.recent_tattoo_amalgam} onChange={e=>set('recent_tattoo_amalgam',e.target.value)} />
-                      </Field>
                     </div>
                   </div>
 
