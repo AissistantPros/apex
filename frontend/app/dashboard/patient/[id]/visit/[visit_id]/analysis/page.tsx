@@ -2063,12 +2063,12 @@ function LoadingScreen({ label, streamedText }: { label: string; streamedText?: 
 // Se muestra en toda pantalla donde el sistema sugiere un diagnóstico o un protocolo.
 function AIDisclaimer() {
   return (
-    <div className="flex items-start gap-2.5 bg-[rgba(245,158,11,.07)] border border-[rgba(245,158,11,.25)] rounded-xl px-4 py-3 mb-5">
-      <span className="text-[#f59e0b] flex-shrink-0 mt-0.5">⚠</span>
-      <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
-        <strong className="text-[#f59e0b]">Resultado generado con apoyo de Inteligencia Artificial.</strong> Sin los estudios de laboratorio correspondientes no es posible alcanzar el 100% de certeza. El médico tratante es responsable de revisar, validar y aceptar cada diagnóstico y cada intervención conforme a su juicio clínico, la evaluación directa del paciente y la normativa vigente. Esta herramienta no sustituye el criterio médico.
-      </p>
-    </div>
+    <p className="flex items-start gap-1 text-[9px] text-[#7a95aa] leading-snug mb-3 px-1">
+      <span className="text-[#f59e0b] flex-shrink-0 text-[10px]">⚠</span>
+      <span>
+        <span className="text-[#f59e0b] font-medium">Generado con apoyo de IA</span> — no sustituye el criterio médico. El médico tratante revisa, valida y acepta cada diagnóstico e intervención.
+      </span>
+    </p>
   );
 }
 

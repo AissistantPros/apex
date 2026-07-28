@@ -22,6 +22,8 @@ from services.system_prompt import (
     get_secondary_validation_prompt,
     get_functional_clarifying_questions_prompt,
     get_lean_draft_prompt,
+    build_patient_context,
+    build_visit_context,
 )
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
@@ -413,7 +415,7 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
     kwargs = {
         "model": model,
-        "max_tokens": max(max_tokens, 4096) if thinking else max_tokens,
+        "max_tokens": max(max_tokens, 12000) if thinking else max_tokens,
         "messages": [{"role": "user", "content": content}],
     }
     if system:
@@ -459,7 +461,7 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
     kwargs = {
         "model": model,
-        "max_tokens": max(max_tokens, 4096) if thinking else max_tokens,
+        "max_tokens": max(max_tokens, 12000) if thinking else max_tokens,
         "messages": [{"role": "user", "content": content}],
     }
     if thinking:
@@ -535,7 +537,7 @@ def extract_labs_data(visit: dict, visit_id: str = "") -> str:
             truly_skipped[nm] = s
     if truly_skipped:
         prompt += "\n\n(Archivos que no se pudieron leer, ignóralos: " + "; ".join(truly_skipped.values()) + ")"
-    text = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=4000,
+    text = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000,
                        visit_id=visit_id, step="extract_labs", attachments=blocks)
     text = (text or "").strip()
     if not text or text.upper().startswith("SIN DATOS LEGIBLES"):
@@ -1151,7 +1153,7 @@ async def run_protocol_stream(
 
     def event_stream():
         chunks = []
-        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id,
+        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, max_tokens=20000, visit_id=visit_id,
                                          step=f"protocol_{body.protocol_type}", thinking=True,
                                          web_search=_search_scope_for(body.protocol_type),
                                          attachments=attachments):
@@ -1192,7 +1194,7 @@ async def run_protocol(
     """Genera el protocolo. Se mantiene como fallback no-streaming."""
     try:
         prompt, previous_protocols, attachments = _build_protocol_prompt(visit_id, body)
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True, web_search=_search_scope_for(body.protocol_type), attachments=attachments)
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=20000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True, web_search=_search_scope_for(body.protocol_type), attachments=attachments)
         protocol = _strip_json_fences(protocol)
 
         if ENABLE_SECONDARY_VALIDATION:
@@ -1243,18 +1245,22 @@ async def chat_step(
             "protocol_longevity":   "Protocolo de Longevidad",
         }
 
-        # Identidad básica del paciente — para que la IA sepa de quién se habla
-        patient_line = ""
+        # Expediente COMPLETO del paciente — el chat debe poder responder sobre cualquier dato
+        # (ciudad/domicilio, exploración, laboratorios transcritos, antecedentes, etc.), no solo
+        # sobre lo que aparece en el texto del diagnóstico en pantalla.
+        expediente = ""
         visit = get_visit(visit_id)
         if visit and visit.get("patient_id"):
             patient = get_patient(visit["patient_id"])
             if patient:
-                name = patient.get("full_name") or f"{patient.get('first_name','')} {patient.get('last_name','')}".strip()
-                patient_line = f"\nPaciente: {name} — {patient.get('sex','')}".strip()
+                expediente = build_patient_context(patient) + "\n\n" + build_visit_context(visit)
 
         diagnosis_block = body.current_diagnosis.strip() if body.current_diagnosis else ""
 
-        system = f"""Eres APEX, asistente médico IA. Contexto actual: {step_labels.get(step, step)}.{patient_line}
+        system = f"""Eres APEX, asistente médico IA. Contexto actual: {step_labels.get(step, step)}.
+
+EXPEDIENTE COMPLETO DEL PACIENTE (tienes acceso a TODO esto — úsalo para responder cualquier pregunta del médico sobre el caso, incluidos datos como ciudad/domicilio, ocupación, exploración física y resultados de laboratorio):
+{expediente if expediente else "(expediente no disponible)"}
 
 TEXTO ACTUAL DE {step_labels.get(step, step).upper()} (lo que el médico está viendo en pantalla ahora mismo):
 {diagnosis_block if diagnosis_block else "(sin contenido aún)"}
@@ -1262,7 +1268,7 @@ TEXTO ACTUAL DE {step_labels.get(step, step).upper()} (lo que el médico está v
 REGLAS:
 - El médico tiene al paciente enfrente. Sé breve, máximo 3-4 oraciones por respuesta.
 - Usa términos médicos — no expliques lo obvio.
-- Ya conoces el texto de arriba — NUNCA digas que no tienes contexto o que no sabes de qué caso se habla.
+- Ya tienes el expediente completo y el texto de arriba — NUNCA digas que no tienes contexto o que no sabes de qué caso se habla. Si un dato puntual genuinamente no está en el expediente, dilo con precisión (ej. "no se registró el domicilio"), sin negar que tienes el resto del caso.
 - Si el médico pregunta por qué no se sugirió algo (ej. otro medicamento), responde con base en el texto de arriba: indicación, contraindicaciones o por qué se prefirió la opción actual.
 - Si el médico comparte nueva información clínica (síntomas, historia), dile concretamente si cambia el diagnóstico/protocolo y cómo.
 - Si NO cambia nada, explica por qué en 1-2 líneas.
