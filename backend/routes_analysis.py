@@ -4,7 +4,7 @@ El médico es el jefe. La IA propone, el médico decide.
 Cada paso recibe la versión CONFIRMADA por el médico del paso anterior.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -609,6 +609,26 @@ def extract_structured_header(raw_text: str) -> tuple[dict, str]:
         except Exception:
             pass
     return metadata, text
+
+
+@router.post("/{visit_id}/extract_labs")
+async def trigger_extract_labs(
+    visit_id: str,
+    background_tasks: BackgroundTasks,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Dispara la extracción de estudios (PDF/foto/docx→texto) en SEGUNDO PLANO.
+    El frontend lo llama al dejar la sección de estudios, para que la transcripción ya
+    esté lista (cacheada en labs_extracted) cuando el médico llegue al análisis, en vez
+    de esperar ~15s en la primera corrida. Retorna al instante; es idempotente."""
+    def _job():
+        try:
+            visit = get_visit(visit_id) or {}
+            _ensure_labs_extracted(visit_id, visit)
+        except Exception as e:
+            print(f"[WARN] extract_labs en segundo plano falló ({visit_id}): {e}")
+    background_tasks.add_task(_job)
+    return {"status": "scheduled", "visit_id": visit_id}
 
 
 @router.post("/{visit_id}/clarify")

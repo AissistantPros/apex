@@ -430,6 +430,11 @@ export default function NewVisitPage() {
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Error'); }
       const visit = await res.json();
+      // Al dejar la sección de estudios: dispara la transcripción de PDFs/fotos en segundo
+      // plano (fire-and-forget) para que ya esté lista al llegar al análisis, sin espera.
+      if (labFiles.length > 0 && visit?.id) {
+        fetch(`${BACKEND()}/analyze/${visit.id}/extract_labs`, { method: 'POST', headers }).catch(() => {});
+      }
       router.push(`/dashboard/patient/${patientId}/visit/${visit.id}/analysis`);
     } catch (e: any) {
       alert('Error al guardar: ' + e.message);

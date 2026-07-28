@@ -848,6 +848,12 @@ function FlowPageInner() {
         }
       }
 
+      // Al dejar la sección de estudios: dispara la transcripción de PDFs/fotos en segundo
+      // plano (fire-and-forget) para que ya esté lista al llegar al análisis, sin espera.
+      if (visitId && labFiles.length > 0) {
+        fetch(`${B()}/analyze/${visitId}/extract_labs`, { method: 'POST', headers: authH3 }).catch(() => {});
+      }
+
       // Redirigir al análisis de IA si hay visitId, o a la ficha si no
       if (visitId) {
         router.push(`/dashboard/patient/${patientId}/visit/${visitId}/analysis`);
