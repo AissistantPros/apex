@@ -1272,20 +1272,44 @@ REGLAS:
 - Si el médico pregunta por qué no se sugirió algo (ej. otro medicamento), responde con base en el texto de arriba: indicación, contraindicaciones o por qué se prefirió la opción actual.
 - Si el médico comparte nueva información clínica (síntomas, historia), dile concretamente si cambia el diagnóstico/protocolo y cómo.
 - Si NO cambia nada, explica por qué en 1-2 líneas.
-- Si cambia algo, di: "Esto modifica el [diagnóstico/protocolo]: [qué cambia]. Te recomiendo editar el texto antes de continuar."
+- Si el médico PROPONE un cambio pero aún no lo confirma, descríbelo y pregunta si lo aplicas.
 - Tono: colega médico, directo, técnico pero amable.
-- Este chat es continuo — tienes el historial completo de la conversación."""
+- Este chat es continuo — tienes el historial completo de la conversación.
+
+EDICIÓN DEL REPORTE (puedes reescribir el reporte que el médico ve en pantalla):
+- Cuando el médico CONFIRME aplicar un cambio al reporte (dice "editalo", "aplícalo", "cámbialo",
+  "hazlo", "sí, cambia X por Y", etc.), primero da UNA línea de confirmación y luego incluye el
+  REPORTE COMPLETO ACTUALIZADO entre estas marcas EXACTAS (en su propia línea cada una):
+<<<REPORTE_ACTUALIZADO>>>
+(aquí va el reporte COMPLETO del paso actual, en EXACTAMENTE el mismo formato que "TEXTO ACTUAL DE ..." de arriba —si es JSON, JSON válido con las mismas keys; si son secciones ═══, las mismas secciones— con el cambio aplicado y TODO lo demás IDÉNTICO. No omitas items, campos ni secciones. No agregues texto explicativo dentro del bloque.)
+<<<FIN_REPORTE>>>
+- Incluye ese bloque SOLO cuando el médico realmente confirmó aplicar un cambio. Para preguntas,
+  dudas, discusión o propuestas no confirmadas, NO lo incluyas (solo responde en texto normal)."""
 
         history.append({"role": "user", "content": body.question})
 
+        # Sonnet (no Haiku): puede reproducir el reporte completo con fidelidad cuando el médico
+        # confirma una edición. max_tokens alto es un techo — el Q&A normal para mucho antes.
         response = client.messages.create(
-            model=MODEL_CHAT,
-            max_tokens=600,
+            model=MODEL_DRAFT,
+            max_tokens=16000,
             system=system,
             messages=history,
         )
-        answer = response.content[0].text
+        answer_full = next((b.text for b in response.content if b.type == "text"), "")
 
+        # ¿El médico confirmó una edición? Extrae el reporte actualizado del bloque marcado.
+        updated_report = None
+        answer = answer_full
+        m = re.search(r"<<<REPORTE_ACTUALIZADO>>>\s*(.*?)\s*<<<FIN_REPORTE>>>", answer_full, re.DOTALL)
+        if m:
+            updated_report = m.group(1).strip()
+            answer = (answer_full[:m.start()] + answer_full[m.end():]).strip()
+            if not answer:
+                answer = "✓ Reporte actualizado en pantalla."
+
+        # En el historial guardamos solo la parte conversacional (sin el bloque pesado del reporte),
+        # para no re-alimentar el JSON completo en cada turno siguiente.
         history.append({"role": "assistant", "content": answer})
         update_analysis(visit_id, {"chat_history": history, "updated_at": datetime.utcnow().isoformat()})
 
@@ -1294,6 +1318,7 @@ REGLAS:
             "step": step,
             "question": body.question,
             "answer": answer,
+            "updated_report": updated_report,
             "turn": len(history) // 2,
         }
 

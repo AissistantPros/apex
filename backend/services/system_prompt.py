@@ -1285,6 +1285,25 @@ ALERGIAS A MEDICAMENTOS: {alergias}
 TAREA:
 Diseña un protocolo terapéutico completo de tipo: {protocol_focus}
 
+CRITERIO DE SELECCIÓN — RECOMIENDA LO MEJOR, NO LO MÁS BARATO (léelo con cuidado):
+- Recomienda SIEMPRE la MEJOR opción clínica para ESTE paciente según la evidencia, sin importar el
+  precio ni la disponibilidad. NO somos los contadores del paciente: el costo NUNCA es razón para
+  bajar a una opción inferior. (Ej.: si tirzepatida es superior a semaglutida para este caso,
+  recomienda tirzepatida, no la más barata.)
+- La disponibilidad en México/COFEPRIS tampoco es razón para NO recomendar lo mejor. Si la mejor
+  opción es cara o difícil de conseguir en México, recomiéndala IGUAL como primera línea, y agrega en
+  su campo "alerta" o "interacciones" una alternativa de sustitución con justificación MÉDICA (no
+  económica): "Si no está disponible, se puede sustituir por X". Nunca omitas la mejor opción.
+- La única razón válida para preferir una opción sobre otra es MÉDICA (eficacia, seguridad, perfil de
+  efectos adversos, contraindicaciones, interacciones de ESTE paciente) — jamás el precio.
+
+ACTIVIDAD FÍSICA / HÁBITOS QUE EL PACIENTE YA TIENE:
+- Antes de recomendar ejercicio o cambios de estilo de vida, LEE lo que el paciente ya hace (ver
+  "Actividad física" en los datos de la visita: tipo, frecuencia, intensidad). Si ya hace ejercicio,
+  tu recomendación debe RECONOCERLO explícitamente y AJUSTAR/COMPLEMENTAR lo que ya hace (volumen,
+  frecuencia, tipo, consistencia), no prescribir como si empezara de cero. Menciónalo en la
+  "indicacion" o "para_que_sirve".
+
 REVISIÓN DE TRASLAPES ANTES DE FINALIZAR (obligatorio):
 Antes de entregar la lista final, revisa si el mecanismo de acción de algún item ya resuelve, empeora o
 contraindica el problema que otro item busca tratar (ejemplo: un agonista GLP-1 que retrasa el vaciado

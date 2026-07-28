@@ -680,6 +680,7 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
 }) {
   const [open, setOpen] = useState(false);
   const [theoryOpen, setTheoryOpen] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const hasAlert = !!(item.alerta && item.alerta.trim());
   const hasDosis = !!(item.presentacion || item.dosis || item.frecuencia);
   const notApproved = (item.cofepris || '').toLowerCase() === 'no_aprobado';
@@ -695,9 +696,9 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
       }}>
       {/* Franja de alerta — solo cuando hay riesgo real; discreta, no gritada */}
       {hasAlert && (
-        <div className="px-4 py-2 text-sm font-medium flex items-start gap-2"
+        <div className="px-3.5 py-1.5 text-[11px] flex items-start gap-1.5"
           style={{ background: 'rgba(244,63,94,.08)', color: '#f43f5e' }}>
-          <span className="flex-shrink-0 mt-0.5">⚠</span>
+          <span className="flex-shrink-0 mt-0.5 text-[10px]">⚠</span>
           <span className="leading-snug">{item.alerta}</span>
         </div>
       )}
@@ -731,8 +732,13 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
           </label>
           {item.nivel_evidencia && (
             <div className="text-right flex-shrink-0">
-              <p className="text-[10px] font-mono text-[#3d5870]">EVIDENCIA</p>
-              <p className="text-xs text-[#dde6ef] font-semibold max-w-[180px]">{item.nivel_evidencia}</p>
+              <button type="button" onClick={() => setEvidenceOpen(o => !o)}
+                className="text-[10px] font-mono text-[#3d5870] hover:text-[#7a95aa] transition flex items-center gap-1 ml-auto">
+                EVIDENCIA <span>{evidenceOpen ? '▲' : '▼'}</span>
+              </button>
+              {evidenceOpen && (
+                <p className="text-xs text-[#dde6ef] font-semibold max-w-[200px] mt-1">{item.nivel_evidencia}</p>
+              )}
             </div>
           )}
         </div>
@@ -861,11 +867,11 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       {groups.map(g => (
         <div key={g.label}>
-          <p className="text-xs font-mono text-[#3d5870] mb-2 tracking-widest">{g.label}</p>
-          <div className="space-y-4">
+          <p className="text-xs font-mono text-[#3d5870] mb-3 tracking-widest">{g.label}</p>
+          <div className="space-y-8">
             {g.indices.map(i => (
               <ProtocolItemCard key={i} item={data.items[i]} color={color}
                 selected={approved ? approved[i] !== false : undefined}
@@ -1366,18 +1372,18 @@ function DiagnosisStructuredView({ data, color, onAcceptBoth, onToggleStudy, onA
       </p>
 
       {alertas.length > 0 && (
-        <div className="rounded-xl p-4 space-y-1.5"
+        <div className="rounded-xl px-3.5 py-2.5 space-y-1"
           style={{ background: 'rgba(244,63,94,.07)', border: '1px solid rgba(244,63,94,.25)' }}>
-          <p className="text-xs font-mono font-bold mb-1.5" style={{ color: '#f43f5e' }}>⚠ ALERTAS CLÍNICAS</p>
+          <p className="text-[10px] font-mono font-bold mb-1" style={{ color: '#f43f5e' }}>⚠ ALERTAS CLÍNICAS</p>
           {alertas.map((a, ai) => (
-            <p key={ai} className="text-sm text-[#dde6ef] font-serif leading-relaxed">• {a}</p>
+            <p key={ai} className="text-[11px] text-[#dde6ef] font-serif leading-snug">• {a}</p>
           ))}
         </div>
       )}
 
       {/* ── BLOQUE IA ── */}
       {aiDiagnoses.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-8">
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-mono tracking-widest text-[#3d5870]">PROPUESTAS DE LA IA</span>
             <div className="flex-1 h-px bg-[#1a2535]" />
@@ -2506,6 +2512,13 @@ export default function AnalysisPage() {
       const json = await res.json();
       const answer = json.answer || 'Error al obtener respuesta';
       setChatMessages(prev => [...prev, { role: 'assistant', content: answer }]);
+      // Si el médico confirmó una edición, el backend devuelve el reporte completo actualizado:
+      // lo escribimos directamente sobre el paso actual (se re-renderiza al instante).
+      if (json.updated_report && typeof json.updated_report === 'string' && json.updated_report.trim()) {
+        const { setState } = getCurrentSetters();
+        setState(prev => ({ ...prev, doctor_text: json.updated_report.trim(), approved: [] }));
+        setChatMessages(prev => [...prev, { role: 'divider', content: '✓ Reporte actualizado en pantalla' }]);
+      }
       if (!chatOpen) setChatUnread(prev => prev + 1);
     } catch (e: any) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + e.message }]);
