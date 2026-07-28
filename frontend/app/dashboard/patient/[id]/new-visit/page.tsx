@@ -1643,7 +1643,7 @@ export default function NewVisitPage() {
 
                     {/* Input oculto */}
                     <input ref={labInputRef} type="file" multiple
-                      accept=".pdf,.doc,.docx,image/*"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*"
                       className="hidden" onChange={handleLabFiles} />
 
                     {/* Botón subir + zona drop */}

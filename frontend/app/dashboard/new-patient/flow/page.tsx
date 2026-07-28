@@ -2335,7 +2335,7 @@ function FlowPageInner() {
                         ref={labFileInputRef}
                         type="file"
                         multiple
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*"
                         className="hidden"
                         onChange={handleLabFiles}
                       />

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-import json, re, time
+import json, re, time, base64, io
 from anthropic import Anthropic
 from db import insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient, insert_ai_call_log, list_ai_call_logs, list_patient_visits
 
@@ -296,6 +296,96 @@ def build_file_content_blocks(files) -> tuple[list, list]:
     return blocks, skipped
 
 
+def _decode_file_bytes(data: str) -> bytes:
+    """Decodifica el base64 (data URL o crudo) de un archivo a bytes."""
+    _, b64 = _split_data_url(data)
+    if not b64:
+        return b""
+    try:
+        return base64.b64decode(b64)
+    except Exception:
+        return b""
+
+
+def _docx_to_text(raw: bytes) -> str:
+    """Extrae texto (párrafos + tablas) de un .docx. '' si falla o falta la librería."""
+    try:
+        import docx  # python-docx
+    except ImportError:
+        return ""
+    try:
+        doc = docx.Document(io.BytesIO(raw))
+        parts = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+        for table in doc.tables:
+            for row in table.rows:
+                cells = [c.text.strip() for c in row.cells]
+                if any(cells):
+                    parts.append(" | ".join(cells))
+        return "\n".join(parts).strip()
+    except Exception:
+        return ""
+
+
+def _xlsx_to_text(raw: bytes) -> str:
+    """Extrae texto (celdas por hoja) de un .xlsx. '' si falla o falta la librería."""
+    try:
+        import openpyxl
+    except ImportError:
+        return ""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        out = []
+        for ws in wb.worksheets:
+            out.append(f"[Hoja: {ws.title}]")
+            for row in ws.iter_rows(values_only=True):
+                vals = [str(c) for c in row if c is not None and str(c).strip() != ""]
+                if vals:
+                    out.append(" | ".join(vals))
+        return "\n".join(out).strip()
+    except Exception:
+        return ""
+
+
+def extract_text_from_files(files) -> tuple[list, list]:
+    """Convierte a texto, en el backend, los archivos que Claude NO lee de forma nativa
+    (.docx, .xlsx, .txt, .csv) para no perder su información. Los PDFs e imágenes se saltan
+    (esos van como bloques nativos). Devuelve (parts, skipped) con parts=[(nombre, texto)]."""
+    parts, skipped = [], []
+    if not isinstance(files, list):
+        return parts, skipped
+    for f in files:
+        if not isinstance(f, dict):
+            continue
+        name = f.get("name") or "archivo"
+        low = name.lower()
+        media, _ = _split_data_url(f.get("data") or "")
+        media = (media or (f.get("type") or "")).lower()
+        # PDF e imágenes se procesan nativamente en otro lado — aquí no.
+        if media == "application/pdf" or low.endswith(".pdf") or media in SUPPORTED_IMAGE_TYPES:
+            continue
+        raw = _decode_file_bytes(f.get("data") or "")
+        if not raw:
+            continue
+        text = ""
+        if low.endswith(".docx") or "wordprocessingml" in media:
+            text = _docx_to_text(raw)
+        elif low.endswith(".xlsx") or "spreadsheetml" in media:
+            text = _xlsx_to_text(raw)
+        elif low.endswith((".txt", ".csv")) or media.startswith("text/"):
+            try:
+                text = raw.decode("utf-8", errors="replace").strip()
+            except Exception:
+                text = ""
+        else:
+            # .doc/.xls antiguos u otros binarios: no soportados aquí
+            continue
+        if text:
+            parts.append((name, text[:20000]))  # corte de tamaño para no inflar el prompt
+        else:
+            skipped.append(f"{name} (no se pudo extraer texto)")
+    return parts, skipped
+
+
 def _visit_file_blocks(visit: dict) -> list:
     """Bloques de contenido con los documentos/fotos clínicos de la visita, con un
     encabezado que le dice a la IA qué son. [] si no hay nada legible."""
@@ -423,15 +513,28 @@ Sé completo pero sin relleno. Si no hay ningún dato legible, responde exactame
 
 
 def extract_labs_data(visit: dict, visit_id: str = "") -> str:
-    """Lee los archivos adjuntos de la visita (PDF/imagen) y devuelve una transcripción
-    estructurada de sus valores. Devuelve "" si no hay nada legible."""
+    """Lee los archivos adjuntos de la visita y devuelve una transcripción estructurada de
+    sus valores. PDF/imagen van nativos a la IA; .docx/.xlsx/.txt se convierten a texto en
+    el backend y se anexan al prompt. Devuelve "" si no hay nada legible."""
     files = (visit or {}).get("labs_files")
-    blocks, skipped = build_file_content_blocks(files)
-    if not blocks:
+    blocks, skipped_native = build_file_content_blocks(files)   # PDF/imagen
+    text_parts, skipped_text = extract_text_from_files(files)   # .docx/.xlsx/.txt/.csv
+    if not blocks and not text_parts:
         return ""
     prompt = LABS_EXTRACTION_PROMPT
-    if skipped:
-        prompt += "\n\n(Archivos no legibles automáticamente, ignóralos: " + "; ".join(skipped) + ")"
+    if text_parts:
+        joined = "\n\n".join(f"--- {n} ---\n{t}" for n, t in text_parts)
+        prompt += ("\n\nADEMÁS, aquí va el texto YA EXTRAÍDO de otros archivos adjuntos "
+                   "(transcríbelo y normalízalo igual que los documentos anexos):\n" + joined)
+    # Solo repórtale como "no legibles" los que NINGÚN camino pudo manejar (dedup por nombre).
+    handled = {n for n, _ in text_parts}
+    truly_skipped = {}
+    for s in skipped_native + skipped_text:
+        nm = s.split(" (")[0]
+        if nm not in handled and nm not in truly_skipped:
+            truly_skipped[nm] = s
+    if truly_skipped:
+        prompt += "\n\n(Archivos que no se pudieron leer, ignóralos: " + "; ".join(truly_skipped.values()) + ")"
     text = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=4000,
                        visit_id=visit_id, step="extract_labs", attachments=blocks)
     text = (text or "").strip()
