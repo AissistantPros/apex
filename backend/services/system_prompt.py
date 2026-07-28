@@ -358,6 +358,17 @@ def build_visit_context(visit: dict) -> str:
     orina = visit.get("urine_color") or visit.get("orina_color") or "No registrado"
     orina_tarde = visit.get("urine_color_afternoon") or visit.get("orina_color_tarde") or ""
 
+    # Archivos de laboratorio/estudios adjuntos (PDFs, fotos). Sus CONTENIDOS se envían
+    # aparte como documentos/imágenes en la misma petición; aquí solo se anuncian.
+    _labs_files = visit.get("labs_files") or []
+    if isinstance(_labs_files, list) and _labs_files:
+        _nombres = ", ".join((f.get("name") or "archivo") for f in _labs_files if isinstance(f, dict))
+        labs_adjuntos_str = (f"{len(_labs_files)} archivo(s) adjunto(s) — {_nombres}. "
+                             "Sus contenidos se incluyen como documentos/imágenes en esta misma petición: "
+                             "LÉELOS y extrae los valores relevantes.")
+    else:
+        labs_adjuntos_str = "Ninguno"
+
     dolor = visit.get("pain_today") or visit.get("dolor_hoy") or False
     dolor_str = "No"
     pains = visit.get("pains") or []
@@ -537,9 +548,9 @@ DATOS DE LA VISITA ACTUAL
   • Interpretación de imagen: {visit.get('imaging_findings') or visit.get('img_interpretacion') or 'N/A'}
   • Mini-Cog (tamizaje cognitivo breve): {cog_str}
 
-── LABORATORIOS ──
+── LABORATORIOS Y ESTUDIOS ──
   • Notas / resultados clave de laboratorios: {visit.get('labs_notes') or visit.get('lab_notas') or 'No se ingresaron laboratorios en esta visita'}
-  • URL de PDF de laboratorios: {visit.get('labs_pdf_url') or 'No adjuntado'}
+  • Documentos/estudios adjuntos: {labs_adjuntos_str}
 
 ── REGLAS DE INTERPRETACIÓN CLÍNICA Y CONFIABILIDAD DE LA INFORMACIÓN ──
   Todo valor de esta sección es UNA medición en UN punto en el tiempo, no una serie confirmada.

@@ -237,14 +237,94 @@ def parse_protocol_json_safe(text: str) -> dict | None:
     return None
 
 
+# ── Adjuntos multimodales: documentos y fotos que sube el médico ──────────────
+# Claude lee PDFs e imágenes de forma nativa (bloques document/image). Convertimos
+# los archivos guardados (labs_files, etc.) para que sus HALLAZGOS lleguen al análisis,
+# no solo el nombre del archivo.
+MAX_ATTACH_B64 = 4_800_000  # ~3.5 MB por archivo ya en base64; corta blobs gigantes
+SUPPORTED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+def _split_data_url(data: str) -> tuple[str, str]:
+    """Devuelve (media_type, base64) de un data URL ('data:application/pdf;base64,....')
+    o de base64 crudo sin cabecera."""
+    if not data or not isinstance(data, str):
+        return "", ""
+    if data.startswith("data:"):
+        try:
+            header, b64 = data.split(",", 1)
+            media = header[5:].split(";")[0].strip()  # entre 'data:' y ';base64'
+            return media, b64
+        except ValueError:
+            return "", ""
+    return "", data  # base64 crudo
+
+
+def build_file_content_blocks(files) -> tuple[list, list]:
+    """Convierte una lista de archivos [{name,type,size,data}] en bloques de contenido
+    nativos de Claude (PDF -> document, imagen -> image). Devuelve (blocks, skipped)
+    donde skipped son notas de archivos que no se pudieron leer en línea."""
+    blocks, skipped = [], []
+    if not isinstance(files, list):
+        return blocks, skipped
+    for f in files:
+        if not isinstance(f, dict):
+            continue
+        name = f.get("name") or "archivo adjunto"
+        declared = (f.get("type") or "").lower()
+        media, b64 = _split_data_url(f.get("data") or "")
+        media = (media or declared).lower()
+        if not b64:
+            skipped.append(f"{name} (sin datos legibles)")
+            continue
+        if len(b64) > MAX_ATTACH_B64:
+            skipped.append(f"{name} (demasiado grande para leer automáticamente)")
+            continue
+        if media == "application/pdf" or name.lower().endswith(".pdf"):
+            blocks.append({
+                "type": "document",
+                "title": name,
+                "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
+            })
+        elif media in SUPPORTED_IMAGE_TYPES:
+            blocks.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media, "data": b64},
+            })
+        else:
+            skipped.append(f"{name} (formato {media or 'desconocido'} no legible en línea)")
+    return blocks, skipped
+
+
+def _visit_file_blocks(visit: dict) -> list:
+    """Bloques de contenido con los documentos/fotos clínicos de la visita, con un
+    encabezado que le dice a la IA qué son. [] si no hay nada legible."""
+    files = (visit or {}).get("labs_files")
+    blocks, skipped = build_file_content_blocks(files)
+    if not blocks and not skipped:
+        return []
+    lead = ("DOCUMENTOS ADJUNTOS POR EL MÉDICO (resultados de laboratorio, estudios de "
+            "imagen o fotos clínicas que se subieron para esta visita — LÉELOS y cruza sus "
+            "hallazgos con el resto del expediente; son parte integral del caso, no un anexo "
+            "decorativo):")
+    if skipped:
+        lead += ("\nArchivos que no se pudieron leer automáticamente (menciónalos como "
+                 "pendientes de revisión manual solo si serían relevantes): " + "; ".join(skipped))
+    if not blocks:
+        return [{"type": "text", "text": lead}]
+    return [{"type": "text", "text": lead}] + blocks
+
+
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
-                 visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "") -> str:
+                 visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
+                 attachments: list = None) -> str:
     """web_search: "" (sin búsqueda), "global" (fuentes internacionales) o "mx"
     (internacionales + mexicanas — solo medicina tradicional)."""
+    content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
     kwargs = {
         "model": model,
         "max_tokens": max(max_tokens, 4096) if thinking else max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
     }
     if system:
         kwargs["system"] = system
@@ -277,7 +357,8 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
 
 
 def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
-                        visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = ""):
+                        visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
+                        attachments: list = None):
     """
     Igual que call_claude, pero yield-ea el texto de la respuesta en deltas conforme
     llegan (para mostrarlo en vivo al médico en vez de una espera ciega). text_stream
@@ -285,10 +366,11 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
     Al agotarse el generador, ya se guardó el log en ai_call_logs con el texto completo.
     web_search: "" / "global" / "mx" — ver call_claude().
     """
+    content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
     kwargs = {
         "model": model,
         "max_tokens": max(max_tokens, 4096) if thinking else max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
     }
     if thinking:
         kwargs["thinking"] = {"type": "adaptive"}
@@ -395,7 +477,8 @@ async def get_clarifying_questions(
         # información, en una sola llamada rápida. Solo soporta "traditional" por ahora
         # (funcional/longevidad tienen su propio flujo de aclaración, sin cambios).
         draft_prompt = get_lean_draft_prompt(full_patient, full_visit, all_visits=all_visits)
-        raw_draft = call_claude(draft_prompt, model=MODEL_DRAFT, visit_id=visit_id, step=f"draft_{diagnosis_type}")
+        raw_draft = call_claude(draft_prompt, model=MODEL_DRAFT, visit_id=visit_id, step=f"draft_{diagnosis_type}",
+                                attachments=_visit_file_blocks(full_visit))
         lean_draft = parse_lean_draft_json(raw_draft)
 
         hipotesis = lean_draft["hipotesis"]
@@ -419,8 +502,8 @@ async def get_clarifying_questions(
         return {"visit_id": visit_id, "questions": []}
 
 
-def _build_finalize_first_prompt(visit_id: str, body: FinalizeFirstRequest) -> tuple[str, str]:
-    """Arma el prompt completo de finalize_first. Devuelve (prompt, draft_type).
+def _build_finalize_first_prompt(visit_id: str, body: FinalizeFirstRequest) -> tuple[str, str, list]:
+    """Arma el prompt completo de finalize_first. Devuelve (prompt, draft_type, attachments).
     Lanza HTTPException si no hay análisis/borrador. Compartido entre la ruta normal
     y la de streaming para no duplicar la lógica de armado del prompt."""
     analysis = get_analysis(visit_id)
@@ -461,7 +544,7 @@ porcentajes en consecuencia.
 """
 
     prompt = build_diagnosis_prompt(draft_type, patient_data, visit_record, extra_context=extra_context, all_visits=all_visits)
-    return prompt, draft_type
+    return prompt, draft_type, _visit_file_blocks(visit_record)
 
 
 def _search_scope_for(diagnosis_type: str) -> str:
@@ -481,13 +564,14 @@ async def finalize_first_diagnosis_stream(
     vía Server-Sent Events, para que el médico vea el diagnóstico apareciendo en pantalla
     en vez de una pantalla de carga ciega durante ~30-45s.
     """
-    prompt, draft_type = _build_finalize_first_prompt(visit_id, body)
+    prompt, draft_type, attachments = _build_finalize_first_prompt(visit_id, body)
 
     def event_stream():
         chunks = []
         for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
                                          step=f"finalize_{draft_type}", thinking=True,
-                                         web_search=_search_scope_for(draft_type)):
+                                         web_search=_search_scope_for(draft_type),
+                                         attachments=attachments):
             chunks.append(delta)
             yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
         raw = "".join(chunks)
@@ -522,8 +606,9 @@ async def finalize_first_diagnosis(
     Se mantiene como fallback no-streaming (ej. si el navegador no soporta SSE bien).
     """
     try:
-        prompt, draft_type = _build_finalize_first_prompt(visit_id, body)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}", thinking=True, web_search=_search_scope_for(draft_type))
+        prompt, draft_type, attachments = _build_finalize_first_prompt(visit_id, body)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}", thinking=True,
+                          web_search=_search_scope_for(draft_type), attachments=attachments)
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step=f"validate_finalize_{draft_type}")
@@ -585,7 +670,8 @@ async def run_traditional(
             })
 
         prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context, all_visits=all_visits)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional", thinking=True, web_search="mx")
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional", thinking=True, web_search="mx",
+                          attachments=_visit_file_blocks(full_visit))
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_traditional")
@@ -695,7 +781,8 @@ async def run_functional(
             all_visits=all_visits,
             traditional_treatment=body.protocol_traditional,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional", thinking=True, web_search="global")
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional", thinking=True, web_search="global",
+                          attachments=_visit_file_blocks(visit_record))
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
@@ -777,7 +864,8 @@ async def run_longevity(
             traditional_treatment=body.protocol_traditional,
             functional_treatment=body.protocol_functional,
         )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity", thinking=True, web_search="global")
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity", thinking=True, web_search="global",
+                          attachments=_visit_file_blocks(visit_record))
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_longevity")
@@ -801,8 +889,8 @@ async def run_longevity(
         raise HTTPException(500, str(e))
 
 
-def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, dict]:
-    """Arma el prompt completo de protocolo. Devuelve (prompt, previous_protocols).
+def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, dict, list]:
+    """Arma el prompt completo de protocolo. Devuelve (prompt, previous_protocols, attachments).
     Compartido entre la ruta normal y la de streaming."""
     analysis = get_analysis(visit_id)
     if not analysis:
@@ -844,7 +932,7 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
         visit_data=visit_record, previous_protocols=previous_protocols,
         all_visits=all_visits,
     )
-    return prompt, previous_protocols
+    return prompt, previous_protocols, _visit_file_blocks(visit_record)
 
 
 @router.post("/{visit_id}/protocol/stream")
@@ -858,13 +946,14 @@ async def run_protocol_stream(
     paso más lento del sistema (~90s+ con Opus + thinking generando 9+ items detallados),
     así que es el que más se beneficia de que el médico vea que algo está pasando.
     """
-    prompt, previous_protocols = _build_protocol_prompt(visit_id, body)
+    prompt, previous_protocols, attachments = _build_protocol_prompt(visit_id, body)
 
     def event_stream():
         chunks = []
         for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id,
                                          step=f"protocol_{body.protocol_type}", thinking=True,
-                                         web_search=_search_scope_for(body.protocol_type)):
+                                         web_search=_search_scope_for(body.protocol_type),
+                                         attachments=attachments):
             chunks.append(delta)
             yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
         protocol = _strip_json_fences("".join(chunks))
@@ -901,8 +990,8 @@ async def run_protocol(
 ):
     """Genera el protocolo. Se mantiene como fallback no-streaming."""
     try:
-        prompt, previous_protocols = _build_protocol_prompt(visit_id, body)
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True, web_search=_search_scope_for(body.protocol_type))
+        prompt, previous_protocols, attachments = _build_protocol_prompt(visit_id, body)
+        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True, web_search=_search_scope_for(body.protocol_type), attachments=attachments)
         protocol = _strip_json_fences(protocol)
 
         if ENABLE_SECONDARY_VALIDATION:
