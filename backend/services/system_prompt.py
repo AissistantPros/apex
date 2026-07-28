@@ -1214,6 +1214,7 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
                         visit_data: dict = None, previous_protocols: dict = None,
                         all_visits: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
     current_visit_id = (visit_data or {}).get("id", "")
     history_ctx = build_visit_history_context(all_visits, current_visit_id=current_visit_id)
 
@@ -1265,6 +1266,13 @@ DIAGNÓSTICO BASE:
 
 CONTEXTO DEL PACIENTE:
 {patient_ctx}
+
+{visit_ctx}
+
+USA LOS DATOS REALES DE LA VISITA DE ARRIBA PARA DOSIFICAR Y ELEGIR: función renal/hepática y
+laboratorios (creatinina, TFG, HbA1c, perfil lipídico, etc.), peso e IMC, presión arterial y demás
+mediciones de hoy son la base para calcular dosis, ajustes y contraindicaciones concretas de ESTE
+paciente. No uses reglas genéricas de libro si el dato real del paciente está disponible arriba.
 
 {history_ctx}
 
