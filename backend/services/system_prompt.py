@@ -191,6 +191,13 @@ HÁBITOS:
   • Sustancias recreativas o de uso regular (confidencial, solo médico):
     {patient.get('sust_recreativas', 'No refiere') or 'No refiere'}
 
+ANTECEDENTES AMBIENTALES Y CARGA TÓXICA
+(relevantes sobre todo para medicina funcional — eje de desintoxicación):
+  • Contacto con contaminantes en vivienda o trabajo, presente o pasado: {patient.get('toxic_exposure_occupational', 'No refiere') or 'No refiere'}
+  • Amalgamas dentales (mercurio): {patient.get('dental_amalgams', 'No refiere') or 'No refiere'}
+  • Tatuajes o piercings: {patient.get('tattoos_piercings', 'No refiere') or 'No refiere'}
+  • Exposición pasada a humo de tabaco de segunda mano: {patient.get('secondhand_smoke_exposure', 'No refiere') or 'No refiere'}
+
 HISTORIA REPRODUCTIVA Y SEXUAL:
 {repro_str}
   • Notas de salud sexual (ETS previas, disfunciones, preocupaciones):
@@ -323,6 +330,9 @@ def build_visit_context(visit: dict) -> str:
     inbody_str = "\n".join(inbody_lines) if inbody_lines else "  No realizado / no disponible"
 
     # Actividad física
+    act_si = visit.get("actividad_si")
+    act_si_str = {True: "Sí", False: "No", "si": "Sí", "no": "No", "": "No especificado", None: "No especificado"}.get(
+        act_si, str(act_si))
     act_tipo = visit.get("activity_type") or visit.get("actividad_tipo") or "No especificado"
     act_freq = visit.get("activity_frequency") or visit.get("actividad_frecuencia") or "No especificado"
     act_int = visit.get("activity_intensity") or visit.get("actividad_intensidad") or "No especificado"
@@ -346,6 +356,7 @@ def build_visit_context(visit: dict) -> str:
     cognitive_str = ", ".join(cognitive) if isinstance(cognitive, list) else str(cognitive)
 
     orina = visit.get("urine_color") or visit.get("orina_color") or "No registrado"
+    orina_tarde = visit.get("urine_color_afternoon") or visit.get("orina_color_tarde") or ""
 
     dolor = visit.get("pain_today") or visit.get("dolor_hoy") or False
     dolor_str = "No"
@@ -430,6 +441,7 @@ DATOS DE LA VISITA ACTUAL
   Análisis de composición corporal (InBody o similar):
 {inbody_str}
   Actividad física habitual del paciente:
+  • ¿Realiza actividad física?: {act_si_str}
   • Tipo de actividad: {act_tipo}
   • Frecuencia semanal: {act_freq}
   • Intensidad percibida: {act_int}
@@ -465,7 +477,7 @@ DATOS DE LA VISITA ACTUAL
   • Pregunta hecha al paciente: "¿Cómo ha estado tu digestión?" (múltiple selección, opciones: Sin problemas / Distensión / Estreñimiento / Diarrea / Reflujo / Náuseas / Otro)
     Respuesta: {digestion_str or 'No especificado'}
   • Pregunta hecha al paciente: "¿De qué color es tu orina?" (escala visual, del más pálido al más oscuro)
-    Respuesta: {orina}
+    Respuesta (mañana): {orina}{f" — (tarde): {orina_tarde}" if orina_tarde else ""}
     (muy pálido = bien hidratado; naranja oscuro = deshidratación severa / revisar hematuria)
   • Pregunta hecha al paciente: "¿Tienes dolor físico hoy? ¿Dónde y con qué intensidad?"
     Respuesta: {dolor_str}
