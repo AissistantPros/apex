@@ -1177,13 +1177,29 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 
 
 PEPTIDOS_OFFLABEL_RULE = """
-ARSENAL AMPLIADO (medicina funcional y de longevidad) — RECORDATORIO:
-No te limites a lo convencional. En tu especialidad SÍ puedes —y debes cuando aplique al caso—
-recomendar péptidos (BPC-157, TB-500, CJC-1295/Ipamorelin, etc.), medicamentos OFF-LABEL con
-racional fisiológico (metformina, dosis bajas de naltrexona, rapamicina, etc.) y suplementos /
-nutracéuticos. Usa la búsqueda web (dominios permitidos) para buscar ESPECÍFICAMENTE péptidos,
-suplementos y usos off-label con evidencia —aunque sea preliminar o anecdótica— que puedan ayudar a
-ESTE paciente. No los descartes por no tener aún aprobación regulatoria.
+ARSENAL AMPLIADO (medicina funcional y de longevidad) — RECORDATORIO ACTIVO:
+No te limites a lo convencional. En tu especialidad SÍ puedes —y DEBES cuando aplique al caso—
+considerar activamente:
+
+PÉPTIDOS (por eje/indicación, revisa cuál aplica a ESTE paciente):
+- Regeneración/reparación tisular: BPC-157, TB-500, GHK-Cu (cobre-péptido).
+- Piel/mucosas/anti-inflamatorio local: KPV (oral o inyección), LL-37, GHK-Cu.
+- Sueño / eje HPA / calidad de descanso: DSIP (péptido inductor de sueño delta), Selank.
+- Metabolismo / mitocondria / longevidad celular: MOTS-c, Humanin, SS-31 (elamipretida),
+  Epitalón.
+- Eje GH/IGF (composición corporal, recuperación): CJC-1295 + Ipamorelin, Tesamorelina.
+- Cognitivo / neuroplasticidad: Semax, Cerebrolisina, Dihexa.
+- Timo / inmunomodulación: Timosina alfa-1 (TA-1), Timosina beta-4.
+- Antiaging vascular / senescencia: FOXO4-DRI (senolítico experimental).
+
+MEDICAMENTOS OFF-LABEL con racional fisiológico:
+Metformina (anti-aging), rapamicina (mTOR), dosis bajas de naltrexona (LDN), berberina,
+GLP-1 fuera de diabetes/obesidad, telmisartán (PPAR-γ), pioglitazona baja dosis, spironolactona,
+espermidina, resveratrol/pterostilbene, NAD+ / NR / NMN, urolitin A, glicina + NAC (GlyNAC).
+
+Considera SIEMPRE si alguno encaja con lo que este paciente necesita — no los descartes por
+"raros" o por falta de aprobación regulatoria. Basa la elección en tu conocimiento médico
+(no hay búsqueda web activa).
 
 COFEPRIS (regulación mexicana) — cómo marcarlo:
 - Muchos péptidos, usos off-label y suplementos NO cuentan con aprobación de COFEPRIS para esta
@@ -1236,12 +1252,23 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
             labels = {"traditional": "CONVENCIONAL", "functional": "FUNCIONAL", "longevity": "LONGEVIDAD"}
             parts = [f"--- Protocolo {labels.get(k, k.upper())} ya entregado ---\n{v}" for k, v in entries]
             previous_block = (
-                "\n\nPROTOCOLOS YA ENTREGADOS EN ESTA MISMA VISITA (NO REPETIR):\n"
+                "\n\nPROTOCOLOS YA ENTREGADOS EN ESTA MISMA VISITA — LÉELOS Y NO REDUNDES:\n"
                 + "\n\n".join(parts)
-                + "\n\nREGLA ESTRICTA: no repitas ningún medicamento, suplemento, vitamina o consejo de estilo de vida "
-                "que ya aparezca arriba como item nuevo. Si un item ya prescrito también sirve off-label para el eje "
-                "que estás tratando ahora, NO lo vuelvas a listar como item — menciónalo en 1 línea dentro del campo "
-                "\"indicacion\" de un item relacionado, o en \"monitoreo_general\", solo como nota anecdótica."
+                + "\n\n"
+                "REGLA CRÍTICA — NO REDUNDANCIA MECANÍSTICA (no solo textual):\n"
+                "El médico no quiere que el paciente termine tomando 20 pastillas al día. Antes de "
+                "agregar CADA item, pregúntate: ¿el mecanismo que aporta este item ya está cubierto por "
+                "algún fármaco/suplemento del protocolo anterior?\n"
+                "- Si un fármaco ya prescrito cubre el mismo mecanismo (ej. GLP-1 + biguanida ya bajan "
+                "glucosa/insulina — NO agregues berberina, inositol, cromo, gymnema como items nuevos), "
+                "OMÍTELO. Sí, es un item que en teoría 'ayudaría', pero el paciente ya tiene esa vía tapada.\n"
+                "- Agrega SOLO lo que aporta un mecanismo distinto y NO cubierto por lo anterior "
+                "(inflamación sistémica, sueño, eje HPA, mitocondria, microbioma, desintoxicación, "
+                "regeneración tisular). Ese es el valor real de las voces funcional/longevidad: "
+                "atacar ejes que el convencional NO toca, no duplicar los que sí.\n"
+                "- Nunca listes el mismo principio activo dos veces (aunque sea con marca distinta).\n"
+                "- Sé PARSIMONIOSO: prefiere 4-6 items de alto impacto por ejes distintos, sobre 15 "
+                "items que se apilen en los mismos mecanismos."
             )
 
     return f"""{identity}
@@ -1351,7 +1378,7 @@ REGLAS DE LLENADO (síguelas exactamente):
 7. Si es EJERCICIO TERAPÉUTICO: "nombre_generico" es el tipo de ejercicio (ej. "Ejercicio aeróbico de moderada intensidad"), "presentacion" puede ser "30 minutos" o "3 series de 12 repeticiones", "via" se omite con "", "frecuencia" indica los días por semana.
 8. Si es ESTILO DE VIDA de hidratación o dieta: "nombre_generico" describe la recomendación (ej. "Hidratación dirigida", "Dieta alta en fibra", "Dieta baja en calorías") usando SOLO categorías generales de dieta — nunca nombres de dietas comerciales (keto, paleo, etc.) ni listas de alimentos específicos.
 9. PROTOCOLO CONVENCIONAL ("traditional"): además de los fármacos, incluye siempre que aplique al caso al menos un item de hidratación (tipo "Estilo de vida"), uno de tipo de dieta (tipo "Estilo de vida") y uno de ejercicio (tipo "Ejercicio").
-10. PROTOCOLO FUNCIONAL ("functional"): debe incluir SIEMPRE al menos un item "Suplemento" o "Vitamina" cuando la matriz de salud identificó ejes desregulados con manejo nutracéutico conocido. No está permitido un protocolo funcional compuesto solo de cambios de hábito sin ningún suplemento — si genuinamente no aplica ningún suplemento para este caso, explica por qué en "monitoreo_general".
+10. PROTOCOLO FUNCIONAL ("functional"): incluye suplementos/nutracéuticos/péptidos SOLO cuando ataquen un eje que el protocolo convencional ya prescrito NO cubre (inflamación sistémica, microbioma, mitocondria, sueño/HPA, desintoxicación, regeneración). Prohibido llenar la lista con "hipoglucemiantes suaves" si el paciente ya tiene GLP-1 + biguanida — eso es duplicar, no complementar. Prefiere 4-6 items de alto impacto por ejes distintos sobre 15 items apilados. Si genuinamente no aplica ningún suplemento porque los fármacos convencionales ya cubren todo, dilo en "monitoreo_general" y entrega solo hábitos/estilo de vida.
 11. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
 12. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
 13. "para_que_sirve" es OBLIGATORIO — UNA sola línea clara (≤25 palabras), sin jerga, orientada a un médico convencional. No repitas "indicacion". El médico puede hacer clic en "Aprende más" para investigar afuera; aquí solo la esencia.
