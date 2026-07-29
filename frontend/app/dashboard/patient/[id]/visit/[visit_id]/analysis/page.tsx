@@ -66,6 +66,8 @@ interface DiagnosisState {
   confidence: number;
   approved?: boolean[];
   doctor_notes?: string;
+  /** Objeciones de la segunda opinión que el generador NO aceptó — el médico decide. */
+  banderas?: { item?: string; problema?: string; accion?: string }[];
 }
 
 interface ChatMsg {
@@ -2733,7 +2735,11 @@ export default function AnalysisPage() {
         { protocol_type: type, doctor_traditional: traditional.doctor_text, doctor_functional: functional.doctor_text, doctor_longevity: longevity.doctor_text },
         (delta) => setStreamedText(prev => prev + delta),
       );
-      const s: DiagnosisState = { ai_text: json.protocol, doctor_text: json.protocol, validation: '', confirmed: false, confidence: 90 };
+      const s: DiagnosisState = {
+        ai_text: json.protocol, doctor_text: json.protocol, validation: '',
+        confirmed: false, confidence: 90,
+        banderas: Array.isArray(json.banderas) ? json.banderas : [],
+      };
       if (type === 'traditional') setProtTrad(s);
       else if (type === 'functional') setProtFunc(s);
       else setProtLong(s);
@@ -2939,6 +2945,26 @@ export default function AnalysisPage() {
                   <p className="text-xs text-[#dde6ef] leading-relaxed font-serif">
                     <strong className="text-[#f59e0b]">Aviso COFEPRIS.</strong> Algunos suplementos o usos sugeridos pueden ser off-label o no estar registrados en México. Verifique el registro sanitario antes de prescribir.
                   </p>
+                </div>
+              )}
+
+              {/* Segunda opinión: objeciones que el revisor levantó y el generador NO aceptó.
+                  Se muestran para que el médico tenga la discusión completa y decida él. */}
+              {state.banderas && state.banderas.length > 0 && (
+                <div className="rounded-xl border mb-5 overflow-hidden"
+                  style={{ borderColor: 'rgba(14,165,233,.30)', background: 'rgba(14,165,233,.05)' }}>
+                  <p className="text-[10px] font-mono px-3.5 pt-2.5 pb-1.5 tracking-wider" style={{ color: '#0ea5e9' }}>
+                    ⚖ SEGUNDA OPINIÓN — puntos que el revisor dejó abiertos ({state.banderas.length})
+                  </p>
+                  <div className="px-3.5 pb-3 space-y-2">
+                    {state.banderas.map((b, i) => (
+                      <div key={i} className="text-xs leading-snug">
+                        {b.item && <span className="text-[#dde6ef] font-semibold">{b.item}: </span>}
+                        <span className="text-[#7a95aa]">{b.problema}</span>
+                        {b.accion && <span className="text-[#7a95aa] italic"> — sugerencia: {b.accion}</span>}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

@@ -138,46 +138,103 @@ def list_ai_call_logs(visit_id: str) -> list:
 # Fuente de verdad curada para que la voz de conciencia pueda responder
 # "¿hay una mejor versión de lo que estás mandando?" con un dato duro, no con opinión.
 
+import re as _re
+import time as _time
+
+_VADEMECUM_CACHE = {"data": None, "ts": 0.0}
+_VADEMECUM_TTL = 600  # 10 min
+
+
+def _load_vademecum() -> list:
+    """Carga (y cachea) el vademécum completo. Es una tabla chica: traerla entera y hacer
+    el match en Python es más robusto que armar filtros ILIKE, porque los nombres reales
+    vienen con calificadores ('Vitamina D3 (colecalciferol)') que rompen el match por
+    substring en una sola dirección."""
+    now = _time.time()
+    if _VADEMECUM_CACHE["data"] is not None and (now - _VADEMECUM_CACHE["ts"]) < _VADEMECUM_TTL:
+        return _VADEMECUM_CACHE["data"]
+    try:
+        result = supabase.table("medications_db").select("*").execute()
+        data = result.data if result.data else []
+        _VADEMECUM_CACHE["data"] = data
+        _VADEMECUM_CACHE["ts"] = now
+        return data
+    except Exception as e:
+        print(f"[WARN] no se pudo cargar el vademécum: {e}")
+        return _VADEMECUM_CACHE["data"] or []
+
+
+def _norm(s: str) -> str:
+    """Normaliza para comparar: minúsculas, sin paréntesis, sin acentos comunes, sin dobles espacios."""
+    s = (s or "").lower()
+    s = _re.sub(r"\([^)]*\)", " ", s)            # quita "(colecalciferol)", "(MK-7)", etc.
+    for a, b in (("á","a"),("é","e"),("í","i"),("ó","o"),("ú","u"),("ü","u")):
+        s = s.replace(a, b)
+    s = _re.sub(r"[^a-z0-9+ ]", " ", s)          # conserva el '+' de "D3 + K2"
+    return _re.sub(r"\s+", " ", s).strip()
+
+
+def _matches(entry_name: str, query_names: list) -> bool:
+    """True si el nombre del vademécum y alguno de los nombres del protocolo se refieren
+    a lo mismo. Compara en AMBAS direcciones (el nombre del protocolo suele traer
+    calificadores extra que el del vademécum no tiene)."""
+    e = _norm(entry_name)
+    if not e or len(e) < 3:
+        return False
+    for q in query_names:
+        qn = _norm(q)
+        if not qn or len(qn) < 3:
+            continue
+        if e in qn or qn in e:
+            return True
+    return False
+
+
 def find_medications(names: list) -> list:
-    """Busca en el vademécum las entradas cuyo nombre genérico o sinónimos coincidan
-    (substring, case-insensitive) con alguno de los nombres dados."""
+    """Fichas del vademécum para los items del protocolo (match en ambas direcciones)."""
     if not names:
         return []
-    try:
-        ors = []
-        for n in names:
-            token = str(n).replace(",", " ").strip()
-            if len(token) < 3:
-                continue
-            ors.append(f"nombre_generico.ilike.%{token}%")
-            ors.append(f"sinonimos.ilike.%{token}%")
-        if not ors:
-            return []
-        result = supabase.table("medications_db").select("*").or_(",".join(ors)).execute()
-        return result.data if result.data else []
-    except Exception as e:
-        print(f"[WARN] find_medications falló: {e}")
-        return []
+    out = []
+    for row in _load_vademecum():
+        if _matches(row.get("nombre_generico", ""), names) or _matches(row.get("sinonimos", ""), names):
+            out.append(row)
+    return out
+
+
+def _already_present(entry_name: str, query_names: list) -> bool:
+    """True solo si alguno de los items del protocolo YA ES esa entrada. Check DIRECCIONAL:
+    el nombre del item debe contener el nombre completo de la entrada. Así 'Vitamina D3'
+    NO cuenta como que ya trae 'Vitamina D3 + K2' (aunque sea su prefijo), pero
+    'Vitamina D3 + K2 (MK-7)' sí."""
+    e = _norm(entry_name)
+    if not e or len(e) < 3:
+        return False
+    return any(e in _norm(q) for q in query_names)
 
 
 def find_upgrades_for(names: list) -> list:
-    """Devuelve las entradas del vademécum que son una MEJOR VERSIÓN de alguno de los
-    nombres dados (campo upgrade_de). Es el corazón del chequeo '¿hay algo mejor?'."""
+    """Entradas que son una MEJOR VERSIÓN de alguno de los items del protocolo.
+    Es el corazón del chequeo '¿hay algo mejor de lo que estás mandando?'."""
     if not names:
         return []
-    try:
-        ors = []
-        for n in names:
-            token = str(n).replace(",", " ").strip()
-            if len(token) < 3:
-                continue
-            ors.append(f"upgrade_de.ilike.%{token}%")
-        if not ors:
-            return []
-        result = supabase.table("medications_db").select(
-            "nombre_generico,upgrade_de,nota_upgrade,cofepris,nivel_evidencia,dosis_tipica,categoria"
-        ).or_(",".join(ors)).execute()
-        return result.data if result.data else []
-    except Exception as e:
-        print(f"[WARN] find_upgrades_for falló: {e}")
-        return []
+    out = []
+    for row in _load_vademecum():
+        up = row.get("upgrade_de")
+        if not up:
+            continue
+        # Si el protocolo YA trae la versión mejorada, no hay nada que sugerir.
+        # (ej. si ya mandó "Vitamina D3 + K2", no sugerir cambiar D3 por D3+K2)
+        if _already_present(row.get("nombre_generico", ""), names):
+            continue
+        # ¿el item que trae el protocolo ES aquello que esta entrada supera?
+        if _matches(up, names):
+            out.append({
+                "nombre_generico": row.get("nombre_generico"),
+                "upgrade_de": up,
+                "nota_upgrade": row.get("nota_upgrade"),
+                "cofepris": row.get("cofepris"),
+                "nivel_evidencia": row.get("nivel_evidencia"),
+                "dosis_tipica": row.get("dosis_tipica"),
+                "categoria": row.get("categoria"),
+            })
+    return out
