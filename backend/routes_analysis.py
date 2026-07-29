@@ -11,7 +11,11 @@ from typing import Optional
 from datetime import datetime
 import json, re, time, base64, io
 from anthropic import Anthropic
-from db import insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient, insert_ai_call_log, list_ai_call_logs, list_patient_visits
+from db import (
+    insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient,
+    insert_ai_call_log, list_ai_call_logs, list_patient_visits,
+    find_medications, find_upgrades_for,
+)
 
 from services.system_prompt import (
     get_traditional_diagnosis_prompt,
@@ -93,6 +97,12 @@ WEB_SEARCH_TOOLS = {
 # Validación secundaria (chequeo de alucinaciones/seguridad) — desactivada temporalmente
 # durante pruebas para acelerar el flujo. Reactivar antes de producción.
 ENABLE_SECONDARY_VALIDATION = False
+
+# ── VOZ DE CONCIENCIA (crítico que reta al generador antes de entregar al médico) ──
+# Un segundo LLM audita el protocolo con 5 preguntas y, si tiene objeciones, el generador
+# corrige. Máximo 1 ronda de corrección para no disparar tiempo/costo.
+ENABLE_CONSCIENCE = True
+CONSCIENCE_MAX_ROUNDS = 1
 
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
@@ -1109,6 +1119,205 @@ async def run_longevity(
         raise HTTPException(500, str(e))
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# VOZ DE CONCIENCIA — el crítico que reta al generador antes de entregar al médico
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _protocol_item_names(protocol_text: str) -> list:
+    """Extrae los nombres (genérico + comercial) de los items de un protocolo JSON."""
+    data = parse_protocol_json_safe(protocol_text)
+    if not data:
+        return []
+    names = []
+    for it in data.get("items", []):
+        if isinstance(it, dict):
+            for k in ("nombre_generico", "nombre_comercial"):
+                v = (it.get(k) or "").strip()
+                if v:
+                    names.append(v)
+    return names
+
+
+def build_vademecum_context(protocol_text: str) -> str:
+    """Consulta el vademécum curado y arma el bloque de referencia para el crítico:
+    (a) datos de los fármacos usados, (b) MEJORES VERSIONES disponibles de cada uno.
+    Es lo que permite que el crítico responda '¿hay algo mejor?' con un dato duro."""
+    names = _protocol_item_names(protocol_text)
+    if not names:
+        return ""
+    upgrades = find_upgrades_for(names)
+    known = find_medications(names)
+
+    blocks = []
+    if upgrades:
+        lines = []
+        for u in upgrades:
+            lines.append(
+                f"• En vez de «{u.get('upgrade_de')}» existe «{u.get('nombre_generico')}» "
+                f"(evidencia: {u.get('nivel_evidencia')}, COFEPRIS: {u.get('cofepris')}). "
+                f"{u.get('nota_upgrade') or ''}"
+            )
+        blocks.append(
+            "MEJORES VERSIONES DISPONIBLES (vademécum curado — el protocolo usa algo que "
+            "tiene una opción superior documentada):\n" + "\n".join(lines)
+        )
+    if known:
+        lines = []
+        for m in known:
+            bits = [f"«{m.get('nombre_generico')}»"]
+            if m.get("dosis_tipica"):
+                bits.append(f"dosis típica: {m['dosis_tipica']}")
+            if m.get("contraindicaciones"):
+                bits.append(f"contraindicaciones: {m['contraindicaciones']}")
+            if m.get("interacciones"):
+                bits.append(f"interacciones: {m['interacciones']}")
+            if m.get("cofepris"):
+                bits.append(f"COFEPRIS: {m['cofepris']}")
+            if m.get("notas"):
+                bits.append(f"nota: {m['notas']}")
+            lines.append("• " + " — ".join(bits))
+        blocks.append("FICHAS DEL VADEMÉCUM para los items usados:\n" + "\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+CONSCIENCE_SYSTEM = """Eres la VOZ DE CONCIENCIA de un sistema clínico: un médico revisor senior, escéptico y exigente. Tu trabajo NO es aprobar por cortesía — es RETAR el protocolo que otro colega acaba de proponer, para que lo que llegue al médico tratante sea lo mejor posible.
+
+Respondes SIEMPRE con JSON válido, sin texto adicional.
+
+LAS 5 PREGUNTAS QUE DEBES CONTESTAR SOBRE EL PROTOCOLO:
+1. ¿ES LA MEJOR VERSIÓN? ¿Existe hoy una opción superior a la que se está recomendando? (ej. semaglutida cuando existe tirzepatida; vitamina D3 sola cuando D3+K2 es mejor; melatonina inmediata cuando el paciente tiene insomnio de mantenimiento). Si el vademécum de abajo señala una mejor versión, ES UNA OBJECIÓN OBLIGATORIA.
+2. ¿SE CONSIDERARON ALTERNATIVAS? ¿Hay otra opción razonable que no se evaluó y que podría ser mejor para ESTE paciente?
+3. ¿SE RESPETÓ LA ESCALERA DE APROBACIÓN? Nunca se salta de algo 100% aprobado a algo experimental/mercado gris sin agotar los escalones intermedios (aprobado local → aprobado en otros países → off-label con evidencia sólida → experimental). Si se propone algo experimental habiendo un intermedio aprobado sin probar, es objeción.
+4. ¿HAY INTERACCIONES O DUPLICIDAD INTERNA? ¿Dos items del mismo protocolo chocan entre sí o hacen lo mismo?
+5. ¿HAY REDUNDANCIA O CONFLICTO CON LO YA ACEPTADO? ¿Algún item duplica el MECANISMO de algo que el médico ya aceptó en un paso anterior (no solo el mismo nombre — el mismo mecanismo), o interactúa mal con eso?
+
+REGLAS DE JUICIO:
+- El costo NUNCA es argumento para bajar de opción. Si algo es mejor pero caro, se recomienda igual y se ofrece la sustitución como alternativa.
+- Sé PARSIMONIOSO: si el protocolo apila muchos items sobre el mismo eje, objétalo. El paciente no debe terminar con 15 pastillas.
+- No objetes por objetar: si el protocolo está bien, apruébalo. Objeción sin fundamento clínico concreto es ruido.
+- Máximo 4 objeciones, las de mayor impacto clínico.
+
+FORMATO DE SALIDA (JSON estricto, nada más):
+{"veredicto":"aprobado"}
+  — o —
+{"veredicto":"objeciones","objeciones":[{"item":"nombre del item afectado","problema":"qué está mal, en 1-2 líneas","accion":"qué hacer concretamente (reemplazar por X / eliminar / ajustar dosis a Y / agregar Z)"}]}"""
+
+
+def run_conscience_review(protocol_text: str, protocol_type: str, previous_protocols: dict,
+                          visit_id: str = "") -> list:
+    """Corre el crítico sobre el protocolo. Devuelve la lista de objeciones ([] si aprueba)."""
+    vademecum = build_vademecum_context(protocol_text)
+
+    prev_lines = []
+    for k, v in (previous_protocols or {}).items():
+        if v and str(v).strip():
+            labels = {"traditional": "CONVENCIONAL", "functional": "FUNCIONAL", "longevity": "LONGEVIDAD"}
+            prev_lines.append(f"--- Protocolo {labels.get(k, k.upper())} YA ACEPTADO por el médico ---\n{v}")
+    prev_block = "\n\n".join(prev_lines) if prev_lines else "(ninguno todavía)"
+
+    prompt = f"""PROTOCOLO A REVISAR (tipo: {protocol_type}):
+{protocol_text}
+
+TRATAMIENTOS YA ACEPTADOS POR EL MÉDICO EN PASOS ANTERIORES (revisa redundancia de MECANISMO e interacciones contra esto):
+{prev_block}
+
+{vademecum if vademecum else "(sin coincidencias en el vademécum para estos items)"}
+
+Contesta las 5 preguntas y responde SOLO con el JSON del veredicto."""
+
+    raw = call_claude(prompt, system=CONSCIENCE_SYSTEM, model=MODEL_VALIDATE, max_tokens=1500,
+                      visit_id=visit_id, step=f"conscience_{protocol_type}", temperature=0.2)
+    try:
+        cleaned = _strip_json_fences(raw)
+        start = cleaned.find("{")
+        if start < 0:
+            return []
+        verdict = json.loads(cleaned[start:])
+        if (verdict.get("veredicto") or "").lower() == "objeciones":
+            objs = verdict.get("objeciones") or []
+            return [o for o in objs if isinstance(o, dict) and o.get("problema")]
+        return []
+    except Exception as e:
+        print(f"[WARN] veredicto del crítico ilegible ({protocol_type}): {e}")
+        return []
+
+
+def apply_conscience_objections(protocol_text: str, objeciones: list, protocol_type: str,
+                                visit_id: str = "") -> str:
+    """El generador corrige el protocolo según las objeciones del crítico. Usa el mismo
+    formato de PATCH del chat (solo los items que cambian) para que sea rápido y barato."""
+    if not objeciones:
+        return protocol_text
+    obj_text = "\n".join(
+        f"{i+1}. [{o.get('item','(general)')}] {o.get('problema','')} → ACCIÓN: {o.get('accion','')}"
+        for i, o in enumerate(objeciones)
+    )
+    vademecum = build_vademecum_context(protocol_text)
+
+    system = """Eres el médico que propuso este protocolo. Un colega revisor senior lo auditó y levantó objeciones fundamentadas. Corrige el protocolo aplicando las objeciones que sean clínicamente correctas.
+
+Responde con un PATCH mínimo (solo lo que cambia) entre estas marcas exactas:
+<<<PATCH>>>
+{"ops":[ ... ]}
+<<<FIN_PATCH>>>
+
+Operaciones disponibles:
+  {"op":"replace_item","match":"texto que identifica el item actual","item":{...item nuevo COMPLETO con todos sus campos...}}
+  {"op":"add_item","item":{...item completo...}}
+  {"op":"remove_item","match":"texto que identifica el item"}
+  {"op":"update_monitoreo","field":"labs_control","value":"..."}
+
+REGLAS:
+- Al reemplazar un item incluye TODOS sus campos (tipo, nombre_generico, nombre_comercial, nivel_evidencia, alerta, presentacion, dosis, via, frecuencia, duracion, indicacion, ajuste_especial, monitoreo, reacciones_adversas, interacciones, mecanismo, cofepris, para_que_sirve), en estilo telegráfico (una línea por campo).
+- Si una objeción NO es clínicamente correcta, ignórala (no todas hay que aceptarlas).
+- Si ninguna objeción procede, responde exactamente: SIN CAMBIOS"""
+
+    prompt = f"""PROTOCOLO ACTUAL:
+{protocol_text}
+
+OBJECIONES DEL REVISOR:
+{obj_text}
+
+{vademecum}
+
+Emite el PATCH con las correcciones que procedan."""
+
+    raw = call_claude(prompt, system=system, model=MODEL_PROTOCOL, max_tokens=6000,
+                      visit_id=visit_id, step=f"conscience_fix_{protocol_type}", temperature=0.3)
+    m = re.search(r"<<<PATCH>>>\s*(\{.*?\})\s*<<<FIN_PATCH>>>", raw or "", re.DOTALL)
+    if not m:
+        return protocol_text
+    try:
+        patch = json.loads(m.group(1))
+        new_text, summary = apply_chat_patch(protocol_text, patch)
+        if summary:
+            print(f"[CONCIENCIA] {protocol_type}: {summary}")
+            return new_text
+    except Exception as e:
+        print(f"[WARN] patch de conciencia inválido ({protocol_type}): {e}")
+    return protocol_text
+
+
+def deliberate_protocol(protocol_text: str, protocol_type: str, previous_protocols: dict,
+                        visit_id: str = "") -> tuple[str, list]:
+    """Ciclo generador ↔ crítico. Devuelve (protocolo_final, objeciones_no_resueltas).
+    Si el crítico aprueba de entrada, no cuesta más que una llamada barata de Haiku."""
+    if not ENABLE_CONSCIENCE:
+        return protocol_text, []
+    current = protocol_text
+    for _ in range(CONSCIENCE_MAX_ROUNDS):
+        objeciones = run_conscience_review(current, protocol_type, previous_protocols, visit_id=visit_id)
+        if not objeciones:
+            return current, []
+        fixed = apply_conscience_objections(current, objeciones, protocol_type, visit_id=visit_id)
+        if fixed == current:
+            # El generador no aceptó las objeciones: se entrega igual, pero se reportan
+            # al médico como banderas para que él decida.
+            return current, objeciones
+        current = fixed
+    return current, []
+
+
 def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, dict, list]:
     """Arma el prompt completo de protocolo. Devuelve (prompt, previous_protocols, attachments).
     Compartido entre la ruta normal y la de streaming."""
@@ -1179,6 +1388,11 @@ async def run_protocol_stream(
             yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
         protocol = _strip_json_fences("".join(chunks))
 
+        # Voz de conciencia: el crítico reta el protocolo contra el vademécum y lo ya aceptado.
+        yield f"data: {json.dumps({'type': 'status', 'text': 'Revisión de segunda opinión…'})}\n\n"
+        protocol, banderas = deliberate_protocol(protocol, body.protocol_type, previous_protocols,
+                                                 visit_id=visit_id)
+
         if ENABLE_SECONDARY_VALIDATION:
             val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
             validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id,
@@ -1197,6 +1411,7 @@ async def run_protocol_stream(
             "visit_id": visit_id,
             "step": f"protocol_{body.protocol_type}",
             "protocol": protocol,
+            "banderas": banderas,
         }
         yield f"data: {json.dumps(final)}\n\n"
 
@@ -1215,6 +1430,10 @@ async def run_protocol(
         protocol = call_claude(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=False, web_search=_search_scope_for(body.protocol_type), attachments=attachments, temperature=0.4)
         protocol = _strip_json_fences(protocol)
 
+        # Voz de conciencia: el crítico reta el protocolo contra el vademécum y lo ya aceptado.
+        protocol, banderas = deliberate_protocol(protocol, body.protocol_type, previous_protocols,
+                                                 visit_id=visit_id)
+
         if ENABLE_SECONDARY_VALIDATION:
             val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
             validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id, step=f"validate_protocol_{body.protocol_type}")
@@ -1232,6 +1451,7 @@ async def run_protocol(
             "step": f"protocol_{body.protocol_type}",
             "protocol": protocol,
             "protocol_type": body.protocol_type,
+            "banderas": banderas,
         }
 
     except Exception as e:

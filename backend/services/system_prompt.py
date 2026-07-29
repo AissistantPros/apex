@@ -1140,6 +1140,19 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
 
 Calcula edad biológica y proyecciones de riesgo para ESTE paciente. Sé conciso — el médico tiene al paciente enfrente.
 
+ANCLA TEMPORAL — LO AGUDO MANDA SOBRE LO CRÓNICO (léelo antes de proponer nada):
+La medicina de longevidad mira a 10-20 años, pero el paciente vive HOY. Antes de proponer
+intervenciones, evalúa si hay algo agudo o descompensado sin resolver (crisis hipertensiva,
+glucosa muy alta, dolor torácico, arritmia, infección activa, descompensación metabólica franca).
+- Si HAY algo agudo/inestable: NO apiles intervenciones de longevidad encima. Di explícitamente
+  que primero hay que estabilizar y resolver lo agudo con el manejo convencional/funcional ya
+  indicado, y que las intervenciones de optimización se replantean en la siguiente visita. No
+  fuerces un protocolo que no toca en este momento.
+- Si el paciente está ESTABLE: procede con tus intervenciones de longevidad normalmente.
+- EN AMBOS CASOS, SIEMPRE entregas la evaluación: edad biológica vs. cronológica y los factores
+  concretos que están acortando su healthspan. Ese es tu valor irremplazable y no depende de que
+  haya o no intervenciones nuevas que agregar.
+
 {extra_context}
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}

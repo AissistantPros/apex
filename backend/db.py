@@ -132,3 +132,52 @@ def list_ai_call_logs(visit_id: str) -> list:
     """Lista las llamadas a la IA de una visita, en orden cronológico"""
     result = supabase.table("ai_call_logs").select("*").eq("visit_id", visit_id).order("created_at", desc=False).execute()
     return result.data if result.data else []
+
+
+# ── Vademécum (medications_db) ────────────────────────────────────────────────
+# Fuente de verdad curada para que la voz de conciencia pueda responder
+# "¿hay una mejor versión de lo que estás mandando?" con un dato duro, no con opinión.
+
+def find_medications(names: list) -> list:
+    """Busca en el vademécum las entradas cuyo nombre genérico o sinónimos coincidan
+    (substring, case-insensitive) con alguno de los nombres dados."""
+    if not names:
+        return []
+    try:
+        ors = []
+        for n in names:
+            token = str(n).replace(",", " ").strip()
+            if len(token) < 3:
+                continue
+            ors.append(f"nombre_generico.ilike.%{token}%")
+            ors.append(f"sinonimos.ilike.%{token}%")
+        if not ors:
+            return []
+        result = supabase.table("medications_db").select("*").or_(",".join(ors)).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        print(f"[WARN] find_medications falló: {e}")
+        return []
+
+
+def find_upgrades_for(names: list) -> list:
+    """Devuelve las entradas del vademécum que son una MEJOR VERSIÓN de alguno de los
+    nombres dados (campo upgrade_de). Es el corazón del chequeo '¿hay algo mejor?'."""
+    if not names:
+        return []
+    try:
+        ors = []
+        for n in names:
+            token = str(n).replace(",", " ").strip()
+            if len(token) < 3:
+                continue
+            ors.append(f"upgrade_de.ilike.%{token}%")
+        if not ors:
+            return []
+        result = supabase.table("medications_db").select(
+            "nombre_generico,upgrade_de,nota_upgrade,cofepris,nivel_evidencia,dosis_tipica,categoria"
+        ).or_(",".join(ors)).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        print(f"[WARN] find_upgrades_for falló: {e}")
+        return []
