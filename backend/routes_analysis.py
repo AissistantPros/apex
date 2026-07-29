@@ -29,11 +29,16 @@ from services.system_prompt import (
 router = APIRouter(prefix="/analyze", tags=["analysis"])
 client = Anthropic()
 
-# Modelos por tarea (costo vs calidad)
-MODEL_DIAGNOSE  = "claude-opus-4-8"    # diagnóstico final, protocolos — máxima profundidad de razonamiento
+# Modelos por tarea (costo vs calidad) — estrategia tiered para controlar $ y latencia.
+MODEL_DIAGNOSE  = "claude-opus-4-8"    # diagnóstico final — máxima profundidad de razonamiento (calidad crítica)
+MODEL_PROTOCOL  = "claude-sonnet-4-6"  # protocolos/tratamiento — Sonnet: buena calidad, mucho más barato y rápido
+MODEL_EXTRACT   = "claude-sonnet-4-6"  # transcripción de estudios — no necesita Opus
 MODEL_DRAFT     = "claude-sonnet-4-6"  # borrador ligero — tarea estructuralmente simple, prioriza velocidad
 MODEL_VALIDATE  = "claude-haiku-4-5"
 MODEL_CHAT      = "claude-haiku-4-5"
+# Tope de búsquedas web por llamada: sin esto el modelo re-procesa TODO el contexto en cada ronda
+# de búsqueda, disparando costo y latencia. 3 basta para verificar sin volverse caro/lento.
+WEB_SEARCH_MAX_USES = 3
 
 # Dominios oficiales permitidos para la herramienta de búsqueda web — todas fuentes
 # gratuitas, sin licencia, mantenidas por agencias/organismos reconocidos. Nada de
@@ -72,11 +77,13 @@ WEB_SEARCH_TOOLS = {
         "type": "web_search_20260209",
         "name": "web_search",
         "allowed_domains": ALLOWED_MEDICAL_DOMAINS,
+        "max_uses": WEB_SEARCH_MAX_USES,
     },
     "mx": {
         "type": "web_search_20260209",
         "name": "web_search",
         "allowed_domains": ALLOWED_MEDICAL_DOMAINS + ALLOWED_MEXICO_MEDICAL_DOMAINS,
+        "max_uses": WEB_SEARCH_MAX_USES,
     },
 }
 
@@ -537,7 +544,7 @@ def extract_labs_data(visit: dict, visit_id: str = "") -> str:
             truly_skipped[nm] = s
     if truly_skipped:
         prompt += "\n\n(Archivos que no se pudieron leer, ignóralos: " + "; ".join(truly_skipped.values()) + ")"
-    text = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=8000,
+    text = call_claude(prompt, model=MODEL_EXTRACT, max_tokens=8000,
                        visit_id=visit_id, step="extract_labs", attachments=blocks)
     text = (text or "").strip()
     if not text or text.upper().startswith("SIN DATOS LEGIBLES"):
@@ -1153,8 +1160,8 @@ async def run_protocol_stream(
 
     def event_stream():
         chunks = []
-        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, max_tokens=20000, visit_id=visit_id,
-                                         step=f"protocol_{body.protocol_type}", thinking=True,
+        for delta in call_claude_stream(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id,
+                                         step=f"protocol_{body.protocol_type}", thinking=False,
                                          web_search=_search_scope_for(body.protocol_type),
                                          attachments=attachments):
             chunks.append(delta)
@@ -1194,7 +1201,7 @@ async def run_protocol(
     """Genera el protocolo. Se mantiene como fallback no-streaming."""
     try:
         prompt, previous_protocols, attachments = _build_protocol_prompt(visit_id, body)
-        protocol = call_claude(prompt, model=MODEL_DIAGNOSE, max_tokens=20000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=True, web_search=_search_scope_for(body.protocol_type), attachments=attachments)
+        protocol = call_claude(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=False, web_search=_search_scope_for(body.protocol_type), attachments=attachments)
         protocol = _strip_json_fences(protocol)
 
         if ENABLE_SECONDARY_VALIDATION:
