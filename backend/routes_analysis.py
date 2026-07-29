@@ -1239,6 +1239,138 @@ async def run_protocol(
         raise HTTPException(500, str(e))
 
 
+def _match_index(items: list, match_expr: str, key_field: str) -> int:
+    """Resuelve "nombre X contiene 'Y'" o simplemente 'Y' contra la lista, devolviendo el índice
+    o -1. Match case-insensitive por substring en el campo indicado (o en cualquier string del item
+    si no coincide). Diseñado para tolerar cómo escribe el LLM el match."""
+    if not isinstance(items, list) or not match_expr:
+        return -1
+    expr = str(match_expr).lower()
+    # Extrae el término entre comillas si viene como "nombre contiene 'X'"
+    q = re.search(r"['\"]([^'\"]+)['\"]", expr)
+    needle = (q.group(1) if q else expr).lower().strip()
+    if not needle:
+        return -1
+    for i, it in enumerate(items):
+        if not isinstance(it, dict):
+            continue
+        target = str(it.get(key_field, "")).lower()
+        if needle in target:
+            return i
+        # Fallback: buscar en cualquier string del item
+        if any(needle in str(v).lower() for v in it.values() if isinstance(v, (str, int, float))):
+            return i
+    return -1
+
+
+def apply_chat_patch(current_report: str, patch: dict) -> tuple[str, str]:
+    """Aplica un patch del chat sobre el reporte actual. Devuelve (nuevo_reporte, resumen_ops).
+    Si el patch es inaplicable, devuelve (current_report, "") y el llamador debe caer al fallback."""
+    kind = (patch or {}).get("kind", "")
+    ops = (patch or {}).get("ops", [])
+    if not ops:
+        return current_report, ""
+
+    # Intentar parsear el reporte como JSON (protocolo y diagnóstico tradicional son JSON).
+    # El reporte puede venir como JSON puro o con una línea de metadata al inicio
+    # ({"confidence": 90}\n{...reporte...}). Intento varias estrategias.
+    parsed = None
+    stripped = current_report.strip()
+    for candidate in [
+        stripped,                                                     # JSON puro
+        stripped[stripped.find("\n") + 1:] if "\n" in stripped else "",  # después de la 1ª línea
+    ]:
+        candidate = candidate.strip()
+        if candidate.startswith("{"):
+            try:
+                parsed = json.loads(candidate)
+                break
+            except Exception:
+                continue
+    # Último recurso: buscar la última llave abierta que pueda iniciar el reporte principal.
+    if parsed is None and stripped.startswith("{"):
+        # Encontrar el inicio del segundo objeto de nivel superior (skip header {})
+        depth, header_end = 0, -1
+        for i, ch in enumerate(stripped):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    header_end = i + 1
+                    break
+        if header_end > 0:
+            try:
+                parsed = json.loads(stripped[header_end:].strip())
+            except Exception:
+                parsed = None
+
+    applied = []
+
+    if parsed is not None and "items" in parsed:  # PROTOCOLO
+        items = parsed.setdefault("items", [])
+        for op in ops:
+            action = (op.get("op") or "").lower()
+            if action == "replace_item":
+                idx = _match_index(items, op.get("match", ""), "nombre_generico")
+                if idx >= 0 and isinstance(op.get("item"), dict):
+                    items[idx] = op["item"]; applied.append(f"reemplazado #{idx+1}")
+            elif action == "add_item" and isinstance(op.get("item"), dict):
+                items.append(op["item"]); applied.append("item agregado")
+            elif action == "remove_item":
+                idx = _match_index(items, op.get("match", ""), "nombre_generico")
+                if idx >= 0:
+                    items.pop(idx); applied.append(f"eliminado #{idx+1}")
+            elif action == "update_monitoreo":
+                mg = parsed.setdefault("monitoreo_general", {})
+                field, value = op.get("field"), op.get("value")
+                if field:
+                    mg[field] = value; applied.append(f"monitoreo.{field} actualizado")
+        return (json.dumps(parsed, ensure_ascii=False), "; ".join(applied)) if applied else (current_report, "")
+
+    if parsed is not None and "diagnosticos" in parsed:  # DIAGNÓSTICO CONVENCIONAL
+        diags = parsed.setdefault("diagnosticos", [])
+        alertas = parsed.setdefault("alertas_clinicas", [])
+        for op in ops:
+            action = (op.get("op") or "").lower()
+            if action == "replace_diagnostico":
+                idx = _match_index(diags, op.get("match", ""), "nombre")
+                if idx >= 0 and isinstance(op.get("diagnostico"), dict):
+                    diags[idx] = op["diagnostico"]; applied.append(f"dx reemplazado #{idx+1}")
+            elif action == "add_diagnostico" and isinstance(op.get("diagnostico"), dict):
+                diags.append(op["diagnostico"]); applied.append("dx agregado")
+            elif action == "remove_diagnostico":
+                idx = _match_index(diags, op.get("match", ""), "nombre")
+                if idx >= 0:
+                    diags.pop(idx); applied.append(f"dx eliminado #{idx+1}")
+            elif action == "add_alerta" and op.get("value"):
+                alertas.append(op["value"]); applied.append("alerta agregada")
+        return (json.dumps(parsed, ensure_ascii=False), "; ".join(applied)) if applied else (current_report, "")
+
+    # DIAGNÓSTICO FUNCIONAL/LONGEVIDAD (texto con secciones ═══)
+    new_text = current_report
+    for op in ops:
+        action = (op.get("op") or "").lower()
+        section = op.get("section", "").strip()
+        body = op.get("body", "")
+        if not section:
+            continue
+        # Busca la sección; siguiente sección o fin de texto marca el límite.
+        pattern = re.escape(section) + r"\s*\n(.*?)(?=\n═══|\Z)"
+        m = re.search(pattern, new_text, re.DOTALL)
+        if not m:
+            continue
+        if action == "replace_section":
+            new_text = new_text[:m.start(1)] + body.rstrip() + "\n" + new_text[m.end(1):]
+            applied.append(f"sección '{section[:30]}...' reemplazada")
+        elif action == "append_to_section":
+            current_body = m.group(1).rstrip()
+            new_body = current_body + "\n" + body.strip() + "\n"
+            new_text = new_text[:m.start(1)] + new_body + new_text[m.end(1):]
+            applied.append(f"sección '{section[:30]}...' extendida")
+    return (new_text, "; ".join(applied)) if applied else (current_report, "")
+
+
 @router.post("/{visit_id}/{step}/chat")
 async def chat_step(
     visit_id: str,
@@ -1294,37 +1426,71 @@ REGLAS:
 - Tono: colega médico, directo, técnico pero amable.
 - Este chat es continuo — tienes el historial completo de la conversación.
 
-EDICIÓN DEL REPORTE (puedes reescribir el reporte que el médico ve en pantalla):
-- Cuando el médico CONFIRME aplicar un cambio al reporte (dice "editalo", "aplícalo", "cámbialo",
-  "hazlo", "sí, cambia X por Y", etc.), primero da UNA línea de confirmación y luego incluye el
-  REPORTE COMPLETO ACTUALIZADO entre estas marcas EXACTAS (en su propia línea cada una):
-<<<REPORTE_ACTUALIZADO>>>
-(aquí va el reporte COMPLETO del paso actual, en EXACTAMENTE el mismo formato que "TEXTO ACTUAL DE ..." de arriba —si es JSON, JSON válido con las mismas keys; si son secciones ═══, las mismas secciones— con el cambio aplicado y TODO lo demás IDÉNTICO. No omitas items, campos ni secciones. No agregues texto explicativo dentro del bloque.)
-<<<FIN_REPORTE>>>
-- Incluye ese bloque SOLO cuando el médico realmente confirmó aplicar un cambio. Para preguntas,
-  dudas, discusión o propuestas no confirmadas, NO lo incluyas (solo responde en texto normal)."""
+EDICIÓN DEL REPORTE — USA PATCHES PEQUEÑOS, NO REESCRIBAS EL REPORTE COMPLETO:
+Cuando el médico CONFIRME aplicar un cambio ("editalo", "aplícalo", "sí, cambia X por Y", etc.),
+primero da UNA línea de confirmación y luego un PATCH pequeño entre marcas — SOLO la parte que
+cambia. Prohibido reescribir el reporte completo (es lento y caro).
+
+Formato del patch (JSON) entre estas marcas EXACTAS, cada una en su propia línea:
+<<<PATCH>>>
+{{"kind":"protocol_ops","ops":[ ... ]}}
+<<<FIN_PATCH>>>
+
+TIPOS DE OPERACIÓN (elige las mínimas para el cambio pedido):
+
+Para PROTOCOLO (JSON con items[] y monitoreo_general{{}}):
+  {{"op":"replace_item","match":"nombre_generico contiene 'Vitamina D3'","item":{{...item nuevo COMPLETO con todos los campos...}}}}
+  {{"op":"add_item","item":{{...item nuevo completo...}}}}
+  {{"op":"remove_item","match":"nombre_generico contiene 'X'"}}
+  {{"op":"update_monitoreo","field":"labs_control","value":"..."}}
+
+Para DIAGNÓSTICO CONVENCIONAL (JSON con diagnosticos[] y alertas_clinicas[]):
+  {{"op":"replace_diagnostico","match":"nombre contiene 'X'","diagnostico":{{...completo...}}}}
+  {{"op":"add_diagnostico","diagnostico":{{...}}}}
+  {{"op":"remove_diagnostico","match":"nombre contiene 'X'"}}
+  {{"op":"add_alerta","value":"..."}}
+
+Para FUNCIONAL/LONGEVIDAD (texto con secciones ═══):
+  {{"op":"replace_section","section":"═══ RAÍZ DEL PROBLEMA ═══","body":"...nuevo cuerpo de la sección..."}}
+  {{"op":"append_to_section","section":"═══ FACTORES PERPETUANTES ═══","body":"• nueva línea..."}}
+
+REGLAS:
+- "match" es una descripción en lenguaje natural del item a modificar; el sistema lo resolverá contra el reporte actual buscando por contenido.
+- Al reemplazar un item, incluye TODOS los campos del item nuevo (no omitas presentacion, dosis, etc.), no un diff parcial dentro del item.
+- Emite el patch SOLO cuando el médico realmente confirmó aplicar un cambio. Para preguntas, dudas o propuestas no confirmadas, NO lo incluyas."""
 
         history.append({"role": "user", "content": body.question})
 
-        # Sonnet (no Haiku): puede reproducir el reporte completo con fidelidad cuando el médico
-        # confirma una edición. max_tokens alto es un techo — el Q&A normal para mucho antes.
+        # Sonnet + patches pequeños: el chat NO regenera el reporte completo, solo emite un patch
+        # con las operaciones mínimas del cambio. Sube muy rápido, cuesta poco.
         response = client.messages.create(
             model=MODEL_DRAFT,
-            max_tokens=16000,
+            max_tokens=4000,
             system=system,
             messages=history,
         )
         answer_full = next((b.text for b in response.content if b.type == "text"), "")
 
-        # ¿El médico confirmó una edición? Extrae el reporte actualizado del bloque marcado.
+        # ¿El chat propuso un patch? Extráelo, aplícalo sobre el reporte actual y devuelve
+        # solo el resultado final al frontend.
         updated_report = None
         answer = answer_full
-        m = re.search(r"<<<REPORTE_ACTUALIZADO>>>\s*(.*?)\s*<<<FIN_REPORTE>>>", answer_full, re.DOTALL)
+        m = re.search(r"<<<PATCH>>>\s*(\{.*?\})\s*<<<FIN_PATCH>>>", answer_full, re.DOTALL)
         if m:
-            updated_report = m.group(1).strip()
-            answer = (answer_full[:m.start()] + answer_full[m.end():]).strip()
-            if not answer:
-                answer = "✓ Reporte actualizado en pantalla."
+            try:
+                patch = json.loads(m.group(1))
+                new_report, summary = apply_chat_patch(diagnosis_block, patch)
+                if summary:
+                    updated_report = new_report
+                # Limpiar el texto conversacional del bloque de patch
+                answer = (answer_full[:m.start()] + answer_full[m.end():]).strip()
+                if not answer:
+                    answer = f"✓ {summary}" if summary else "✓ Cambio aplicado."
+                elif summary and "✓" not in answer:
+                    answer = f"{answer}\n\n✓ {summary}"
+            except json.JSONDecodeError as e:
+                print(f"[WARN] Patch inválido del chat: {e}")
+                # No aplicamos; el texto conversacional se muestra tal cual.
 
         # En el historial guardamos solo la parte conversacional (sin el bloque pesado del reporte),
         # para no re-alimentar el JSON completo en cada turno siguiente.
