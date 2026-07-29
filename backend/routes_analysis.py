@@ -1148,19 +1148,43 @@ def build_vademecum_context(protocol_text: str) -> str:
     upgrades = find_upgrades_for(names)
     known = find_medications(names)
 
-    blocks = []
+    if not upgrades and not known:
+        return ""
+
+    # ENCUADRE ANTI-ANCLAJE: sin esto, el modelo trata el vademécum como un menú del que
+    # tiene que escoger (y como es una lista corta, EMPOBRECE la recomendación en vez de
+    # mejorarla). Es material de verificación, no un catálogo de opciones.
+    blocks = [
+        "══ VADEMÉCUM DE REFERENCIA (material de VERIFICACIÓN, NO es un menú) ══\n"
+        "CÓMO USAR ESTE BLOQUE — léelo antes de sacar conclusiones:\n"
+        "• Esta lista NO es el universo de opciones disponibles. Es un extracto pequeño y "
+        "curado que solo sirve para CONTRASTAR lo que ya se recomendó.\n"
+        "• NO conviertas lo que aparece aquí en una instrucción. Que un fármaco figure en "
+        "esta lista NO significa que haya que usarlo, ni que sea mejor para ESTE paciente.\n"
+        "• Si la mejor opción para este caso NO está en esta lista, esa sigue siendo la mejor "
+        "opción. La ausencia aquí no es un argumento en contra de nada.\n"
+        "• NUNCA objetes un item correcto solo porque el vademécum menciona una alternativa. "
+        "Un cambio solo se justifica si es mejor PARA ESTE PACIENTE, con su cuadro, sus "
+        "comorbilidades, su severidad y su tratamiento actual."
+    ]
+
     if upgrades:
         lines = []
         for u in upgrades:
             lines.append(
-                f"• En vez de «{u.get('upgrade_de')}» existe «{u.get('nombre_generico')}» "
-                f"(evidencia: {u.get('nivel_evidencia')}, COFEPRIS: {u.get('cofepris')}). "
-                f"{u.get('nota_upgrade') or ''}"
+                f"• Para «{u.get('upgrade_de')}» existe documentada la alternativa "
+                f"«{u.get('nombre_generico')}» (evidencia: {u.get('nivel_evidencia')}, "
+                f"COFEPRIS: {u.get('cofepris')}). {u.get('nota_upgrade') or ''}"
             )
         blocks.append(
-            "MEJORES VERSIONES DISPONIBLES (vademécum curado — el protocolo usa algo que "
-            "tiene una opción superior documentada):\n" + "\n".join(lines)
+            "ALTERNATIVAS DOCUMENTADAS PARA LO QUE YA SE RECOMENDÓ (candidatas a EVALUAR, "
+            "no cambios a aplicar):\n" + "\n".join(lines)
+            + "\nEVALÚA cada una contra ESTE paciente antes de opinar: ¿le aporta algo real?, "
+            "¿está disponible?, ¿su nivel de evidencia y aprobación es mejor o peor que lo "
+            "actual?, ¿alguna contraindicación del caso lo impide? Si tras evaluarlo lo "
+            "actual sigue siendo lo correcto, NO lo objetes."
         )
+
     if known:
         lines = []
         for m in known:
@@ -1176,7 +1200,10 @@ def build_vademecum_context(protocol_text: str) -> str:
             if m.get("notas"):
                 bits.append(f"nota: {m['notas']}")
             lines.append("• " + " — ".join(bits))
-        blocks.append("FICHAS DEL VADEMÉCUM para los items usados:\n" + "\n".join(lines))
+        blocks.append(
+            "FICHAS DE LOS ITEMS QUE EL PROTOCOLO YA USA (para verificar dosis, "
+            "contraindicaciones e interacciones — no para sustituirlos):\n" + "\n".join(lines)
+        )
     return "\n\n".join(blocks)
 
 
@@ -1194,6 +1221,7 @@ LAS 6 PREGUNTAS QUE DEBES CONTESTAR SOBRE EL PROTOCOLO:
 
 REGLAS DE JUICIO:
 A. NO propongas un "upgrade" que esté PEOR posicionado que lo actual en disponibilidad o evidencia. Si lo que ya se recomienda está aprobado por COFEPRIS y tiene evidencia alta, y la alternativa del vademécum aparece como "desconocido"/"no_aprobado" o con evidencia solo moderada/preliminar, entonces lo actual ES la elección correcta: NO lo objetes. Solo vale la pena mencionar la alternativa emergente si el caso lo justifica clínicamente de forma clara.
+A2. EL VADEMÉCUM ES REFERENCIA, NO UN MENÚ. Es una lista corta y parcial: NO es el universo de opciones. Nunca objetes un item correcto solo porque el vademécum menciona una alternativa, y nunca empujes a usar algo únicamente porque aparece ahí. Tu conocimiento médico completo sigue mandando; el vademécum solo aporta datos duros para contrastar. Si la mejor opción para el paciente no figura en la lista, eso no la descalifica en absoluto.
 B. El costo NUNCA es argumento para bajar de opción. Si algo es mejor pero caro, se recomienda igual y se ofrece la sustitución como alternativa (con justificación médica, no económica).
 C. Sé PARSIMONIOSO: si el protocolo apila varios items sobre el mismo eje, objétalo. El paciente no debe terminar con 15 pastillas.
 D. No objetes por objetar: si el protocolo está bien, apruébalo. Una objeción sin fundamento clínico concreto es ruido que le cuesta tiempo al médico.
@@ -1271,7 +1299,8 @@ Operaciones disponibles:
 
 REGLAS:
 - Al reemplazar un item incluye TODOS sus campos (tipo, nombre_generico, nombre_comercial, nivel_evidencia, alerta, presentacion, dosis, via, frecuencia, duracion, indicacion, ajuste_especial, monitoreo, reacciones_adversas, interacciones, mecanismo, cofepris, para_que_sirve), en estilo telegráfico (una línea por campo).
-- Si una objeción NO es clínicamente correcta, ignórala (no todas hay que aceptarlas).
+- Si una objeción NO es clínicamente correcta, ignórala (no todas hay que aceptarlas). Defender una decisión bien fundamentada es tan válido como corregirla.
+- EL VADEMÉCUM ES REFERENCIA, NO UN MENÚ: no cambies un item por otro solo porque aparece en esa lista. Cambia únicamente si es mejor PARA ESTE PACIENTE en concreto.
 - Si ninguna objeción procede, responde exactamente: SIN CAMBIOS"""
 
     prompt = f"""PROTOCOLO ACTUAL:
