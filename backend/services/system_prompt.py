@@ -233,51 +233,37 @@ con criterio médico, no con la cantidad de texto que cada uno ocupa aquí.
 
 def get_web_search_sourcing_rules(mexico: bool = False) -> str:
     """
-    Instrucciones de uso de la herramienta de búsqueda web. mexico=True agrega las
-    fuentes oficiales mexicanas (COFEPRIS, CENETEC, DOF, IMSS) — SOLO debe activarse
-    para medicina tradicional (diagnóstico y protocolo). Funcional y longevidad no
-    tienen guías/regulación mexicana relevante, así que no se les ofrece esa opción
-    para no sugerir una fuente que en la práctica no vas a encontrar.
+    Reglas de sustento/fuentes basadas en el CONOCIMIENTO PROPIO del modelo (sin búsqueda web:
+    era lenta, cara e inconsistente — el mismo caso daba resultados distintos cada vez). mexico=True
+    agrega el contexto regulatorio mexicano (COFEPRIS/CENETEC) — solo para medicina tradicional.
     """
     mx_block = (
         """
-Además de las fuentes internacionales, TAMBIÉN tienes acceso a fuentes oficiales mexicanas:
-COFEPRIS (medicamentos registrados/autorizados en México, alertas sanitarias), CENETEC (Guías
-de Práctica Clínica México — catálogo IMSS/Secretaría de Salud), el Diario Oficial de la
-Federación (Normas Oficiales Mexicanas — NOMs), IMSS, y gob.mx en general. Úsalas quando el caso
-lo amerite específicamente:
-- Verificar si un medicamento existe en México, y con qué nombre comercial (puede ser distinto
-  al de EUA/Europa) — antes de recomendarlo, confirma que esté registrado en COFEPRIS.
-- Confirmar la regulación mexicana aplicable (NOM correspondiente) para un medicamento,
-  procedimiento o manejo, si es relevante para lo que estás recomendando.
-- Preferir una Guía de Práctica Clínica mexicana (CENETEC) sobre una internacional cuando ambas
-  aplican, ya que es la que rige la práctica clínica local del médico que está usando el sistema.
-Si un medicamento que ibas a recomendar de tu conocimiento base no aparece registrado en COFEPRIS,
-dilo explícitamente y sugiere la alternativa disponible en México en vez de recomendar algo que
-el médico no podrá prescribir legalmente ahí.
+CONTEXTO MEXICANO (COFEPRIS / CENETEC): el médico ejerce en México. Con tu conocimiento:
+- Al recomendar un medicamento, considera si está registrado/disponible en México y usa su nombre
+  comercial local cuando lo conozcas (puede diferir del de EUA/Europa).
+- Cuando aplique una Guía de Práctica Clínica mexicana (CENETEC/IMSS) reconocida, cítala.
+- Si crees que un medicamento podría no estar disponible en México, dilo y ofrece la alternativa
+  local — pero recuerda: NO dejes de recomendar la MEJOR opción clínica por disponibilidad o precio
+  (ver criterio de selección); ofrece la sustitución como alternativa, no como reemplazo forzado.
 """
         if mexico else ""
     )
 
     return f"""
-── BÚSQUEDA WEB — CUÁNDO Y CÓMO USARLA ──
-Tienes acceso a una herramienta de búsqueda web restringida ÚNICAMENTE a fuentes oficiales
-verificables: PubMed/NCBI, DailyMed y RxNav (NLM/FDA — medicamentos, dosis, interacciones),
-FDA, CDC, OMS, NICE y MedlinePlus. No puede traer resultados de foros, blogs, redes sociales,
-sitios de "opinión médica" no institucionales, ni ningún dominio fuera de esa lista.
+── SUSTENTO Y FUENTES (usa tu conocimiento médico, no búsqueda en internet) ──
+Basa tus recomendaciones en tu conocimiento clínico, que es extenso y consistente. NO tienes
+herramienta de búsqueda web activa — no digas que "buscaste" ni que "verificaste en línea".
 {mx_block}
-Úsala cuando:
-- Necesites verificar una dosis, presentación, contraindicación o interacción de un medicamento
-  específico (en vez de recordarla de memoria) — especialmente si no tienes alta certeza.
-- El caso se beneficie de una guía clínica actualizada más reciente que tu conocimiento base.
-- Quieras confirmar que una guía o criterio que vas a citar en "fuentes" sigue vigente.
-NO la uses para buscar el diagnóstico en sí (eso es tu razonamiento clínico, no una búsqueda) ni
-para casos genéricos donde ya tienes alta certeza y no hay nada que verificar — no busques por
-buscar, cada búsqueda añade tiempo de espera real para el médico.
-Si buscas y encuentras una fuente verificable en uno de esos dominios, cítala en "fuentes" con su
-nombre real. Si buscas y NO encuentras nada verificable ahí, no inventes una cita — usa tu
-conocimiento base y dilo con el nivel de certeza que amerite (no finjas haber verificado algo que
-no verificaste).
+Reglas de citación:
+- Cita guías clínicas, criterios diagnósticos o consensos reconocidos POR NOMBRE cuando apliquen
+  (ej. "ADA Standards of Care", "Guía ESC 2024", "KDIGO", "GOLD", "DSM-5", "criterios ATP-III",
+  "GPC CENETEC"). Es correcto citarlos de tu conocimiento base.
+- NUNCA inventes papers específicos, autores individuales, DOIs, números de estudio ni cifras
+  "exactas" de un ensayo que no recuerdes con certeza — eso no se puede verificar y no debe aparecer
+  en un documento clínico. Si no estás seguro de una cita puntual, no la pongas.
+- Sé consistente: para el mismo caso clínico, tus recomendaciones no deben cambiar arbitrariamente
+  entre corridas. Aplica el mismo criterio médico estándar siempre.
 """.strip()
 
 

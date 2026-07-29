@@ -36,9 +36,12 @@ MODEL_EXTRACT   = "claude-sonnet-4-6"  # transcripción de estudios — no neces
 MODEL_DRAFT     = "claude-sonnet-4-6"  # borrador ligero — tarea estructuralmente simple, prioriza velocidad
 MODEL_VALIDATE  = "claude-haiku-4-5"
 MODEL_CHAT      = "claude-haiku-4-5"
-# Tope de búsquedas web por llamada: sin esto el modelo re-procesa TODO el contexto en cada ronda
-# de búsqueda, disparando costo y latencia. 3 basta para verificar sin volverse caro/lento.
+# Tope de búsquedas web por llamada (cuando esté habilitada).
 WEB_SEARCH_MAX_USES = 3
+# Búsqueda web DESACTIVADA: era la causa de que el protocolo tardara 8 min y de que el MISMO caso
+# diera recomendaciones distintas cada vez (resultados de internet variables). El conocimiento
+# propio del modelo es extenso y consistente. Se reemplazará por un RAG sobre PDFs médicos fijos.
+ENABLE_WEB_SEARCH = False
 
 # Dominios oficiales permitidos para la herramienta de búsqueda web — todas fuentes
 # gratuitas, sin licencia, mantenidas por agencias/organismos reconocidos. Nada de
@@ -416,9 +419,11 @@ def _visit_file_blocks(visit: dict) -> list:
 
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                  visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
-                 attachments: list = None) -> str:
+                 attachments: list = None, temperature: float = None) -> str:
     """web_search: "" (sin búsqueda), "global" (fuentes internacionales) o "mx"
     (internacionales + mexicanas — solo medicina tradicional)."""
+    if not ENABLE_WEB_SEARCH:
+        web_search = ""
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
     kwargs = {
         "model": model,
@@ -429,6 +434,8 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
         kwargs["system"] = system
     if thinking:
         kwargs["thinking"] = {"type": "adaptive"}
+    elif temperature is not None:
+        kwargs["temperature"] = temperature   # temperature no es compatible con thinking
     if web_search:
         kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
     start = time.monotonic()
@@ -457,7 +464,7 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
 
 def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                         visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
-                        attachments: list = None):
+                        attachments: list = None, temperature: float = None):
     """
     Igual que call_claude, pero yield-ea el texto de la respuesta en deltas conforme
     llegan (para mostrarlo en vivo al médico en vez de una espera ciega). text_stream
@@ -465,6 +472,8 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
     Al agotarse el generador, ya se guardó el log en ai_call_logs con el texto completo.
     web_search: "" / "global" / "mx" — ver call_claude().
     """
+    if not ENABLE_WEB_SEARCH:
+        web_search = ""
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
     kwargs = {
         "model": model,
@@ -473,6 +482,8 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
     }
     if thinking:
         kwargs["thinking"] = {"type": "adaptive"}
+    elif temperature is not None:
+        kwargs["temperature"] = temperature   # temperature no es compatible con thinking
     if web_search:
         kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
     start = time.monotonic()
@@ -1163,7 +1174,7 @@ async def run_protocol_stream(
         for delta in call_claude_stream(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id,
                                          step=f"protocol_{body.protocol_type}", thinking=False,
                                          web_search=_search_scope_for(body.protocol_type),
-                                         attachments=attachments):
+                                         attachments=attachments, temperature=0.4):
             chunks.append(delta)
             yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
         protocol = _strip_json_fences("".join(chunks))
@@ -1201,7 +1212,7 @@ async def run_protocol(
     """Genera el protocolo. Se mantiene como fallback no-streaming."""
     try:
         prompt, previous_protocols, attachments = _build_protocol_prompt(visit_id, body)
-        protocol = call_claude(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=False, web_search=_search_scope_for(body.protocol_type), attachments=attachments)
+        protocol = call_claude(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=False, web_search=_search_scope_for(body.protocol_type), attachments=attachments, temperature=0.4)
         protocol = _strip_json_fences(protocol)
 
         if ENABLE_SECONDARY_VALIDATION:
