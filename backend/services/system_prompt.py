@@ -858,6 +858,10 @@ REGLAS ESTRICTAS:
 - Las preguntas deben apuntar a posibles causas raíz del diagnóstico confirmado, no preguntas genéricas
 - Solo preguntas sobre síntomas, sensaciones, hábitos o historia que el paciente puede responder verbalmente
 - NO preguntes por laboratorios o estudios — eso se sugiere después, como estudios a solicitar
+- FORMATO — MUY IMPORTANTE: las preguntas las lee el MÉDICO en pantalla y él se las hace al paciente.
+  Redáctalas en TERCERA persona desde la perspectiva del médico:
+  ✓ Correcto: "¿A qué hora hace el paciente su última comida del día y qué tipo de alimento consume?"
+  ✗ Incorrecto: "¿A qué hora comes tu última comida?" (tú directo al paciente — PROHIBIDO)
 - CAMPOS VACÍOS: si un campo aparece como N/D, "No refiere", "No especificado" o vacío, ese dato ya
   estaba en el cuestionario y quien lo llenó lo dejó en blanco a propósito — NO lo vuelvas a preguntar.
   Pregunta solo por matices que el cuestionario genuinamente no cubre.
