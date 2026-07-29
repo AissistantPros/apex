@@ -15,6 +15,8 @@ from db import (
     insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient,
     insert_ai_call_log, list_ai_call_logs, list_patient_visits,
     find_medications, find_upgrades_for,
+    save_doctor_preference, get_doctor_preferences, deactivate_doctor_preference,
+    log_prescriptions, get_prescription_stats,
 )
 
 from services.system_prompt import (
@@ -639,6 +641,114 @@ def extract_structured_header(raw_text: str) -> tuple[dict, str]:
         except Exception:
             pass
     return metadata, text
+
+
+class PreferenceRequest(BaseModel):
+    tipo: str = "sustituir"      # sustituir | preferir | evitar | agregar_siempre
+    cuando: str = ""             # contexto donde aplica
+    de_item: str = ""
+    a_item: str = ""
+    nota: str = ""
+    origen: str = "chat"
+
+
+class PracticeLogRequest(BaseModel):
+    protocol_type: str = ""
+    diagnostico_contexto: str = ""
+    ai_protocol: str = ""        # lo que propuso la IA
+    doctor_protocol: str = ""    # lo que el médico dejó tras editar/aceptar
+
+
+@router.get("/preferences/list")
+async def list_preferences(doctor_id: str = Depends(get_doctor_id)):
+    """Preferencias activas del médico (para mostrarlas y poder desactivarlas)."""
+    return {"preferences": get_doctor_preferences(doctor_id)}
+
+
+@router.post("/preferences")
+async def create_preference(body: PreferenceRequest, doctor_id: str = Depends(get_doctor_id)):
+    """Guarda una preferencia que el médico pidió recordar para casos futuros."""
+    pref = {
+        "doctor_id": doctor_id,
+        "tipo": body.tipo,
+        "cuando": body.cuando or None,
+        "de_item": body.de_item or None,
+        "a_item": body.a_item or None,
+        "nota": body.nota or None,
+        "origen": body.origen or "chat",
+    }
+    saved = save_doctor_preference(pref)
+    if not saved:
+        raise HTTPException(500, "No se pudo guardar la preferencia")
+    return {"ok": True, "preference": saved}
+
+
+@router.delete("/preferences/{pref_id}")
+async def delete_preference(pref_id: str, doctor_id: str = Depends(get_doctor_id)):
+    """Desactiva una preferencia (el médico cambió de opinión)."""
+    return {"ok": deactivate_doctor_preference(pref_id)}
+
+
+def _age_range(patient: dict) -> str:
+    """Rango de edad (no la fecha) — clínicamente útil sin identificar al paciente."""
+    dob = (patient or {}).get("date_of_birth") or (patient or {}).get("birth_date")
+    if not dob:
+        return ""
+    try:
+        from datetime import date as _d
+        born = _d.fromisoformat(str(dob)[:10])
+        age = (_d.today() - born).days // 365
+        low = (age // 10) * 10
+        return f"{low}-{low+9}"
+    except Exception:
+        return ""
+
+
+@router.post("/{visit_id}/log_practice")
+async def log_practice(visit_id: str, body: PracticeLogRequest,
+                       doctor_id: str = Depends(get_doctor_id)):
+    """Registra qué aceptó, agregó o quitó el médico respecto de lo que propuso la IA.
+    PRIVACIDAD: no se guarda ningún identificador del paciente — solo el contexto clínico
+    y el tratamiento, más demografía gruesa (sexo y rango de edad)."""
+    ai_items = {}
+    for it in (parse_protocol_json_safe(body.ai_protocol) or {}).get("items", []):
+        if isinstance(it, dict) and it.get("nombre_generico"):
+            ai_items[it["nombre_generico"].strip().lower()] = it
+    doc_items = {}
+    for it in (parse_protocol_json_safe(body.doctor_protocol) or {}).get("items", []):
+        if isinstance(it, dict) and it.get("nombre_generico"):
+            doc_items[it["nombre_generico"].strip().lower()] = it
+
+    if not ai_items and not doc_items:
+        return {"ok": True, "registrados": 0}
+
+    analysis = get_analysis(visit_id) or {}
+    patient_id = analysis.get("patient_id")
+    patient = get_patient(patient_id) if patient_id else {}
+    sexo = (patient or {}).get("sexo_biologico") or (patient or {}).get("sex") or ""
+    rango = _age_range(patient)
+
+    def row(item: dict, accion: str) -> dict:
+        return {
+            "doctor_id": doctor_id,
+            "visit_id": visit_id,
+            "protocolo_tipo": body.protocol_type or None,
+            "diagnostico_contexto": (body.diagnostico_contexto or "")[:400] or None,
+            "item_nombre": item.get("nombre_generico"),
+            "item_tipo": item.get("tipo"),
+            "accion": accion,
+            "sexo": sexo or None,
+            "rango_edad": rango or None,
+        }
+
+    rows = []
+    for k, it in doc_items.items():
+        rows.append(row(it, "aceptado_ia" if k in ai_items else "agregado_doctor"))
+    for k, it in ai_items.items():
+        if k not in doc_items:
+            rows.append(row(it, "eliminado_doctor"))
+
+    return {"ok": True, "registrados": log_prescriptions(rows)}
 
 
 @router.post("/{visit_id}/extract_labs")
@@ -1362,6 +1472,12 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
     patient_data = get_patient(patient_id) if patient_id else {}
     all_visits = list_patient_visits(patient_id) if patient_id else []
 
+    # El sistema se adapta al médico: sus preferencias explícitas y su patrón real de
+    # práctica entran al prompt con prioridad sobre el default de la IA.
+    doctor_id = analysis.get("doctor_id") or ""
+    doctor_prefs = get_doctor_preferences(doctor_id)
+    practice_stats = get_prescription_stats(doctor_id)
+
     diagnosis_map = {
         "traditional": body.doctor_traditional,
         "functional":  body.doctor_functional,
@@ -1392,6 +1508,7 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
         patient_data, full_diagnosis, body.protocol_type,
         visit_data=visit_record, previous_protocols=previous_protocols,
         all_visits=all_visits,
+        doctor_preferences=doctor_prefs, practice_stats=practice_stats,
     )
     return prompt, previous_protocols, _visit_file_blocks(visit_record)
 
@@ -1622,6 +1739,40 @@ def apply_chat_patch(current_report: str, patch: dict) -> tuple[str, str]:
     return (new_text, "; ".join(applied)) if applied else (current_report, "")
 
 
+def _suggest_preference_from_patch(patch: dict) -> dict:
+    """Infiere, desde el patch que el médico acaba de aplicar, una preferencia generalizable
+    que se le puede ofrecer recordar ("¿solo esta vez o siempre?"). Sin llamada extra a la IA.
+    Devuelve None si el cambio no es generalizable."""
+    ops = (patch or {}).get("ops") or []
+    for op in ops:
+        action = (op.get("op") or "").lower()
+        if action == "replace_item":
+            de = (op.get("match") or "").strip()
+            # Limpia formulaciones tipo "nombre_generico contiene 'X'"
+            q = re.search(r"['\"]([^'\"]+)['\"]", de)
+            if q:
+                de = q.group(1)
+            de = re.sub(r"^\s*nombre[_ ]?\w*\s*(contiene|=|:)\s*", "", de, flags=re.I).strip()
+            a = ((op.get("item") or {}).get("nombre_generico") or "").strip()
+            if de and a:
+                return {"tipo": "sustituir", "de_item": de, "a_item": a,
+                        "descripcion": f"Usar «{a}» en vez de «{de}»"}
+        if action == "add_item":
+            a = ((op.get("item") or {}).get("nombre_generico") or "").strip()
+            if a:
+                return {"tipo": "agregar_siempre", "de_item": "", "a_item": a,
+                        "descripcion": f"Incluir «{a}» en casos similares"}
+        if action == "remove_item":
+            de = (op.get("match") or "").strip()
+            q = re.search(r"['\"]([^'\"]+)['\"]", de)
+            if q:
+                de = q.group(1)
+            if de:
+                return {"tipo": "evitar", "de_item": de, "a_item": "",
+                        "descripcion": f"No sugerir «{de}»"}
+    return None
+
+
 @router.post("/{visit_id}/{step}/chat")
 async def chat_step(
     visit_id: str,
@@ -1725,6 +1876,7 @@ REGLAS:
         # ¿El chat propuso un patch? Extráelo, aplícalo sobre el reporte actual y devuelve
         # solo el resultado final al frontend.
         updated_report = None
+        preferencia_sugerida = None
         answer = answer_full
         m = re.search(r"<<<PATCH>>>\s*(\{.*?\})\s*<<<FIN_PATCH>>>", answer_full, re.DOTALL)
         if m:
@@ -1733,6 +1885,9 @@ REGLAS:
                 new_report, summary = apply_chat_patch(diagnosis_block, patch)
                 if summary:
                     updated_report = new_report
+                    # El sistema aprende del médico: si el cambio es generalizable, le
+                    # ofrecemos recordarlo como preferencia para casos futuros.
+                    preferencia_sugerida = _suggest_preference_from_patch(patch)
                 # Limpiar el texto conversacional del bloque de patch
                 answer = (answer_full[:m.start()] + answer_full[m.end():]).strip()
                 if not answer:
@@ -1754,6 +1909,7 @@ REGLAS:
             "question": body.question,
             "answer": answer,
             "updated_report": updated_report,
+            "preferencia_sugerida": preferencia_sugerida,
             "turn": len(history) // 2,
         }
 

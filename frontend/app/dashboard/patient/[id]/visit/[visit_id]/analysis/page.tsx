@@ -2409,6 +2409,11 @@ export default function AnalysisPage() {
   const [chatOpen, setChatOpen]         = useState(false);
   const [chatUnread, setChatUnread]     = useState(0);
 
+  // Preferencia que el sistema ofrece recordar tras un cambio del médico en el chat.
+  const [pendingPref, setPendingPref] = useState<
+    { tipo: string; de_item: string; a_item: string; descripcion: string } | null
+  >(null);
+
   const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
   const authH = useCallback((): Record<string, string> => ({
@@ -2530,6 +2535,8 @@ export default function AnalysisPage() {
         const { setState } = getCurrentSetters();
         setState(prev => ({ ...prev, doctor_text: json.updated_report.trim(), approved: [] }));
         setChatMessages(prev => [...prev, { role: 'divider', content: '✓ Reporte actualizado en pantalla' }]);
+        // El sistema aprende del médico: si el cambio es generalizable, ofrecerle recordarlo.
+        if (json.preferencia_sugerida) setPendingPref(json.preferencia_sugerida);
       }
       if (!chatOpen) setChatUnread(prev => prev + 1);
     } catch (e: any) {
@@ -2791,6 +2798,33 @@ export default function AnalysisPage() {
     }
   };
 
+  /** Guarda una preferencia que el médico pidió recordar para casos futuros. */
+  const saveDoctorPreference = async (pref: { tipo: string; de_item: string; a_item: string }, cuando = '') => {
+    try {
+      await fetch(`${apiBase}/analyze/preferences`, {
+        method: 'POST', headers: authH(),
+        body: JSON.stringify({ ...pref, cuando, origen: 'chat' }),
+      });
+      setChatMessages(prev => [...prev, { role: 'divider', content: '★ Preferencia guardada — se aplicará en casos futuros' }]);
+    } catch { /* no bloquear el flujo si falla */ }
+    setPendingPref(null);
+  };
+
+  /** Registra qué aceptó/agregó/quitó el médico respecto a lo que propuso la IA.
+   *  Sin datos del paciente: solo el caso clínico y el tratamiento (fire-and-forget). */
+  const logPractice = (protocolType: string, aiText: string, doctorText: string) => {
+    if (!aiText || !doctorText) return;
+    const dxContext = [traditional.doctor_text, functional.doctor_text]
+      .filter(Boolean).join(' | ').slice(0, 400);
+    fetch(`${apiBase}/analyze/${visit_id}/log_practice`, {
+      method: 'POST', headers: authH(),
+      body: JSON.stringify({
+        protocol_type: protocolType, diagnostico_contexto: dxContext,
+        ai_protocol: aiText, doctor_protocol: doctorText,
+      }),
+    }).catch(() => {});
+  };
+
   const handleContinue = () => {
     const { setState } = getCurrentSetters();
     setState(prev => {
@@ -2805,6 +2839,9 @@ export default function AnalysisPage() {
       } else if (notes) {
         finalText = `${finalText}\n\n--- NOTAS DEL DOCTOR ---\n${notes}`;
       }
+      // Aprender de la práctica real: comparar lo que propuso la IA vs lo que el médico dejó.
+      const m = step.match(/^review_protocol_(traditional|functional|longevity)$/);
+      if (m) logPractice(m[1], prev.ai_text, finalText);
       return { ...prev, doctor_text: finalText, confirmed: true };
     });
     const idx = stepOrder.indexOf(step);
@@ -3060,6 +3097,37 @@ export default function AnalysisPage() {
             style={{ background: info.color }}>
             {stepOrder.indexOf(step) === stepOrder.length - 2 ? 'Generar Documentos →' : 'Confirmar y continuar →'}
           </button>
+        </div>
+      )}
+
+      {/* ── ¿Recordar esta preferencia? — el sistema se adapta a la práctica del médico ── */}
+      {pendingPref && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-[60] w-[min(92vw,520px)]"
+          style={{ bottom: hasActionBar ? '5.5rem' : '1.5rem' }}>
+          <div className="rounded-2xl border shadow-2xl p-4"
+            style={{ background: '#0d1520', borderColor: 'rgba(0,229,160,.35)' }}>
+            <p className="text-[10px] font-mono tracking-wider mb-1.5" style={{ color: '#00e5a0' }}>
+              ★ ¿RECORDAR ESTA PREFERENCIA?
+            </p>
+            <p className="text-sm text-[#dde6ef] font-serif leading-snug mb-3">
+              {pendingPref.descripcion}
+            </p>
+            <p className="text-[11px] text-[#7a95aa] leading-snug mb-3">
+              Si la recuerdo, la aplicaré en casos futuros similares sin que tengas que pedirlo.
+              Puedes desactivarla después.
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={() => saveDoctorPreference(pendingPref)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold transition"
+                style={{ background: '#00e5a0', color: '#000' }}>
+                Recordar siempre
+              </button>
+              <button onClick={() => setPendingPref(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold border transition text-[#7a95aa] border-[#2a3a4d] hover:text-[#dde6ef]">
+                Solo esta vez
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

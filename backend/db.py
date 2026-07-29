@@ -2,6 +2,7 @@
 Supabase client y helpers para APEX
 """
 import os
+import datetime as _dt
 from supabase import create_client, Client
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -132,6 +133,98 @@ def list_ai_call_logs(visit_id: str) -> list:
     """Lista las llamadas a la IA de una visita, en orden cronológico"""
     result = supabase.table("ai_call_logs").select("*").eq("visit_id", visit_id).order("created_at", desc=False).execute()
     return result.data if result.data else []
+
+
+# ── Preferencias del médico y registro de práctica ────────────────────────────
+# El sistema se adapta al médico, no al revés: lo que él receta, edita o pide recordar
+# tiene prioridad sobre lo que la IA propone por defecto.
+
+def save_doctor_preference(pref: dict) -> dict:
+    """Guarda una preferencia explícita del médico ('recuérdalo para casos futuros')."""
+    try:
+        result = supabase.table("doctor_preferences").insert(pref).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        print(f"[WARN] no se pudo guardar la preferencia: {e}")
+        return None
+
+
+def get_doctor_preferences(doctor_id: str) -> list:
+    """Preferencias activas del médico, las más usadas primero."""
+    if not doctor_id:
+        return []
+    try:
+        result = (supabase.table("doctor_preferences").select("*")
+                  .eq("doctor_id", doctor_id).eq("activa", True)
+                  .order("veces_aplicada", desc=True).limit(60).execute())
+        return result.data if result.data else []
+    except Exception as e:
+        print(f"[WARN] no se pudieron leer las preferencias: {e}")
+        return []
+
+
+def deactivate_doctor_preference(pref_id: str) -> bool:
+    try:
+        supabase.table("doctor_preferences").update(
+            {"activa": False, "updated_at": _dt.datetime.utcnow().isoformat()}
+        ).eq("id", pref_id).execute()
+        return True
+    except Exception as e:
+        print(f"[WARN] no se pudo desactivar la preferencia: {e}")
+        return False
+
+
+def log_prescriptions(rows: list) -> int:
+    """Registra qué aceptó/agregó/quitó el médico. PRIVACIDAD: estas filas NO llevan
+    identificador de paciente — solo el contexto clínico y el tratamiento."""
+    if not rows:
+        return 0
+    try:
+        supabase.table("prescription_log").insert(rows).execute()
+        return len(rows)
+    except Exception as e:
+        print(f"[WARN] no se pudo registrar la práctica: {e}")
+        return 0
+
+
+def get_prescription_stats(doctor_id: str, limit: int = 40) -> list:
+    """Lo que este médico más receta y en qué contexto — para personalizar sus protocolos."""
+    if not doctor_id:
+        return []
+    try:
+        result = (supabase.table("prescription_log").select("*")
+                  .eq("doctor_id", doctor_id)
+                  .order("created_at", desc=True).limit(600).execute())
+        rows = result.data or []
+    except Exception as e:
+        print(f"[WARN] no se pudieron leer las estadísticas de práctica: {e}")
+        return []
+
+    agg = {}
+    for r in rows:
+        name = (r.get("item_nombre") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        a = agg.setdefault(key, {
+            "item_nombre": name, "item_tipo": r.get("item_tipo"),
+            "aceptado_ia": 0, "agregado_doctor": 0, "eliminado_doctor": 0,
+            "contextos": set(),
+        })
+        accion = r.get("accion")
+        if accion in a:
+            a[accion] += 1
+        ctx = (r.get("diagnostico_contexto") or "").strip()
+        if ctx:
+            a["contextos"].add(ctx[:80])
+
+    out = []
+    for a in agg.values():
+        a["contextos"] = sorted(a["contextos"])[:3]
+        a["total"] = a["aceptado_ia"] + a["agregado_doctor"]
+        out.append(a)
+    out.sort(key=lambda x: (x["agregado_doctor"], x["total"]), reverse=True)
+    return out[:limit]
 
 
 # ── Vademécum (medications_db) ────────────────────────────────────────────────

@@ -1229,9 +1229,58 @@ COFEPRIS (regulación mexicana) — cómo marcarlo:
 """
 
 
+def build_doctor_practice_context(preferences: list = None, stats: list = None) -> str:
+    """Bloque con las PREFERENCIAS EXPLÍCITAS del médico y su patrón de práctica real.
+    El sistema se adapta al médico, no al revés: esto manda sobre el default de la IA."""
+    blocks = []
+
+    prefs = [p for p in (preferences or []) if p.get("activa", True)]
+    if prefs:
+        lines = []
+        for p in prefs:
+            tipo = (p.get("tipo") or "").lower()
+            cuando = f" (cuando: {p['cuando']})" if p.get("cuando") else ""
+            nota = f" — razón del médico: {p['nota']}" if p.get("nota") else ""
+            if tipo == "sustituir":
+                lines.append(f"• En vez de «{p.get('de_item')}» usa «{p.get('a_item')}»{cuando}.{nota}")
+            elif tipo == "preferir":
+                lines.append(f"• Prefiere «{p.get('a_item')}»{cuando}.{nota}")
+            elif tipo == "evitar":
+                lines.append(f"• NO uses «{p.get('de_item')}»{cuando}.{nota}")
+            elif tipo == "agregar_siempre":
+                lines.append(f"• Incluye siempre «{p.get('a_item')}»{cuando}.{nota}")
+            else:
+                lines.append(f"• {p.get('nota') or p.get('a_item') or ''}{cuando}")
+        blocks.append(
+            "PREFERENCIAS EXPLÍCITAS DE ESTE MÉDICO (él pidió que se recordaran — TIENEN "
+            "PRIORIDAD sobre tu opción por defecto):\n" + "\n".join(lines)
+            + "\nAplícalas salvo que en ESTE paciente exista una contraindicación real o un "
+            "riesgo concreto; si ese fuera el caso, no la apliques a ciegas y explica por qué "
+            "en el campo correspondiente."
+        )
+
+    top = [s for s in (stats or []) if s.get("total", 0) > 0][:12]
+    if top:
+        lines = []
+        for s in top:
+            extra = f" (agregado a mano {s['agregado_doctor']}×)" if s.get("agregado_doctor") else ""
+            ctx = f" — en casos de: {', '.join(s['contextos'])}" if s.get("contextos") else ""
+            lines.append(f"• {s['item_nombre']}: usado {s['total']}×{extra}{ctx}")
+        blocks.append(
+            "PATRÓN DE PRÁCTICA DE ESTE MÉDICO (lo que más receta y acepta, observado del "
+            "historial real):\n" + "\n".join(lines)
+            + "\nÚSALO COMO SEÑAL, NO COMO REGLA: si para este caso lo que él suele usar es "
+            "adecuado, prefiérelo — le resultará familiar y coherente con su práctica. Pero NO "
+            "fuerces un item solo porque aparece aquí: el caso concreto manda sobre la costumbre."
+        )
+
+    return "\n\n".join(blocks)
+
+
 def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
                         visit_data: dict = None, previous_protocols: dict = None,
-                        all_visits: list = None) -> str:
+                        all_visits: list = None,
+                        doctor_preferences: list = None, practice_stats: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
     current_visit_id = (visit_data or {}).get("id", "")
@@ -1257,6 +1306,9 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
         star_note = "\n\nIMPORTANTE: dentro del diagnóstico base, la(s) línea(s) marcadas con ⭐ ELEGIDO POR EL MÉDICO son las que el médico seleccionó manualmente como correctas (puede no ser la de mayor % de confianza calculado por la IA). Diseña el protocolo basándote en ESA selección — el criterio clínico del médico tiene prioridad sobre el ranking automático."
 
     arsenal_block = PEPTIDOS_OFFLABEL_RULE if diagnosis_type in ("functional", "longevity") else ""
+    practica_block = build_doctor_practice_context(doctor_preferences, practice_stats)
+    if practica_block:
+        practica_block = "\n" + practica_block + "\n"
 
     previous_block = ""
     if previous_protocols:
@@ -1290,7 +1342,7 @@ Ahora no estás diagnosticando — estás diseñando el protocolo terapéutico d
 manteniendo el mismo enfoque y los mismos límites de alcance que ya tienes como especialista.
 
 {get_web_search_sourcing_rules(mexico=(diagnosis_type == "traditional"))}
-{arsenal_block}
+{arsenal_block}{practica_block}
 DIAGNÓSTICO BASE:
 {diagnosis}{star_note}
 
