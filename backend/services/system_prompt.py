@@ -1309,21 +1309,21 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
       "tipo": "Fármaco",
       "nombre_generico": "Dapagliflozina",
       "nombre_comercial": "Forxiga",
-      "nivel_evidencia": "Clase I, Nivel A (Guía ESC 2024)",
-      "alerta": "Riesgo de cetoacidosis euglucémica si se combina con ayuno prolongado o cirugía mayor.",
+      "nivel_evidencia": "Clase I-A (ESC 2024)",
+      "alerta": "Cetoacidosis euglucémica si ayuno prolongado o cirugía.",
       "presentacion": "10 mg",
       "dosis": "1 tableta",
       "via": "Oral",
-      "frecuencia": "Cada 24 horas, en ayunas o con el desayuno",
-      "duracion": "Indefinido — reevaluar en 6 meses",
-      "indicacion": "Reduce el riesgo de hospitalización por insuficiencia cardiaca en pacientes con FEVI reducida, independientemente de si tienen diabetes.",
-      "ajuste_especial": "Ajuste renal: no iniciar si FG < 25 ml/min. Si FG 25-45, mantener 10 mg.",
-      "monitoreo": "Función renal (creatinina) y electrolitos a las 2-4 semanas. Vigilar signos de deshidratación.",
-      "reacciones_adversas": "Infecciones genitales por hongos, micción frecuente, hipotensión.",
-      "interacciones": "Diuréticos (potencian hipotensión), insulina/secretagogos (aumenta riesgo de hipoglucemia).",
-      "mecanismo": "Inhibe SGLT2 a nivel renal, reduciendo reabsorción de glucosa.",
+      "frecuencia": "Cada 24h con el desayuno",
+      "duracion": "Indefinido — reevaluar 6m",
+      "indicacion": "Reduce hospitalización por IC con FEVI reducida.",
+      "ajuste_especial": "No iniciar si TFG <25; con TFG 25-45 mantener 10 mg.",
+      "monitoreo": "Función renal y electrolitos a 2-4 semanas.",
+      "reacciones_adversas": "Infecciones genitales, poliuria, hipotensión.",
+      "interacciones": "Diuréticos (hipotensión), insulina/secretagogos (hipoglucemia).",
+      "mecanismo": "Inhibe SGLT2 renal → menor reabsorción de glucosa.",
       "cofepris": "aprobado",
-      "para_que_sirve": "En palabras simples: qué hace esta intervención y por qué se la mandas a ESTE paciente. Escríbelo para un médico convencional que quizá no conoce medicina funcional ni de longevidad — 2-3 líneas claras, sin jerga, que le dejen entender la lógica de por qué esto ayuda a este caso concreto."
+      "para_que_sirve": "Baja la glucosa por orina y protege corazón/riñón — indicado por el SM del paciente."
     }}
   ],
   "monitoreo_general": {{
@@ -1350,7 +1350,11 @@ REGLAS DE LLENADO (síguelas exactamente):
 10. PROTOCOLO FUNCIONAL ("functional"): debe incluir SIEMPRE al menos un item "Suplemento" o "Vitamina" cuando la matriz de salud identificó ejes desregulados con manejo nutracéutico conocido. No está permitido un protocolo funcional compuesto solo de cambios de hábito sin ningún suplemento — si genuinamente no aplica ningún suplemento para este caso, explica por qué en "monitoreo_general".
 11. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
 12. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
-13. "para_que_sirve" es OBLIGATORIO en todos los items y especialmente importante en protocolos FUNCIONAL y de LONGEVIDAD: este sistema lo usan médicos convencionales que muchas veces NO conocen la medicina funcional ni la de longevidad, así que tu trabajo es enseñarles — explica en lenguaje simple, sin jerga, qué es esta intervención, para qué sirve y por qué la estás mandando en este caso. No repitas literal "indicacion" (que es más técnica); "para_que_sirve" es la versión didáctica y accesible.
+13. "para_que_sirve" es OBLIGATORIO — UNA sola línea clara (≤25 palabras), sin jerga, orientada a un médico convencional. No repitas "indicacion". El médico puede hacer clic en "Aprende más" para investigar afuera; aquí solo la esencia.
+13b. BREVEDAD (crítica — no ignorar): todos los campos textuales son telegráficos, NO párrafos.
+    - "indicacion", "alerta", "monitoreo", "ajuste_especial", "reacciones_adversas", "interacciones", "mecanismo": UNA línea cada uno, ≤20 palabras. Solo lo esencial. Si no es relevante para ESTE paciente, usa "".
+    - Frases cortas y directas, sin explicar generalidades del libro. El médico ya sabe medicina; solo dile lo puntual del CASO.
+    - Nada de párrafos explicativos ni justificaciones extensas. El sistema tiene "Aprende más" para eso.
 14. "cofepris" debe ser uno de exactamente tres valores: "aprobado" (fármaco con registro e indicación formal en México), "no_aprobado" (péptido, uso off-label o suplemento sin aprobación de COFEPRIS para esta indicación — respaldo preliminar/anecdótico) o "na" (no aplica el concepto de aprobación: ejercicio, hidratación, dieta, hábitos). Para CADA item marcado "no_aprobado", el campo "mecanismo" DEBE contener la teoría honesta de cómo funcionaría y el nivel de evidencia; el frontend lo muestra en un desplegable junto a un badge pequeño "(no aprobado por COFEPRIS)".
 15. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
 

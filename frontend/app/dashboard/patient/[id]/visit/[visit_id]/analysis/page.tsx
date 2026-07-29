@@ -773,13 +773,13 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
           </div>
         )}
 
-        {/* ¿Para qué sirve? — explicación didáctica en lenguaje simple para el médico */}
+        {/* ¿Para qué sirve? — 1 línea, esencia del "por qué a este paciente" */}
         {item.para_que_sirve && (
-          <div className="rounded-lg px-3.5 py-3" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
-            <p className="text-[10px] font-mono mb-1.5 flex items-center gap-1.5" style={{ color }}>
+          <div className="rounded-lg px-3 py-2" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
+            <p className="text-[10px] font-mono mb-1 flex items-center gap-1.5" style={{ color }}>
               <span>💡</span> ¿PARA QUÉ SIRVE?
             </p>
-            <p className="text-[15px] text-[#dde6ef] font-serif leading-relaxed">{item.para_que_sirve}</p>
+            <p className="text-sm text-[#dde6ef] font-serif leading-snug">{item.para_que_sirve}</p>
           </div>
         )}
 
@@ -787,7 +787,7 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
         {item.indicacion && (
           <div>
             <p className="text-[10px] font-mono text-[#3d5870] mb-1">INDICACIÓN CLÍNICA</p>
-            <p className="text-lg text-[#dde6ef] font-serif leading-relaxed">{item.indicacion}</p>
+            <p className="text-sm text-[#dde6ef] font-serif leading-snug">{item.indicacion}</p>
             {item.ajuste_especial && (
               <p className="text-xs text-[#7a95aa] italic mt-1.5 bg-[#070a0e] border border-[#1e2d3d] rounded-md px-2.5 py-1.5">
                 {item.ajuste_especial}
@@ -804,23 +804,33 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
           </div>
         )}
 
-        {/* Acordeón — plegado por defecto */}
-        {hasExtra && (
-          <div className="border-t border-[#1e2d3d] pt-3">
-            <button onClick={() => setOpen(o => !o)}
-              className="text-xs font-mono text-[#7a95aa] hover:text-[#dde6ef] transition flex items-center gap-1.5">
-              <span>{open ? '▲' : '▼'}</span> Más detalle — reacciones, interacciones, mecanismo
-            </button>
-            {open && (
-              <div className="mt-3 space-y-2.5 text-xs text-[#7a95aa] font-serif leading-relaxed">
+        {/* Acordeón + Aprende más — plegado por defecto */}
+        {(hasExtra || (item.tipo && /f[aá]rmaco|off-?label|suplement|vitamina/i.test(item.tipo))) && (
+          <div className="border-t border-[#1e2d3d] pt-3 flex items-center gap-4 flex-wrap">
+            {hasExtra && (
+              <button onClick={() => setOpen(o => !o)}
+                className="text-xs font-mono text-[#7a95aa] hover:text-[#dde6ef] transition flex items-center gap-1.5">
+                <span>{open ? '▲' : '▼'}</span> Más detalle
+              </button>
+            )}
+            {item.tipo && /f[aá]rmaco|off-?label|suplement|vitamina/i.test(item.tipo) && item.nombre_generico && (
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(item.nombre_generico + ' medicamento indicaciones dosis interacciones')}`}
+                target="_blank" rel="noopener noreferrer"
+                className="text-xs font-mono text-[#0ea5e9] hover:text-[#7dd3fc] transition flex items-center gap-1.5">
+                🔍 Aprende más
+              </a>
+            )}
+            {open && hasExtra && (
+              <div className="w-full mt-3 space-y-2 text-xs text-[#7a95aa] font-serif leading-snug">
                 {item.reacciones_adversas && (
-                  <p><span className="text-[#dde6ef] font-semibold">Reacciones adversas frecuentes: </span>{item.reacciones_adversas}</p>
+                  <p><span className="text-[#dde6ef] font-semibold">Reacciones: </span>{item.reacciones_adversas}</p>
                 )}
                 {item.interacciones && (
                   <p><span className="text-[#dde6ef] font-semibold">Interacciones: </span>{item.interacciones}</p>
                 )}
                 {item.mecanismo && (
-                  <p><span className="text-[#dde6ef] font-semibold">Mecanismo de acción: </span>{item.mecanismo}</p>
+                  <p><span className="text-[#dde6ef] font-semibold">Mecanismo: </span>{item.mecanismo}</p>
                 )}
               </div>
             )}
