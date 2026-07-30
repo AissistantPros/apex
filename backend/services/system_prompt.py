@@ -322,6 +322,23 @@ def build_visit_context(visit: dict) -> str:
     act_tipo = visit.get("activity_type") or visit.get("actividad_tipo") or "No especificado"
     act_freq = visit.get("activity_frequency") or visit.get("actividad_frecuencia") or "No especificado"
     act_int = visit.get("activity_intensity") or visit.get("actividad_intensidad") or "No especificado"
+    # El paciente puede hacer VARIAS actividades distintas, cada una con su frecuencia e
+    # intensidad. Cuando existe el desglose, se muestra así en vez del resumen concatenado.
+    _acts = visit.get("actividades") or []
+    act_detalle = ""
+    if isinstance(_acts, list) and _acts:
+        _l = []
+        for a in _acts:
+            if not isinstance(a, dict) or not (a.get("tipo") or "").strip():
+                continue
+            bits = [a["tipo"].strip()]
+            if a.get("frecuencia"):
+                bits.append(a["frecuencia"])
+            if a.get("intensidad"):
+                bits.append(f"intensidad {a['intensidad'].lower()}")
+            _l.append("    - " + " — ".join(bits))
+        if _l:
+            act_detalle = "\n" + "\n".join(_l)
 
     # Pruebas funcionales
     # El formulario guarda estas pruebas con las columnas en español (fuerza_mano_der, marcha_4m,
@@ -468,10 +485,10 @@ DATOS DE LA VISITA ACTUAL
   Análisis de composición corporal (InBody o similar):
 {inbody_str}
   Actividad física habitual del paciente:
-  • ¿Realiza actividad física?: {act_si_str}
+  • ¿Realiza actividad física?: {act_si_str}{act_detalle if act_detalle else f'''
   • Tipo de actividad: {act_tipo}
   • Frecuencia semanal: {act_freq}
-  • Intensidad percibida: {act_int}
+  • Intensidad percibida: {act_int}'''}
 
 ── PRUEBAS FUNCIONALES ──
   • Fuerza de agarre mano DERECHA (dinamometría, kg): {agarre_der}

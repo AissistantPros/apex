@@ -252,6 +252,10 @@ export default function NewVisitPage() {
   const [digestion, setDigestion] = useState<string[]>([]);
   const [morningSx, setMorningSx] = useState<string[]>([]);  // síntomas matutinos (SAOS)
   const [apneaTrig, setApneaTrig] = useState<string[]>([]);  // desencadenantes de la apnea
+  // El paciente puede hacer varias actividades distintas (ej. pádel 3×/sem + gym 2×/sem)
+  type Actividad = { tipo: string; frecuencia: string; intensidad: string };
+  const [actividades, setActividades] = useState<Actividad[]>([]);
+  const [haceActividad, setHaceActividad] = useState<'' | 'Sí' | 'No'>('');
 
   // Archivos de laboratorio
   type LabFile = { name: string; type: string; size: number; data: string };
@@ -379,8 +383,12 @@ export default function NewVisitPage() {
         circ_biceps: form.circ_biceps, circ_wrist: form.circ_muneca,
         inbody_fat_pct: form.inbody_grasa, inbody_muscle_kg: form.inbody_musculo,
         inbody_water_pct: form.inbody_agua, inbody_visceral: form.inbody_visceral,
-        activity_type: form.actividad_tipo, activity_frequency: form.actividad_frecuencia,
-        activity_intensity: form.actividad_intensidad,
+        // Lista completa + resumen en los campos de siempre (compatibilidad hacia atrás)
+        actividades: actividades.filter(a => a.tipo.trim()),
+        actividad_si: haceActividad === 'Sí',
+        activity_type: actividades.filter(a => a.tipo.trim()).map(a => a.tipo.trim()).join(', '),
+        activity_frequency: actividades.filter(a => a.tipo.trim()).map(a => a.frecuencia).filter(Boolean).join(', '),
+        activity_intensity: actividades.filter(a => a.tipo.trim()).map(a => a.intensidad).filter(Boolean).join(', '),
         sitting_hours: form.sitting_hours, work_activity_level: form.work_activity_level,
         grip_right: form.agarre_der, grip_left: form.agarre_izq,
         walk_4m_seconds: form.marcha_seg, sit_stand_30s: form.syl_reps,
@@ -801,27 +809,69 @@ export default function NewVisitPage() {
                     </div>
                   </div>
 
-                  {/* Actividad */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Field label="TIPO DE EJERCICIO" tablet={tb}>
-                      <input className={inp(tb)} placeholder="Caminata, gym..."
-                        value={form.actividad_tipo} onChange={e => set('actividad_tipo', e.target.value)} />
-                    </Field>
-                    <Field label="FRECUENCIA" tablet={tb}>
-                      <select className={inp(tb)} value={form.actividad_frecuencia}
-                        onChange={e => set('actividad_frecuencia', e.target.value)}>
-                        <option value="">Seleccionar</option>
-                        <option>Sedentario</option><option>1-2 días/sem</option>
-                        <option>3-4 días/sem</option><option>5+ días/sem</option>
-                      </select>
-                    </Field>
-                    <Field label="INTENSIDAD" tablet={tb}>
-                      <select className={inp(tb)} value={form.actividad_intensidad}
-                        onChange={e => set('actividad_intensidad', e.target.value)}>
-                        <option value="">Seleccionar</option>
-                        <option>Baja</option><option>Moderada</option><option>Alta</option>
-                      </select>
-                    </Field>
+                  {/* Actividad física — táctil y con varias actividades posibles */}
+                  <div>
+                    <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿REALIZA ACTIVIDAD FÍSICA REGULARMENTE?</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {(['Sí','No'] as const).map(o => (
+                        <button key={o} type="button"
+                          onClick={() => {
+                            setHaceActividad(o);
+                            if (o === 'Sí' && actividades.length === 0) setActividades([{ tipo: '', frecuencia: '', intensidad: '' }]);
+                            if (o === 'No') setActividades([]);
+                          }}
+                          className={`px-4 rounded-xl border font-semibold transition ${tb ? 'py-3 text-sm' : 'py-2.5 text-xs'}`}
+                          style={{ background: haceActividad === o ? '#0ea5e9' : '#1e2d3d', borderColor: haceActividad === o ? '#0ea5e9' : '#2a3a4d', color: haceActividad === o ? '#000' : '#dde6ef' }}>
+                          {o}
+                        </button>
+                      ))}
+                    </div>
+
+                    {haceActividad === 'Sí' && (
+                      <div className="mt-3 space-y-3">
+                        {actividades.map((act, i) => (
+                          <div key={i} className="rounded-xl bg-[#0d1520] border border-[#0ea5e9]/25 p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className={`font-mono text-[#0ea5e9] ${tb ? 'text-sm' : 'text-xs'}`}>ACTIVIDAD {i + 1}</p>
+                              {actividades.length > 1 && (
+                                <button type="button"
+                                  onClick={() => setActividades(prev => prev.filter((_, j) => j !== i))}
+                                  className="text-[#f43f5e] text-lg leading-none hover:opacity-80">×</button>
+                              )}
+                            </div>
+                            <Field label="TIPO DE EJERCICIO" tablet={tb}>
+                              <input className={inp(tb)} placeholder="Pádel, gym, correr, natación..."
+                                value={act.tipo}
+                                onChange={e => setActividades(prev => prev.map((a, j) => j === i ? { ...a, tipo: e.target.value } : a))} />
+                            </Field>
+                            {([
+                              { campo: 'frecuencia' as const, label: 'FRECUENCIA', opts: ['1-2 días/sem','3-4 días/sem','5+ días/sem','Diario'] },
+                              { campo: 'intensidad' as const, label: 'INTENSIDAD', opts: ['Baja','Moderada','Fuerte / Intensa'] },
+                            ]).map(({ campo, label, opts }) => (
+                              <div key={campo}>
+                                <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>{label}</p>
+                                <div className="flex gap-2 flex-wrap">
+                                  {opts.map(o => (
+                                    <button key={o} type="button"
+                                      onClick={() => setActividades(prev => prev.map((a, j) => j === i ? { ...a, [campo]: o } : a))}
+                                      className={`px-3 rounded-xl border font-semibold transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                      style={{ background: act[campo] === o ? '#0ea5e9' : '#1e2d3d', borderColor: act[campo] === o ? '#0ea5e9' : '#2a3a4d', color: act[campo] === o ? '#000' : '#dde6ef' }}>
+                                      {o}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                        <button type="button"
+                          onClick={() => setActividades(prev => [...prev, { tipo: '', frecuencia: '', intensidad: '' }])}
+                          className={`w-full rounded-xl border-2 border-dashed font-semibold transition ${tb ? 'py-4 text-base' : 'py-3 text-sm'}`}
+                          style={{ borderColor: '#0ea5e955', color: '#0ea5e9' }}>
+                          + Agregar otra actividad
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
