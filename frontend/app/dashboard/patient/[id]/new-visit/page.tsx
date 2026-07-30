@@ -250,6 +250,8 @@ export default function NewVisitPage() {
   // Multi-selects
   const [animo,     setAnimo]     = useState<string[]>([]);
   const [digestion, setDigestion] = useState<string[]>([]);
+  const [morningSx, setMorningSx] = useState<string[]>([]);  // síntomas matutinos (SAOS)
+  const [apneaTrig, setApneaTrig] = useState<string[]>([]);  // desencadenantes de la apnea
 
   // Archivos de laboratorio
   type LabFile = { name: string; type: string; size: number; data: string };
@@ -282,6 +284,7 @@ export default function NewVisitPage() {
     bedtime: '', wake_time: '', night_awakenings: '', snoring: '',
     snoring_intensity: '', snoring_frequency: '',
     apnea_observed: '', apnea_frequency: '', apnea_duration: '',
+    apnea_pattern: '', daytime_sleepiness: '', doze_off: '',
     daytime_nap: '',
     libido_hoy: 5, orina_color: '', orina_color_tarde: '',
     bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
@@ -389,7 +392,9 @@ export default function NewVisitPage() {
         night_awakenings: form.night_awakenings, snoring: form.snoring,
         snoring_intensity: form.snoring_intensity, snoring_frequency: form.snoring_frequency,
         apnea_observed: form.apnea_observed, apnea_frequency: form.apnea_frequency,
-        apnea_duration: form.apnea_duration,
+        apnea_duration: form.apnea_duration, apnea_pattern: form.apnea_pattern,
+        daytime_sleepiness: form.daytime_sleepiness, doze_off: form.doze_off,
+        morning_symptoms: morningSx, apnea_triggers: apneaTrig,
         daytime_nap: form.daytime_nap,
         mood: animo, libido: form.libido_hoy, digestion,
         bristol_scale: form.bristol_scale, bowel_movements_per_day: form.bowel_movements_per_day,
@@ -1344,7 +1349,7 @@ export default function NewVisitPage() {
                           <div>
                             <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿CUÁNTO DURAN LAS PAUSAS?</p>
                             <div className="flex gap-2 flex-wrap">
-                              {(['Segundos','Más de 10 seg','No sabe'] as const).map(o => (
+                              {(['<10 seg','10-20 seg','20-30 seg','Más de 30 seg','No sabe'] as const).map(o => (
                                 <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
                                   style={{ background: form.apnea_duration === o ? '#a78bfa' : '#1e2d3d', borderColor: form.apnea_duration === o ? '#a78bfa' : '#2a3a4d', color: form.apnea_duration === o ? '#000' : '#dde6ef' }}>
                                   <input type="radio" name="apnea_duration" value={o} checked={form.apnea_duration === o}
@@ -1354,9 +1359,76 @@ export default function NewVisitPage() {
                               ))}
                             </div>
                           </div>
+                          <div className="md:col-span-2">
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>¿PASA TODA LA NOCHE O EN SITUACIONES PUNTUALES?</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(['Toda la noche','Solo por ratos','Solo algunas noches','No sabe'] as const).map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                  style={{ background: form.apnea_pattern === o ? '#a78bfa' : '#1e2d3d', borderColor: form.apnea_pattern === o ? '#a78bfa' : '#2a3a4d', color: form.apnea_pattern === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name="apnea_pattern" value={o} checked={form.apnea_pattern === o}
+                                    onChange={e => set('apnea_pattern', e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
+
+                    {/* ── Tamizaje SAOS ampliado — solo si ronca o hay pausas (completa STOP-BANG) ── */}
+                    {(form.snoring === 'Sí' || form.snoring === 'A veces' || form.apnea_observed === 'Sí') && (
+                      <div className="space-y-3 rounded-xl bg-[#0d1520] border border-[#a78bfa]/30 p-4">
+                        <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>
+                          TAMIZAJE DE APNEA DEL SUEÑO — repercusión diurna y desencadenantes
+                        </p>
+
+                        {([
+                          { key: 'daytime_sleepiness' as const, label: '¿SE SIENTE CANSADO, FATIGADO O SOMNOLIENTO DURANTE EL DÍA?', opts: ['Sí, casi diario','A veces','Rara vez','No'] },
+                          { key: 'doze_off' as const,           label: '¿SE QUEDA DORMIDO VIENDO TELE, LEYENDO O EN REPOSO?',        opts: ['Frecuentemente','A veces','Nunca'] },
+                        ]).map(({ key, label, opts }) => (
+                          <div key={key}>
+                            <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>{label}</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {opts.map(o => (
+                                <label key={o} className={`flex items-center gap-2 cursor-pointer px-3 rounded-xl border transition ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                  style={{ background: form[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: form[key] === o ? '#a78bfa' : '#2a3a4d', color: form[key] === o ? '#000' : '#dde6ef' }}>
+                                  <input type="radio" name={key} value={o} checked={form[key] === o}
+                                    onChange={e => set(key, e.target.value)} className="sr-only" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+
+                        <div>
+                          <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>AL DESPERTAR O DURANTE EL DÍA — marca lo que aplique</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Dolor de cabeza matutino','Problemas de concentración','Irritabilidad','Cambios de humor','Boca seca al despertar','Ninguno'].map(o => (
+                              <button key={o} type="button" onClick={() => toggleMulti(morningSx, setMorningSx, o)}
+                                className={`px-3 rounded-xl font-semibold transition border ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                style={{ background: morningSx.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: morningSx.includes(o) ? '#a78bfa' : '#2a3a4d', color: morningSx.includes(o) ? '#000' : '#dde6ef' }}>
+                                {o}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className={`font-mono text-[#7a95aa] mb-2 ${tb ? 'text-sm' : 'text-xs'}`}>LAS NOCHES QUE OCURRE, ¿HUBO ALGO DE ESTO? — marca lo que aplique</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Alcohol','Sedantes o pastillas para dormir','Cena pesada o tardía','Dormir boca arriba','Congestión nasal','Nada en particular'].map(o => (
+                              <button key={o} type="button" onClick={() => toggleMulti(apneaTrig, setApneaTrig, o)}
+                                className={`px-3 rounded-xl font-semibold transition border ${tb ? 'py-3 text-sm' : 'py-2 text-xs'}`}
+                                style={{ background: apneaTrig.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: apneaTrig.includes(o) ? '#a78bfa' : '#2a3a4d', color: apneaTrig.includes(o) ? '#000' : '#dde6ef' }}>
+                                {o}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-5 space-y-4">

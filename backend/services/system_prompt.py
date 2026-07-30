@@ -684,6 +684,25 @@ HOY ES: {hoy.isoformat()}. Úsalo para calcular cuánto tiempo ha pasado entre v
         )
         if labs:
             line += f" — Labs: {labs}"
+        # Seguimiento de apnea/ronquido entre visitas: permite ver si mejora o empeora
+        # con el tratamiento. Solo se incluye cuando hubo hallazgo, para no ensuciar.
+        _sueno = []
+        if v.get("snoring") in ("Sí", "A veces"):
+            _r = f"ronquido {v['snoring']}"
+            if v.get("snoring_intensity"):
+                _r += f" ({v['snoring_intensity']})"
+            _sueno.append(_r)
+        if v.get("apnea_observed") == "Sí":
+            _a = "pausas Sí"
+            if v.get("apnea_frequency"):
+                _a += f" {v['apnea_frequency']}"
+            if v.get("apnea_duration"):
+                _a += f", {v['apnea_duration']}"
+            _sueno.append(_a)
+        if v.get("daytime_sleepiness"):
+            _sueno.append(f"somnolencia diurna: {v['daytime_sleepiness']}")
+        if _sueno:
+            line += " — Sueño/SAOS: " + "; ".join(_sueno)
         lines.append(line)
 
     if total_previas > len(mostradas):
