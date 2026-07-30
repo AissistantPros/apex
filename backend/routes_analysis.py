@@ -1067,61 +1067,99 @@ async def get_functional_clarifying_questions(
         return {"visit_id": visit_id, "questions": []}
 
 
+def _ensure_analysis(visit_id: str, patient_id_hint: str, doctor_id: str) -> dict:
+    """Devuelve el análisis de la visita, creándolo si aún no existe."""
+    analysis = get_analysis(visit_id)
+    if analysis:
+        return analysis
+    visit_record = get_visit(visit_id) or {}
+    patient_id = patient_id_hint or visit_record.get("patient_id", "")
+    insert_analysis({
+        "id": f"analysis_{visit_id}",
+        "visit_id": visit_id,
+        "patient_id": patient_id,
+        "doctor_id": doctor_id,
+        "status": "in_progress",
+        "chat_history": [],
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+    })
+    return get_analysis(visit_id)
+
+
+def _build_functional_prompt(visit_id: str, body: FunctionalRequest, doctor_id: str) -> tuple[str, list]:
+    """Arma el prompt del diagnóstico funcional. Compartido entre la ruta normal y la de streaming."""
+    analysis = _ensure_analysis(visit_id, body.patient_id, doctor_id)
+    visit_record = _ensure_labs_extracted(visit_id, get_visit(visit_id) or {})
+    patient_id = analysis.get("patient_id")
+    patient_data = get_patient(patient_id) if patient_id else {}
+    all_visits = list_patient_visits(patient_id) if patient_id else []
+
+    doctor_context = ""
+    if body.doctor_traditional and body.doctor_traditional.strip():
+        doctor_context = build_doctor_context(
+            body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
+        )
+    if body.doctor_answers and body.doctor_answers.strip():
+        doctor_context += (
+            "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
+            "(tómalas en cuenta — son información adicional directa del paciente):\n"
+            + body.doctor_answers
+        )
+    chat_snippet = _chat_snippet(analysis.get("chat_history", []))
+
+    prompt = get_functional_medicine_prompt(
+        patient_data,
+        body.doctor_traditional,
+        visit_data=visit_record,
+        extra_context=doctor_context + chat_snippet,
+        all_visits=all_visits,
+        traditional_treatment=body.protocol_traditional,
+    )
+    return prompt, _visit_file_blocks(visit_record)
+
+
+@router.post("/{visit_id}/functional/stream")
+async def run_functional_stream(
+    visit_id: str,
+    body: FunctionalRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Igual que /functional pero transmite el texto en vivo por SSE, para que el médico
+    vea el diagnóstico apareciendo en pantalla en vez de una espera ciega."""
+    prompt, attachments = _build_functional_prompt(visit_id, body, doctor_id)
+
+    def event_stream():
+        chunks = []
+        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+                                         step="functional", thinking=True, web_search="global",
+                                         attachments=attachments):
+            chunks.append(delta)
+            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+        metadata, diagnosis = extract_structured_header("".join(chunks))
+        validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
+                                     visit_id=visit_id, step="validate_functional")
+        update_analysis(visit_id, {
+            "diagnosis_functional": diagnosis,
+            "validation_functional": validation,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+        yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.post("/{visit_id}/functional")
 async def run_functional(
     visit_id: str,
     body: FunctionalRequest,
     doctor_id: str = Depends(get_doctor_id),
 ):
-    """Genera el diagnóstico funcional."""
+    """Genera el diagnóstico funcional. Fallback no-streaming."""
     try:
-        analysis = get_analysis(visit_id)
-        if not analysis:
-            visit_record = get_visit(visit_id) or {}
-            patient_id = body.patient_id or visit_record.get("patient_id", "")
-            insert_analysis({
-                "id": f"analysis_{visit_id}",
-                "visit_id": visit_id,
-                "patient_id": patient_id,
-                "doctor_id": doctor_id,
-                "status": "in_progress",
-                "chat_history": [],
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
-            })
-            analysis = get_analysis(visit_id)
-
-        visit_record = get_visit(visit_id) or {}
-        visit_record = _ensure_labs_extracted(visit_id, visit_record)
-        patient_id = analysis.get("patient_id")
-        patient_data = get_patient(patient_id) if patient_id else {}
-        all_visits = list_patient_visits(patient_id) if patient_id else []
-
-        doctor_context = ""
-        if body.doctor_traditional and body.doctor_traditional.strip():
-            doctor_context = build_doctor_context(
-                body.ai_traditional_original,
-                body.doctor_traditional,
-                "DIAGNÓSTICO TRADICIONAL"
-            )
-        if body.doctor_answers and body.doctor_answers.strip():
-            doctor_context += (
-                "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
-                "(tómalas en cuenta — son información adicional directa del paciente):\n"
-                + body.doctor_answers
-            )
-        chat_snippet = _chat_snippet(analysis.get("chat_history", []))
-
-        prompt = get_functional_medicine_prompt(
-            patient_data,
-            body.doctor_traditional,
-            visit_data=visit_record,
-            extra_context=doctor_context + chat_snippet,
-            all_visits=all_visits,
-            traditional_treatment=body.protocol_traditional,
-        )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional", thinking=True, web_search="global",
-                          attachments=_visit_file_blocks(visit_record))
+        prompt, attachments = _build_functional_prompt(visit_id, body, doctor_id)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional",
+                          thinking=True, web_search="global", attachments=attachments)
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
@@ -1145,67 +1183,86 @@ async def run_functional(
         raise HTTPException(500, str(e))
 
 
+def _build_longevity_prompt(visit_id: str, body: LongevityRequest, doctor_id: str) -> tuple[str, list]:
+    """Arma el prompt del diagnóstico de longevidad. Compartido entre ruta normal y streaming."""
+    analysis = _ensure_analysis(visit_id, body.patient_id, doctor_id)
+    visit_record = _ensure_labs_extracted(visit_id, get_visit(visit_id) or {})
+    patient_id = analysis.get("patient_id")
+    patient_data = get_patient(patient_id) if patient_id else {}
+    all_visits = list_patient_visits(patient_id) if patient_id else []
+
+    ctx_trad = ""
+    if body.doctor_traditional and body.doctor_traditional.strip():
+        ctx_trad = build_doctor_context(
+            body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
+        )
+    ctx_func = ""
+    if body.doctor_functional and body.doctor_functional.strip():
+        ctx_func = build_doctor_context(
+            body.ai_functional_original, body.doctor_functional, "DIAGNÓSTICO FUNCIONAL"
+        )
+    ctx_answers = ""
+    if body.doctor_answers and body.doctor_answers.strip():
+        ctx_answers = (
+            "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
+            "(tómalas en cuenta — son información adicional directa del paciente):\n"
+            + body.doctor_answers
+        )
+    chat_snippet = _chat_snippet(analysis.get("chat_history", []))
+
+    prompt = get_longevity_diagnosis_prompt(
+        patient_data,
+        body.doctor_functional,
+        traditional_diagnosis=body.doctor_traditional,
+        visit_data=visit_record,
+        extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet,
+        all_visits=all_visits,
+        traditional_treatment=body.protocol_traditional,
+        functional_treatment=body.protocol_functional,
+    )
+    return prompt, _visit_file_blocks(visit_record)
+
+
+@router.post("/{visit_id}/longevity/stream")
+async def run_longevity_stream(
+    visit_id: str,
+    body: LongevityRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Igual que /longevity pero transmite el texto en vivo por SSE."""
+    prompt, attachments = _build_longevity_prompt(visit_id, body, doctor_id)
+
+    def event_stream():
+        chunks = []
+        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+                                         step="longevity", thinking=True, web_search="global",
+                                         attachments=attachments):
+            chunks.append(delta)
+            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+        metadata, diagnosis = extract_structured_header("".join(chunks))
+        validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
+                                     visit_id=visit_id, step="validate_longevity")
+        update_analysis(visit_id, {
+            "diagnosis_longevity": diagnosis,
+            "validation_longevity": validation,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+        yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.post("/{visit_id}/longevity")
 async def run_longevity(
     visit_id: str,
     body: LongevityRequest,
     doctor_id: str = Depends(get_doctor_id),
 ):
-    """Genera el diagnóstico de longevidad."""
+    """Genera el diagnóstico de longevidad. Fallback no-streaming."""
     try:
-        analysis = get_analysis(visit_id)
-        if not analysis:
-            visit_record = get_visit(visit_id) or {}
-            patient_id = body.patient_id or visit_record.get("patient_id", "")
-            insert_analysis({
-                "id": f"analysis_{visit_id}",
-                "visit_id": visit_id,
-                "patient_id": patient_id,
-                "doctor_id": doctor_id,
-                "status": "in_progress",
-                "chat_history": [],
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
-            })
-            analysis = get_analysis(visit_id)
-
-        visit_record = get_visit(visit_id) or {}
-        visit_record = _ensure_labs_extracted(visit_id, visit_record)
-        patient_id = analysis.get("patient_id")
-        patient_data = get_patient(patient_id) if patient_id else {}
-        all_visits = list_patient_visits(patient_id) if patient_id else []
-
-        ctx_trad = ""
-        if body.doctor_traditional and body.doctor_traditional.strip():
-            ctx_trad = build_doctor_context(
-                body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
-            )
-        ctx_func = ""
-        if body.doctor_functional and body.doctor_functional.strip():
-            ctx_func = build_doctor_context(
-                body.ai_functional_original, body.doctor_functional, "DIAGNÓSTICO FUNCIONAL"
-            )
-        ctx_answers = ""
-        if body.doctor_answers and body.doctor_answers.strip():
-            ctx_answers = (
-                "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
-                "(tómalas en cuenta — son información adicional directa del paciente):\n"
-                + body.doctor_answers
-            )
-        chat_snippet = _chat_snippet(analysis.get("chat_history", []))
-
-        prompt = get_longevity_diagnosis_prompt(
-            patient_data,
-            body.doctor_functional,
-            traditional_diagnosis=body.doctor_traditional,
-            visit_data=visit_record,
-            extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet,
-            all_visits=all_visits,
-            traditional_treatment=body.protocol_traditional,
-            functional_treatment=body.protocol_functional,
-        )
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity", thinking=True, web_search="global",
-                          attachments=_visit_file_blocks(visit_record))
+        prompt, attachments = _build_longevity_prompt(visit_id, body, doctor_id)
+        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity",
+                          thinking=True, web_search="global", attachments=attachments)
         metadata, diagnosis = extract_structured_header(raw)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_longevity")

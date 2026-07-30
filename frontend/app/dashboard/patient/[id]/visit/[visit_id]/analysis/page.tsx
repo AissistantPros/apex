@@ -2682,19 +2682,19 @@ export default function AnalysisPage() {
     if (doctorAnswersOverride === undefined) addDivider('── Diagnóstico Funcional ──');
     else { setChatMessages([]); setError(''); }
     setEditMode(false);
+    setStreamedText('');
     try {
-      const res = await fetch(`${apiBase}/analyze/${visit_id}/functional`, {
-        method: 'POST', headers: authH(),
-        body: JSON.stringify({
+      const json = await streamSSE(
+        `${apiBase}/analyze/${visit_id}/functional/stream`,
+        {
           doctor_traditional: traditional.doctor_text,
           ai_traditional_original: traditional.ai_text,
           protocol_traditional: protTrad.doctor_text,
           doctor_answers: doctorAnswersOverride || '',
           patient_id,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
+        },
+        (delta) => setStreamedText(prev => prev + delta),
+      );
       setFunctional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       enterStep('review_functional');
     } catch (e: any) { setError('Error: ' + e.message); setStep(doctorAnswersOverride === undefined ? 'review_traditional' : 'select'); }
@@ -2706,10 +2706,11 @@ export default function AnalysisPage() {
     if (doctorAnswersOverride === undefined) addDivider('── Diagnóstico Longevidad ──');
     else { setChatMessages([]); setError(''); }
     setEditMode(false);
+    setStreamedText('');
     try {
-      const res = await fetch(`${apiBase}/analyze/${visit_id}/longevity`, {
-        method: 'POST', headers: authH(),
-        body: JSON.stringify({
+      const json = await streamSSE(
+        `${apiBase}/analyze/${visit_id}/longevity/stream`,
+        {
           doctor_traditional: traditional.doctor_text,
           doctor_functional: functional.doctor_text,
           ai_traditional_original: traditional.ai_text,
@@ -2718,10 +2719,9 @@ export default function AnalysisPage() {
           protocol_functional: protFunc.doctor_text,
           doctor_answers: doctorAnswersOverride || '',
           patient_id,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
+        },
+        (delta) => setStreamedText(prev => prev + delta),
+      );
       setLongevity({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       enterStep('review_longevity');
     } catch (e: any) {
