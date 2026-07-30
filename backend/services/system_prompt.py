@@ -358,7 +358,7 @@ def build_visit_context(visit: dict) -> str:
     cognitive = visit.get("cognitive_symptoms") or []
     cognitive_str = ", ".join(cognitive) if isinstance(cognitive, list) else str(cognitive)
 
-    # Tamizaje ampliado de SAOS: solo se captura cuando el paciente ronca o hay pausas.
+    # Tamizaje ampliado de SAOS: solo se captura cuando hay PAUSAS OBSERVADAS al respirar.
     # Aporta la repercusión diurna (la "T" de STOP-BANG) y los desencadenantes, que es lo
     # que la IA solía tener que preguntar aparte.
     _msx = visit.get("morning_symptoms") or []
@@ -375,13 +375,13 @@ def build_visit_context(visit: dict) -> str:
     if _trg_str:
         _saos_lines.append(f"    - Desencadenantes las noches que ocurre: {_trg_str}")
     saos_block = (
-        "  • Tamizaje ampliado de apnea del sueño (se pregunta solo si ronca o hay pausas):\n"
+        "  • Tamizaje ampliado de apnea del sueño (se pregunta solo si hay pausas observadas):\n"
         + "\n".join(_saos_lines)
         + "\n    (Con esto ya tienes la repercusión diurna y los desencadenantes: NO vuelvas a "
           "preguntar por somnolencia diurna, cefalea matutina ni alcohol/sedantes nocturnos. "
           "Para STOP-BANG, los demás componentes están arriba: IMC, edad, sexo, circunferencia "
           "de cuello y presión arterial.)"
-    ) if _saos_lines else "  • Tamizaje ampliado de apnea del sueño: no aplica (no refiere ronquido ni pausas)"
+    ) if _saos_lines else "  • Tamizaje ampliado de apnea del sueño: no aplica (no se reportaron pausas al respirar)"
 
     orina = visit.get("urine_color") or visit.get("orina_color") or "No registrado"
     orina_tarde = visit.get("urine_color_afternoon") or visit.get("orina_color_tarde") or ""

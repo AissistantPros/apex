@@ -2070,8 +2070,8 @@ function FlowPageInner() {
                       )}
                     </div>
 
-                    {/* ── Tamizaje SAOS ampliado — solo si ronca o hay pausas (completa STOP-BANG) ── */}
-                    {(f.snoring === 'Sí' || f.snoring === 'A veces' || f.apnea_observed === 'Sí') && (
+                    {/* ── Tamizaje SAOS ampliado — solo si hay pausas observadas (completa STOP-BANG) ── */}
+                    {f.apnea_observed === 'Sí' && (
                       <div className="space-y-3 rounded-xl bg-[#0d1520] border border-[#a78bfa]/30 p-4">
                         <p className="text-xs font-mono text-[#a78bfa]">
                           TAMIZAJE DE APNEA DEL SUEÑO — repercusión diurna y desencadenantes

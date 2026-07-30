@@ -1426,8 +1426,8 @@ export default function NewVisitPage() {
                       )}
                     </div>
 
-                    {/* ── Tamizaje SAOS ampliado — solo si ronca o hay pausas (completa STOP-BANG) ── */}
-                    {(form.snoring === 'Sí' || form.snoring === 'A veces' || form.apnea_observed === 'Sí') && (
+                    {/* ── Tamizaje SAOS ampliado — solo si hay pausas observadas (completa STOP-BANG) ── */}
+                    {form.apnea_observed === 'Sí' && (
                       <div className="space-y-3 rounded-xl bg-[#0d1520] border border-[#a78bfa]/30 p-4">
                         <p className={`font-mono text-[#a78bfa] ${tb ? 'text-sm' : 'text-xs'}`}>
                           TAMIZAJE DE APNEA DEL SUEÑO — repercusión diurna y desencadenantes
