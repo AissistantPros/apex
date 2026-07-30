@@ -341,6 +341,31 @@ def build_visit_context(visit: dict) -> str:
     cognitive = visit.get("cognitive_symptoms") or []
     cognitive_str = ", ".join(cognitive) if isinstance(cognitive, list) else str(cognitive)
 
+    # Tamizaje ampliado de SAOS: solo se captura cuando el paciente ronca o hay pausas.
+    # Aporta la repercusión diurna (la "T" de STOP-BANG) y los desencadenantes, que es lo
+    # que la IA solía tener que preguntar aparte.
+    _msx = visit.get("morning_symptoms") or []
+    _trg = visit.get("apnea_triggers") or []
+    _msx_str = ", ".join(_msx) if isinstance(_msx, list) else str(_msx)
+    _trg_str = ", ".join(_trg) if isinstance(_trg, list) else str(_trg)
+    _saos_lines = []
+    if visit.get("daytime_sleepiness"):
+        _saos_lines.append(f"    - Cansancio/somnolencia diurna: {visit['daytime_sleepiness']}")
+    if visit.get("doze_off"):
+        _saos_lines.append(f"    - Se queda dormido viendo TV, leyendo o en reposo: {visit['doze_off']}")
+    if _msx_str:
+        _saos_lines.append(f"    - Síntomas matutinos/diurnos: {_msx_str}")
+    if _trg_str:
+        _saos_lines.append(f"    - Desencadenantes las noches que ocurre: {_trg_str}")
+    saos_block = (
+        "  • Tamizaje ampliado de apnea del sueño (se pregunta solo si ronca o hay pausas):\n"
+        + "\n".join(_saos_lines)
+        + "\n    (Con esto ya tienes la repercusión diurna y los desencadenantes: NO vuelvas a "
+          "preguntar por somnolencia diurna, cefalea matutina ni alcohol/sedantes nocturnos. "
+          "Para STOP-BANG, los demás componentes están arriba: IMC, edad, sexo, circunferencia "
+          "de cuello y presión arterial.)"
+    ) if _saos_lines else "  • Tamizaje ampliado de apnea del sueño: no aplica (no refiere ronquido ni pausas)"
+
     orina = visit.get("urine_color") or visit.get("orina_color") or "No registrado"
     orina_tarde = visit.get("urine_color_afternoon") or visit.get("orina_color_tarde") or ""
 
@@ -497,7 +522,8 @@ DATOS DE LA VISITA ACTUAL
   • Hora de acostarse / despertar: {visit.get('bedtime') or 'N/D'} / {visit.get('wake_time') or 'N/D'}
   • Despertares nocturnos: {visit.get('night_awakenings') or 'N/D'}
   • Ronca: {visit.get('snoring') or 'N/D'}{f" — intensidad (¿se escucha a través de la pared?): {visit.get('snoring_intensity')}" if visit.get('snoring_intensity') else ""}{f" — frecuencia: {visit.get('snoring_frequency')}" if visit.get('snoring_frequency') else ""}
-  • Pausas de respiración al dormir (apnea observada): {visit.get('apnea_observed') or 'N/D'}{f" — frecuencia: {visit.get('apnea_frequency')}" if visit.get('apnea_frequency') else ""}{f" — duración de pausas: {visit.get('apnea_duration')}" if visit.get('apnea_duration') else ""}
+  • Pausas de respiración al dormir (apnea observada): {visit.get('apnea_observed') or 'N/D'}{f" — frecuencia: {visit.get('apnea_frequency')}" if visit.get('apnea_frequency') else ""}{f" — duración de las pausas: {visit.get('apnea_duration')}" if visit.get('apnea_duration') else ""}{f" — patrón: {visit.get('apnea_pattern')}" if visit.get('apnea_pattern') else ""}
+{saos_block}
   • Siesta durante el día: {visit.get('daytime_nap') or 'N/D'}
   Estrés (eje HPA):
   • Nivel de estrés percibido (1-10): {visit.get('stress_level') or 'N/D'}

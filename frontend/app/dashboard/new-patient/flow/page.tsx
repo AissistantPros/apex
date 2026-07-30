@@ -178,6 +178,8 @@ function FlowPageInner() {
   const [digestion,   setDigestion]   = useState<string[]>([]);
   const [alcoholTipo, setAlcoholTipo] = useState<string[]>([]);  // cerveza/vino/destilados
   const [cognitive,   setCognitive]   = useState<string[]>([]);  // niebla mental / memoria / concentración
+  const [morningSx,   setMorningSx]   = useState<string[]>([]);  // síntomas matutinos (SAOS)
+  const [apneaTrig,   setApneaTrig]   = useState<string[]>([]);  // desencadenantes de la apnea
 
   // ── Archivos de laboratorio ───────────────────────────────────────────────
   type LabFile = { name: string; type: string; size: number; data: string };
@@ -249,6 +251,7 @@ function FlowPageInner() {
     bedtime: '', wake_time: '', night_awakenings: '', snoring: '',
     snoring_intensity: '', snoring_frequency: '',
     apnea_observed: '', apnea_frequency: '', apnea_duration: '',
+    apnea_pattern: '', daytime_sleepiness: '', doze_off: '',
     daytime_nap: '',
     libido_hoy: 5, libido_tendencia: '', orina_color: '', orina_color_tarde: '',
     bristol_scale: '', bowel_movements_per_day: '', recent_antibiotics: '', probiotics_use: '',
@@ -460,6 +463,9 @@ function FlowPageInner() {
               apnea_observed:     str(v.apnea_observed),
               apnea_frequency:    str(v.apnea_frequency),
               apnea_duration:     str(v.apnea_duration),
+              apnea_pattern:      str(v.apnea_pattern),
+              daytime_sleepiness: str(v.daytime_sleepiness),
+              doze_off:           str(v.doze_off),
               daytime_nap:        str(v.daytime_nap),
               libido_hoy:        num(v.libido),
               libido_tendencia:  str(v.libido_tendencia),
@@ -507,6 +513,9 @@ function FlowPageInner() {
             }));
             if (Array.isArray(v.mood))      setAnimo(v.mood);
             if (Array.isArray(v.digestion)) setDigestion(v.digestion);
+            if (Array.isArray(v.cognitive_symptoms)) setCognitive(v.cognitive_symptoms);
+            if (Array.isArray(v.morning_symptoms))   setMorningSx(v.morning_symptoms);
+            if (Array.isArray(v.apnea_triggers))     setApneaTrig(v.apnea_triggers);
             if (Array.isArray(v.pains) && v.pains.length > 0) setDolores(v.pains);
             if (Array.isArray(v.labs_files)) setLabFiles(v.labs_files);
           }
@@ -818,7 +827,9 @@ function FlowPageInner() {
             night_awakenings: f.night_awakenings, snoring: f.snoring,
             snoring_intensity: f.snoring_intensity, snoring_frequency: f.snoring_frequency,
             apnea_observed: f.apnea_observed, apnea_frequency: f.apnea_frequency,
-            apnea_duration: f.apnea_duration,
+            apnea_duration: f.apnea_duration, apnea_pattern: f.apnea_pattern,
+            daytime_sleepiness: f.daytime_sleepiness, doze_off: f.doze_off,
+            morning_symptoms: morningSx, apnea_triggers: apneaTrig,
             daytime_nap: f.daytime_nap,
             mood: animo, libido: f.libido_hoy, libido_tendencia: f.libido_tendencia,
             cognitive_symptoms: cognitive, digestion,
@@ -1996,7 +2007,7 @@ function FlowPageInner() {
                           <div>
                             <p className="text-xs font-mono text-[#7a95aa] mb-2">¿CUÁNTO DURAN LAS PAUSAS?</p>
                             <div className="flex gap-2 flex-wrap">
-                              {(['Segundos','Más de 10 seg','No sabe'] as const).map(o => (
+                              {(['<10 seg','10-20 seg','20-30 seg','Más de 30 seg','No sabe'] as const).map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
                                   style={{ background: f.apnea_duration === o ? '#a78bfa' : '#1e2d3d', borderColor: f.apnea_duration === o ? '#a78bfa' : '#2a3a4d', color: f.apnea_duration === o ? '#000' : '#dde6ef' }}>
                                   <input type="radio" name="apnea_duration" value={o} checked={f.apnea_duration === o}
@@ -2006,9 +2017,61 @@ function FlowPageInner() {
                               ))}
                             </div>
                           </div>
+                          <div className="col-span-2">
+                            <p className="text-xs font-mono text-[#7a95aa] mb-2">¿PASA TODA LA NOCHE O EN SITUACIONES PUNTUALES?</p>
+                            <PillGroup options={['Toda la noche','Solo por ratos','Solo algunas noches','No sabe']}
+                              value={f.apnea_pattern} onChange={v => set('apnea_pattern', v)} accent="#a78bfa" />
+                          </div>
                         </div>
                       )}
                     </div>
+
+                    {/* ── Tamizaje SAOS ampliado — solo si ronca o hay pausas (completa STOP-BANG) ── */}
+                    {(f.snoring === 'Sí' || f.snoring === 'A veces' || f.apnea_observed === 'Sí') && (
+                      <div className="space-y-3 rounded-xl bg-[#0d1520] border border-[#a78bfa]/30 p-4">
+                        <p className="text-xs font-mono text-[#a78bfa]">
+                          TAMIZAJE DE APNEA DEL SUEÑO — repercusión diurna y desencadenantes
+                        </p>
+
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">¿SE SIENTE CANSADO, FATIGADO O SOMNOLIENTO DURANTE EL DÍA?</p>
+                          <PillGroup options={['Sí, casi diario','A veces','Rara vez','No']}
+                            value={f.daytime_sleepiness} onChange={v => set('daytime_sleepiness', v)} accent="#a78bfa" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">¿SE QUEDA DORMIDO VIENDO TELE, LEYENDO O EN REPOSO DURANTE EL DÍA?</p>
+                          <PillGroup options={['Frecuentemente','A veces','Nunca']}
+                            value={f.doze_off} onChange={v => set('doze_off', v)} accent="#a78bfa" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">AL DESPERTAR O DURANTE EL DÍA — marca lo que aplique</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Dolor de cabeza matutino','Problemas de concentración','Irritabilidad','Cambios de humor','Boca seca al despertar','Ninguno'].map(o => (
+                              <button key={o} type="button" onClick={() => toggleMulti(morningSx, setMorningSx, o)}
+                                className="px-3 py-2 rounded-xl text-xs font-semibold transition border"
+                                style={{ background: morningSx.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: morningSx.includes(o) ? '#a78bfa' : '#2a3a4d', color: morningSx.includes(o) ? '#000' : '#dde6ef' }}>
+                                {o}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">LAS NOCHES QUE OCURRE, ¿HUBO ALGO DE ESTO? — marca lo que aplique</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Alcohol','Sedantes o pastillas para dormir','Cena pesada o tardía','Dormir boca arriba','Congestión nasal','Nada en particular'].map(o => (
+                              <button key={o} type="button" onClick={() => toggleMulti(apneaTrig, setApneaTrig, o)}
+                                className="px-3 py-2 rounded-xl text-xs font-semibold transition border"
+                                style={{ background: apneaTrig.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: apneaTrig.includes(o) ? '#a78bfa' : '#2a3a4d', color: apneaTrig.includes(o) ? '#000' : '#dde6ef' }}>
+                                {o}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
