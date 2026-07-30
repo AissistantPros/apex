@@ -17,7 +17,10 @@ from db import (
     find_medications, find_upgrades_for,
     save_doctor_preference, get_doctor_preferences, deactivate_doctor_preference,
     log_prescriptions, get_prescription_stats,
-    get_vademecum_by_voice, get_clinical_baselines,
+    get_vademecum_by_voice, get_clinical_baselines, search_kb,
+)
+from services.knowledge_base import (
+    embed_consulta, embeddings_disponibles, formatear_fragmentos,
 )
 
 from services.system_prompt import (
@@ -1538,6 +1541,26 @@ def deliberate_protocol(protocol_text: str, protocol_type: str, previous_protoco
     return current, []
 
 
+def consultar_biblioteca(diagnosis: str, protocol_type: str, extra: str = "") -> str:
+    """Busca en la biblioteca del médico los fragmentos relevantes para este caso.
+    Devuelve "" si no hay biblioteca configurada — el sistema sigue igual sin ella."""
+    if not embeddings_disponibles():
+        return ""
+    consulta = f"{diagnosis[:900]} {extra[:400]}".strip()
+    if len(consulta) < 20:
+        return ""
+    try:
+        vector = embed_consulta(consulta)
+        if not vector:
+            return ""
+        # Trae lo del área de esta voz + lo marcado como 'general' (la función SQL ya lo incluye)
+        fragmentos = search_kb(vector, match_count=6, area=protocol_type)
+        return formatear_fragmentos(fragmentos)
+    except Exception as e:
+        print(f"[WARN] consulta a la biblioteca falló: {e}")
+        return ""
+
+
 def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, dict, list]:
     """Arma el prompt completo de protocolo. Devuelve (prompt, previous_protocols, attachments).
     Compartido entre la ruta normal y la de streaming."""
@@ -1590,6 +1613,7 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
         doctor_preferences=doctor_prefs, practice_stats=practice_stats,
         arsenal_rows=get_vademecum_by_voice(body.protocol_type),
         baselines=get_clinical_baselines(body.protocol_type),
+        biblioteca=consultar_biblioteca(full_diagnosis, body.protocol_type),
     )
     return prompt, previous_protocols, _visit_file_blocks(visit_record)
 

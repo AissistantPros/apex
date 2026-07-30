@@ -344,6 +344,77 @@ def get_vademecum_by_voice(voz: str, seccion: str = None) -> list:
     return rows
 
 
+# ── Base de conocimiento (RAG) ────────────────────────────────────────────────
+
+def create_kb_document(doc: dict) -> dict:
+    try:
+        r = supabase.table("kb_documents").insert(doc).execute()
+        return r.data[0] if r.data else None
+    except Exception as e:
+        print(f"[WARN] no se pudo crear el documento: {e}")
+        return None
+
+
+def update_kb_document(doc_id: str, data: dict) -> bool:
+    try:
+        supabase.table("kb_documents").update(data).eq("id", doc_id).execute()
+        return True
+    except Exception as e:
+        print(f"[WARN] no se pudo actualizar el documento: {e}")
+        return False
+
+
+def list_kb_documents() -> list:
+    try:
+        r = supabase.table("kb_documents").select("*").order("created_at", desc=True).execute()
+        return r.data or []
+    except Exception as e:
+        print(f"[WARN] no se pudieron listar los documentos: {e}")
+        return []
+
+
+def delete_kb_document(doc_id: str) -> bool:
+    try:
+        supabase.table("kb_documents").delete().eq("id", doc_id).execute()  # cascada a chunks
+        return True
+    except Exception as e:
+        print(f"[WARN] no se pudo borrar el documento: {e}")
+        return False
+
+
+def insert_kb_chunks(rows: list) -> int:
+    """Inserta fragmentos con su embedding, en lotes para no exceder el tamaño de petición."""
+    if not rows:
+        return 0
+    total = 0
+    for i in range(0, len(rows), 50):
+        lote = rows[i:i + 50]
+        try:
+            supabase.table("kb_chunks").insert(lote).execute()
+            total += len(lote)
+        except Exception as e:
+            print(f"[WARN] fallo al insertar fragmentos (lote {i}): {e}")
+    return total
+
+
+def search_kb(query_embedding: list, match_count: int = 8, area: str = None,
+              min_similitud: float = 0.35) -> list:
+    """Búsqueda semántica en la biblioteca del médico."""
+    if not query_embedding:
+        return []
+    try:
+        r = supabase.rpc("match_kb_chunks", {
+            "query_embedding": query_embedding,
+            "match_count": match_count,
+            "filtro_area": area,
+            "min_similitud": min_similitud,
+        }).execute()
+        return r.data or []
+    except Exception as e:
+        print(f"[WARN] búsqueda en la biblioteca falló: {e}")
+        return []
+
+
 def get_clinical_baselines(voz: str = None) -> list:
     """Recomendaciones base por edad/sexo/condición — el piso que no se debe omitir."""
     try:

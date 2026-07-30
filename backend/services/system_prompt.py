@@ -1401,7 +1401,8 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
                         visit_data: dict = None, previous_protocols: dict = None,
                         all_visits: list = None,
                         doctor_preferences: list = None, practice_stats: list = None,
-                        arsenal_rows: list = None, baselines: list = None) -> str:
+                        arsenal_rows: list = None, baselines: list = None,
+                        biblioteca: str = "") -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
     current_visit_id = (visit_data or {}).get("id", "")
@@ -1448,6 +1449,8 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
     baselines_block = build_baselines_context(baselines)
     if baselines_block:
         arsenal_block += "\n" + baselines_block + "\n"
+    if biblioteca:
+        arsenal_block += "\n" + biblioteca + "\n"
     practica_block = build_doctor_practice_context(doctor_preferences, practice_stats)
     if practica_block:
         practica_block = "\n" + practica_block + "\n"
