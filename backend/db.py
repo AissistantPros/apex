@@ -335,6 +335,28 @@ def _matches(entry_name: str, query_names: list) -> bool:
     return False
 
 
+def get_vademecum_by_voice(voz: str, seccion: str = None) -> list:
+    """Arsenal que le corresponde a una voz (traditional/functional/longevity).
+    seccion opcional: 'clasico' (seguro/consolidado) o 'experimental' (solo informativo)."""
+    rows = [r for r in _load_vademecum() if (r.get("voz") or "") == voz]
+    if seccion:
+        rows = [r for r in rows if (r.get("seccion") or "") == seccion]
+    return rows
+
+
+def get_clinical_baselines(voz: str = None) -> list:
+    """Recomendaciones base por edad/sexo/condición — el piso que no se debe omitir."""
+    try:
+        q = supabase.table("clinical_baselines").select("*").eq("activa", True)
+        if voz:
+            q = q.eq("voz", voz)
+        result = q.execute()
+        return result.data if result.data else []
+    except Exception as e:
+        print(f"[WARN] no se pudieron leer las recomendaciones base: {e}")
+        return []
+
+
 def _aliases(row: dict) -> list:
     """Todos los nombres por los que se puede conocer una entrada: el genérico, cada sinónimo
     y cada marca comercial. Los campos de sinónimos/marcas son LISTAS separadas por comas,

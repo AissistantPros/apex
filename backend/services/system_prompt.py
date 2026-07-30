@@ -1339,10 +1339,69 @@ def build_doctor_practice_context(preferences: list = None, stats: list = None) 
     return "\n\n".join(blocks)
 
 
+def build_arsenal_context(vademecum_rows: list, diagnosis_type: str) -> str:
+    """Arsenal que le corresponde a ESTA voz, separado en lo prescribible y lo que es
+    solo información para el médico. Encuadre anti-anclaje: es un recordatorio de opciones
+    a considerar, no un menú del cual haya que escoger."""
+    if not vademecum_rows:
+        return ""
+    recetable, informativo = [], []
+    for r in vademecum_rows:
+        etiqueta = f"{r.get('nombre_generico')}"
+        if r.get("indicaciones"):
+            etiqueta += f" ({r['indicaciones'][:90]})"
+        (informativo if r.get("solo_informativo") else recetable).append(etiqueta)
+
+    partes = []
+    if recetable:
+        partes.append(
+            "OPCIONES PRESCRIBIBLES de tu especialidad (aprobadas o de uso clínico aceptado — "
+            "puedes recetarlas normalmente si el caso lo amerita):\n  • " + "\n  • ".join(recetable[:40])
+        )
+    if informativo:
+        partes.append(
+            "SECCIÓN EXPERIMENTAL — SOLO INFORMACIÓN PARA EL MÉDICO, NUNCA RECETA:\n  • "
+            + "\n  • ".join(informativo[:30])
+            + "\n\nREGLA ESTRICTA sobre esta sección: son compuestos sin aprobación regulatoria "
+              "(zona gris o mercado gris). NO los incluyas en \"items\" como si fueran una "
+              "prescripción. Si alguno es genuinamente relevante para este caso, menciónalo en "
+              "\"monitoreo_general\" como información que el médico puede valorar por su cuenta, "
+              "dejando claro que no está aprobado y que la decisión y la vía de obtención son "
+              "responsabilidad suya, fuera del sistema."
+        )
+    partes.append(
+        "CÓMO USAR ESTA LISTA: es un recordatorio de opciones disponibles, NO un menú a llenar. "
+        "No incluyas algo solo porque aparece aquí; inclúyelo solo si aporta a ESTE caso. Y si la "
+        "mejor opción para el paciente no está en la lista, recomiéndala igual."
+    )
+    return "\n\n".join(partes)
+
+
+def build_baselines_context(baselines: list) -> str:
+    """Recomendaciones base por edad/sexo/condición — el piso que no se debe omitir."""
+    if not baselines:
+        return ""
+    lines = []
+    for b in baselines:
+        marca = "[BÁSICA]" if (b.get("prioridad") == "basica") else "[VALORAR]"
+        linea = f"  • {marca} Si {b.get('descripcion')} → {b.get('recomendacion')}"
+        if b.get("razon"):
+            linea += f"\n      Razón: {b['razon']}"
+        lines.append(linea)
+    return (
+        "RECOMENDACIONES BASE SEGÚN PERFIL (edad, sexo, fármacos y condiciones del paciente):\n"
+        + "\n".join(lines)
+        + "\n\nEVALÚA cada una contra ESTE paciente concreto. Las marcadas [BÁSICA] aplican casi "
+          "siempre que se cumpla la condición — si decides omitir una, debe ser por una razón "
+          "clínica real, no por olvido. Las [VALORAR] dependen más del criterio y del caso."
+    )
+
+
 def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
                         visit_data: dict = None, previous_protocols: dict = None,
                         all_visits: list = None,
-                        doctor_preferences: list = None, practice_stats: list = None) -> str:
+                        doctor_preferences: list = None, practice_stats: list = None,
+                        arsenal_rows: list = None, baselines: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else "(Sin datos de visita actual)"
     current_visit_id = (visit_data or {}).get("id", "")
@@ -1352,9 +1411,24 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
     meds_actuales = _fmt_meds(patient_data.get("medications"))
 
     protocol_focus = {
-        "traditional": "medicamentos convencionales (incluyendo off-label con justificación científica) y suplementación basada en evidencia cuando esté clínicamente indicada (ej. déficits confirmados), más hidratación, tipo de dieta y ejercicio",
-        "functional":  "suplementos, nutracéuticos y modificaciones de estilo de vida",
-        "longevity":   "intervenciones anti-envejecimiento: péptidos, NAD+, hormonas bioidénticas, optimización metabólica, ejercicio terapéutico",
+        "traditional": (
+            "medicamentos convencionales aprobados (incluido off-label con justificación científica), "
+            "hidratación, tipo de dieta y ejercicio. En cuanto a vitaminas y suplementos, incluye SOLO "
+            "los que un médico internista receta de rutina: corrección de déficits documentados o "
+            "esperables (vitamina D, B12 —sobre todo con metformina o IBP—, hierro en anemia, ácido "
+            "fólico, calcio) y omega-3 cuando hay indicación cardiovascular o hipertrigliceridemia. "
+            "NO incluyas creatina, proteína en polvo, adaptógenos (ashwagandha, rhodiola), probióticos, "
+            "nutracéuticos ni péptidos: eso le toca a medicina funcional y duplicarlo aquí le quita "
+            "sentido al siguiente paso"
+        ),
+        "functional":  (
+            "suplementos, nutracéuticos, off-label con racional fisiológico y modificaciones de estilo "
+            "de vida, dirigidos a la CAUSA RAÍZ del caso clínico y a los síntomas que el paciente tiene hoy"
+        ),
+        "longevity":   (
+            "intervenciones para extender healthspan y lifespan: NAD+ y precursores, péptidos de "
+            "longevidad, senolíticos, hormonas bioidénticas, optimización metabólica y ejercicio terapéutico"
+        ),
     }.get(diagnosis_type, "intervención terapéutica")
 
     identity = {
@@ -1368,6 +1442,12 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
         star_note = "\n\nIMPORTANTE: dentro del diagnóstico base, la(s) línea(s) marcadas con ⭐ ELEGIDO POR EL MÉDICO son las que el médico seleccionó manualmente como correctas (puede no ser la de mayor % de confianza calculado por la IA). Diseña el protocolo basándote en ESA selección — el criterio clínico del médico tiene prioridad sobre el ranking automático."
 
     arsenal_block = PEPTIDOS_OFFLABEL_RULE if diagnosis_type in ("functional", "longevity") else ""
+    vademecum_block = build_arsenal_context(arsenal_rows, diagnosis_type)
+    if vademecum_block:
+        arsenal_block += "\n" + vademecum_block + "\n"
+    baselines_block = build_baselines_context(baselines)
+    if baselines_block:
+        arsenal_block += "\n" + baselines_block + "\n"
     practica_block = build_doctor_practice_context(doctor_preferences, practice_stats)
     if practica_block:
         practica_block = "\n" + practica_block + "\n"
@@ -1481,6 +1561,8 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
       "interacciones": "Diuréticos (hipotensión), insulina/secretagogos (hipoglucemia).",
       "mecanismo": "Inhibe SGLT2 renal → menor reabsorción de glucosa.",
       "cofepris": "aprobado",
+      "momento": "iniciar_ahora",
+      "condicion": "",
       "para_que_sirve": "Baja la glucosa por orina y protege corazón/riñón — indicado por el SM del paciente."
     }}
   ],
@@ -1514,7 +1596,18 @@ REGLAS DE LLENADO (síguelas exactamente):
     - Frases cortas y directas, sin explicar generalidades del libro. El médico ya sabe medicina; solo dile lo puntual del CASO.
     - Nada de párrafos explicativos ni justificaciones extensas. El sistema tiene "Aprende más" para eso.
 14. "cofepris" debe ser uno de exactamente tres valores: "aprobado" (fármaco con registro e indicación formal en México), "no_aprobado" (péptido, uso off-label o suplemento sin aprobación de COFEPRIS para esta indicación — respaldo preliminar/anecdótico) o "na" (no aplica el concepto de aprobación: ejercicio, hidratación, dieta, hábitos). Para CADA item marcado "no_aprobado", el campo "mecanismo" DEBE contener la teoría honesta de cómo funcionaría y el nivel de evidencia; el frontend lo muestra en un desplegable junto a un badge pequeño "(no aprobado por COFEPRIS)".
-15. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
+
+15. "momento" — CLASIFICACIÓN TEMPORAL OBLIGATORIA. Es lo que permite entregarle al médico un plan claro en vez de una lista con la mitad diciendo "todavía no". Exactamente uno de estos tres valores:
+   - "iniciar_ahora": es seguro y está justificado empezarlo HOY con la información disponible. Deja "condicion" en "".
+   - "condicionado": NO se inicia todavía; arranca solo si un estudio sale de cierta forma. En "condicion" escribe el disparador concreto y accionable: "Iniciar solo si 25-OH-D <30 ng/mL" o "Iniciar solo si la poligrafía descarta SAOS".
+   - "ajustar_segun": SÍ se inicia ahora, pero la dosis cambia o se suspende según un resultado pendiente. En "condicion" escribe la regla: "Si TFG <45, reducir a 1000 mg/día; si TFG <30, suspender".
+   Piensa como un médico real: das lo que es seguro hoy, y cuando llega el laboratorio ajustas. Un caso puede salir con todo en "iniciar_ahora", o con todo "condicionado" si de verdad no hay nada seguro que empezar sin estudios. No fuerces una proporción.
+
+16. PROHIBIDO INCLUIR ITEMS QUE ESTÁS DESCARTANDO. Si concluyes que algo NO debe usarse en este paciente (por traslape de mecanismo, contraindicación o porque otra voz ya lo cubre), simplemente NO lo pongas en "items". Nunca lo incluyas con una alerta del tipo "no agregar en este caso" u "omitido por traslape" — eso confunde al médico y contradice la lista misma. La lista de items es lo que SÍ se propone; lo descartado no aparece. Si crees que el médico debe saber por qué descartaste algo relevante, dilo en UNA línea dentro de "monitoreo_general".
+
+17. NADA DE ITEMS QUE NO SEAN TRATAMIENTOS. "items" contiene solo intervenciones concretas. Las instrucciones de cómo escalonar, titular o secuenciar el tratamiento NO son items: van en "monitoreo_general" y en el campo "momento"/"condicion" de cada item. Nunca inventes un tipo nuevo (como "Plan de escalada" o "Secuencia de inicio") — "tipo" solo puede ser uno de los valores permitidos en la regla 2.
+
+18. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
 
 
 def get_protocol_validation_prompt(protocol_json: str, previous_protocols: dict = None) -> str:

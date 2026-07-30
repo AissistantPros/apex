@@ -17,6 +17,7 @@ from db import (
     find_medications, find_upgrades_for,
     save_doctor_preference, get_doctor_preferences, deactivate_doctor_preference,
     log_prescriptions, get_prescription_stats,
+    get_vademecum_by_voice, get_clinical_baselines,
 )
 
 from services.system_prompt import (
@@ -1412,8 +1413,29 @@ def run_conscience_review(protocol_text: str, protocol_type: str, previous_proto
             prev_lines.append(f"--- Protocolo {labels.get(k, k.upper())} YA ACEPTADO por el médico ---\n{v}")
     prev_block = "\n\n".join(prev_lines) if prev_lines else "(ninguno todavía)"
 
+    # Pregunta obligada de péptidos, con la lista que le toca a cada voz. Fuerza a CONSIDERARLOS
+    # sin forzar a usarlos ("si es que aplican").
+    peptidos_q = ""
+    if protocol_type in ("functional", "longevity"):
+        exp = get_vademecum_by_voice(protocol_type, seccion="experimental")
+        nombres = ", ".join(r.get("nombre_generico", "") for r in exp if r.get("nombre_generico"))
+        if nombres:
+            ambito = ("la causa raíz y los síntomas actuales del paciente"
+                      if protocol_type == "functional" else
+                      "el healthspan y el envejecimiento del paciente")
+            peptidos_q = (
+                f"\n\nPREGUNTA OBLIGADA — PÉPTIDOS Y TERAPIAS AVANZADAS ({protocol_type}):\n"
+                f"De esta lista, ¿alguno podría ser benéfico para {ambito}, SI ES QUE APLICA?\n"
+                f"  {nombres}\n"
+                "Contesta con honestidad: si ninguno aporta a este caso concreto, no fuerces "
+                "ninguno — es una respuesta perfectamente válida y preferible a recomendar por "
+                "recomendar. Si alguno SÍ aplica con claridad, levántalo como objeción de tipo "
+                "'falta considerar X', recordando que estos compuestos NO se recetan desde el "
+                "sistema: se mencionan como información para que el médico decida por su cuenta."
+            )
+
     prompt = f"""PROTOCOLO A REVISAR (tipo: {protocol_type}):
-{protocol_text}
+{protocol_text}{peptidos_q}
 
 TRATAMIENTOS YA ACEPTADOS POR EL MÉDICO EN PASOS ANTERIORES (revisa redundancia de MECANISMO e interacciones contra esto):
 {prev_block}
@@ -1566,6 +1588,8 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
         visit_data=visit_record, previous_protocols=previous_protocols,
         all_visits=all_visits,
         doctor_preferences=doctor_prefs, practice_stats=practice_stats,
+        arsenal_rows=get_vademecum_by_voice(body.protocol_type),
+        baselines=get_clinical_baselines(body.protocol_type),
     )
     return prompt, previous_protocols, _visit_file_blocks(visit_record)
 

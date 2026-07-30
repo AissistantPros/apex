@@ -623,6 +623,8 @@ interface ProtocolItem {
   interacciones?: string;
   mecanismo?: string;
   cofepris?: string; // "aprobado" | "no_aprobado" | "na"
+  momento?: string;  // "iniciar_ahora" | "condicionado" | "ajustar_segun"
+  condicion?: string; // disparador cuando momento != iniciar_ahora
   para_que_sirve?: string;
 }
 
@@ -745,6 +747,24 @@ function ProtocolItemCard({ item, color, selected, onToggle }: {
           )}
         </div>
 
+        {/* Condición temporal: qué resultado lo activa, o cómo se ajusta según el laboratorio */}
+        {item.condicion && item.momento && item.momento !== 'iniciar_ahora' && (
+          <div className="rounded-lg px-3 py-2 flex items-start gap-2"
+            style={{
+              background: item.momento === 'ajustar_segun' ? 'rgba(14,165,233,.07)' : 'rgba(245,158,11,.07)',
+              border: `1px solid ${item.momento === 'ajustar_segun' ? 'rgba(14,165,233,.25)' : 'rgba(245,158,11,.25)'}`,
+            }}>
+            <span className="text-xs flex-shrink-0 mt-0.5">{item.momento === 'ajustar_segun' ? '⚖' : '⏳'}</span>
+            <div>
+              <p className="text-[10px] font-mono mb-0.5"
+                style={{ color: item.momento === 'ajustar_segun' ? '#0ea5e9' : '#f59e0b' }}>
+                {item.momento === 'ajustar_segun' ? 'SE INICIA — AJUSTAR SEGÚN RESULTADO' : 'NO INICIAR TODAVÍA'}
+              </p>
+              <p className="text-xs text-[#dde6ef] leading-snug">{item.condicion}</p>
+            </div>
+          </div>
+        )}
+
         {/* Dosis y administración */}
         {hasDosis && (
           <div className="bg-[#070a0e] border border-[#1e2d3d] rounded-lg p-3 space-y-1.5 text-sm">
@@ -861,6 +881,16 @@ function groupProtocolItems(items: ProtocolItem[]): { label: string; indices: nu
   return groups.filter(g => g.indices.length > 0);
 }
 
+/** Separa el protocolo en lo que se empieza HOY y lo que queda supeditado a estudios.
+ *  Es lo que evita entregarle al médico una lista larga con la mitad diciendo "todavía no". */
+function splitByMomento(items: ProtocolItem[]): { ahora: number[]; pendiente: number[] } {
+  const ahora: number[] = [], pendiente: number[] = [];
+  items.forEach((it, i) => {
+    (((it.momento || 'iniciar_ahora') === 'condicionado') ? pendiente : ahora).push(i);
+  });
+  return { ahora, pendiente };
+}
+
 function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: {
   data: ProtocolData; color: string;
   approved?: boolean[]; onToggle?: (i: number) => void; onAddItem?: (item: ProtocolItem) => void;
@@ -878,9 +908,13 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
     setAddingOwn(false);
   };
 
-  return (
-    <div className="space-y-10">
-      {groups.map(g => (
+  const { ahora, pendiente } = splitByMomento(data.items);
+  const renderGrupos = (indices: number[]) => {
+    const permitidos = new Set(indices);
+    return groups
+      .map(g => ({ label: g.label, indices: g.indices.filter(i => permitidos.has(i)) }))
+      .filter(g => g.indices.length > 0)
+      .map(g => (
         <div key={g.label}>
           <p className="text-xs font-mono text-[#3d5870] mb-3 tracking-widest">{g.label}</p>
           <div className="space-y-8">
@@ -891,7 +925,43 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
             ))}
           </div>
         </div>
-      ))}
+      ));
+  };
+
+  return (
+    <div className="space-y-10">
+      {/* Lo que el paciente empieza HOY */}
+      {ahora.length > 0 && (
+        <div className="space-y-10">
+          {pendiente.length > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-mono tracking-widest px-2.5 py-1 rounded-full"
+                style={{ color: '#00e5a0', background: 'rgba(0,229,160,.10)', border: '1px solid rgba(0,229,160,.30)' }}>
+                ▶ INICIA HOY
+              </span>
+              <div className="flex-1 h-px bg-[#1a2535]" />
+            </div>
+          )}
+          {renderGrupos(ahora)}
+        </div>
+      )}
+
+      {/* Lo que queda supeditado a estudios */}
+      {pendiente.length > 0 && (
+        <div className="space-y-10 pt-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono tracking-widest px-2.5 py-1 rounded-full"
+              style={{ color: '#f59e0b', background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.30)' }}>
+              ⏳ CONDICIONADO A ESTUDIOS
+            </span>
+            <div className="flex-1 h-px bg-[#1a2535]" />
+          </div>
+          <p className="text-[11px] text-[#7a95aa] leading-snug -mt-6">
+            No se inicia todavía. Cada item indica qué resultado lo activa.
+          </p>
+          {renderGrupos(pendiente)}
+        </div>
+      )}
 
       {onAddItem && (
         addingOwn ? (
