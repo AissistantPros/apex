@@ -67,24 +67,34 @@ export default function BibliotecaPage() {
     if (!archivo) { setError('Selecciona un archivo'); return; }
     setError(''); setSubiendo(true);
     try {
-      const data: string = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result as string);
-        r.onerror = rej;
-        r.readAsDataURL(archivo);
-      });
-      const resp = await fetch(`${B()}/kb/upload`, {
-        method: 'POST', headers: await authH(),
-        body: JSON.stringify({ titulo: titulo || archivo.name, autor, tipo, area, archivo: archivo.name, data }),
+      // Multipart, no base64: base64 infla el archivo ~33% y los libros grandes
+      // (>15 MB) revientan el límite de la petición.
+      const fd = new FormData();
+      fd.append('file', archivo);
+      fd.append('titulo', titulo || archivo.name);
+      fd.append('autor', autor);
+      fd.append('tipo', tipo);
+      fd.append('area', area);
+
+      const s = await getSession();
+      const resp = await fetch(`${B()}/kb/upload_file`, {
+        method: 'POST',
+        // Sin Content-Type: el navegador lo pone con el boundary correcto
+        headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {},
+        body: fd,
       });
       if (!resp.ok) {
         const e = await resp.json().catch(() => ({}));
-        throw new Error(e.detail || 'Error al subir');
+        throw new Error(e.detail || `Error al subir (HTTP ${resp.status})`);
       }
       setTitulo(''); setAutor(''); setArchivo(null);
       if (fileRef.current) fileRef.current.value = '';
       await cargar();
-    } catch (e: any) { setError(e.message); } finally { setSubiendo(false); }
+    } catch (e: any) {
+      setError(e.message === 'Failed to fetch'
+        ? 'No se pudo enviar el archivo. Si pesa más de ~40 MB, divídelo o comprímelo.'
+        : e.message);
+    } finally { setSubiendo(false); }
   };
 
   const borrar = async (id: string, titulo: string) => {

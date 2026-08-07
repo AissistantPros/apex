@@ -382,19 +382,31 @@ def delete_kb_document(doc_id: str) -> bool:
         return False
 
 
-def insert_kb_chunks(rows: list) -> int:
-    """Inserta fragmentos con su embedding, en lotes para no exceder el tamaño de petición."""
+def insert_kb_chunks(rows: list) -> tuple:
+    """Inserta fragmentos con su embedding. Devuelve (insertados, ultimo_error).
+
+    pgvector espera el vector en su representación TEXTUAL "[0.1,0.2,...]". Si se manda
+    como lista de Python, PostgREST la serializa como arreglo JSON y el INSERT falla.
+    Los lotes son chicos porque cada vector de 1024 dimensiones pesa ~20 KB en texto.
+    """
     if not rows:
-        return 0
-    total = 0
-    for i in range(0, len(rows), 50):
-        lote = rows[i:i + 50]
+        return 0, None
+    total, ultimo_error = 0, None
+    for i in range(0, len(rows), 20):
+        lote = []
+        for r in rows[i:i + 20]:
+            fila = dict(r)
+            emb = fila.get("embedding")
+            if isinstance(emb, (list, tuple)):
+                fila["embedding"] = "[" + ",".join(f"{float(x):.7f}" for x in emb) + "]"
+            lote.append(fila)
         try:
             supabase.table("kb_chunks").insert(lote).execute()
             total += len(lote)
         except Exception as e:
+            ultimo_error = str(e)[:300]
             print(f"[WARN] fallo al insertar fragmentos (lote {i}): {e}")
-    return total
+    return total, ultimo_error
 
 
 def search_kb(query_embedding: list, match_count: int = 8, area: str = None,

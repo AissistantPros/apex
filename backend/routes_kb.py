@@ -7,7 +7,7 @@ recomendaciones de medicina funcional y de longevidad, citando la fuente.
 import base64
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Header, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, Header, BackgroundTasks, File, Form, UploadFile
 from pydantic import BaseModel
 
 from auth import get_doctor_id_from_token
@@ -55,6 +55,19 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
             })
             return
 
+        # Detección de escaneo parcial: un PDF de texto tiene cientos de caracteres por página.
+        # Si el promedio es muy bajo, casi seguro es un escaneo del que solo se leyó el índice
+        # o los encabezados, y lo indexado sería basura.
+        total_chars = sum(len(t) for _, t in paginas)
+        promedio = total_chars / max(len(paginas), 1)
+        if promedio < 120:
+            update_kb_document(doc_id, {
+                "estado": "error",
+                "error_msg": (f"Parece un PDF escaneado (imagen): solo {int(promedio)} caracteres "
+                              f"por página en promedio. Necesita OCR antes de subirlo."),
+            })
+            return
+
         chunks = fragmentar(paginas)
         if not chunks:
             update_kb_document(doc_id, {"estado": "error", "error_msg": "El documento no tiene texto aprovechable."})
@@ -81,12 +94,16 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
                 "tokens": len(c["contenido"]) // 4,
             })
 
-        insertados = insert_kb_chunks(filas)
+        insertados, err = insert_kb_chunks(filas)
         update_kb_document(doc_id, {
             "estado": "listo" if insertados else "error",
             "n_chunks": insertados,
             "paginas": len(paginas),
-            "error_msg": None if insertados else "No se pudo indexar ningún fragmento.",
+            # Mostrar el error REAL de la base, no un mensaje genérico que no se puede depurar
+            "error_msg": None if insertados else (
+                f"No se pudo indexar ningún fragmento. Error de la base: {err}" if err
+                else "No se pudo indexar ningún fragmento."
+            ),
         })
         print(f"[KB] '{nombre}': {len(paginas)} páginas → {insertados} fragmentos indexados")
 
@@ -150,6 +167,47 @@ async def kb_upload(body: UploadRequest, background_tasks: BackgroundTasks,
         raise HTTPException(500, "No se pudo registrar el documento")
 
     background_tasks.add_task(_procesar_documento, doc["id"], raw, body.archivo)
+    return {"ok": True, "document": doc,
+            "mensaje": "Indexando en segundo plano. Puede tardar varios minutos en un libro grande."}
+
+
+@router.post("/upload_file")
+async def kb_upload_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    titulo: str = Form(""),
+    autor: str = Form(""),
+    tipo: str = Form("libro"),
+    area: str = Form("general"),
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Subida por multipart — la vía correcta para libros grandes.
+    Base64 en JSON infla el archivo ~33% (un PDF de 22 MB se vuelve una petición de 30 MB
+    y se cae). Multipart manda los bytes tal cual."""
+    if not embeddings_disponibles():
+        raise HTTPException(
+            400,
+            "Falta configurar el proveedor de embeddings. Define VOYAGE_API_KEY en el backend."
+        )
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "El archivo está vacío")
+
+    nombre = file.filename or "documento.pdf"
+    doc = create_kb_document({
+        "titulo": (titulo or "").strip() or nombre,
+        "autor": (autor or "").strip() or None,
+        "tipo": tipo,
+        "area": area,
+        "archivo": nombre,
+        "estado": "procesando",
+        "doctor_id": doctor_id,
+    })
+    if not doc:
+        raise HTTPException(500, "No se pudo registrar el documento")
+
+    background_tasks.add_task(_procesar_documento, doc["id"], raw, nombre)
     return {"ok": True, "document": doc,
             "mensaje": "Indexando en segundo plano. Puede tardar varios minutos en un libro grande."}
 
