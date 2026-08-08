@@ -75,10 +75,17 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
 
         vectores, err_embed = embed_textos([c["contenido"] for c in chunks], tipo="document")
         if err_embed:
-            update_kb_document(doc_id, {
-                "estado": "error",
-                "error_msg": f"Fallo al generar los embeddings: {err_embed}",
-            })
+            # Traducir el error técnico a algo que el médico pueda accionar
+            if "rate" in err_embed.lower() or "429" in err_embed:
+                mensaje = (
+                    "Límite de velocidad de Voyage alcanzado. La cuenta sin método de pago está "
+                    "limitada a 3 peticiones y 10,000 tokens por minuto, insuficiente para un libro. "
+                    "Agrega una tarjeta en dashboard.voyageai.com → Billing: los 200 millones de "
+                    "tokens gratuitos se conservan, solo se desbloquean los límites normales."
+                )
+            else:
+                mensaje = f"Fallo al generar los embeddings: {err_embed}"
+            update_kb_document(doc_id, {"estado": "error", "error_msg": mensaje})
             return
 
         filas = []

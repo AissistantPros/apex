@@ -22,8 +22,14 @@ EMBED_MODEL = "voyage-3"       # 1024 dimensiones — coincide con el esquema de
 EMBED_DIMS = 1024
 CHUNK_CHARS = 4000             # ~1000 tokens: suficiente para conservar el argumento completo
 CHUNK_OVERLAP = 500            # solape para no cortar una idea a la mitad
-MAX_BATCH = 32                 # textos por petición
-MAX_TOKENS_BATCH = 40000       # tokens por petición — muy por debajo del tope de Voyage
+# Límites de Voyage SIN método de pago: 3 peticiones/min y 10,000 tokens/min.
+# Con tarjeta registrada (los 200M tokens gratis se mantienen) suben muchísimo.
+# Los valores por defecto son los conservadores para que funcione en cualquier caso;
+# se pueden subir con variables de entorno cuando la cuenta ya tenga límites normales.
+MAX_BATCH = int(os.getenv("VOYAGE_MAX_BATCH", "8"))
+MAX_TOKENS_BATCH = int(os.getenv("VOYAGE_MAX_TOKENS_BATCH", "8000"))
+# Segundos entre peticiones. 21s ≈ 3 RPM (el tope del plan sin tarjeta).
+PACE_SECONDS = float(os.getenv("VOYAGE_PACE_SECONDS", "21"))
 
 
 def embeddings_disponibles() -> bool:
@@ -159,29 +165,38 @@ def embed_textos(textos: list, tipo: str = "document") -> tuple:
 
     vo = _client()
     salida, ultimo_error = [], None
+    lotes = list(_lotes_por_tokens(textos))
+    ultima_peticion = 0.0
 
-    for lote in _lotes_por_tokens(textos):
+    for n, lote in enumerate(lotes):
+        # Marcar el ritmo para no chocar con el límite de peticiones por minuto
+        espera = PACE_SECONDS - (time.monotonic() - ultima_peticion)
+        if n > 0 and espera > 0:
+            time.sleep(espera)
+
         vectores = None
-        for intento in range(3):                     # reintenta: puede ser límite de tasa
+        for intento in range(4):
             try:
+                ultima_peticion = time.monotonic()
                 r = vo.embed(lote, model=EMBED_MODEL, input_type=tipo)
                 vectores = r.embeddings
                 break
             except Exception as e:
                 ultimo_error = f"{type(e).__name__}: {e}"
-                print(f"[WARN] embeddings, intento {intento + 1}/3 ({len(lote)} textos): {e}")
-                time.sleep(2 * (intento + 1))
+                es_limite = "rate" in str(e).lower() or "429" in str(e)
+                # Ante límite de tasa hay que esperar de verdad, no unos segundos
+                pausa = 65 if es_limite else 3 * (intento + 1)
+                print(f"[WARN] embeddings lote {n + 1}/{len(lotes)}, intento {intento + 1}/4 "
+                      f"({len(lote)} textos): {e} — esperando {pausa}s")
+                if intento < 3:
+                    time.sleep(pausa)
+
         if vectores is None:
-            # Último recurso: uno por uno, para salvar lo que sí se pueda
-            for t in lote:
-                try:
-                    r = vo.embed([t], model=EMBED_MODEL, input_type=tipo)
-                    salida.append(r.embeddings[0])
-                except Exception as e:
-                    ultimo_error = f"{type(e).__name__}: {e}"
-                    salida.append(None)
+            salida.extend([None] * len(lote))
         else:
             salida.extend(vectores)
+            if (n + 1) % 10 == 0:
+                print(f"[KB] embeddings: {n + 1}/{len(lotes)} lotes listos")
 
     validos = sum(1 for v in salida if v is not None)
     if validos == 0:
