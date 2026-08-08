@@ -16,12 +16,14 @@ sigue funcionando exactamente como hoy, solo que sin el RAG.
 import io
 import os
 import re
+import time
 
 EMBED_MODEL = "voyage-3"       # 1024 dimensiones — coincide con el esquema de kb_chunks
 EMBED_DIMS = 1024
 CHUNK_CHARS = 4000             # ~1000 tokens: suficiente para conservar el argumento completo
 CHUNK_OVERLAP = 500            # solape para no cortar una idea a la mitad
-MAX_BATCH = 100                # límite de textos por llamada de embeddings
+MAX_BATCH = 32                 # textos por petición
+MAX_TOKENS_BATCH = 40000       # tokens por petición — muy por debajo del tope de Voyage
 
 
 def embeddings_disponibles() -> bool:
@@ -128,27 +130,69 @@ def fragmentar(paginas: list) -> list:
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
 
-def embed_textos(textos: list, tipo: str = "document") -> list:
-    """Genera embeddings por lotes. Devuelve [] si el proveedor no está configurado."""
-    if not textos or not embeddings_disponibles():
-        return []
+def _lotes_por_tokens(textos: list):
+    """Agrupa por TOKENS, no por número de textos. Voyage limita los tokens totales por
+    petición (~120K en voyage-3): 100 fragmentos densos ya rozan ese tope y la petición
+    falla entera. Estimación conservadora de 1 token ≈ 3.5 caracteres."""
+    lote, tokens_lote = [], 0
+    for t in textos:
+        tks = len(t) // 3 + 1
+        if lote and (tokens_lote + tks > MAX_TOKENS_BATCH or len(lote) >= MAX_BATCH):
+            yield lote
+            lote, tokens_lote = [], 0
+        lote.append(t)
+        tokens_lote += tks
+    if lote:
+        yield lote
+
+
+def embed_textos(textos: list, tipo: str = "document") -> tuple:
+    """Genera embeddings. Devuelve (lista_de_vectores, error).
+
+    NO se traga los errores: si Voyage falla, el motivo llega hasta la interfaz. Antes se
+    devolvían Nones en silencio y el usuario solo veía "no se pudo indexar" sin explicación.
+    """
+    if not textos:
+        return [], "No hay texto que procesar"
+    if not embeddings_disponibles():
+        return [], "Proveedor de embeddings no configurado (falta VOYAGE_API_KEY)"
+
     vo = _client()
-    salida = []
-    for i in range(0, len(textos), MAX_BATCH):
-        lote = textos[i:i + MAX_BATCH]
-        try:
-            r = vo.embed(lote, model=EMBED_MODEL, input_type=tipo)
-            salida.extend(r.embeddings)
-        except Exception as e:
-            print(f"[WARN] fallo al generar embeddings (lote {i}): {e}")
-            salida.extend([None] * len(lote))
-    return salida
+    salida, ultimo_error = [], None
+
+    for lote in _lotes_por_tokens(textos):
+        vectores = None
+        for intento in range(3):                     # reintenta: puede ser límite de tasa
+            try:
+                r = vo.embed(lote, model=EMBED_MODEL, input_type=tipo)
+                vectores = r.embeddings
+                break
+            except Exception as e:
+                ultimo_error = f"{type(e).__name__}: {e}"
+                print(f"[WARN] embeddings, intento {intento + 1}/3 ({len(lote)} textos): {e}")
+                time.sleep(2 * (intento + 1))
+        if vectores is None:
+            # Último recurso: uno por uno, para salvar lo que sí se pueda
+            for t in lote:
+                try:
+                    r = vo.embed([t], model=EMBED_MODEL, input_type=tipo)
+                    salida.append(r.embeddings[0])
+                except Exception as e:
+                    ultimo_error = f"{type(e).__name__}: {e}"
+                    salida.append(None)
+        else:
+            salida.extend(vectores)
+
+    validos = sum(1 for v in salida if v is not None)
+    if validos == 0:
+        return salida, (ultimo_error or "Voyage no devolvió ningún embedding")
+    return salida, None
 
 
 def embed_consulta(texto: str):
     """Embedding de una consulta (input_type distinto al de los documentos)."""
-    r = embed_textos([texto], tipo="query")
-    return r[0] if r else None
+    vectores, _ = embed_textos([texto], tipo="query")
+    return vectores[0] if vectores and vectores[0] is not None else None
 
 
 # ── Formato para el prompt ────────────────────────────────────────────────────

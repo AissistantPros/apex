@@ -73,11 +73,11 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
             update_kb_document(doc_id, {"estado": "error", "error_msg": "El documento no tiene texto aprovechable."})
             return
 
-        vectores = embed_textos([c["contenido"] for c in chunks], tipo="document")
-        if not vectores:
+        vectores, err_embed = embed_textos([c["contenido"] for c in chunks], tipo="document")
+        if err_embed:
             update_kb_document(doc_id, {
                 "estado": "error",
-                "error_msg": "No hay proveedor de embeddings configurado (falta VOYAGE_API_KEY).",
+                "error_msg": f"Fallo al generar los embeddings: {err_embed}",
             })
             return
 
@@ -93,6 +93,13 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
                 "embedding": v,
                 "tokens": len(c["contenido"]) // 4,
             })
+
+        if not filas:
+            update_kb_document(doc_id, {
+                "estado": "error",
+                "error_msg": f"Se extrajeron {len(chunks)} fragmentos pero ninguno obtuvo embedding válido.",
+            })
+            return
 
         insertados, err = insert_kb_chunks(filas)
         update_kb_document(doc_id, {
@@ -121,6 +128,49 @@ async def kb_status():
         "documentos": len(docs),
         "listos": len([d for d in docs if d.get("estado") == "listo"]),
         "fragmentos": sum(d.get("n_chunks") or 0 for d in docs),
+    }
+
+
+@router.get("/diagnostico")
+async def kb_diagnostico():
+    """Prueba la cadena completa (embedding → guardar → borrar) y reporta dónde falla.
+    Sirve para dejar de adivinar cuándo la indexación no funciona."""
+    pasos = {}
+
+    pasos["1_embeddings_configurados"] = embeddings_disponibles()
+    if not embeddings_disponibles():
+        return {"ok": False, "pasos": pasos, "diagnostico": "Falta VOYAGE_API_KEY en el backend"}
+
+    vectores, err = embed_textos(["Prueba de conexión con el proveedor de embeddings."], tipo="document")
+    vector = vectores[0] if vectores and vectores[0] is not None else None
+    pasos["2_voyage_responde"] = vector is not None
+    pasos["2_error"] = err
+    pasos["2_dimensiones"] = len(vector) if vector else None
+    if vector is None:
+        return {"ok": False, "pasos": pasos, "diagnostico": f"Voyage no respondió: {err}"}
+    if len(vector) != 1024:
+        return {"ok": False, "pasos": pasos,
+                "diagnostico": f"El modelo devuelve {len(vector)} dimensiones pero la tabla espera 1024"}
+
+    doc = create_kb_document({"titulo": "__diagnostico__", "tipo": "notas",
+                              "area": "general", "estado": "procesando"})
+    pasos["3_documento_creado"] = bool(doc)
+    if not doc:
+        return {"ok": False, "pasos": pasos, "diagnostico": "No se pudo escribir en kb_documents"}
+
+    insertados, err_ins = insert_kb_chunks([{
+        "document_id": doc["id"], "chunk_index": 0, "pagina": 1,
+        "contenido": "Fragmento de prueba.", "embedding": vector, "tokens": 5,
+    }])
+    pasos["4_fragmento_guardado"] = insertados == 1
+    pasos["4_error"] = err_ins
+    delete_kb_document(doc["id"])
+
+    ok = insertados == 1
+    return {
+        "ok": ok, "pasos": pasos,
+        "diagnostico": "Todo funciona: la biblioteca puede indexar." if ok
+                       else f"Falla al guardar el vector en la base: {err_ins}",
     }
 
 
