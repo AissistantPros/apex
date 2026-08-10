@@ -22,14 +22,16 @@ EMBED_MODEL = "voyage-3"       # 1024 dimensiones — coincide con el esquema de
 EMBED_DIMS = 1024
 CHUNK_CHARS = 4000             # ~1000 tokens: suficiente para conservar el argumento completo
 CHUNK_OVERLAP = 500            # solape para no cortar una idea a la mitad
-# Límites de Voyage SIN método de pago: 3 peticiones/min y 10,000 tokens/min.
-# Con tarjeta registrada (los 200M tokens gratis se mantienen) suben muchísimo.
-# Los valores por defecto son los conservadores para que funcione en cualquier caso;
-# se pueden subir con variables de entorno cuando la cuenta ya tenga límites normales.
-MAX_BATCH = int(os.getenv("VOYAGE_MAX_BATCH", "8"))
-MAX_TOKENS_BATCH = int(os.getenv("VOYAGE_MAX_TOKENS_BATCH", "8000"))
-# Segundos entre peticiones. 21s ≈ 3 RPM (el tope del plan sin tarjeta).
-PACE_SECONDS = float(os.getenv("VOYAGE_PACE_SECONDS", "21"))
+# Ritmo ADAPTATIVO: arranca rápido (límites normales de Voyage, con tarjeta registrada) y,
+# si aparece un error de límite de tasa, se degrada solo al modo conservador del plan
+# gratuito (3 peticiones/min, 10K tokens/min). Así funciona en ambos casos sin configurar nada.
+RAPIDO       = {"batch": 64, "tokens": 100_000, "pace": 0.4}
+CONSERVADOR  = {"batch": 8,  "tokens": 8_000,   "pace": 21.0}
+
+# Permiten forzar un modo por entorno si hiciera falta, pero no es necesario.
+MAX_BATCH = int(os.getenv("VOYAGE_MAX_BATCH", RAPIDO["batch"]))
+MAX_TOKENS_BATCH = int(os.getenv("VOYAGE_MAX_TOKENS_BATCH", RAPIDO["tokens"]))
+PACE_SECONDS = float(os.getenv("VOYAGE_PACE_SECONDS", RAPIDO["pace"]))
 
 
 def embeddings_disponibles() -> bool:
@@ -136,14 +138,15 @@ def fragmentar(paginas: list) -> list:
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
 
-def _lotes_por_tokens(textos: list):
-    """Agrupa por TOKENS, no por número de textos. Voyage limita los tokens totales por
-    petición (~120K en voyage-3): 100 fragmentos densos ya rozan ese tope y la petición
-    falla entera. Estimación conservadora de 1 token ≈ 3.5 caracteres."""
+def _lotes_por_tokens(textos: list, max_tokens: int = None, max_batch: int = None):
+    """Agrupa por TOKENS, no por número de textos: Voyage limita los tokens totales por
+    petición y un lote demasiado grande falla entero. 1 token ≈ 3 caracteres."""
+    max_tokens = max_tokens or MAX_TOKENS_BATCH
+    max_batch = max_batch or MAX_BATCH
     lote, tokens_lote = [], 0
     for t in textos:
         tks = len(t) // 3 + 1
-        if lote and (tokens_lote + tks > MAX_TOKENS_BATCH or len(lote) >= MAX_BATCH):
+        if lote and (tokens_lote + tks > max_tokens or len(lote) >= max_batch):
             yield lote
             lote, tokens_lote = [], 0
         lote.append(t)
@@ -165,16 +168,22 @@ def embed_textos(textos: list, tipo: str = "document") -> tuple:
 
     vo = _client()
     salida, ultimo_error = [], None
-    lotes = list(_lotes_por_tokens(textos))
+    # Cola de pendientes: si hay que degradar el ritmo, se re-agrupan en lotes más chicos
+    pendientes = list(textos)
+    modo = {"batch": MAX_BATCH, "tokens": MAX_TOKENS_BATCH, "pace": PACE_SECONDS}
+    degradado = False
     ultima_peticion = 0.0
+    procesados = 0
+    total = len(textos)
 
-    for n, lote in enumerate(lotes):
-        # Marcar el ritmo para no chocar con el límite de peticiones por minuto
-        espera = PACE_SECONDS - (time.monotonic() - ultima_peticion)
-        if n > 0 and espera > 0:
+    while pendientes:
+        lote = next(_lotes_por_tokens(pendientes, modo["tokens"], modo["batch"]))
+        espera = modo["pace"] - (time.monotonic() - ultima_peticion)
+        if ultima_peticion and espera > 0:
             time.sleep(espera)
 
         vectores = None
+        rehacer_lote = False
         for intento in range(4):
             try:
                 ultima_peticion = time.monotonic()
@@ -184,19 +193,30 @@ def embed_textos(textos: list, tipo: str = "document") -> tuple:
             except Exception as e:
                 ultimo_error = f"{type(e).__name__}: {e}"
                 es_limite = "rate" in str(e).lower() or "429" in str(e)
-                # Ante límite de tasa hay que esperar de verdad, no unos segundos
+                if es_limite and not degradado:
+                    # La cuenta tiene los límites del plan gratuito: pasar a ritmo
+                    # conservador y REHACER este lote, ya partido en trozos más chicos.
+                    modo = dict(CONSERVADOR)
+                    degradado = True
+                    rehacer_lote = True
+                    print("[KB] límite de tasa detectado → ritmo conservador "
+                          "(3 peticiones/min). Más lento, pero termina.")
+                    time.sleep(65)
+                    break
                 pausa = 65 if es_limite else 3 * (intento + 1)
-                print(f"[WARN] embeddings lote {n + 1}/{len(lotes)}, intento {intento + 1}/4 "
-                      f"({len(lote)} textos): {e} — esperando {pausa}s")
+                print(f"[WARN] embeddings ({len(lote)} textos), intento {intento + 1}/4: "
+                      f"{e} — esperando {pausa}s")
                 if intento < 3:
                     time.sleep(pausa)
 
-        if vectores is None:
-            salida.extend([None] * len(lote))
-        else:
-            salida.extend(vectores)
-            if (n + 1) % 10 == 0:
-                print(f"[KB] embeddings: {n + 1}/{len(lotes)} lotes listos")
+        if rehacer_lote:
+            continue          # no consume pendientes: se reintenta con lotes más chicos
+
+        salida.extend(vectores if vectores is not None else [None] * len(lote))
+        del pendientes[:len(lote)]
+        procesados += len(lote)
+        if procesados % 100 < len(lote):
+            print(f"[KB] embeddings: {procesados}/{total} fragmentos")
 
     validos = sum(1 for v in salida if v is not None)
     if validos == 0:
