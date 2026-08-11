@@ -13,6 +13,7 @@ Diseño:
 Todo degrada de forma segura: si falta la API key de embeddings o la librería, el sistema
 sigue funcionando exactamente como hoy, solo que sin el RAG.
 """
+import base64
 import io
 import os
 import re
@@ -134,6 +135,104 @@ def fragmentar(paginas: list) -> list:
     if len(buffer.strip()) > 120:
         chunks.append({"contenido": buffer.strip(), "pagina": buf_pagina or 1})
     return chunks
+
+
+# ── OCR de PDFs escaneados ────────────────────────────────────────────────────
+# Usa la visión NATIVA de Claude sobre el PDF: no hace falta instalar Tesseract ni
+# poppler en el servidor, ni contratar otro servicio. Es la misma técnica que ya usamos
+# para leer los estudios de laboratorio que sube el médico.
+
+OCR_MODEL = os.getenv("OCR_MODEL", "claude-sonnet-4-6")
+OCR_PAGINAS_POR_LOTE = int(os.getenv("OCR_PAGINAS_POR_LOTE", "20"))
+OCR_MAX_PAGINAS = int(os.getenv("OCR_MAX_PAGINAS", "900"))   # tope de seguridad por libro
+
+OCR_PROMPT = """Este PDF está escaneado: sus páginas son imágenes, no texto.
+
+TRANSCRIBE fielmente todo el texto que veas, página por página.
+
+REGLAS:
+- Antes de cada página escribe exactamente: ===PAGINA n=== (n = número de página del lote, empezando en 1).
+- Transcribe el contenido tal cual: títulos, párrafos, listas, tablas (en texto plano, separando columnas con |), pies de figura y dosis.
+- Conserva números, unidades y dosis EXACTOS — es material clínico y un error de dosis es grave.
+- No resumas, no interpretes, no corrijas al autor, no agregues comentarios tuyos.
+- Si una página está en blanco o es solo una imagen sin texto, escribe únicamente: (sin texto)
+- Si una palabra es ilegible, escribe [ilegible] en su lugar; nunca la inventes."""
+
+
+def es_pdf_escaneado(paginas: list, total_paginas: int = None) -> bool:
+    """Un PDF con texto real trae cientos de caracteres por página. Muy pocos = escaneo."""
+    if not paginas:
+        return True
+    total_chars = sum(len(t) for _, t in paginas)
+    n = total_paginas or len(paginas)
+    return (total_chars / max(n, 1)) < 120
+
+
+def ocr_pdf(raw: bytes, progreso=None) -> tuple:
+    """Transcribe un PDF escaneado con la visión de Claude.
+    Devuelve ([(n_pagina, texto)], error)."""
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        return [], "pypdf no está instalado"
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        return [], "El SDK de Anthropic no está instalado"
+
+    try:
+        reader = PdfReader(io.BytesIO(raw))
+        total = len(reader.pages)
+    except Exception as e:
+        return [], f"No se pudo abrir el PDF: {e}"
+
+    if total > OCR_MAX_PAGINAS:
+        return [], (f"El PDF tiene {total} páginas y el tope de OCR es {OCR_MAX_PAGINAS}. "
+                    "Divídelo en partes y súbelas por separado.")
+
+    client = Anthropic()
+    salida = []
+
+    for inicio in range(0, total, OCR_PAGINAS_POR_LOTE):
+        fin = min(inicio + OCR_PAGINAS_POR_LOTE, total)
+        try:
+            writer = PdfWriter()
+            for p in reader.pages[inicio:fin]:
+                writer.add_page(p)
+            buf = io.BytesIO()
+            writer.write(buf)
+            b64 = base64.b64encode(buf.getvalue()).decode()
+
+            r = client.messages.create(
+                model=OCR_MODEL,
+                max_tokens=16000,
+                messages=[{"role": "user", "content": [
+                    {"type": "text", "text": OCR_PROMPT},
+                    {"type": "document",
+                     "source": {"type": "base64", "media_type": "application/pdf", "data": b64}},
+                ]}],
+            )
+            texto = next((b.text for b in r.content if b.type == "text"), "")
+
+            # Repartir el resultado en sus páginas reales
+            partes = re.split(r"===\s*PAGINA\s*(\d+)\s*===", texto)
+            if len(partes) > 1:
+                for i in range(1, len(partes) - 1, 2):
+                    rel = int(partes[i])
+                    cuerpo = partes[i + 1].strip()
+                    if cuerpo and cuerpo != "(sin texto)":
+                        salida.append((inicio + rel, cuerpo))
+            elif texto.strip():
+                salida.append((inicio + 1, texto.strip()))
+
+            if progreso:
+                progreso(fin, total)
+        except Exception as e:
+            print(f"[WARN] OCR falló en páginas {inicio + 1}-{fin}: {e}")
+
+    if not salida:
+        return [], "El OCR no logró extraer texto de ninguna página"
+    return salida, None
 
 
 # ── Embeddings ────────────────────────────────────────────────────────────────

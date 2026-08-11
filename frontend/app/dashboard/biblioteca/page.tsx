@@ -279,7 +279,10 @@ export default function BibliotecaPage() {
                       {d.estado === 'listo' && <> · {d.paginas} págs · {d.n_chunks} fragmentos</>}
                     </p>
                     {d.estado === 'procesando' && (
-                      <p className="text-xs text-[#f59e0b] mt-1">Indexando… (puede tardar varios minutos)</p>
+                      <p className="text-xs text-[#f59e0b] mt-1">
+                        {d.error_msg /* durante el proceso este campo trae el avance, no un error */
+                          || 'Indexando… (puede tardar varios minutos)'}
+                      </p>
                     )}
                     {d.estado === 'error' && (
                       <p className="text-xs text-[#f43f5e] mt-1">{d.error_msg || 'Error al procesar'}</p>

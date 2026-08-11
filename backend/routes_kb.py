@@ -17,7 +17,7 @@ from db import (
 )
 from services.knowledge_base import (
     extraer_paginas, fragmentar, embed_textos, embed_consulta,
-    embeddings_disponibles, formatear_fragmentos,
+    embeddings_disponibles, formatear_fragmentos, es_pdf_escaneado, ocr_pdf,
 )
 
 router = APIRouter(prefix="/kb", tags=["knowledge-base"])
@@ -47,24 +47,32 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
     de 500 páginas puede tardar varios minutos."""
     try:
         paginas = extraer_paginas(raw, nombre)
+
+        # Si el PDF viene escaneado (páginas como imagen), se le hace OCR automáticamente
+        # con la visión de Claude — sin pedirle nada al médico.
+        es_pdf = (nombre or "").lower().endswith(".pdf")
+        if es_pdf and es_pdf_escaneado(paginas):
+            update_kb_document(doc_id, {
+                "estado": "procesando",
+                "error_msg": "PDF escaneado detectado — transcribiendo con OCR, puede tardar varios minutos…",
+            })
+
+            def _avance(hechas, total):
+                update_kb_document(doc_id, {
+                    "error_msg": f"OCR en curso: {hechas}/{total} páginas transcritas…"
+                })
+
+            paginas, err_ocr = ocr_pdf(raw, progreso=_avance)
+            if err_ocr:
+                update_kb_document(doc_id, {"estado": "error",
+                                            "error_msg": f"OCR fallido: {err_ocr}"})
+                return
+            print(f"[KB] OCR completado en '{nombre}': {len(paginas)} páginas con texto")
+
         if not paginas:
             update_kb_document(doc_id, {
                 "estado": "error",
-                "error_msg": "No se pudo extraer texto. Si es un PDF escaneado (imagen), "
-                             "necesita OCR previo.",
-            })
-            return
-
-        # Detección de escaneo parcial: un PDF de texto tiene cientos de caracteres por página.
-        # Si el promedio es muy bajo, casi seguro es un escaneo del que solo se leyó el índice
-        # o los encabezados, y lo indexado sería basura.
-        total_chars = sum(len(t) for _, t in paginas)
-        promedio = total_chars / max(len(paginas), 1)
-        if promedio < 120:
-            update_kb_document(doc_id, {
-                "estado": "error",
-                "error_msg": (f"Parece un PDF escaneado (imagen): solo {int(promedio)} caracteres "
-                              f"por página en promedio. Necesita OCR antes de subirlo."),
+                "error_msg": "No se pudo extraer texto del documento.",
             })
             return
 
