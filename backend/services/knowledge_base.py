@@ -53,30 +53,64 @@ def _client():
 
 # ── Extracción de texto ───────────────────────────────────────────────────────
 
+def _extraer_pdf_pdfium(raw: bytes) -> list:
+    """Extractor principal. pypdfium2 (motor de Chrome/PDFium) es bastante más robusto que
+    pypdf con PDFs generados por editores diversos."""
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        return []
+    try:
+        doc = pdfium.PdfDocument(io.BytesIO(raw))
+        out = []
+        for i in range(len(doc)):
+            try:
+                txt = doc[i].get_textpage().get_text_range() or ""
+            except Exception:
+                txt = ""
+            if txt.strip():
+                out.append((i + 1, txt))
+        return out
+    except Exception as e:
+        print(f"[WARN] pypdfium2 no pudo leer el PDF: {e}")
+        return []
+
+
+def _extraer_pdf_pypdf(raw: bytes, nombre: str) -> list:
+    """Respaldo por si pypdfium2 no está disponible o falla."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return []
+    try:
+        reader = PdfReader(io.BytesIO(raw))
+        out = []
+        for i, page in enumerate(reader.pages, start=1):
+            try:
+                txt = page.extract_text() or ""
+            except Exception:
+                txt = ""
+            if txt.strip():
+                out.append((i, txt))
+        return out
+    except Exception as e:
+        print(f"[WARN] no se pudo leer el PDF {nombre}: {e}")
+        return []
+
+
 def extraer_paginas(raw: bytes, nombre: str) -> list:
     """Devuelve [(n_pagina, texto)] del archivo. Conserva la página para poder citarla."""
     low = (nombre or "").lower()
 
     if low.endswith(".pdf"):
-        try:
-            from pypdf import PdfReader
-        except ImportError:
-            print("[WARN] pypdf no instalado: no se puede leer el PDF")
-            return []
-        try:
-            reader = PdfReader(io.BytesIO(raw))
-            out = []
-            for i, page in enumerate(reader.pages, start=1):
-                try:
-                    txt = page.extract_text() or ""
-                except Exception:
-                    txt = ""
-                if txt.strip():
-                    out.append((i, txt))
+        # pypdfium2 PRIMERO: extrae texto de muchos PDFs donde pypdf devuelve vacío y
+        # el archivo se marcaría como "escaneado" por error, disparando un OCR innecesario
+        # (y con costo). Comprobado con "Peptide protocols": pypdf leía 2 car/página,
+        # pypdfium2 lee 1875.
+        out = _extraer_pdf_pdfium(raw)
+        if out:
             return out
-        except Exception as e:
-            print(f"[WARN] no se pudo leer el PDF {nombre}: {e}")
-            return []
+        return _extraer_pdf_pypdf(raw, nombre)
 
     if low.endswith(".docx"):
         try:
