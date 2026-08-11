@@ -17,7 +17,7 @@ from db import (
 )
 from services.knowledge_base import (
     extraer_paginas, fragmentar, embed_textos, embed_consulta,
-    embeddings_disponibles, formatear_fragmentos, es_pdf_escaneado, ocr_pdf,
+    embeddings_disponibles, formatear_fragmentos, es_pdf_escaneado, ocr_pdf, ENABLE_OCR,
 )
 
 router = APIRouter(prefix="/kb", tags=["knowledge-base"])
@@ -51,6 +51,19 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
         # Si el PDF viene escaneado (páginas como imagen), se le hace OCR automáticamente
         # con la visión de Claude — sin pedirle nada al médico.
         es_pdf = (nombre or "").lower().endswith(".pdf")
+        if es_pdf and es_pdf_escaneado(paginas) and not ENABLE_OCR:
+            # OCR desactivado para no generar costo de API. Marker en local es gratis y mejor.
+            update_kb_document(doc_id, {
+                "estado": "error",
+                "error_msg": (
+                    "PDF escaneado (sus páginas son imágenes, no texto). Conviértelo gratis en "
+                    "tu Mac con Marker y sube el .md resultante:\n"
+                    "    pip install marker-pdf\n"
+                    "    marker_single \"<archivo>.pdf\" --output_dir ~/Escritorio/Apex/Libros/salida"
+                ),
+            })
+            return
+
         if es_pdf and es_pdf_escaneado(paginas):
             update_kb_document(doc_id, {
                 "estado": "procesando",

@@ -190,6 +190,10 @@ def fragmentar(paginas: list) -> list:
 # poppler en el servidor, ni contratar otro servicio. Es la misma técnica que ya usamos
 # para leer los estudios de laboratorio que sube el médico.
 
+# OCR DESACTIVADO por defecto: consume API de Claude (~$3-5 por libro escaneado).
+# Para los escaneados conviene usar Marker en la Mac, que es gratuito y de mejor calidad.
+# Se puede reactivar poniendo ENABLE_OCR=true en el entorno.
+ENABLE_OCR = os.getenv("ENABLE_OCR", "false").lower() in ("1", "true", "yes")
 OCR_MODEL = os.getenv("OCR_MODEL", "claude-sonnet-4-6")
 OCR_PAGINAS_POR_LOTE = int(os.getenv("OCR_PAGINAS_POR_LOTE", "20"))
 OCR_MAX_PAGINAS = int(os.getenv("OCR_MAX_PAGINAS", "900"))   # tope de seguridad por libro
