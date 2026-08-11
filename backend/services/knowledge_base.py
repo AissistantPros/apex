@@ -90,11 +90,59 @@ def extraer_paginas(raw: bytes, nombre: str) -> list:
 
     if low.endswith((".txt", ".md", ".csv")):
         try:
-            return [(1, raw.decode("utf-8", errors="replace"))]
+            texto = raw.decode("utf-8", errors="replace")
         except Exception:
             return []
+        return _dividir_markdown_en_paginas(texto)
 
     return []
+
+
+# Marcas de salto de página que suelen dejar los conversores (Marker, pymupdf4llm, etc.)
+_MARCAS_PAGINA = [
+    re.compile(r"\{(\d+)\}-{10,}"),                  # Marker: {12}------------
+    re.compile(r"===\s*PAGINA\s*(\d+)\s*===", re.I), # nuestro propio OCR
+    re.compile(r"<!--\s*page[:\s]*(\d+)\s*-->", re.I),
+    re.compile(r"^\s*\[?page\s+(\d+)\]?\s*$", re.I | re.M),
+]
+
+
+def _dividir_markdown_en_paginas(texto: str) -> list:
+    """Convierte markdown/texto plano en [(pagina, texto)].
+
+    Si el conversor dejó marcas de página (Marker las pone como {12}------------), se
+    respetan para poder citar la página real. Si no hay marcas, se parte en bloques por
+    tamaño y se numeran de forma aproximada — mejor que mandar todo como "página 1".
+    """
+    for patron in _MARCAS_PAGINA:
+        partes = patron.split(texto)
+        if len(partes) >= 3:                      # hubo al menos una marca
+            paginas, i = [], 1
+            # partes = [previo, n1, cuerpo1, n2, cuerpo2, ...]
+            if partes[0].strip():
+                paginas.append((1, partes[0]))
+            while i < len(partes) - 1:
+                try:
+                    n = int(partes[i])
+                except (ValueError, TypeError):
+                    n = len(paginas) + 1
+                cuerpo = partes[i + 1]
+                if cuerpo and cuerpo.strip():
+                    paginas.append((n, cuerpo))
+                i += 2
+            if paginas:
+                return paginas
+
+    # Sin marcas: trocear por tamaño y numerar aproximado (~2500 car ≈ 1 página de libro)
+    if len(texto) <= 2500:
+        return [(1, texto)] if texto.strip() else []
+    paginas, n = [], 1
+    for i in range(0, len(texto), 2500):
+        trozo = texto[i:i + 2500]
+        if trozo.strip():
+            paginas.append((n, trozo))
+        n += 1
+    return paginas
 
 
 def _limpiar(texto: str) -> str:
