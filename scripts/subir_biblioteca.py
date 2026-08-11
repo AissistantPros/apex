@@ -37,6 +37,18 @@ from pathlib import Path
 BACKEND_DEFAULT = "https://apex-4sjg.onrender.com"
 
 
+def _marker_bin() -> str:
+    """Ruta a marker_single. Prefiere el entorno virtual .venv-marker del proyecto, para no
+    depender de que esté en el PATH del sistema."""
+    for candidato in (
+        Path(__file__).resolve().parents[2] / ".venv-marker" / "bin" / "marker_single",
+        Path.home() / "Desktop" / "Apex" / ".venv-marker" / "bin" / "marker_single",
+    ):
+        if candidato.exists():
+            return str(candidato)
+    return "marker_single"
+
+
 def convertir_con_marker(pdf: Path, salida: Path) -> Path | None:
     """Convierte un PDF a markdown con Marker. Devuelve la ruta del .md o None."""
     salida.mkdir(parents=True, exist_ok=True)
@@ -46,11 +58,13 @@ def convertir_con_marker(pdf: Path, salida: Path) -> Path | None:
         return destino
 
     print(f"  ⚙  convirtiendo (puede tardar varios minutos)…")
+    entorno = os.environ.copy()
+    entorno.setdefault("TORCH_DEVICE", "mps")   # acelera en Apple Silicon
     try:
         # marker_single deja la salida en <output_dir>/<nombre>/<nombre>.md
         subprocess.run(
-            ["marker_single", str(pdf), "--output_dir", str(salida), "--output_format", "markdown"],
-            check=True, capture_output=True, text=True, timeout=3600,
+            [_marker_bin(), str(pdf), "--output_dir", str(salida), "--output_format", "markdown"],
+            check=True, capture_output=True, text=True, timeout=3600, env=entorno,
         )
     except FileNotFoundError:
         print("  ✗ No se encontró 'marker_single'. Instálalo con:  pip install marker-pdf")

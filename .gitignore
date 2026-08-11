@@ -40,3 +40,6 @@ out/
 # Database
 *.db
 *.sqlite
+
+# Entorno local de Marker (modelos pesados, no va al repo)
+.venv-marker/
