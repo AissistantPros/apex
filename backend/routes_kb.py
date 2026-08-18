@@ -290,6 +290,27 @@ async def kb_upload_file(
             "mensaje": "Indexando en segundo plano. Puede tardar varios minutos en un libro grande."}
 
 
+class PatchDocRequest(BaseModel):
+    area: Optional[str] = None
+    tipo: Optional[str] = None
+    titulo: Optional[str] = None
+    autor: Optional[str] = None
+
+
+@router.patch("/documents/{doc_id}")
+async def kb_patch(doc_id: str, body: PatchDocRequest, doctor_id: str = Depends(get_doctor_id)):
+    """Corrige los metadatos de un documento (área, tipo, título, autor) SIN reindexar.
+    El área decide en qué voz se consulta el libro, así que reasignarla es solo cambiar la
+    etiqueta — los fragmentos y sus embeddings ya están y no se tocan."""
+    cambios = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not cambios:
+        raise HTTPException(400, "No se indicó ningún cambio")
+    if "area" in cambios and cambios["area"] not in ("functional", "longevity", "traditional", "general"):
+        raise HTTPException(400, "Área inválida")
+    ok = update_kb_document(doc_id, cambios)
+    return {"ok": ok, "cambios": cambios}
+
+
 @router.delete("/documents/{doc_id}")
 async def kb_delete(doc_id: str, doctor_id: str = Depends(get_doctor_id)):
     return {"ok": delete_kb_document(doc_id)}
