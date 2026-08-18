@@ -117,10 +117,34 @@ async def do_web_search(query: str) -> str:
 
 # ─── Endpoint principal ───────────────────────────────────────────────────────
 
+def _ultimo_texto_usuario(mensajes) -> str:
+    """El texto del último mensaje del usuario, para consultar la biblioteca."""
+    for msg in reversed(mensajes):
+        if msg.role != "user":
+            continue
+        if isinstance(msg.content, str):
+            return msg.content
+        textos = [p.get("text", "") for p in msg.content
+                  if isinstance(p, dict) and p.get("type") == "text"]
+        if textos:
+            return " ".join(textos)
+    return ""
+
+
 @router.post("")
 async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(None)):
     profile = get_doctor_profile(FALLBACK_DOCTOR_ID) or {}
     system  = build_system_prompt(profile)
+
+    # Fundamentar la respuesta en la biblioteca del médico (si hay algo relevante).
+    # area=None → busca en toda la biblioteca, porque el chat no tiene una voz fija.
+    try:
+        from services.knowledge_base import consultar_biblioteca
+        kb = consultar_biblioteca(_ultimo_texto_usuario(req.messages), area=None, match_count=6)
+        if kb:
+            system += "\n\n" + kb
+    except Exception as e:
+        print(f"[WARN] biblioteca en chat no disponible: {e}")
 
     # Construir mensajes en formato Anthropic
     messages = []

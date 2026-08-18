@@ -21,6 +21,7 @@ from db import (
 )
 from services.knowledge_base import (
     embed_consulta, embeddings_disponibles, formatear_fragmentos,
+    consultar_biblioteca as _kb_consultar,
 )
 
 from services.system_prompt import (
@@ -172,9 +173,30 @@ class ClarifyFunctionalRequest(BaseModel):
     patient_id: str = ""
 
 
+def _kb_query_desde_caso(patient: dict, visit: dict) -> str:
+    """Arma una consulta breve para la biblioteca a partir de los datos clínicos del caso."""
+    partes = []
+    for k in ("motivo_consulta", "motivo", "padecimiento_actual", "sintomas", "chief_complaint",
+              "diagnostico_previo", "antecedentes"):
+        v = (visit or {}).get(k) or (patient or {}).get(k)
+        if v and isinstance(v, str):
+            partes.append(v)
+    return " ".join(partes)[:1400]
+
+
+def _biblioteca_para_diagnostico(diagnosis_type: str, patient: dict, visit: dict, extra_context: str) -> str:
+    """Añade al extra_context los fragmentos relevantes de la biblioteca para esta voz."""
+    consulta = _kb_query_desde_caso(patient, visit)
+    bloque = _kb_consultar(consulta, area=diagnosis_type) if consulta else ""
+    if bloque:
+        return (extra_context + "\n\n" + bloque) if extra_context else bloque
+    return extra_context
+
+
 def build_diagnosis_prompt(diagnosis_type: str, full_patient: dict, full_visit: dict, extra_context: str = "",
                             all_visits: list = None) -> str:
     """Genera el prompt de diagnóstico correspondiente sin depender de un diagnóstico previo."""
+    extra_context = _biblioteca_para_diagnostico(diagnosis_type, full_patient, full_visit, extra_context)
     if diagnosis_type == "functional":
         return get_functional_medicine_prompt(full_patient, "", visit_data=full_visit, extra_context=extra_context, all_visits=all_visits)
     if diagnosis_type == "longevity":
@@ -1010,6 +1032,7 @@ async def run_traditional(
                 "updated_at": datetime.utcnow().isoformat(),
             })
 
+        extra_context = _biblioteca_para_diagnostico("traditional", full_patient, full_visit, extra_context)
         prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context, all_visits=all_visits)
         raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional", thinking=True, web_search="mx",
                           attachments=_visit_file_blocks(full_visit))
@@ -1111,12 +1134,13 @@ def _build_functional_prompt(visit_id: str, body: FunctionalRequest, doctor_id: 
             + body.doctor_answers
         )
     chat_snippet = _chat_snippet(analysis.get("chat_history", []))
+    kb_block = _biblioteca_para_diagnostico("functional", patient_data, visit_record, "")
 
     prompt = get_functional_medicine_prompt(
         patient_data,
         body.doctor_traditional,
         visit_data=visit_record,
-        extra_context=doctor_context + chat_snippet,
+        extra_context=doctor_context + chat_snippet + ("\n\n" + kb_block if kb_block else ""),
         all_visits=all_visits,
         traditional_treatment=body.protocol_traditional,
     )
@@ -1213,13 +1237,14 @@ def _build_longevity_prompt(visit_id: str, body: LongevityRequest, doctor_id: st
             + body.doctor_answers
         )
     chat_snippet = _chat_snippet(analysis.get("chat_history", []))
+    kb_block = _biblioteca_para_diagnostico("longevity", patient_data, visit_record, "")
 
     prompt = get_longevity_diagnosis_prompt(
         patient_data,
         body.doctor_functional,
         traditional_diagnosis=body.doctor_traditional,
         visit_data=visit_record,
-        extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet,
+        extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet + ("\n\n" + kb_block if kb_block else ""),
         all_visits=all_visits,
         traditional_treatment=body.protocol_traditional,
         functional_treatment=body.protocol_functional,
@@ -1542,23 +1567,9 @@ def deliberate_protocol(protocol_text: str, protocol_type: str, previous_protoco
 
 
 def consultar_biblioteca(diagnosis: str, protocol_type: str, extra: str = "") -> str:
-    """Busca en la biblioteca del médico los fragmentos relevantes para este caso.
-    Devuelve "" si no hay biblioteca configurada — el sistema sigue igual sin ella."""
-    if not embeddings_disponibles():
-        return ""
-    consulta = f"{diagnosis[:900]} {extra[:400]}".strip()
-    if len(consulta) < 20:
-        return ""
-    try:
-        vector = embed_consulta(consulta)
-        if not vector:
-            return ""
-        # Trae lo del área de esta voz + lo marcado como 'general' (la función SQL ya lo incluye)
-        fragmentos = search_kb(vector, match_count=6, area=protocol_type)
-        return formatear_fragmentos(fragmentos)
-    except Exception as e:
-        print(f"[WARN] consulta a la biblioteca falló: {e}")
-        return ""
+    """Busca en la biblioteca los fragmentos relevantes para este caso, filtrando por la voz.
+    Envoltura fina sobre el helper compartido del servicio."""
+    return _kb_consultar(f"{diagnosis[:900]} {extra[:400]}", area=protocol_type)
 
 
 def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, dict, list]:
@@ -1965,6 +1976,14 @@ REGLAS:
 - "match" es una descripción en lenguaje natural del item a modificar; el sistema lo resolverá contra el reporte actual buscando por contenido.
 - Al reemplazar un item, incluye TODOS los campos del item nuevo (no omitas presentacion, dosis, etc.), no un diff parcial dentro del item.
 - Emite el patch SOLO cuando el médico realmente confirmó aplicar un cambio. Para preguntas, dudas o propuestas no confirmadas, NO lo incluyas."""
+
+        # Fundamentar en la biblioteca del médico, filtrando por la voz de este paso.
+        # Los pasos "protocol_xxx" comparten área con su voz (functional/longevity/traditional).
+        area_kb = step.replace("protocol_", "") if step.startswith("protocol_") else step
+        if area_kb in ("functional", "longevity", "traditional"):
+            kb_block = _kb_consultar(f"{body.question} {diagnosis_block[:400]}", area=area_kb)
+            if kb_block:
+                system += "\n\n" + kb_block
 
         history.append({"role": "user", "content": body.question})
 

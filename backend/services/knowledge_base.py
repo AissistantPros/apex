@@ -417,6 +417,31 @@ def embed_consulta(texto: str):
 
 # ── Formato para el prompt ────────────────────────────────────────────────────
 
+def consultar_biblioteca(consulta: str, area: str = None, match_count: int = 6) -> str:
+    """Busca en la biblioteca del médico y devuelve el bloque listo para inyectar al prompt.
+    Punto único usado por chat, diagnósticos y protocolos. Devuelve "" si no hay biblioteca
+    configurada o no hay coincidencias — el sistema sigue igual sin ella.
+
+    area: 'functional' | 'longevity' | 'traditional' → filtra a esa voz + lo 'general'.
+          None → busca en TODA la biblioteca (para el chat, que no tiene una voz fija).
+    """
+    from db import search_kb  # import local para evitar ciclo de importación
+    if not embeddings_disponibles():
+        return ""
+    consulta = (consulta or "").strip()
+    if len(consulta) < 15:
+        return ""
+    try:
+        vector = embed_consulta(consulta[:1400])
+        if not vector:
+            return ""
+        fragmentos = search_kb(vector, match_count=match_count, area=area)
+        return formatear_fragmentos(fragmentos)
+    except Exception as e:
+        print(f"[WARN] consulta a la biblioteca falló: {e}")
+        return ""
+
+
 def formatear_fragmentos(fragmentos: list) -> str:
     """Arma el bloque que se inyecta al prompt, con la fuente de cada fragmento para citar.
     Mismo encuadre anti-anclaje que el vademécum: es material de consulta, no un guion."""
