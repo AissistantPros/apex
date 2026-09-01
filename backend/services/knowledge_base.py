@@ -448,13 +448,31 @@ def formatear_fragmentos(fragmentos: list) -> str:
     if not fragmentos:
         return ""
     partes = []
+    hay_notas = False
     for f in fragmentos:
+        es_nota = (f.get("tipo") == "notas")
         fuente = f.get("titulo") or "Fuente"
         if f.get("autor"):
             fuente += f" — {f['autor']}"
         if f.get("pagina"):
             fuente += f", pág. {f['pagina']}"
+        if es_nota:
+            # Nota de investigación del médico generada con IA: NO es literatura publicada.
+            # Se marca para que el modelo no la cite como si fuera una fuente autorizada.
+            hay_notas = True
+            fuente = f"NOTA IA (no verificada) — {fuente}"
         partes.append(f"[{fuente}]\n{f.get('contenido', '').strip()}")
+
+    aviso_notas = ""
+    if hay_notas:
+        aviso_notas = (
+            "\n\nATENCIÓN — FRAGMENTOS MARCADOS COMO \"NOTA IA (no verificada)\": son notas de "
+            "investigación que el propio médico generó con ayuda de IA, NO literatura publicada ni "
+            "guías validadas. Trátalos como una pista o hipótesis, nunca como evidencia sólida. Si "
+            "los usas, dilo explícitamente (\"según tus notas de investigación, que conviene "
+            "verificar…\") y NO les des el mismo peso que a un libro o guía real. Prioriza siempre "
+            "las fuentes publicadas por encima de estas notas."
+        )
 
     return (
         "══ BIBLIOTECA CLÍNICA DEL MÉDICO (fragmentos relevantes de sus propios libros y guías) ══\n"
@@ -465,4 +483,5 @@ def formatear_fragmentos(fragmentos: list) -> str:
           "aplica a este paciente, ignóralo. Si tu conocimiento médico contradice un fragmento, "
           "dilo con transparencia en vez de repetirlo. No inventes citas ni páginas que no estén "
           "aquí arriba."
+        + aviso_notas
     )
