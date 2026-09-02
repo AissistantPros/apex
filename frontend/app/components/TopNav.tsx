@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from '@/app/lib/auth';
-import { getRole, setRole, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
+import { getRole, setRole, setPerms, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
 import { useEffect, useState } from 'react';
 
 interface TopNavProps {
@@ -60,9 +60,10 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         const r = await fetch(`${B}/staff/whoami`, { headers: { Authorization: `Bearer ${s.access_token}` } });
         if (!r.ok) return;
         const who = await r.json();
-        if (who?.role && ['doctor', 'nurse', 'receptionist'].includes(who.role)) {
+        if (who?.role && ['doctor', 'nurse', 'receptionist', 'accounting', 'marketing'].includes(who.role)) {
           setRole(who.role); setRoleState(who.role);
         }
+        if (who?.permissions) setPerms(who.permissions);
       } catch { /* silencioso */ }
     })();
   }, []);

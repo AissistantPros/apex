@@ -108,7 +108,7 @@ const inp = 'w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2.5 
 const btn = 'px-4 py-2.5 rounded-xl text-sm font-bold transition disabled:opacity-40';
 
 export default function ClinicPage() {
-  const [role, setRole] = useState<'doctor' | 'nurse' | 'receptionist'>('doctor');
+  const [role, setRole] = useState<string>('doctor');
   const esRecepcion = role === 'receptionist';
   const [tab, setTab] = useState<'resumen' | 'cobros' | 'gastos' | 'servicios' | 'staff'>('resumen');
 
@@ -116,7 +116,6 @@ export default function ClinicPage() {
   const [services, setServices] = useState<any[]>([]);
   const [pending, setPending] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [staff, setStaff] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
 
@@ -133,21 +132,19 @@ export default function ClinicPage() {
   }, []);
 
   useEffect(() => {
-    const r = getRole(); setRole(r);
+    const r = getRole(); setRole(r as any);
     if (r === 'receptionist') setTab('cobros');
     loadAll();
     fetch(`${B()}/patients/?limit=200`).then(r => r.json()).then(d => setPatients(d.patients || [])).catch(() => {});
-    if (r === 'doctor') api('/staff').then(d => setStaff(d.staff || [])).catch(() => {});
   }, [loadAll]);
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
 
   const TABS = ([
-    ['resumen', '📊 Resumen', ['doctor']],
-    ['cobros', '💳 Cobros', ['doctor', 'receptionist']],
-    ['gastos', '🧾 Gastos', ['doctor', 'receptionist']],
+    ['resumen', '📊 Resumen', ['doctor', 'accounting', 'marketing']],
+    ['cobros', '💳 Cobros', ['doctor', 'receptionist', 'accounting']],
+    ['gastos', '🧾 Gastos', ['doctor', 'accounting']],
     ['servicios', '⚙️ Servicios', ['doctor']],
-    ['staff', '👤 Staff', ['doctor']],
   ] as const).filter(([, , roles]) => (roles as readonly string[]).includes(role));
 
   return (
@@ -178,7 +175,6 @@ export default function ClinicPage() {
         {tab === 'cobros' && <Cobros pending={pending} services={services} patients={patients} reload={loadAll} flash={flash} ov={ov} />}
         {tab === 'gastos' && <Gastos expenses={expenses} reload={loadAll} flash={flash} />}
         {tab === 'servicios' && !esRecepcion && <Servicios services={services} reload={loadAll} flash={flash} />}
-        {tab === 'staff' && !esRecepcion && <Staff staff={staff} reload={() => api('/staff').then(d => setStaff(d.staff || []))} flash={flash} />}
       </main>
     </div>
   );
@@ -491,40 +487,3 @@ function Servicios({ services, reload, flash }: { services: any[]; reload: () =>
   );
 }
 
-// ── STAFF (recepcionistas) ───────────────────────────────────────────────────────
-function Staff({ staff, reload, flash }: { staff: any[]; reload: () => void; flash: (t: string) => void }) {
-  const [nombre, setNombre] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const add = async () => {
-    if (!nombre || !email || password.length < 6) return flash('Nombre, correo y contraseña (mín. 6) requeridos');
-    setBusy(true);
-    try { await api('/staff', { method: 'POST', body: JSON.stringify({ nombre, email, password }) }); setNombre(''); setEmail(''); setPassword(''); flash('Recepcionista creada'); reload(); }
-    catch (e: any) { flash(e.message); } finally { setBusy(false); }
-  };
-  const del = async (id: string) => { if (!confirm('¿Eliminar esta cuenta de recepción?')) return; try { await api(`/staff/${id}`, { method: 'DELETE' }); reload(); } catch (e: any) { flash(e.message); } };
-  return (
-    <div className="space-y-5">
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
-        <p className="text-xs font-mono text-[#00e5a0] tracking-wider mb-1">DAR DE ALTA RECEPCIÓN</p>
-        <p className="text-[11px] text-[#7a95aa] mb-3">La recepcionista entra con su propio correo y contraseña. Solo ve la pantalla de cobros — nunca los diagnósticos.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-          <input className={inp} placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} />
-          <input className={inp} placeholder="Correo" value={email} onChange={e => setEmail(e.target.value)} />
-          <input className={inp} type="password" placeholder="Contraseña" value={password} onChange={e => setPassword(e.target.value)} />
-        </div>
-        <button onClick={add} disabled={busy} className={btn} style={{ background: C.green, color: '#000' }}>{busy ? 'Creando…' : 'Crear cuenta de recepción'}</button>
-      </div>
-      <div className="space-y-1.5">
-        {staff.length === 0 && <p className="text-sm text-[#3d5870] text-center py-4">Aún no hay recepcionistas.</p>}
-        {staff.map(s => (
-          <div key={s.id} className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl px-4 py-3 flex items-center justify-between">
-            <div><p className="text-sm text-[#dde6ef]">{s.display_name}</p><p className="text-[11px] text-[#7a95aa]">{s.email} · Recepción</p></div>
-            <button onClick={() => del(s.id)} className="text-[#f43f5e] text-lg leading-none px-1">×</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

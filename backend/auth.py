@@ -59,5 +59,9 @@ def get_actor(authorization: Optional[str]) -> dict:
         prof = {}
     role = prof.get("role") or "doctor"
     parent = prof.get("parent_doctor_id")
-    doctor_id = parent if (role == "receptionist" and parent) else user_id
-    return {"user_id": user_id, "role": role, "doctor_id": doctor_id}
+    # Cualquier rol que no sea médico y tenga médico padre opera sobre la clínica de ese médico
+    doctor_id = parent if (role != "doctor" and parent) else user_id
+    return {
+        "user_id": user_id, "role": role, "doctor_id": doctor_id,
+        "permissions": prof.get("permissions") or {},
+    }
