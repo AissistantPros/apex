@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from '@/app/lib/auth';
-import { getRole, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
+import { getRole, setRole, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
 import { useEffect, useState } from 'react';
 
 interface TopNavProps {
@@ -12,8 +12,9 @@ interface TopNavProps {
 
 const ALL_LINKS = [
   { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['doctor','nurse','receptionist'] },
-  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['doctor','nurse','receptionist'] },
+  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['doctor','nurse'] },
   { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['doctor'] },
+  { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'] },
   { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['doctor'] },
   { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['doctor'] },
 ];
@@ -48,6 +49,22 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     const saved = getTheme();
     setThemeState(saved);
     applyTheme(saved);
+    // Sincroniza el rol REAL desde el backend (recepcionista vs médico), donde sea que
+    // haya iniciado sesión. Sin sesión, el backend responde 'doctor' (fallback).
+    (async () => {
+      try {
+        const { getSession } = await import('@/app/lib/auth');
+        const s = await getSession().catch(() => null);
+        if (!s?.access_token) return;
+        const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const r = await fetch(`${B}/staff/whoami`, { headers: { Authorization: `Bearer ${s.access_token}` } });
+        if (!r.ok) return;
+        const who = await r.json();
+        if (who?.role && ['doctor', 'nurse', 'receptionist'].includes(who.role)) {
+          setRole(who.role); setRoleState(who.role);
+        }
+      } catch { /* silencioso */ }
+    })();
   }, []);
 
   const toggleTheme = () => {
