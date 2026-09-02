@@ -42,3 +42,22 @@ def get_doctor_id_from_token(authorization: Optional[str]) -> str:
     payload = decode_jwt_payload(token)
     user_id = payload.get("sub")
     return user_id if user_id else FALLBACK_DOCTOR_ID
+
+
+def get_actor(authorization: Optional[str]) -> dict:
+    """Resuelve quién actúa y sobre qué clínica.
+
+    Un recepcionista opera sobre la clínica de SU médico (parent_doctor_id), así que su
+    `doctor_id` efectivo es el del médico. Un médico opera sobre sí mismo.
+    Devuelve {user_id, role, doctor_id}.
+    """
+    user_id = get_doctor_id_from_token(authorization)
+    try:
+        from db import get_doctor_profile
+        prof = get_doctor_profile(user_id) or {}
+    except Exception:
+        prof = {}
+    role = prof.get("role") or "doctor"
+    parent = prof.get("parent_doctor_id")
+    doctor_id = parent if (role == "receptionist" and parent) else user_id
+    return {"user_id": user_id, "role": role, "doctor_id": doctor_id}

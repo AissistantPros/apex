@@ -14,6 +14,8 @@ from routes_analysis import router as analysis_router
 from routes_chat import router as chat_router
 from routes_kb import router as kb_router
 from routes_stats import router as stats_router
+from routes_clinic import router as clinic_router
+from routes_staff import router as staff_router
 
 app = FastAPI(title="APEX Backend", version="0.1.0")
 
@@ -60,6 +62,8 @@ app.include_router(analysis_router)
 app.include_router(chat_router)
 app.include_router(kb_router)
 app.include_router(stats_router)
+app.include_router(clinic_router)
+app.include_router(staff_router)
 
 if __name__ == "__main__":
     import uvicorn
