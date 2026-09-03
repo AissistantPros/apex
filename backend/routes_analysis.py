@@ -18,6 +18,7 @@ from db import (
     save_doctor_preference, get_doctor_preferences, deactivate_doctor_preference,
     log_prescriptions, get_prescription_stats,
     get_vademecum_by_voice, get_clinical_baselines, search_kb,
+    get_doctor_profile,
 )
 from services.knowledge_base import (
     embed_consulta, embeddings_disponibles, formatear_fragmentos,
@@ -2096,3 +2097,94 @@ async def get_analysis_logs(visit_id: str):
         return {"visit_id": visit_id, "logs": list_ai_call_logs(visit_id)}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# ── Documentos de salida de la consulta (receta, reporte, estudios) ──────────────
+_MED_TYPES = {"fármaco", "farmaco", "off-label", "suplemento", "vitamina",
+              "mineral", "terapia iv", "péptido", "peptido", "hormona"}
+
+
+def _parse_protocol(raw) -> tuple:
+    """Devuelve (items_medicamentos, estudios) de un protocolo (texto JSON o dict)."""
+    if not raw:
+        return [], []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return [], []
+    if not isinstance(data, dict):
+        return [], []
+    meds = []
+    for it in data.get("items", []) or []:
+        tipo = (it.get("tipo") or "").strip().lower()
+        if tipo in _MED_TYPES:
+            meds.append(it)
+    estudios = []
+    mg = data.get("monitoreo_general") or {}
+    if isinstance(mg, dict):
+        e = mg.get("estudios")
+        if isinstance(e, list):
+            estudios = [str(x) for x in e if x]
+    return meds, estudios
+
+
+@router.get("/{visit_id}/documents")
+async def get_documents(visit_id: str, authorization: Optional[str] = Header(None)):
+    """Ensambla los datos para los 3 documentos de salida: receta, reporte y estudios.
+    Ninguno es obligatorio; el frontend decide cuáles incluir según haya contenido."""
+    analysis = get_analysis(visit_id) or {}
+    visit = get_visit(visit_id) or {}
+    patient_id = analysis.get("patient_id") or visit.get("patient_id")
+    patient = get_patient(patient_id) if patient_id else {}
+    doctor_id = analysis.get("doctor_id") or visit.get("doctor_id")
+    perfil = get_doctor_profile(doctor_id) if doctor_id else {}
+    letterhead = (perfil or {}).get("letterhead") or {}
+
+    receta, estudios = [], []
+    for campo in ("protocol_traditional", "protocol_functional", "protocol_longevity"):
+        meds, est = _parse_protocol(analysis.get(campo))
+        receta.extend(meds)
+        estudios.extend(est)
+    # de-duplicar estudios conservando orden
+    vistos, estudios_u = set(), []
+    for e in estudios:
+        if e.lower() not in vistos:
+            vistos.add(e.lower()); estudios_u.append(e)
+
+    # Reporte sugerido: diagnóstico(s) que el médico confirmó
+    partes_reporte = []
+    for campo, titulo in (("doctor_traditional", "Diagnóstico"),
+                          ("doctor_functional", "Enfoque funcional"),
+                          ("doctor_longevity", "Enfoque de longevidad")):
+        txt = (analysis.get(campo) or "").strip()
+        if txt:
+            partes_reporte.append(f"{titulo}:\n{txt}")
+
+    # Edad del paciente
+    edad = None
+    dob = patient.get("date_of_birth") or patient.get("birth_date")
+    if dob:
+        try:
+            from datetime import datetime as _dt
+            d = _dt.fromisoformat(str(dob)[:10])
+            hoy = _dt.now()
+            edad = hoy.year - d.year - ((hoy.month, hoy.day) < (d.month, d.day))
+        except Exception:
+            edad = None
+
+    return {
+        "patient": {
+            "id": patient_id, "nombre": patient.get("full_name"),
+            "edad": edad, "sexo": patient.get("sexo_biologico"), "email": patient.get("email"),
+        },
+        "letterhead": letterhead,
+        "receta": receta,
+        "estudios": estudios_u,
+        "reporte_sugerido": "\n\n".join(partes_reporte),
+        "fecha": None,
+        "disponibles": {
+            "receta": len(receta) > 0,
+            "estudios": len(estudios_u) > 0,
+            "reporte": len(partes_reporte) > 0,
+        },
+    }
