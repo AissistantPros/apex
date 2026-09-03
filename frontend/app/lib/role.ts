@@ -5,7 +5,8 @@
 
 export type UserRole = 'doctor' | 'nurse' | 'receptionist' | 'accounting' | 'marketing';
 
-export const AREAS = ['pacientes', 'cobros', 'finanzas', 'marketing', 'biblioteca', 'equipo'] as const;
+export const AREAS = ['pacientes', 'historial', 'enfermeria', 'prescripcion',
+  'cobros', 'gastos', 'finanzas', 'marketing', 'marketing_captura', 'biblioteca', 'equipo'] as const;
 export type Area = typeof AREAS[number];
 export type PermLevel = 'none' | 'view' | 'edit';
 
@@ -44,10 +45,15 @@ export const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 export const AREA_LABELS: Record<Area, string> = {
-  pacientes:  'Pacientes y diagnósticos',
-  cobros:     'Cobros',
-  finanzas:   'Finanzas y gastos',
-  marketing:  'Marketing y ROI',
-  biblioteca: 'Biblioteca clínica',
-  equipo:     'Equipo (staff)',
+  pacientes:         'Pacientes (datos y facturación)',
+  historial:         'Historial clínico',
+  enfermeria:        'Datos de enfermería',
+  prescripcion:      'Ver y enviar prescripción',
+  cobros:            'Cobros',
+  gastos:            'Gastos',
+  finanzas:          'Finanzas e ingresos',
+  marketing:         'Marketing y ROI',
+  marketing_captura: 'Captura de resultados de mkt',
+  biblioteca:        'Biblioteca clínica',
+  equipo:            'Equipo (staff)',
 };

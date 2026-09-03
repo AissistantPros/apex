@@ -15,6 +15,7 @@ const ALL_LINKS = [
   { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['doctor','nurse'] },
   { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['doctor'] },
   { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'] },
+  { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['doctor','marketing'] },
   { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['doctor'] },
   { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['doctor'] },
 ];
