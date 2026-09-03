@@ -247,6 +247,75 @@ async def delete_patient(
         raise HTTPException(500, str(e))
 
 
+# ── Última prescripción + envío al paciente ─────────────
+
+def _last_prescription(patient_id: str) -> dict:
+    """Última prescripción del paciente (protocolos + notas del médico)."""
+    from db import supabase
+    r = supabase.table("analyses").select(
+        "visit_id, protocol_traditional, protocol_functional, protocol_longevity, "
+        "doctor_traditional, doctor_functional, updated_at"
+    ).eq("patient_id", patient_id).order("updated_at", desc=True).limit(1).execute()
+    return (r.data or [{}])[0]
+
+
+@router.get("/{patient_id}/last-prescription")
+async def last_prescription(patient_id: str, authorization: Optional[str] = Header(None)):
+    """Recepción puede VER la última prescripción para enviarla — sin acceso al historial."""
+    p = get_patient(patient_id) or {}
+    pres = _last_prescription(patient_id)
+    return {
+        "patient_name": p.get("full_name"), "patient_email": p.get("email"),
+        "prescription": pres, "tiene": bool(pres.get("visit_id")),
+    }
+
+
+@router.post("/{patient_id}/send-prescription")
+async def send_prescription(patient_id: str, authorization: Optional[str] = Header(None)):
+    """Envía por correo la última prescripción al paciente.
+
+    Usa Resend si RESEND_API_KEY está configurado; si no, devuelve el contenido y un enlace
+    mailto para que recepción lo envíe desde su propio correo (degradación segura).
+    """
+    import os
+    p = get_patient(patient_id) or {}
+    email = p.get("email")
+    if not email:
+        raise HTTPException(400, "El paciente no tiene correo registrado")
+    pres = _last_prescription(patient_id)
+    if not pres.get("visit_id"):
+        raise HTTPException(404, "Este paciente aún no tiene una prescripción")
+
+    cuerpo = "\n\n".join(filter(None, [
+        pres.get("protocol_traditional"), pres.get("protocol_functional"),
+        pres.get("protocol_longevity"),
+    ])) or "Prescripción adjunta."
+    asunto = f"Tu prescripción — {p.get('full_name', '')}".strip()
+
+    api_key = os.getenv("RESEND_API_KEY")
+    remitente = os.getenv("PRESCRIPTION_FROM", "clinica@apex.mx")
+    if api_key:
+        try:
+            import urllib.request, json as _json
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=_json.dumps({"from": remitente, "to": [email],
+                                  "subject": asunto, "text": cuerpo}).encode(),
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=20)
+            return {"ok": True, "enviado": True, "via": "resend", "to": email}
+        except Exception as e:
+            print(f"[WARN] Resend falló: {e}")
+
+    # Sin proveedor de correo: devolver mailto para envío manual
+    import urllib.parse
+    mailto = f"mailto:{email}?subject={urllib.parse.quote(asunto)}&body={urllib.parse.quote(cuerpo)}"
+    return {"ok": True, "enviado": False, "via": "mailto", "to": email,
+            "mailto": mailto, "asunto": asunto, "cuerpo": cuerpo,
+            "nota": "No hay proveedor de correo configurado; usa el enlace para enviarlo desde tu correo."}
+
+
 # ── Doctor profile ──────────────────────────────────────
 
 doctor_profile_router = APIRouter(prefix="/doctor", tags=["doctor"])

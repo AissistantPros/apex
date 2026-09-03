@@ -1,12 +1,17 @@
 """
-Gestión de equipo (staff): el médico da de alta a su personal con login propio y define
+Gestión de equipo (staff): el médico da de alta a su personal con acceso propio y define
 qué puede ver y editar cada quien.
 
-Roles: doctor | receptionist | accounting | nurse | marketing
-Permisos por área: { area: 'none' | 'view' | 'edit' }. Cada rol trae permisos por defecto
-que el médico puede ajustar por persona.
+Seguridad de credenciales: al crear una cuenta se genera un usuario (a partir del nombre) y
+una contraseña ALEATORIA segura. La contraseña se muestra UNA sola vez y no se guarda de forma
+legible; después solo se puede REGENERAR (nunca ver la anterior).
+
+Roles: doctor | receptionist | nurse | accounting | marketing
+Permisos por área: { area: 'none' | 'view' | 'edit' }.
 """
 import re
+import secrets
+import unicodedata
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
@@ -18,22 +23,24 @@ from db import supabase
 router = APIRouter(prefix="/staff", tags=["staff"])
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-# Áreas de permiso que se pueden conceder
-AREAS = ["pacientes", "cobros", "finanzas", "marketing", "biblioteca", "equipo"]
+# Áreas de permiso
+AREAS = ["pacientes", "historial", "enfermeria", "prescripcion",
+         "cobros", "gastos", "finanzas", "marketing", "marketing_captura",
+         "biblioteca", "equipo"]
 
 # Permisos por defecto según rol
+_N = {a: "none" for a in AREAS}
 DEFAULT_PERMS = {
     "doctor":       {a: "edit" for a in AREAS},
-    "receptionist": {"cobros": "edit", "pacientes": "none", "finanzas": "none",
-                     "marketing": "none", "biblioteca": "none", "equipo": "none"},
-    "accounting":   {"finanzas": "edit", "cobros": "view", "marketing": "view",
-                     "pacientes": "none", "biblioteca": "none", "equipo": "none"},
-    "nurse":        {"pacientes": "edit", "cobros": "view", "finanzas": "none",
-                     "marketing": "none", "biblioteca": "view", "equipo": "none"},
-    "marketing":    {"marketing": "edit", "finanzas": "view", "cobros": "none",
-                     "pacientes": "none", "biblioteca": "none", "equipo": "none"},
+    "receptionist": {**_N, "pacientes": "edit", "prescripcion": "edit",
+                     "cobros": "edit", "gastos": "edit"},
+    "nurse":        {**_N, "enfermeria": "edit", "pacientes": "view"},
+    "accounting":   {**_N, "finanzas": "edit", "gastos": "edit",
+                     "cobros": "view", "marketing": "view"},
+    "marketing":    {**_N, "marketing": "edit", "marketing_captura": "edit", "finanzas": "view"},
 }
 ROLES = list(DEFAULT_PERMS.keys())
+PW_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 def perms_para(role: str, override: Optional[dict] = None) -> dict:
@@ -42,13 +49,25 @@ def perms_para(role: str, override: Optional[dict] = None) -> dict:
         for a in AREAS:
             if override.get(a) in ("none", "view", "edit"):
                 base[a] = override[a]
+        # Config extra (p.ej. alcance de ingresos para contabilidad)
+        if isinstance(override.get("ingresos_scope"), dict):
+            base["ingresos_scope"] = override["ingresos_scope"]
     return base
+
+
+def _slug(nombre: str) -> str:
+    s = unicodedata.normalize("NFKD", nombre or "").encode("ascii", "ignore").decode()
+    s = re.sub(r"[^a-zA-Z0-9]+", ".", s).strip(".").lower()
+    return s or "usuario"
+
+
+def _gen_password(n: int = 12) -> str:
+    return "".join(secrets.choice(PW_ALPHABET) for _ in range(n))
 
 
 class StaffIn(BaseModel):
     nombre: str
-    email: str
-    password: str
+    email: Optional[str] = None       # opcional; si falta se genera un usuario con el nombre
     role: str = "receptionist"
     permissions: Optional[dict] = None
 
@@ -77,20 +96,24 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
     _require_manage(actor)
     if body.role not in ROLES or body.role == "doctor":
         raise HTTPException(400, "Rol inválido")
-    if not _EMAIL_RE.match((body.email or "").strip()):
-        raise HTTPException(400, "Correo inválido")
-    if len(body.password) < 6:
-        raise HTTPException(400, "La contraseña debe tener al menos 6 caracteres")
 
+    # Usuario: correo real si lo dieron, o uno generado con el nombre
+    email = (body.email or "").strip()
+    if email and not _EMAIL_RE.match(email):
+        raise HTTPException(400, "Correo inválido")
+    if not email:
+        email = f"{_slug(body.nombre)}.{secrets.randbelow(900) + 100}@staff.apex.mx"
+
+    password = _gen_password()   # aleatoria, segura, se muestra una sola vez
     try:
         created = supabase.auth.admin.create_user({
-            "email": body.email, "password": body.password, "email_confirm": True,
+            "email": email, "password": password, "email_confirm": True,
             "user_metadata": {"display_name": body.nombre, "role": body.role},
         })
     except Exception as e:
         msg = str(e)
         if "already" in msg.lower() or "registered" in msg.lower():
-            raise HTTPException(409, "Ya existe una cuenta con ese correo")
+            raise HTTPException(409, "Ya existe una cuenta con ese usuario/correo")
         raise HTTPException(500, f"No se pudo crear la cuenta: {msg[:200]}")
 
     new_user = getattr(created, "user", None) or created
@@ -99,10 +122,30 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
         raise HTTPException(500, "No se obtuvo el id del nuevo usuario")
 
     supabase.table("doctor_profiles").upsert({
-        "id": uid, "display_name": body.nombre, "email": body.email, "role": body.role,
+        "id": uid, "display_name": body.nombre, "email": email, "role": body.role,
         "parent_doctor_id": actor["doctor_id"], "permissions": perms_para(body.role, body.permissions),
     }).execute()
-    return {"ok": True, "id": uid, "email": body.email, "nombre": body.nombre, "role": body.role}
+
+    # La contraseña se devuelve UNA vez; no se guarda de forma legible.
+    return {"ok": True, "id": uid, "usuario": email, "password": password,
+            "nombre": body.nombre, "role": body.role}
+
+
+@router.post("/{uid}/password")
+async def regenerate_password(uid: str, authorization: Optional[str] = Header(None)):
+    """Genera una NUEVA contraseña. La anterior no se puede recuperar."""
+    actor = get_actor(authorization)
+    _require_manage(actor)
+    prof = supabase.table("doctor_profiles").select("id, parent_doctor_id, email")\
+        .eq("id", uid).execute().data
+    if not prof or prof[0].get("parent_doctor_id") != actor["doctor_id"]:
+        raise HTTPException(403, "Ese miembro no pertenece a tu equipo")
+    password = _gen_password()
+    try:
+        supabase.auth.admin.update_user_by_id(uid, {"password": password})
+    except Exception as e:
+        raise HTTPException(500, f"No se pudo regenerar: {str(e)[:200]}")
+    return {"ok": True, "usuario": prof[0].get("email"), "password": password}
 
 
 @router.put("/{uid}/permissions")
@@ -114,10 +157,9 @@ async def update_perms(uid: str, body: PermsIn, authorization: Optional[str] = H
     if not prof or prof[0].get("parent_doctor_id") != actor["doctor_id"]:
         raise HTTPException(403, "Ese miembro no pertenece a tu equipo")
     role = body.role if (body.role in ROLES and body.role != "doctor") else prof[0].get("role")
-    supabase.table("doctor_profiles").update({
-        "role": role, "permissions": perms_para(role, body.permissions),
-    }).eq("id", uid).execute()
-    return {"ok": True, "role": role, "permissions": perms_para(role, body.permissions)}
+    nuevos = perms_para(role, body.permissions)
+    supabase.table("doctor_profiles").update({"role": role, "permissions": nuevos}).eq("id", uid).execute()
+    return {"ok": True, "role": role, "permissions": nuevos}
 
 
 @router.delete("/{uid}")
@@ -138,14 +180,12 @@ async def delete_staff(uid: str, authorization: Optional[str] = Header(None)):
 
 @router.get("/defaults")
 async def defaults():
-    """Permisos por defecto de cada rol (para pre-llenar la matriz en el frontend)."""
     return {"areas": AREAS, "roles": ROLES, "defaults": DEFAULT_PERMS}
 
 
 @router.get("/whoami")
 async def whoami(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
-    # El médico dueño tiene todos los permisos aunque su perfil no los liste
     if actor["role"] == "doctor" and not actor.get("permissions"):
         actor["permissions"] = {a: "edit" for a in AREAS}
     return actor

@@ -248,13 +248,22 @@ async def delete_expense(eid: str, authorization: Optional[str] = Header(None)):
 # ── Dashboard financiero + ROI de marketing ───────────────────────────────────────
 @router.get("/overview")
 async def overview(authorization: Optional[str] = Header(None)):
-    did = get_actor(authorization)["doctor_id"]
+    actor = get_actor(authorization)
+    did = actor["doctor_id"]
     ventas = supabase.table("sales").select("*").eq("doctor_id", did).execute().data or []
     gastos = supabase.table("expenses").select("*").eq("doctor_id", did).execute().data or []
     pacientes = supabase.table("patients").select("id, full_name, sources_of_contact, social_network")\
         .eq("doctor_id", did).execute().data or []
 
     cobradas = [v for v in ventas if v.get("estado") == "cobrado"]
+    # Alcance de ingresos para Contabilidad: puede limitarse a facturado y/o método de pago
+    scope = (actor.get("permissions") or {}).get("ingresos_scope") or {}
+    if scope:
+        if scope.get("solo_facturado"):
+            cobradas = [v for v in cobradas if v.get("facturada")]
+        metodos = scope.get("metodos")
+        if metodos and metodos != "todos" and isinstance(metodos, list):
+            cobradas = [v for v in cobradas if v.get("metodo_pago") in metodos]
     ingreso = sum(v.get("total") or 0 for v in cobradas)
     gasto_total = sum(g.get("monto") or 0 for g in gastos)
     ahora = datetime.now(timezone.utc)
