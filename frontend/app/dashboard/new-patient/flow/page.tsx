@@ -36,7 +36,7 @@ const ENFERMEDADES: { key: Enfermedad; label: string }[] = [
 ];
 const SOURCES = [
   'Recomendación de paciente','Recomendación de médico','Redes sociales',
-  'Búsqueda en internet','Página web','Google Maps','Otro',
+  'Búsqueda en internet','Página web','Google Maps','Doctoralia','Otro',
 ];
 const ANIMO_OPTS     = ['Estable','Ansioso','Irritable','Triste','Sin motivación','Bien','Otro'];
 const DIGESTION_OPTS = ['Sin problemas','Distensión','Estreñimiento','Diarrea','Reflujo','Náuseas','Otro'];
@@ -202,6 +202,11 @@ function FlowPageInner() {
     social_network: '',
     prev_redes: false, prev_web: false, prev_gmaps: false,
 
+    // FASE 1 — Datos de facturación (recepción)
+    factura_requiere: false,
+    factura_rfc: '', factura_razon_social: '', factura_regimen: '', factura_uso_cfdi: '',
+    factura_cp: '', factura_email: '', factura_direccion: '',
+
     // FASE 2 — Enfermería: Antecedentes
     chronic_diseases: '', surgeries: '', hospitalizations: '',
     fractures: '', transfusions: '', childhood_diseases: '',
@@ -342,6 +347,14 @@ function FlowPageInner() {
               prev_redes:                     p.prev_redes                    ?? false,
               prev_web:                       p.prev_web                      ?? false,
               prev_gmaps:                     p.prev_gmaps                    ?? false,
+              factura_requiere:      !!(p.billing?.requiere),
+              factura_rfc:           p.billing?.rfc            || '',
+              factura_razon_social:  p.billing?.razon_social   || '',
+              factura_regimen:       p.billing?.regimen        || '',
+              factura_uso_cfdi:      p.billing?.uso_cfdi       || '',
+              factura_cp:            p.billing?.cp             || '',
+              factura_email:         p.billing?.email          || '',
+              factura_direccion:     p.billing?.direccion      || '',
               // Fase 2 — Antecedentes
               chronic_diseases:               p.chronic_diseases              || '',
               surgeries:                      p.surgeries                     || '',
@@ -632,6 +645,11 @@ function FlowPageInner() {
         sources_of_contact: sources,
         referred_other: f.referred_other,
         social_network: f.social_network,
+        billing: {
+          requiere: f.factura_requiere, rfc: f.factura_rfc, razon_social: f.factura_razon_social,
+          regimen: f.factura_regimen, uso_cfdi: f.factura_uso_cfdi, cp: f.factura_cp,
+          email: f.factura_email, direccion: f.factura_direccion,
+        },
         registration_phase: 'reception',
         phases_completed: ['receptionist'],
       };
@@ -1075,6 +1093,60 @@ function FlowPageInner() {
                       onChange={e => set('emergency_contact_email', e.target.value)} placeholder="emergencia@ejemplo.com" />
                   </Field>
                 </div>
+              </Card>
+
+              <Card title="Datos de facturación" icon="🧾" color={pc.color}>
+                <label className="flex items-center gap-2 text-sm text-[#dde6ef] mb-3 cursor-pointer">
+                  <input type="checkbox" checked={f.factura_requiere} onChange={e => set('factura_requiere', e.target.checked)} />
+                  El paciente solicita factura
+                </label>
+                {f.factura_requiere && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="RFC">
+                        <input className={`${inp} ${fBlue}`} value={f.factura_rfc}
+                          onChange={e => set('factura_rfc', e.target.value.toUpperCase())} placeholder="XAXX010101000" />
+                      </Field>
+                      <Field label="CÓDIGO POSTAL">
+                        <input className={`${inp} ${fBlue}`} value={f.factura_cp}
+                          onChange={e => set('factura_cp', e.target.value)} placeholder="06600" />
+                      </Field>
+                    </div>
+                    <Field label="RAZÓN SOCIAL / NOMBRE FISCAL">
+                      <input className={`${inp} ${fBlue}`} value={f.factura_razon_social}
+                        onChange={e => set('factura_razon_social', e.target.value)} placeholder="Nombre o empresa como aparece en el SAT" />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="RÉGIMEN FISCAL">
+                        <input className={`${inp} ${fBlue}`} value={f.factura_regimen}
+                          onChange={e => set('factura_regimen', e.target.value)} placeholder="612 - Personas físicas..." list="regimenes" />
+                        <datalist id="regimenes">
+                          <option value="605 - Sueldos y salarios" />
+                          <option value="612 - Personas físicas con actividad empresarial" />
+                          <option value="626 - RESICO" />
+                          <option value="601 - General de ley personas morales" />
+                        </datalist>
+                      </Field>
+                      <Field label="USO DE CFDI">
+                        <input className={`${inp} ${fBlue}`} value={f.factura_uso_cfdi}
+                          onChange={e => set('factura_uso_cfdi', e.target.value)} placeholder="D01 - Gastos médicos" list="usoscfdi" />
+                        <datalist id="usoscfdi">
+                          <option value="D01 - Honorarios médicos y gastos hospitalarios" />
+                          <option value="G03 - Gastos en general" />
+                          <option value="S01 - Sin efectos fiscales" />
+                        </datalist>
+                      </Field>
+                    </div>
+                    <Field label="CORREO PARA FACTURA">
+                      <input type="email" className={`${inp} ${fBlue}`} value={f.factura_email}
+                        onChange={e => set('factura_email', e.target.value)} placeholder="facturacion@ejemplo.com" />
+                    </Field>
+                    <Field label="DIRECCIÓN FISCAL (OPCIONAL)">
+                      <input className={`${inp} ${fBlue}`} value={f.factura_direccion}
+                        onChange={e => set('factura_direccion', e.target.value)} placeholder="Calle, número, colonia" />
+                    </Field>
+                  </div>
+                )}
               </Card>
 
               <Card title="¿Cómo nos conoció?" icon="📍" color={pc.color}>

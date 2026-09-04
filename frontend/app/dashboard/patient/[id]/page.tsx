@@ -180,6 +180,26 @@ export default function PatientPage() {
               >
                 ✏️ Editar
               </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const s = await getSession().catch(() => null);
+                    const res = await fetch(`${BACKEND()}/patients/${patientId}/send-prescription`, {
+                      method: 'POST',
+                      headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {},
+                    });
+                    const d = await res.json().catch(() => ({}));
+                    if (!res.ok) { alert(d.detail || 'No se pudo enviar la prescripción'); return; }
+                    if (d.enviado) alert(`Prescripción enviada a ${d.to}`);
+                    else if (d.mailto) { window.location.href = d.mailto; }
+                    else alert('Prescripción lista para enviar');
+                  } catch { alert('Error al enviar la prescripción'); }
+                }}
+                className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition whitespace-nowrap"
+                title="Envía al paciente la última prescripción del médico"
+              >
+                ✉️ Enviar prescripción
+              </button>
             </div>
           </div>
           {/* Datos rápidos — fila completa, repartida con etiquetas */}
