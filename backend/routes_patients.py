@@ -286,10 +286,27 @@ async def send_prescription(patient_id: str, authorization: Optional[str] = Head
     if not pres.get("visit_id"):
         raise HTTPException(404, "Este paciente aún no tiene una prescripción")
 
-    cuerpo = "\n\n".join(filter(None, [
-        pres.get("protocol_traditional"), pres.get("protocol_functional"),
-        pres.get("protocol_longevity"),
-    ])) or "Prescripción adjunta."
+    # Armar un cuerpo LEGIBLE a partir de los protocolos (que se guardan como JSON)
+    from routes_analysis import _parse_protocol
+    lineas = [f"Hola {p.get('full_name', '')},", "", "Esta es tu prescripción:", ""]
+    n = 0
+    for campo in ("protocol_traditional", "protocol_functional", "protocol_longevity"):
+        meds, _est = _parse_protocol(pres.get(campo))
+        for m in meds:
+            n += 1
+            nombre = m.get("nombre_generico", "")
+            if m.get("nombre_comercial"):
+                nombre += f" ({m['nombre_comercial']})"
+            detalle = " · ".join(filter(None, [m.get("presentacion"), m.get("dosis"),
+                                              m.get("via"), m.get("frecuencia")]))
+            linea = f"{n}. {nombre} — {detalle}"
+            if m.get("duracion"):
+                linea += f" — {m['duracion']}"
+            lineas.append(linea)
+    if n == 0:
+        lineas.append("(Sin medicamentos registrados)")
+    lineas += ["", "Cualquier duda, contáctanos.", "", p.get("full_name") and "" or ""]
+    cuerpo = "\n".join([l for l in lineas if l is not None])
     asunto = f"Tu prescripción — {p.get('full_name', '')}".strip()
 
     api_key = os.getenv("RESEND_API_KEY")
