@@ -3120,20 +3120,25 @@ export default function AnalysisPage() {
                   {[
                     { icon: '📋', label: 'Receta médica',        sub: 'Medicamentos + dosis' },
                     { icon: '🔬', label: 'Solicitud estudios',   sub: 'Labs recomendados' },
-                    { icon: '📊', label: 'Reporte paciente',     sub: 'Resumen completo' },
+                    { icon: '📊', label: 'Reporte paciente',     sub: 'Diagnóstico y consejos' },
                   ].map(d => (
-                    <div key={d.label} className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-4 cursor-pointer hover:border-[#00e5a0] transition">
+                    <div key={d.label} className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-4">
                       <div className="text-3xl mb-2">{d.icon}</div>
                       <p className="text-sm font-semibold text-[#dde6ef]">{d.label}</p>
                       <p className="text-xs text-[#7a95aa] mt-1">{d.sub}</p>
-                      <p className="text-[10px] font-mono text-[#3d5870] mt-2">Próximamente</p>
                     </div>
                   ))}
                 </div>
-                <button onClick={() => setStep('complete')}
-                  className="px-8 py-3 bg-[#00e5a0] text-black font-semibold rounded-xl hover:bg-[#00ffb0] transition text-sm">
-                  Cerrar Visita ✓
-                </button>
+                <div className="flex items-center justify-center gap-3">
+                  <button onClick={() => router.push(`/dashboard/patient/${patient_id}/visit/${visit_id}/documentos`)}
+                    className="px-8 py-3 bg-[#00e5a0] text-black font-semibold rounded-xl hover:bg-[#00ffb0] transition text-sm">
+                    Generar receta y documentos →
+                  </button>
+                  <button onClick={() => setStep('complete')}
+                    className="px-6 py-3 border border-[#1e2d3d] text-[#7a95aa] font-semibold rounded-xl hover:text-[#dde6ef] transition text-sm">
+                    Cerrar sin documentos
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -37,6 +37,7 @@ export default function ProfilePage() {
     photo_url: '',
     clinic_logo_url: '',
     ai_name_preference: '',
+    letterhead: {} as Record<string, string>,
   });
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export default function ProfilePage() {
           photo_url: data.photo_url || '',
           clinic_logo_url: data.clinic_logo_url || '',
           ai_name_preference: data.ai_name_preference || '',
+          letterhead: data.letterhead || {},
         });
       } catch (e) {
         setForm(f => ({ ...f, email: u.email || '', display_name: u.user_metadata?.full_name || '' }));
@@ -234,6 +236,33 @@ export default function ProfilePage() {
               </select>
               <p className="text-xs text-[#3d5870] mt-1">Esto personaliza cómo la IA redacta los diagnósticos y protocolos.</p>
             </Field>
+          </Card>
+
+          {/* Membrete de la receta / documentos */}
+          <Card title="Membrete para recetas y documentos" icon="📄">
+            <p className="text-xs text-[#7a95aa] -mt-2">Aparece en las recetas, reportes y solicitudes de estudios que entregas al paciente.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {([
+                ['profesional', 'Nombre profesional'],
+                ['especialidad', 'Especialidad'],
+                ['cedula_profesional', 'Cédula profesional'],
+                ['cedula_especialidad', 'Cédula de especialidad'],
+                ['universidad', 'Universidad'],
+                ['clinica', 'Nombre de la clínica'],
+                ['direccion', 'Dirección'],
+                ['ciudad', 'Ciudad / C.P.'],
+                ['telefono', 'Teléfono'],
+                ['whatsapp', 'WhatsApp'],
+                ['website', 'Sitio web'],
+                ['email', 'Correo de contacto'],
+                ['logo_url', 'URL del logotipo (opcional)'],
+              ] as [string, string][]).map(([k, label]) => (
+                <Field key={k} label={label}>
+                  <input className={inp} value={form.letterhead?.[k] || ''}
+                    onChange={e => setForm(prev => ({ ...prev, letterhead: { ...prev.letterhead, [k]: e.target.value } }))} />
+                </Field>
+              ))}
+            </div>
           </Card>
 
           {/* Botón guardar */}
