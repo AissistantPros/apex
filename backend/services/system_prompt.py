@@ -1103,6 +1103,64 @@ EJES CAUSALES DE LA MATRIZ DE SALUD (medicina funcional) — evalúa cuáles apl
 """
 
 
+def build_func_intake_context(patient: dict) -> str:
+    """Renderiza la capa profunda de la entrevista funcional/longevidad (func_intake)."""
+    fi = patient.get("func_intake") or {}
+    if not isinstance(fi, dict) or not fi:
+        return ""
+    partes = ["ENTREVISTA FUNCIONAL PROFUNDA (respuestas del paciente en la capa de funcional/longevidad):"]
+
+    tl = fi.get("timeline") or []
+    if isinstance(tl, list) and any((e or {}).get("evento") for e in tl):
+        partes.append("• Línea de tiempo de salud (Antecedentes–Disparadores–Mediadores):")
+        for e in tl:
+            if (e or {}).get("evento"):
+                partes.append(f"    - {e.get('evento')}"
+                              + (f" (cuándo: {e.get('cuando')})" if e.get("cuando") else "")
+                              + (f" [contexto: {e.get('contexto')}]" if e.get("contexto") else ""))
+    soc = [("Convivencia social", fi.get("social_frecuencia")), ("Soledad", fi.get("soledad")),
+           ("Red de apoyo", fi.get("red_apoyo")), ("Propósito/sentido", fi.get("proposito")),
+           ("Comunidad", fi.get("comunidad"))]
+    soc = [f"{k}: {vv}" for k, vv in soc if vv]
+    if soc:
+        partes.append("• Conexión social y propósito: " + " · ".join(soc))
+    labs = fi.get("labs_disponibles") or []
+    if fi.get("labs_recientes") or labs:
+        partes.append(f"• Estudios disponibles: {fi.get('labs_recientes') or '—'}"
+                      + (f" | tiene/puede: {', '.join(labs)}" if labs else "")
+                      + (f" | capacidad: {fi.get('puede_estudios')}" if fi.get("puede_estudios") else ""))
+    bio = [("Edad biológica", fi.get("edad_biologica")), ("Composición", fi.get("composicion"))]
+    bio = [f"{k}: {vv}" for k, vv in bio if vv]
+    if bio:
+        partes.append("• Edad biológica / composición: " + " · ".join(bio))
+    metas = fi.get("metas") or []
+    if metas or fi.get("expectativa"):
+        partes.append(f"• Metas del paciente: {', '.join(metas)}"
+                      + (f" — «{fi.get('expectativa')}»" if fi.get("expectativa") else ""))
+    return "\n".join(partes)
+
+
+def _preliminar_block(patient: dict, voz: str) -> str:
+    """Si la entrevista funcional NO está completa, se entrega en MODO PRELIMINAR (escalera de
+    necesidades): no se concluye, se pide completar la entrevista, se listan los estudios
+    necesarios y se dan recomendaciones generales seguras. Solo aplica a funcional/longevidad."""
+    if patient.get("entrevista_funcional_completa"):
+        return ""
+    return f"""
+⚠ MODO PRELIMINAR — LA ENTREVISTA {voz.upper()} NO ESTÁ COMPLETA.
+El paciente eligió incluir {voz}, pero no tiene la entrevista profunda completa, así que NO cuentas
+con información suficiente para conclusiones firmes. NO inventes certeza ni concluyas causas raíz o
+protocolos definitivos. En su lugar, entrega EXACTAMENTE tres partes, en este orden:
+1. COMPLETAR LA ENTREVISTA: indica al médico que el paciente debe completar la entrevista {voz}
+   (línea de tiempo, conexión social, disponibilidad de estudios, metas) para una opinión seria.
+2. ESTUDIOS QUE NECESITAMOS: lista los estudios/laboratorios (con rango óptimo como lente) que
+   harían falta para dar una opinión {voz} real con lo poco que hoy sabemos.
+3. RECOMENDACIONES GENERALES SEGURAS: solo lo que se puede dar sin comprometer conclusiones a
+   información que aún no existe — dormir bien, comer bien, moverse, conexión social, y suplementos
+   o vitaminas base bien establecidos. NADA que dependa de estudios o datos que aún no tenemos.
+"""
+
+
 def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: str,
                                    visit_data: dict = None, extra_context: str = "",
                                    all_visits: list = None, traditional_treatment: str = "") -> str:
@@ -1120,12 +1178,17 @@ def get_functional_medicine_prompt(patient_data: dict, traditional_diagnosis: st
         if traditional_treatment and traditional_treatment.strip() else ""
     )
 
+    func_ctx = build_func_intake_context(patient_data)
+    preliminar = _preliminar_block(patient_data, "funcional")
+
     return f"""{IDENTITY_FUNCTIONAL}
 
 Tu trabajo es explicar POR QUÉ apareció el diagnóstico tradicional, regresando lo más posible en la cadena causal
 usando los ejes de la matriz de salud. Sé conciso — el médico tiene al paciente enfrente.
-
+{preliminar}
 {extra_context}
+
+{func_ctx}
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}
 
@@ -1198,9 +1261,28 @@ def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str
         if tx_parts else ""
     )
 
+    func_ctx = build_func_intake_context(patient_data)
+    preliminar = _preliminar_block(patient_data, "longevidad")
+
     return f"""{IDENTITY_LONGEVITY}
 
 Calcula edad biológica y proyecciones de riesgo para ESTE paciente. Sé conciso — el médico tiene al paciente enfrente.
+{preliminar}
+{func_ctx}
+
+ORDEN DE PILARES — INNEGOCIABLE (así se diseña un protocolo de longevidad serio):
+Las intervenciones se proponen SIEMPRE en este orden de prioridad, porque las primeras palancas
+actúan sobre varios sellos del envejecimiento a la vez y son la base de todo:
+  1º MOVIMIENTO (fuerza + zona 2)  →  2º NUTRICIÓN  →  3º SUEÑO  →  4º MANEJO DEL ESTRÉS y CONEXIÓN SOCIAL
+  →  y SOLO ENTONCES  5º la capa de suplementos, hormonas o péptidos, cuando el caso la justifique.
+No propongas péptidos ni suplementos avanzados si las cuatro palancas base no están cubiertas primero.
+La conexión social/soledad es una palanca clínica real (el aislamiento eleva la mortalidad de forma
+comparable a fumar): tómala tan en serio como cualquier otra.
+
+RANGOS ÓPTIMOS COMO LENTE (no como umbral de enfermedad): interpreta los laboratorios con el rango
+funcional/óptimo (glucosa 75-86, insulina 2-5, HOMA-IR <1, ApoB 60-70, hs-CRP <0.5-1, homocisteína
+6-8.5, ferritina 40-120, 25-OH-D 50-75) para DETECCIÓN TEMPRANA — nunca para sobretratar ni para
+contradecir los umbrales diagnósticos convencionales, que mandan.
 
 ANCLA TEMPORAL — LO AGUDO MANDA SOBRE LO CRÓNICO (léelo antes de proponer nada):
 La medicina de longevidad mira a 10-20 años, pero el paciente vive HOY. Antes de proponer
