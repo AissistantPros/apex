@@ -143,6 +143,9 @@ function FlowPageInner() {
   const [pendingNote, setPendingNote] = useState('');
   const [loading, setLoading]   = useState(true);
   const [phase, setPhase]       = useState(1);
+  // Bifurcación: tipo de paciente (define la profundidad de la entrevista)
+  const [careType, setCareType]           = useState<'comun' | 'funcional_longevidad' | ''>('');
+  const [showBifurcation, setShowBifurcation] = useState(false);
   const [saving, setSaving]     = useState(false);
 
   // ID del paciente una vez guardada la Fase 1
@@ -402,6 +405,7 @@ function FlowPageInner() {
               psa_valor:                      p.psa_valor                     || '',
             }));
             // Arrays y objetos separados
+            if (p.care_type) setCareType(p.care_type);
             if (Array.isArray(p.sources_of_contact)) setSources(p.sources_of_contact);
             if (Array.isArray(p.alcohol_tipo))        setAlcoholTipo(p.alcohol_tipo);
             if (Array.isArray(p.medications))         setMeds(p.medications);
@@ -650,6 +654,7 @@ function FlowPageInner() {
           regimen: f.factura_regimen, uso_cfdi: f.factura_uso_cfdi, cp: f.factura_cp,
           email: f.factura_email, direccion: f.factura_direccion,
         },
+        ...(careType ? { care_type: careType } : {}),
         registration_phase: 'reception',
         phases_completed: ['receptionist'],
       };
@@ -666,6 +671,8 @@ function FlowPageInner() {
       setPatientId(newId);
       // Actualizar URL para que un reload conserve el progreso
       router.replace(`/dashboard/new-patient/flow?patient_id=${newId}&phase=2`);
+      // Si aún no se ha clasificado al paciente, mostrar la bifurcación antes de continuar
+      if (!careType) { setShowBifurcation(true); }
 
       // Guardar nota pendiente si la hay
       if (pendingNote.trim()) {
@@ -687,11 +694,28 @@ function FlowPageInner() {
         setPendingNote('');
       }
 
-      setPhase(2);
+      // Avanzar a fase 2 solo si ya está clasificado; si no, la bifurcación lo hará al elegir
+      if (careType) setPhase(2);
     } catch (e: any) {
       alert('Error al guardar: ' + e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ── BIFURCACIÓN: clasificar al paciente y avanzar a fase 2 ───────────────────
+  const elegirCareType = async (tipo: 'comun' | 'funcional_longevidad') => {
+    setCareType(tipo);
+    setShowBifurcation(false);
+    setPhase(2);
+    if (patientId) {
+      try {
+        const authH: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) authH['Authorization'] = `Bearer ${token}`;
+        await fetch(`${B()}/patients/${patientId}`, {
+          method: 'PUT', headers: authH, body: JSON.stringify({ care_type: tipo }),
+        });
+      } catch (_) {}
     }
   };
 
@@ -937,6 +961,42 @@ function FlowPageInner() {
 
   return (
     <div className="bg-[#070a0e] min-h-screen">
+
+      {/* ── BIFURCACIÓN: tipo de paciente (define la profundidad de la entrevista) ── */}
+      {showBifurcation && (
+        <div className="fixed inset-0 z-[100] bg-[#070a0e]/95 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-3xl w-full">
+            <p className="text-center text-xs font-mono text-[#00e5a0] tracking-widest mb-2">PACIENTE REGISTRADO ✓</p>
+            <h2 className="text-2xl sm:text-3xl font-serif text-[#dde6ef] text-center mb-2">¿Qué tipo de atención recibirá?</h2>
+            <p className="text-sm text-[#7a95aa] text-center mb-8 max-w-xl mx-auto">
+              Esto define la profundidad de la entrevista. Se puede cambiar después.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button onClick={() => elegirCareType('comun')}
+                className="text-left bg-[#0d1520] border border-[#1e2d3d] hover:border-[#0ea5e9] rounded-2xl p-6 transition group">
+                <div className="text-4xl mb-3">🩺</div>
+                <p className="text-lg font-semibold text-[#dde6ef] mb-1">Consulta común</p>
+                <p className="text-sm text-[#7a95aa] leading-relaxed">
+                  Motivo de consulta puntual. Historia clínica completa de médico general, con un plus
+                  ligero (sueño, energía, estrés, hábitos). Entrevista ágil.
+                </p>
+                <p className="text-xs text-[#0ea5e9] mt-4 font-semibold">Entrevista estándar →</p>
+              </button>
+              <button onClick={() => elegirCareType('funcional_longevidad')}
+                className="text-left bg-[#0d1520] border border-[#00e5a0]/40 hover:border-[#00e5a0] rounded-2xl p-6 transition group"
+                style={{ boxShadow: '0 0 0 1px rgba(0,229,160,.08)' }}>
+                <div className="text-4xl mb-3">🧬</div>
+                <p className="text-lg font-semibold text-[#dde6ef] mb-1">Medicina Funcional y Longevidad</p>
+                <p className="text-sm text-[#7a95aa] leading-relaxed">
+                  El paquete completo: las 5 palancas a detalle, línea de tiempo de salud, microbioma,
+                  tóxicos, conexión social y disponibilidad de estudios óptimos.
+                </p>
+                <p className="text-xs text-[#00e5a0] mt-4 font-semibold">Entrevista profunda →</p>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="pt-16 min-h-screen">
         <div className="page-content px-4 py-8 pb-36">
