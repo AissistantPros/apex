@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
+import DeepFunctionalIntake, { esFuncionalCompleta } from '../DeepFunctionalIntake';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -146,6 +147,7 @@ function FlowPageInner() {
   // Bifurcación: tipo de paciente (define la profundidad de la entrevista)
   const [careType, setCareType]           = useState<'comun' | 'funcional_longevidad' | ''>('');
   const [showBifurcation, setShowBifurcation] = useState(false);
+  const [funcIntake, setFuncIntake]       = useState<Record<string, any>>({});
   const [saving, setSaving]     = useState(false);
 
   // ID del paciente una vez guardada la Fase 1
@@ -406,6 +408,7 @@ function FlowPageInner() {
             }));
             // Arrays y objetos separados
             if (p.care_type) setCareType(p.care_type);
+            if (p.func_intake && typeof p.func_intake === 'object') setFuncIntake(p.func_intake);
             if (Array.isArray(p.sources_of_contact)) setSources(p.sources_of_contact);
             if (Array.isArray(p.alcohol_tipo))        setAlcoholTipo(p.alcohol_tipo);
             if (Array.isArray(p.medications))         setMeds(p.medications);
@@ -747,6 +750,10 @@ function FlowPageInner() {
           alcohol_status: f.alcohol_status, alcohol_tipo: alcoholTipo,
           alcohol_cantidad: f.alcohol_cantidad,
           medications: meds, family_history_table: family,
+          // Capa profunda funcional/longevidad (solo si aplica)
+          ...(careType === 'funcional_longevidad'
+            ? { func_intake: funcIntake, entrevista_funcional_completa: esFuncionalCompleta(funcIntake) }
+            : {}),
           registration_phase: 'nursing',
           phases_completed: ['receptionist', 'nurse'],
         }),
@@ -1818,6 +1825,11 @@ function FlowPageInner() {
                     onNoteAdded={n => setNotes(prev => [...prev, n])}
                     onNoteDeleted={id => setNotes(prev => prev.filter(n => n.id !== id))} />
                 </Card>
+              )}
+
+              {/* Capa profunda funcional/longevidad — solo si el paciente fue clasificado así */}
+              {careType === 'funcional_longevidad' && (
+                <DeepFunctionalIntake value={funcIntake} onChange={setFuncIntake} />
               )}
             </>
           )}
