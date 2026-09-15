@@ -24,7 +24,13 @@ router = APIRouter(prefix="/kb", tags=["knowledge-base"])
 
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
-    return get_doctor_id_from_token(authorization) or "550e8400-e29b-41d4-a716-446655440000"
+    # La biblioteca es del ADMIN (proveedor), no del doctor.
+    from auth import get_actor
+    actor = get_actor(authorization)
+    if actor["role"] != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(403, "La biblioteca clínica solo la gestiona el administrador")
+    return actor["doctor_id"]
 
 
 class UploadRequest(BaseModel):
@@ -148,7 +154,7 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
 
 
 @router.get("/status")
-async def kb_status():
+async def kb_status(_: str = Depends(get_doctor_id)):
     """¿Está lista la biblioteca para usarse?"""
     docs = list_kb_documents()
     return {
@@ -160,7 +166,7 @@ async def kb_status():
 
 
 @router.get("/diagnostico")
-async def kb_diagnostico():
+async def kb_diagnostico(_: str = Depends(get_doctor_id)):
     """Prueba la cadena completa (embedding → guardar → borrar) y reporta dónde falla.
     Sirve para dejar de adivinar cuándo la indexación no funciona."""
     pasos = {}
@@ -203,7 +209,7 @@ async def kb_diagnostico():
 
 
 @router.get("/documents")
-async def kb_list():
+async def kb_list(_: str = Depends(get_doctor_id)):
     return {"documents": list_kb_documents()}
 
 
@@ -317,7 +323,7 @@ async def kb_delete(doc_id: str, doctor_id: str = Depends(get_doctor_id)):
 
 
 @router.post("/search")
-async def kb_search(body: SearchRequest):
+async def kb_search(body: SearchRequest, _: str = Depends(get_doctor_id)):
     """Búsqueda semántica — útil para probar la biblioteca desde la interfaz."""
     if not embeddings_disponibles():
         raise HTTPException(400, "Embeddings no configurados (falta VOYAGE_API_KEY)")

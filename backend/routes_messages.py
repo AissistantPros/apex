@@ -16,7 +16,7 @@ router = APIRouter(prefix="/messages", tags=["team-chat"])
 
 CANALES = ["general", "recepcion", "enfermeria", "medico"]
 # Roles que participan en el chat del equipo (nada más — los tres pidió el médico)
-ROLES_CHAT = {"doctor", "receptionist", "nurse"}
+ROLES_CHAT = {"admin", "doctor", "receptionist", "nurse"}
 
 
 class MsgIn(BaseModel):

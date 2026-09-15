@@ -2132,6 +2132,9 @@ def _parse_protocol(raw) -> tuple:
 async def get_documents(visit_id: str, authorization: Optional[str] = Header(None)):
     """Ensambla los datos para los 3 documentos de salida: receta, reporte y estudios.
     Ninguno es obligatorio; el frontend decide cuáles incluir según haya contenido."""
+    from auth import get_actor
+    from access import require
+    require(get_actor(authorization), "doctor", "admin")
     analysis = get_analysis(visit_id) or {}
     visit = get_visit(visit_id) or {}
     patient_id = analysis.get("patient_id") or visit.get("patient_id")

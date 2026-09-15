@@ -11,13 +11,13 @@ interface TopNavProps {
 }
 
 const ALL_LINKS = [
-  { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['doctor','nurse','receptionist'] },
-  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['doctor','nurse'] },
-  { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['doctor'] },
+  { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['admin','doctor','nurse','receptionist','accounting','marketing'] },
+  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'] },
+  { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['admin','doctor','accounting'] },
   { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'] },
-  { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['doctor','marketing'] },
-  { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['doctor'] },
-  { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['doctor'] },
+  { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['admin','doctor','marketing'] },
+  { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['admin'] },
+  { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['admin','doctor'] },
 ];
 
 // ── Helpers de tema ──────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         const r = await fetch(`${B}/staff/whoami`, { headers: { Authorization: `Bearer ${s.access_token}` } });
         if (!r.ok) return;
         const who = await r.json();
-        if (who?.role && ['doctor', 'nurse', 'receptionist', 'accounting', 'marketing'].includes(who.role)) {
+        if (who?.role && ['admin', 'doctor', 'nurse', 'receptionist', 'accounting', 'marketing'].includes(who.role)) {
           setRole(who.role); setRoleState(who.role);
         }
         if (who?.permissions) setPerms(who.permissions);

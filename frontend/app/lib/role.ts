@@ -3,7 +3,7 @@
  * El rol real viene del backend (/staff/whoami) y se cachea en localStorage para el nav.
  */
 
-export type UserRole = 'doctor' | 'nurse' | 'receptionist' | 'accounting' | 'marketing';
+export type UserRole = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accounting' | 'marketing';
 
 export const AREAS = ['pacientes', 'historial', 'enfermeria', 'prescripcion',
   'cobros', 'gastos', 'finanzas', 'marketing', 'marketing_captura', 'biblioteca', 'equipo'] as const;
@@ -29,6 +29,7 @@ export function setPerms(perms: Partial<Record<Area, PermLevel>>) {
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
+  admin:        'Administrador',
   doctor:       'Médico',
   nurse:        'Enfermería',
   receptionist: 'Recepción',
@@ -37,6 +38,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
+  admin:        '#f43f5e',
   doctor:       '#a78bfa',
   nurse:        '#f97316',
   receptionist: '#0ea5e9',

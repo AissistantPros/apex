@@ -222,14 +222,19 @@ async def cancel_sale(sid: str, authorization: Optional[str] = Header(None)):
 # ── Gastos ───────────────────────────────────────────────────────────────────────
 @router.get("/expenses")
 async def list_expenses(limit: int = 200, authorization: Optional[str] = Header(None)):
-    did = get_actor(authorization)["doctor_id"]
+    from access import require
+    actor = get_actor(authorization)
+    require(actor, "doctor", "admin", "accounting")
+    did = actor["doctor_id"]
     r = supabase.table("expenses").select("*").eq("doctor_id", did)\
         .order("fecha", desc=True).limit(limit).execute()
     return {"expenses": r.data or []}
 
 @router.post("/expenses")
 async def create_expense(body: ExpenseIn, authorization: Optional[str] = Header(None)):
+    from access import require
     actor = get_actor(authorization)
+    require(actor, "doctor", "admin", "accounting")
     row = body.model_dump()
     row["doctor_id"] = actor["doctor_id"]
     row["created_by"] = actor["user_id"]
@@ -249,6 +254,9 @@ async def delete_expense(eid: str, authorization: Optional[str] = Header(None)):
 @router.get("/overview")
 async def overview(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
+    # El dashboard financiero (balance, gráficos, ROI) NO lo ve recepción ni enfermería.
+    from access import require
+    require(actor, "doctor", "admin", "accounting")
     did = actor["doctor_id"]
     ventas = supabase.table("sales").select("*").eq("doctor_id", did).execute().data or []
     gastos = supabase.table("expenses").select("*").eq("doctor_id", did).execute().data or []

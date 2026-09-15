@@ -79,13 +79,14 @@ async def get_all_patients(
     limit: int = 50,
     authorization: Optional[str] = Header(None),
 ):
-    """Listar todos los pacientes"""
+    """Listar pacientes — cada campo filtrado según el rol de quien consulta."""
     try:
+        from auth import get_actor
+        from access import filter_patient
+        actor = get_actor(authorization)
         patients = list_patients(limit=limit)
-        return {
-            "total": len(patients),
-            "patients": patients,
-        }
+        patients = [filter_patient(p, actor["role"]) for p in patients]
+        return {"total": len(patients), "patients": patients}
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -137,14 +138,17 @@ async def get_patient_data(
     patient_id: str,
     authorization: Optional[str] = Header(None),
 ):
-    """Obtener datos completos de un paciente"""
+    """Obtener datos de un paciente — filtrados según el rol de quien consulta."""
     try:
         patient = get_patient(patient_id)
 
         if not patient:
             raise HTTPException(404, "Paciente no encontrado")
 
-        return patient
+        from auth import get_actor
+        from access import filter_patient
+        actor = get_actor(authorization)
+        return filter_patient(patient, actor["role"])
 
     except HTTPException:
         raise
@@ -158,8 +162,14 @@ async def update_patient_data(
     data: dict,
     authorization: Optional[str] = Header(None),
 ):
-    """Actualizar datos de un paciente"""
+    """Actualizar un paciente — cada rol solo puede escribir SUS campos."""
     try:
+        from auth import get_actor
+        from access import filter_write
+        actor = get_actor(authorization)
+        data = filter_write(data, actor["role"])
+        if not data:
+            raise HTTPException(403, "Tu rol no puede editar estos campos")
         data["updated_at"] = datetime.utcnow().isoformat()
         result = update_patient(patient_id, clean_patient_data(data))
 
@@ -262,7 +272,10 @@ def _last_prescription(patient_id: str) -> dict:
 
 @router.get("/{patient_id}/last-prescription")
 async def last_prescription(patient_id: str, authorization: Optional[str] = Header(None)):
-    """Recepción puede VER la última prescripción para enviarla — sin acceso al historial."""
+    """VER la última prescripción — solo médico/admin. Recepción puede ENVIARLA, no verla."""
+    from auth import get_actor
+    from access import require
+    require(get_actor(authorization), "doctor", "admin")
     p = get_patient(patient_id) or {}
     pres = _last_prescription(patient_id)
     return {
@@ -326,7 +339,14 @@ async def send_prescription(patient_id: str, authorization: Optional[str] = Head
         except Exception as e:
             print(f"[WARN] Resend falló: {e}")
 
-    # Sin proveedor de correo: devolver mailto para envío manual
+    # Sin proveedor de correo: el mailto expone el contenido, así que SOLO se devuelve a
+    # médico/admin. Recepción puede enviar (con Resend en producción) pero nunca ver el reporte.
+    from auth import get_actor
+    actor = get_actor(authorization)
+    if actor["role"] not in ("doctor", "admin"):
+        return {"ok": False, "enviado": False, "via": "sin_correo",
+                "nota": "El envío automático requiere el proveedor de correo (aún no configurado). "
+                        "Recepción no puede ver el contenido de la prescripción."}
     import urllib.parse
     mailto = f"mailto:{email}?subject={urllib.parse.quote(asunto)}&body={urllib.parse.quote(cuerpo)}"
     return {"ok": True, "enviado": False, "via": "mailto", "to": email,

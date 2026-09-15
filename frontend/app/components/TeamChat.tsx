@@ -36,7 +36,7 @@ export default function TeamChat() {
   // Solo recepción, enfermería y médico participan
   useEffect(() => {
     const r = getRole();
-    setEnabled(['doctor', 'receptionist', 'nurse'].includes(r));
+    setEnabled(['admin', 'doctor', 'receptionist', 'nurse'].includes(r));
   }, []);
 
   const cargar = useCallback(async (c: string) => {
