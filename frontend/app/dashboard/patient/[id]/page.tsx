@@ -6,6 +6,7 @@ import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useRevealScroll } from '@/app/lib/useRevealScroll';
 import PhotoCropModal from '@/app/components/PhotoCropModal';
+import { getRole } from '@/app/lib/role';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -24,6 +25,7 @@ export default function PatientPage() {
   const patientId = params?.id as string;
 
   const [user, setUser]       = useState<any>(null);
+  const [role, setRole]       = useState<string>('doctor');
   const [patient, setPatient] = useState<any>(null);
   const [visits,  setVisits]  = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +67,8 @@ export default function PatientPage() {
     } catch { alert('Error de conexión'); }
     setUploadingPhoto(false);
   };
+
+  useEffect(() => { setRole(getRole()); }, []);
 
   useEffect(() => {
     getUser().then(async u => {
@@ -239,8 +243,9 @@ export default function PatientPage() {
         {/* ── Tabs ── */}
         <div className="flex gap-2 mb-6">
           {[
-            { key: 'ficha',   label: '📋 Ficha clínica' },
-            { key: 'visitas', label: `🗓 Visitas (${visits.length})` },
+            { key: 'ficha',   label: role === 'receptionist' ? '📋 Ficha' : '📋 Ficha clínica' },
+            // Las visitas son clínicas: recepción no las ve
+            ...(role !== 'receptionist' ? [{ key: 'visitas', label: `🗓 Visitas (${visits.length})` }] : []),
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key as any)}
               className="px-5 py-2.5 rounded-xl text-sm font-semibold transition"
@@ -267,6 +272,8 @@ export default function PatientPage() {
               </Grid>
             </Section>
 
+            {/* Contacto y captación: NO los ve enfermería */}
+            {role !== 'nurse' && <>
             {/* Contacto */}
             <Section title="Contacto" icon="📱">
               <Grid>
@@ -313,7 +320,10 @@ export default function PatientPage() {
                 )}
               </Section>
             )}
+            </>}
 
+            {/* Todo el bloque clínico: NO lo ve recepción */}
+            {role !== 'receptionist' && <>
             {/* Antecedentes médicos */}
             <Section title="Antecedentes médicos" icon="🏥">
               <Grid>
@@ -492,6 +502,7 @@ export default function PatientPage() {
                 )}
               </div>
             </div>
+            </>}
 
             {/* Notas del equipo */}
             <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">

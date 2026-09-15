@@ -17,6 +17,12 @@ router = APIRouter(prefix="/messages", tags=["team-chat"])
 CANALES = ["general", "recepcion", "enfermeria", "medico"]
 # Roles que participan en el chat del equipo (nada más — los tres pidió el médico)
 ROLES_CHAT = {"admin", "doctor", "receptionist", "nurse"}
+# Canal propio de cada rol — no tiene sentido mandarse mensajes a sí mismo.
+CANAL_PROPIO = {"receptionist": "recepcion", "nurse": "enfermeria", "doctor": "medico"}
+
+
+def _canal_valido(actor: dict, canal: str) -> bool:
+    return canal in CANALES and canal != CANAL_PROPIO.get(actor["role"])
 
 
 class MsgIn(BaseModel):
@@ -34,8 +40,8 @@ async def list_messages(canal: str = "general", after: Optional[str] = None, lim
     actor = get_actor(authorization)
     if not _puede_chat(actor):
         raise HTTPException(403, "Tu rol no participa en el chat del equipo")
-    if canal not in CANALES:
-        raise HTTPException(400, "Canal inválido")
+    if not _canal_valido(actor, canal):
+        raise HTTPException(403, "No puedes acceder a ese canal")
     q = supabase.table("team_messages").select("*")\
         .eq("clinic_id", actor["doctor_id"]).eq("canal", canal)\
         .order("created_at").limit(limit)
@@ -65,8 +71,8 @@ async def send_message(body: MsgIn, authorization: Optional[str] = Header(None))
     actor = get_actor(authorization)
     if not _puede_chat(actor):
         raise HTTPException(403, "Tu rol no participa en el chat del equipo")
-    if body.canal not in CANALES:
-        raise HTTPException(400, "Canal inválido")
+    if not _canal_valido(actor, body.canal):
+        raise HTTPException(403, "No puedes escribir en ese canal")
     content = (body.content or "").strip()
     if not content:
         raise HTTPException(400, "Mensaje vacío")
