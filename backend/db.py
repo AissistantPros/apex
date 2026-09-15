@@ -83,8 +83,9 @@ def upsert_doctor_profile(doctor_id: str, data: dict) -> dict:
     result = supabase.table("doctor_profiles").upsert(data).execute()
     return result.data[0] if result.data else None
 
-def add_patient_note(patient_id: str, visit_id: str | None, author_role: str, author_name: str, content: str) -> dict:
-    """Agrega una nota con timestamp y autor"""
+def add_patient_note(patient_id: str, visit_id: str | None, author_role: str, author_name: str,
+                     content: str, audiencia: str = "general") -> dict:
+    """Agrega una nota con timestamp, autor y audiencia (general | nurse | doctor)"""
     import uuid
     from datetime import datetime
     data = {
@@ -94,6 +95,7 @@ def add_patient_note(patient_id: str, visit_id: str | None, author_role: str, au
         "author_role": author_role,
         "author_name": author_name,
         "content": content,
+        "audiencia": audiencia if audiencia in ("general", "nurse", "doctor") else "general",
         "created_at": datetime.utcnow().isoformat(),
     }
     result = supabase.table("patient_notes").insert(data).execute()

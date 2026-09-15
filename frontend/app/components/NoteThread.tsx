@@ -61,6 +61,7 @@ export default function NoteThread({
   const [saving, setSaving]       = useState(false);
   const [showForm, setShowForm]   = useState(false);
   const [hoverId, setHoverId]     = useState<string | null>(null);
+  const [audiencia, setAudiencia] = useState<'general' | 'nurse' | 'doctor'>('general');
 
   const handleAdd = async () => {
     if (!text.trim()) return;
@@ -74,6 +75,7 @@ export default function NoteThread({
           author_role: role,
           author_name: authorName.trim(),
           visit_id: visitId || null,
+          audiencia,
         }),
       });
       if (!res.ok) throw new Error();
@@ -211,6 +213,16 @@ export default function NoteThread({
             style={{ borderColor: text ? rc.color + '66' : undefined }}
             autoFocus
           />
+
+          {/* Destinatario de la nota */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#7a95aa] mr-1">Visible para:</span>
+            {([['general', 'Todos'], ['nurse', 'Enfermería'], ['doctor', 'Médico']] as const).map(([v, l]) => (
+              <button key={v} type="button" onClick={() => setAudiencia(v)}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition"
+                style={{ background: audiencia === v ? '#00e5a0' : '#111820', color: audiencia === v ? '#000' : '#7a95aa' }}>{l}</button>
+            ))}
+          </div>
 
           {/* Acciones */}
           <div className="flex gap-2 justify-end">

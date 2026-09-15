@@ -6,6 +6,7 @@ import { getUser, getSession } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 import DeepFunctionalIntake, { esFuncionalCompleta } from '../DeepFunctionalIntake';
+import { getRole } from '@/app/lib/role';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -148,6 +149,11 @@ function FlowPageInner() {
   const [careType, setCareType]           = useState<'comun' | 'funcional_longevidad' | ''>('');
   const [showBifurcation, setShowBifurcation] = useState(false);
   const [funcIntake, setFuncIntake]       = useState<Record<string, any>>({});
+  // Handoff por rol: confirmación al terminar la etapa que le toca a cada quien
+  const [handoff, setHandoff]             = useState<null | { titulo: string; sub: string }>(null);
+  const [userRole, setUserRole]           = useState<string>('doctor');
+  const [handoffNote, setHandoffNote]     = useState('');
+  const [handoffAud, setHandoffAud]       = useState<'general' | 'nurse' | 'doctor'>('general');
   const [saving, setSaving]     = useState(false);
 
   // ID del paciente una vez guardada la Fase 1
@@ -306,6 +312,8 @@ function FlowPageInner() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [phase]);
+
+  useEffect(() => { setUserRole(getRole()); }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -706,11 +714,10 @@ function FlowPageInner() {
     }
   };
 
-  // ── BIFURCACIÓN: clasificar al paciente y avanzar a fase 2 ───────────────────
+  // ── BIFURCACIÓN: clasificar al paciente ──────────────────────────────────────
   const elegirCareType = async (tipo: 'comun' | 'funcional_longevidad') => {
     setCareType(tipo);
     setShowBifurcation(false);
-    setPhase(2);
     if (patientId) {
       try {
         const authH: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -719,6 +726,17 @@ function FlowPageInner() {
           method: 'PUT', headers: authH, body: JSON.stringify({ care_type: tipo }),
         });
       } catch (_) {}
+    }
+    // Recepción termina aquí: confirmación + vuelve a home. El médico (o quien haga toda la
+    // captura) continúa a la fase de enfermería.
+    if (userRole === 'receptionist') {
+      setHandoff({
+        titulo: isEditMode ? `${f.first_name} ${f.last_name} — datos actualizados`
+                           : `${f.first_name} ${f.last_name} ha sido guardado`,
+        sub: 'Se envió al área de enfermería. ¿Deseas dejar una nota antes de terminar?',
+      });
+    } else {
+      setPhase(2);
     }
   };
 
@@ -824,9 +842,16 @@ function FlowPageInner() {
       if (savedVisitId && labFiles.length > 0) {
         fetch(`${B()}/analyze/${savedVisitId}/extract_labs`, { method: 'POST', headers: authH2 }).catch(() => {});
       }
-      // Actualizar URL para que un reload conserve el progreso
-      router.replace(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=3`);
-      setPhase(3);
+      // Enfermería termina aquí: confirmación + vuelve a home. El médico continúa a su fase.
+      if (userRole === 'nurse') {
+        setHandoff({
+          titulo: `${f.first_name} ${f.last_name} — enfermería completada`,
+          sub: 'Se envió al médico. ¿Deseas dejar una nota antes de terminar?',
+        });
+      } else {
+        router.replace(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=3`);
+        setPhase(3);
+      }
     } catch (e: any) {
       console.error('Fase 2 error:', e);
       alert('Error en Fase 2: ' + (e.message || String(e)));
@@ -966,8 +991,52 @@ function FlowPageInner() {
     </div>
   ) : null;
 
+  const terminarHandoff = async () => {
+    const nota = handoffNote.trim();
+    if (nota && patientId) {
+      try {
+        const authH: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) authH['Authorization'] = `Bearer ${token}`;
+        await fetch(`${B()}/patients/${patientId}/notes`, {
+          method: 'POST', headers: authH,
+          body: JSON.stringify({
+            content: nota, author_role: userRole, author_name: docName, audiencia: handoffAud,
+          }),
+        });
+      } catch (_) {}
+    }
+    router.push('/dashboard');
+  };
+
   return (
     <div className="bg-[#070a0e] min-h-screen">
+
+      {/* ── HANDOFF: confirmación al terminar la etapa que le toca a cada rol ── */}
+      {handoff && (
+        <div className="fixed inset-0 z-[110] bg-[#070a0e]/95 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-6">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">✅</div>
+              <p className="text-lg font-semibold text-[#dde6ef]">{handoff.titulo}</p>
+              <p className="text-sm text-[#7a95aa] mt-1">{handoff.sub}</p>
+            </div>
+            <label className="text-[10px] font-mono text-[#7a95aa] block mb-1.5 uppercase tracking-wider">Nota (opcional)</label>
+            <textarea rows={3} value={handoffNote} onChange={e => setHandoffNote(e.target.value)}
+              placeholder="Ej. 'Paciente ansioso por resultados', 'Trae estudios en el celular'…"
+              className="w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0] mb-2" />
+            <div className="flex gap-1.5 mb-4">
+              {([['general', 'General'], ['nurse', 'A enfermería'], ['doctor', 'Al médico']] as const).map(([v, l]) => (
+                <button key={v} type="button" onClick={() => setHandoffAud(v)}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                  style={{ background: handoffAud === v ? '#00e5a0' : '#111820', color: handoffAud === v ? '#000' : '#7a95aa' }}>{l}</button>
+              ))}
+            </div>
+            <button onClick={terminarHandoff} className="w-full py-3 rounded-xl text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>
+              {handoffNote.trim() ? 'Enviar nota y terminar' : 'Terminar'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── BIFURCACIÓN: tipo de paciente (define la profundidad de la entrevista) ── */}
       {showBifurcation && (

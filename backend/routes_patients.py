@@ -215,6 +215,7 @@ async def create_note(patient_id: str, data: dict, authorization: Optional[str] 
             author_role=data.get("author_role", "doctor"),
             author_name=data.get("author_name", ""),
             content=content,
+            audiencia=data.get("audiencia", "general"),
         )
         return note
     except HTTPException:
