@@ -1703,13 +1703,14 @@ async def run_protocol_stream(
             })
             yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': banderas})}\n\n"
         except Exception as e:
-            print(f"[ERROR protocol/stream] {e}")
+            import traceback; traceback.print_exc()
+            print(f"[ERROR protocol/stream] {type(e).__name__}: {e}")
             protocol = _strip_json_fences("".join(chunks))
             if protocol.strip():
                 # Ya se generó el protocolo; entrégalo aunque la segunda opinión/guardado fallen.
                 yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': []})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el protocolo. Intenta de nuevo.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': f'No se pudo generar el protocolo: {type(e).__name__}: {str(e)[:200]}'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
