@@ -409,10 +409,41 @@ def embed_textos(textos: list, tipo: str = "document") -> tuple:
     return salida, None
 
 
-def embed_consulta(texto: str):
-    """Embedding de una consulta (input_type distinto al de los documentos)."""
-    vectores, _ = embed_textos([texto], tipo="query")
-    return vectores[0] if vectores and vectores[0] is not None else None
+import concurrent.futures as _futures
+# Pool a NIVEL DE MÓDULO: el timeout debe ser no-bloqueante. Con un `with ThreadPoolExecutor`,
+# al salir se hace shutdown(wait=True) y se espera al hilo colgado — eso anula el timeout.
+_QUERY_POOL = _futures.ThreadPoolExecutor(max_workers=3)
+
+
+def embed_consulta(texto: str, timeout_s: float = 8.0):
+    """Embedding de una consulta para búsqueda en la biblioteca.
+
+    Va en la RUTA CRÍTICA del diagnóstico, así que es una llamada ÚNICA y ACOTADA por timeout:
+    NO usa la lógica de reintentos/degradación de embed_textos (que puede dormir minutos y está
+    pensada para indexar libros). Si Voyage tarda o falla, devuelve None y el sistema sigue sin
+    biblioteca — nunca cuelga el análisis. El hilo rezagado termina solo por su cuenta.
+    """
+    if not texto or not embeddings_disponibles():
+        return None
+
+    def _call():
+        import voyageai
+        # Cliente acotado para consultas: sin reintentos y con timeout de red, para que el
+        # hilo no quede vivo indefinidamente si Voyage no responde.
+        try:
+            vo = voyageai.Client(max_retries=0, timeout=10)
+        except TypeError:
+            vo = _client()  # por si esta versión del SDK no acepta esos parámetros
+        r = vo.embed([texto[:1400]], model=EMBED_MODEL, input_type="query")
+        return r.embeddings[0]
+
+    fut = _QUERY_POOL.submit(_call)
+    try:
+        return fut.result(timeout=timeout_s)
+    except Exception as e:
+        fut.cancel()
+        print(f"[WARN] embed_consulta abortada (timeout/fallo, no bloquea el análisis): {e}")
+        return None
 
 
 # ── Formato para el prompt ────────────────────────────────────────────────────

@@ -931,25 +931,37 @@ async def finalize_first_diagnosis_stream(
 
     def event_stream():
         chunks = []
-        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
-                                         step=f"finalize_{draft_type}", thinking=True,
-                                         web_search=_search_scope_for(draft_type),
-                                         attachments=attachments):
-            chunks.append(delta)
-            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
-        raw = "".join(chunks)
-        metadata, diagnosis = extract_structured_header(raw)
-        validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id,
-                                     step=f"validate_finalize_{draft_type}")
-        final = {
-            "type": "done",
-            "visit_id": visit_id,
-            "step": draft_type,
-            "diagnosis": diagnosis,
-            "validation": validation,
-            "confidence": metadata["confidence"],
-        }
-        yield f"data: {json.dumps(final)}\n\n"
+        try:
+            for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+                                             step=f"finalize_{draft_type}", thinking=True,
+                                             web_search=_search_scope_for(draft_type),
+                                             attachments=attachments):
+                chunks.append(delta)
+                yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+            raw = "".join(chunks)
+            metadata, diagnosis = extract_structured_header(raw)
+            validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id,
+                                         step=f"validate_finalize_{draft_type}")
+            final = {
+                "type": "done", "visit_id": visit_id, "step": draft_type,
+                "diagnosis": diagnosis, "validation": validation,
+                "confidence": metadata["confidence"],
+            }
+            yield f"data: {json.dumps(final)}\n\n"
+        except Exception as e:
+            # NUNCA dejar el stream sin cerrar: el frontend se colgaría para siempre.
+            print(f"[ERROR finalize_first/stream] {e}")
+            raw = "".join(chunks)
+            if raw.strip():
+                # Ya se generó el diagnóstico; entrégalo aunque el post-proceso haya fallado.
+                try:
+                    metadata, diagnosis = extract_structured_header(raw)
+                    conf = metadata.get("confidence", 0)
+                except Exception:
+                    diagnosis, conf = raw, 0
+                yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': draft_type, 'diagnosis': diagnosis, 'validation': None, 'confidence': conf})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el diagnóstico. Intenta de nuevo.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -1160,20 +1172,29 @@ async def run_functional_stream(
 
     def event_stream():
         chunks = []
-        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
-                                         step="functional", thinking=True, web_search="global",
-                                         attachments=attachments):
-            chunks.append(delta)
-            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
-        metadata, diagnosis = extract_structured_header("".join(chunks))
-        validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
-                                     visit_id=visit_id, step="validate_functional")
-        update_analysis(visit_id, {
-            "diagnosis_functional": diagnosis,
-            "validation_functional": validation,
-            "updated_at": datetime.utcnow().isoformat(),
-        })
-        yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+        try:
+            for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+                                             step="functional", thinking=True, web_search="global",
+                                             attachments=attachments):
+                chunks.append(delta)
+                yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+            metadata, diagnosis = extract_structured_header("".join(chunks))
+            validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
+                                         visit_id=visit_id, step="validate_functional")
+            update_analysis(visit_id, {
+                "diagnosis_functional": diagnosis, "validation_functional": validation,
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+            yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+        except Exception as e:
+            print(f"[ERROR functional/stream] {e}")
+            raw = "".join(chunks)
+            if raw.strip():
+                try: _m, dx = extract_structured_header(raw); c = _m.get("confidence", 0)
+                except Exception: dx, c = raw, 0
+                yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': dx, 'validation': None, 'confidence': c})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el diagnóstico funcional. Intenta de nuevo.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -1264,20 +1285,29 @@ async def run_longevity_stream(
 
     def event_stream():
         chunks = []
-        for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
-                                         step="longevity", thinking=True, web_search="global",
-                                         attachments=attachments):
-            chunks.append(delta)
-            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
-        metadata, diagnosis = extract_structured_header("".join(chunks))
-        validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
-                                     visit_id=visit_id, step="validate_longevity")
-        update_analysis(visit_id, {
-            "diagnosis_longevity": diagnosis,
-            "validation_longevity": validation,
-            "updated_at": datetime.utcnow().isoformat(),
-        })
-        yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+        try:
+            for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+                                             step="longevity", thinking=True, web_search="global",
+                                             attachments=attachments):
+                chunks.append(delta)
+                yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+            metadata, diagnosis = extract_structured_header("".join(chunks))
+            validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
+                                         visit_id=visit_id, step="validate_longevity")
+            update_analysis(visit_id, {
+                "diagnosis_longevity": diagnosis, "validation_longevity": validation,
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+            yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+        except Exception as e:
+            print(f"[ERROR longevity/stream] {e}")
+            raw = "".join(chunks)
+            if raw.strip():
+                try: _m, dx = extract_structured_header(raw); c = _m.get("confidence", 0)
+                except Exception: dx, c = raw, 0
+                yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': dx, 'validation': None, 'confidence': c})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el diagnóstico de longevidad. Intenta de nuevo.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -1645,40 +1675,41 @@ async def run_protocol_stream(
 
     def event_stream():
         chunks = []
-        for delta in call_claude_stream(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id,
-                                         step=f"protocol_{body.protocol_type}", thinking=False,
-                                         web_search=_search_scope_for(body.protocol_type),
-                                         attachments=attachments, temperature=0.4):
-            chunks.append(delta)
-            yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
-        protocol = _strip_json_fences("".join(chunks))
+        try:
+            for delta in call_claude_stream(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id,
+                                             step=f"protocol_{body.protocol_type}", thinking=False,
+                                             web_search=_search_scope_for(body.protocol_type),
+                                             attachments=attachments, temperature=0.4):
+                chunks.append(delta)
+                yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+            protocol = _strip_json_fences("".join(chunks))
 
-        # Voz de conciencia: el crítico reta el protocolo contra el vademécum y lo ya aceptado.
-        yield f"data: {json.dumps({'type': 'status', 'text': 'Revisión de segunda opinión…'})}\n\n"
-        protocol, banderas = deliberate_protocol(protocol, body.protocol_type, previous_protocols,
-                                                 visit_id=visit_id)
+            # Voz de conciencia: el crítico reta el protocolo contra el vademécum y lo ya aceptado.
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Revisión de segunda opinión…'})}\n\n"
+            protocol, banderas = deliberate_protocol(protocol, body.protocol_type, previous_protocols,
+                                                     visit_id=visit_id)
 
-        if ENABLE_SECONDARY_VALIDATION:
-            val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
-            validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id,
-                                     step=f"validate_protocol_{body.protocol_type}")
-            validated = _strip_json_fences(validated)
-            if parse_protocol_json_safe(validated) is not None:
-                protocol = validated
+            if ENABLE_SECONDARY_VALIDATION:
+                val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
+                validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id,
+                                         step=f"validate_protocol_{body.protocol_type}")
+                validated = _strip_json_fences(validated)
+                if parse_protocol_json_safe(validated) is not None:
+                    protocol = validated
 
-        update_analysis(visit_id, {
-            f"protocol_{body.protocol_type}": protocol,
-            "updated_at": datetime.utcnow().isoformat(),
-        })
-
-        final = {
-            "type": "done",
-            "visit_id": visit_id,
-            "step": f"protocol_{body.protocol_type}",
-            "protocol": protocol,
-            "banderas": banderas,
-        }
-        yield f"data: {json.dumps(final)}\n\n"
+            update_analysis(visit_id, {
+                f"protocol_{body.protocol_type}": protocol,
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+            yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': banderas})}\n\n"
+        except Exception as e:
+            print(f"[ERROR protocol/stream] {e}")
+            protocol = _strip_json_fences("".join(chunks))
+            if protocol.strip():
+                # Ya se generó el protocolo; entrégalo aunque la segunda opinión/guardado fallen.
+                yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': []})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el protocolo. Intenta de nuevo.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
