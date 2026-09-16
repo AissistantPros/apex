@@ -527,7 +527,19 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
         kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
     start = time.monotonic()
     chunks = []
-    with client.messages.stream(**kwargs) as stream:
+
+    def _open_stream(kw):
+        # Algunas versiones del SDK no aceptan 'temperature' en el helper messages.stream().
+        # Si lo rechaza, se reintenta sin él (usa la temperatura por defecto).
+        try:
+            return client.messages.stream(**kw)
+        except TypeError as e:
+            if "temperature" in str(e) and "temperature" in kw:
+                kw.pop("temperature", None)
+                return client.messages.stream(**kw)
+            raise
+
+    with _open_stream(kwargs) as stream:
         for delta in stream.text_stream:
             chunks.append(delta)
             yield delta
@@ -1710,7 +1722,7 @@ async def run_protocol_stream(
                 # Ya se generó el protocolo; entrégalo aunque la segunda opinión/guardado fallen.
                 yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': []})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'error', 'message': f'No se pudo generar el protocolo: {type(e).__name__}: {str(e)[:200]}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el protocolo. Intenta de nuevo.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
