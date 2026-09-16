@@ -120,6 +120,9 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
 
       <div className="flex-1" />
 
+      {/* Ancla del chat del equipo — TeamChat monta aquí su botón (barra superior, siempre visible) */}
+      <div id="apex-chat-slot" className="flex items-center mr-1.5" />
+
       {/* Toggle dark/light */}
       <button
         onClick={toggleTheme}

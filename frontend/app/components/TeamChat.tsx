@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+// @ts-ignore — este proyecto no tiene @types/react-dom; createPortal existe en runtime
+import { createPortal } from 'react-dom';
 import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
 
@@ -40,6 +42,14 @@ export default function TeamChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  // El botón vive en la barra superior (siempre visible). Buscamos su ancla.
+  useEffect(() => {
+    const find = () => setSlot(document.getElementById('apex-chat-slot'));
+    find();
+    const t = setInterval(find, 1000); // por si la barra monta después
+    return () => clearInterval(t);
+  }, []);
 
   // Solo recepción, enfermería y médico (y admin) participan
   useEffect(() => {
@@ -147,21 +157,39 @@ export default function TeamChat() {
   if (!enabled) return null;
   const totalUnread = visibleCanales.reduce((a, c) => a + (unread[c.id] || 0), 0);
 
+  // Botón en la barra superior (con animación sutil constante) — se monta en el ancla del TopNav
+  const triggerBtn = (
+    <button ref={btnRef} onClick={() => { setOpen(o => !o); setView('list'); }}
+      title="Chat del equipo"
+      className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all"
+      style={{
+        background: open ? '#00e5a0' : 'rgba(0,229,160,0.12)',
+        color: open ? '#000' : '#00e5a0',
+        border: '1px solid rgba(0,229,160,0.35)',
+      }}>
+      {/* Punto "en vivo" con pulso sutil y constante */}
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full rounded-full opacity-50" style={{ background: open ? '#000' : '#00e5a0', animation: 'apexPulse 2s ease-in-out infinite' }} />
+        <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: open ? '#000' : '#00e5a0' }} />
+      </span>
+      <span>Chat</span>
+      {!open && totalUnread > 0 && (
+        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{totalUnread}</span>
+      )}
+      <style>{`@keyframes apexPulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(2.2);opacity:0}}`}</style>
+    </button>
+  );
+
   return (
     <>
-      {/* Botón flotante */}
-      <button ref={btnRef} onClick={() => { setOpen(o => !o); setView('list'); }}
-        className="fixed z-[90] bottom-5 left-5 w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition"
-        style={{ background: '#00e5a0', color: '#000' }} title="Chat del equipo">
-        <span className="text-2xl">{open ? '×' : '💬'}</span>
-        {!open && totalUnread > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-[#f43f5e] text-white text-[11px] font-bold flex items-center justify-center">{totalUnread}</span>
-        )}
-      </button>
+      {/* El botón vive en la barra superior; si aún no hay ancla, cae a una esquina discreta */}
+      {slot ? createPortal(triggerBtn, slot) : (
+        <div className="fixed z-[90] top-3 right-3">{triggerBtn}</div>
+      )}
 
-      {/* Panel */}
+      {/* Panel — debajo de la barra superior, a la derecha */}
       {open && (
-        <div ref={panelRef} className="fixed z-[90] bottom-24 left-5 w-[min(92vw,380px)] h-[min(70vh,540px)] bg-[#0d1520] border border-[#1e2d3d] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div ref={panelRef} className="fixed z-[95] top-16 right-3 w-[min(94vw,380px)] h-[min(72vh,560px)] bg-[#0d1520] border border-[#1e2d3d] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
 
           {/* ── VISTA LISTA: elige a quién escribir (filas full-width, sin scroll horizontal) ── */}
           {view === 'list' && (
