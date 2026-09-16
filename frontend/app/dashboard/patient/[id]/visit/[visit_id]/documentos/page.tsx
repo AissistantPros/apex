@@ -69,6 +69,7 @@ export default function DocumentosPage() {
       <header className="no-print fixed top-0 left-0 right-0 h-14 z-50 bg-[rgba(7,10,14,.97)] border-b border-[#1e2d3d] flex items-center px-6 gap-3">
         <button onClick={() => router.push(`/dashboard/patient/${id}`)} className="text-[#00e5a0] hover:text-white">← Ficha</button>
         <div className="flex-1" />
+        <div className="apex-chat-slot flex items-center mr-2" />
         <button onClick={() => window.print()} disabled={nada} className={btn} style={{ background: C.green, color: '#000' }}>🖨️ Imprimir / PDF</button>
         <button disabled title="Disponible cuando se configure el correo" className={btn} style={{ background: '#1e2d3d', color: C.muted }}>✉️ Enviar por correo</button>
       </header>

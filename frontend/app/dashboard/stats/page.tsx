@@ -163,6 +163,7 @@ export default function StatsPage() {
       <header className="fixed top-0 left-0 right-0 h-14 z-50 bg-[rgba(7,10,14,.97)] border-b border-[#1e2d3d] backdrop-blur-2xl flex items-center px-6 gap-2.5">
         <button onClick={() => router.back()} className="text-[#00e5a0] hover:text-white transition">← Volver</button>
         <div className="flex-1" />
+        <div className="apex-chat-slot flex items-center mr-2" />
         <button onClick={() => router.push('/dashboard')} className="text-[#7a95aa] hover:text-[#dde6ef]">Home</button>
       </header>
 

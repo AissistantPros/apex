@@ -43,11 +43,17 @@ export default function TeamChat() {
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  // El botón vive en la barra superior (siempre visible). Buscamos su ancla.
+  // El botón vive en la barra superior visible. Algunas páginas tienen su propio header que
+  // tapa la barra estándar; como sus anclas aparecen DESPUÉS en el DOM, tomamos la ÚLTIMA
+  // visible, que es la del header que realmente está arriba.
   useEffect(() => {
-    const find = () => setSlot(document.getElementById('apex-chat-slot'));
+    const find = () => {
+      const slots = Array.from(document.querySelectorAll<HTMLElement>('.apex-chat-slot'))
+        .filter(el => el.offsetParent !== null);
+      setSlot(slots[slots.length - 1] || null);
+    };
     find();
-    const t = setInterval(find, 1000); // por si la barra monta después
+    const t = setInterval(find, 800);
     return () => clearInterval(t);
   }, []);
 
