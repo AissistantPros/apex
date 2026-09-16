@@ -694,8 +694,8 @@ function FlowPageInner() {
       setPatientId(newId);
       // Actualizar URL para que un reload conserve el progreso
       router.replace(`/dashboard/new-patient/flow?patient_id=${newId}&phase=2`);
-      // Si aún no se ha clasificado al paciente, mostrar la bifurcación antes de continuar
-      if (!careType) { setShowBifurcation(true); }
+      // En un alta NUEVA sin clasificar, mostrar la bifurcación. En edición no (ya se clasificó).
+      if (!careType && !isEditMode) { setShowBifurcation(true); }
 
       // Guardar nota pendiente si la hay
       if (pendingNote.trim()) {
@@ -717,12 +717,17 @@ function FlowPageInner() {
         setPendingNote('');
       }
 
-      // Recepción NUNCA avanza a enfermería. Si ya está clasificado, confirma y vuelve a home;
-      // si no, la bifurcación aparece (setShowBifurcation ya se activó arriba) y de ahí a home.
-      if (userRole === 'receptionist') {
+      if (isEditMode) {
+        // En edición solo se guardan los cambios: no se registra visita ni se "pasa" a otra fase.
+        setHandoff({
+          titulo: `${f.first_name} ${f.last_name} — cambios guardados`,
+          sub: '¿Deseas dejar una nota antes de terminar?',
+        });
+      } else if (userRole === 'receptionist') {
+        // Alta nueva: si ya está clasificado, confirma y a home; si no, la bifurcación (ya
+        // activada arriba) lo lleva a home al elegir.
         if (careType) setHandoff({
-          titulo: isEditMode ? `${f.first_name} ${f.last_name} — datos actualizados`
-                             : `${f.first_name} ${f.last_name} ha sido guardado`,
+          titulo: `${f.first_name} ${f.last_name} ha sido guardado`,
           sub: 'Se envió al área de enfermería. ¿Deseas dejar una nota antes de terminar?',
         });
       } else if (careType) {
@@ -2750,7 +2755,9 @@ function FlowPageInner() {
                 <button onClick={savePhase1} disabled={saving || !f.first_name || !f.last_name || !f.date_of_birth}
                   className="px-6 py-2.5 text-sm font-bold rounded-xl disabled:opacity-40 transition"
                   style={{ background: '#0ea5e9', color: '#000' }}>
-                  {saving ? 'Guardando...' : 'Guardar y pasar a Enfermería →'}
+                  {saving ? 'Guardando...'
+                    : isEditMode ? 'Guardar cambios'
+                    : 'Guardar y pasar a Enfermería →'}
                 </button>
               )}
               {/* Fase 2: Guardar antecedentes + visita */}
