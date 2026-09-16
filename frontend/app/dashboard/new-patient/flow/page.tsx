@@ -136,6 +136,12 @@ const PHASE_CONFIG = {
   3: { color: '#a78bfa', label: '🟣 MÉDICO',      title: 'Historia clínica privada + Cierre de visita', roleKey: 'doctor' },
 };
 
+// Qué fases puede ver/editar cada rol. Recepción solo la suya; enfermería la suya;
+// médico y admin todo. Así una recepcionista nunca ve datos de enfermería ni del médico.
+const PHASES_BY_ROLE: Record<string, number[]> = {
+  receptionist: [1], nurse: [2], doctor: [1, 2, 3], admin: [1, 2, 3],
+};
+
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 function FlowPageInner() {
   const router     = useRouter();
@@ -314,6 +320,12 @@ function FlowPageInner() {
   }, [phase]);
 
   useEffect(() => { setUserRole(getRole()); }, []);
+
+  const allowedPhases = PHASES_BY_ROLE[userRole] || [1, 2, 3];
+  // Si el rol no puede estar en la fase actual, llévalo a la que le corresponde.
+  useEffect(() => {
+    if (allowedPhases.length && !allowedPhases.includes(phase)) setPhase(allowedPhases[0]);
+  }, [userRole]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const init = async () => {
@@ -705,8 +717,17 @@ function FlowPageInner() {
         setPendingNote('');
       }
 
-      // Avanzar a fase 2 solo si ya está clasificado; si no, la bifurcación lo hará al elegir
-      if (careType) setPhase(2);
+      // Recepción NUNCA avanza a enfermería. Si ya está clasificado, confirma y vuelve a home;
+      // si no, la bifurcación aparece (setShowBifurcation ya se activó arriba) y de ahí a home.
+      if (userRole === 'receptionist') {
+        if (careType) setHandoff({
+          titulo: isEditMode ? `${f.first_name} ${f.last_name} — datos actualizados`
+                             : `${f.first_name} ${f.last_name} ha sido guardado`,
+          sub: 'Se envió al área de enfermería. ¿Deseas dejar una nota antes de terminar?',
+        });
+      } else if (careType) {
+        setPhase(2);
+      }
     } catch (e: any) {
       alert('Error al guardar: ' + e.message);
     } finally {
@@ -1077,13 +1098,13 @@ function FlowPageInner() {
       <main className="pt-16 min-h-screen">
         <div className="page-content px-4 py-8 pb-36">
 
-          {/* Stepper */}
+          {/* Stepper — solo las fases que el rol puede ver */}
           <div className="flex gap-2 mb-2">
-            {([1,2,3] as const).map(p => {
-              const cfg = PHASE_CONFIG[p];
+            {allowedPhases.map(p => {
+              const cfg = PHASE_CONFIG[p as 1|2|3];
               const done = p < phase;
               const active = p === phase;
-              const canClick = p < phase || isEditMode; // en modo edición, todas accesibles
+              const canClick = allowedPhases.includes(p) && (p < phase || isEditMode);
               return (
                 <button key={p}
                   onClick={() => { if (canClick) setPhase(p); }}
@@ -1104,7 +1125,7 @@ function FlowPageInner() {
           {/* ═══════════════════════════════════════════
               FASE 1 — RECEPCIÓN
           ═══════════════════════════════════════════ */}
-          {phase === 1 && (
+          {phase === 1 && allowedPhases.includes(1) && (
             <>
               <Card title="Datos personales" icon="👤" color={pc.color}>
                 <div className="space-y-4">
@@ -1404,7 +1425,7 @@ function FlowPageInner() {
           {/* ═══════════════════════════════════════════
               FASE 2 — ENFERMERÍA
           ═══════════════════════════════════════════ */}
-          {phase === 2 && (
+          {phase === 2 && allowedPhases.includes(2) && (
             <>
               <PatientBadge />
 
@@ -1906,7 +1927,7 @@ function FlowPageInner() {
           {/* ═══════════════════════════════════════════
               FASE 3 — MÉDICO
           ═══════════════════════════════════════════ */}
-          {phase === 3 && (
+          {phase === 3 && allowedPhases.includes(3) && (
             <>
               <PatientBadge />
 
