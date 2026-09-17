@@ -136,6 +136,8 @@ async def list_patient_visits(
             "visits": visits,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 

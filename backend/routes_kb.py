@@ -148,6 +148,8 @@ def _procesar_documento(doc_id: str, raw: bytes, nombre: str):
         })
         print(f"[KB] '{nombre}': {len(paginas)} páginas → {insertados} fragmentos indexados")
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] procesando documento {doc_id}: {e}")
         update_kb_document(doc_id, {"estado": "error", "error_msg": str(e)[:400]})

@@ -70,6 +70,8 @@ async def check_duplicate(
     try:
         matches = check_duplicate_patients(first_name, last_name, date_of_birth)
         return {"duplicates": matches, "count": len(matches)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -87,6 +89,8 @@ async def get_all_patients(
         patients = list_patients(limit=limit)
         patients = [filter_patient(p, actor["role"]) for p in patients]
         return {"total": len(patients), "patients": patients}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -129,6 +133,8 @@ async def create_patient(
             "created_at": result.get("created_at"),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -198,6 +204,8 @@ async def get_patient_visits(
             "visits": visits,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -208,6 +216,8 @@ async def get_notes(patient_id: str, authorization: Optional[str] = Header(None)
     try:
         notes = get_patient_notes(patient_id)
         return {"notes": notes}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -240,6 +250,8 @@ async def remove_note(patient_id: str, note_id: str, authorization: Optional[str
     try:
         delete_patient_note(note_id)
         return {"deleted": True, "id": note_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -254,6 +266,8 @@ async def delete_patient(
         from db import supabase
         supabase.table("patients").delete().eq("id", patient_id).execute()
         return {"deleted": True, "id": patient_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -336,6 +350,8 @@ async def send_prescription(patient_id: str, authorization: Optional[str] = Head
             )
             urllib.request.urlopen(req, timeout=20)
             return {"ok": True, "enviado": True, "via": "resend", "to": email}
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"[WARN] Resend falló: {e}")
 

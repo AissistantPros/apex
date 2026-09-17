@@ -495,6 +495,8 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
                 "latency_ms": latency_ms,
                 "created_at": datetime.utcnow().isoformat(),
             })
+        except HTTPException:
+            raise
         except Exception as e:
             # El logging nunca debe tumbar el flujo de diagnóstico
             print(f"[WARN] no se pudo guardar ai_call_log ({step}): {e}")
@@ -556,6 +558,8 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
                 "latency_ms": latency_ms,
                 "created_at": datetime.utcnow().isoformat(),
             })
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"[WARN] no se pudo guardar ai_call_log ({step}): {e}")
 
@@ -631,6 +635,8 @@ def _ensure_labs_extracted(visit_id: str, visit: dict) -> dict:
         return visit
     try:
         text = extract_labs_data(visit, visit_id=visit_id)
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[WARN] extracción de estudios falló ({visit_id}): {e}")
         return visit
@@ -646,6 +652,8 @@ def _ensure_labs_extracted(visit_id: str, visit: dict) -> dict:
     updated = {**visit, "labs_extracted": text, "labs_files": stripped}
     try:
         update_visit(visit_id, {"labs_extracted": text, "labs_files": stripped})
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[WARN] no se pudo persistir labs_extracted ({visit_id}): {e}")
     return updated
@@ -804,6 +812,8 @@ async def trigger_extract_labs(
         try:
             visit = get_visit(visit_id) or {}
             _ensure_labs_extracted(visit_id, visit)
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"[WARN] extract_labs en segundo plano falló ({visit_id}): {e}")
     background_tasks.add_task(_job)
@@ -870,6 +880,8 @@ async def get_clarifying_questions(
         questions = [q["pregunta"] for q in lean_draft["preguntas"] if q.get("pregunta")][:4]
 
         return {"visit_id": visit_id, "questions": questions}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR clarify] {str(e)}")
         # No bloquear el flujo si falla
@@ -960,6 +972,8 @@ async def finalize_first_diagnosis_stream(
                 "confidence": metadata["confidence"],
             }
             yield f"data: {json.dumps(final)}\n\n"
+        except HTTPException:
+            raise
         except Exception as e:
             # NUNCA dejar el stream sin cerrar: el frontend se colgaría para siempre.
             print(f"[ERROR finalize_first/stream] {e}")
@@ -1079,6 +1093,8 @@ async def run_traditional(
             "confidence": metadata["confidence"],
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         raise HTTPException(500, str(e))
@@ -1114,6 +1130,8 @@ async def get_functional_clarifying_questions(
             questions = []
 
         return {"visit_id": visit_id, "questions": questions}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR clarify_functional] {str(e)}")
         return {"visit_id": visit_id, "questions": []}
@@ -1198,6 +1216,8 @@ async def run_functional_stream(
                 "updated_at": datetime.utcnow().isoformat(),
             })
             yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"[ERROR functional/stream] {e}")
             raw = "".join(chunks)
@@ -1240,6 +1260,8 @@ async def run_functional(
             "confidence": metadata["confidence"],
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         raise HTTPException(500, str(e))
@@ -1311,6 +1333,8 @@ async def run_longevity_stream(
                 "updated_at": datetime.utcnow().isoformat(),
             })
             yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"[ERROR longevity/stream] {e}")
             raw = "".join(chunks)
@@ -1353,6 +1377,8 @@ async def run_longevity(
             "confidence": metadata["confidence"],
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         raise HTTPException(500, str(e))
@@ -1527,6 +1553,8 @@ Contesta las 5 preguntas y responde SOLO con el JSON del veredicto."""
             objs = verdict.get("objeciones") or []
             return [o for o in objs if isinstance(o, dict) and o.get("problema")]
         return []
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[WARN] veredicto del crítico ilegible ({protocol_type}): {e}")
         return []
@@ -1584,6 +1612,8 @@ Emite el PATCH con las correcciones que procedan."""
         if summary:
             print(f"[CONCIENCIA] {protocol_type}: {summary}")
             return new_text
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[WARN] patch de conciencia inválido ({protocol_type}): {e}")
     return protocol_text
@@ -1714,6 +1744,8 @@ async def run_protocol_stream(
                 "updated_at": datetime.utcnow().isoformat(),
             })
             yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': banderas})}\n\n"
+        except HTTPException:
+            raise
         except Exception as e:
             import traceback; traceback.print_exc()
             print(f"[ERROR protocol/stream] {type(e).__name__}: {e}")
@@ -1763,6 +1795,8 @@ async def run_protocol(
             "banderas": banderas,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         raise HTTPException(500, str(e))
@@ -2082,6 +2116,8 @@ REGLAS:
             "turn": len(history) // 2,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         raise HTTPException(500, str(e))
@@ -2117,6 +2153,8 @@ async def close_visit(
             "visit_id": visit_id,
             "status": "closed",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -2129,6 +2167,8 @@ async def get_visit_analysis(visit_id: str):
         if not analysis:
             return {"visit_id": visit_id, "status": None}
         return analysis
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -2139,6 +2179,8 @@ async def get_analysis_logs(visit_id: str):
     modelo y latencia) — para poder verificar exactamente qué información se le mandó."""
     try:
         return {"visit_id": visit_id, "logs": list_ai_call_logs(visit_id)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 

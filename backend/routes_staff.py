@@ -110,6 +110,8 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
             "email": email, "password": password, "email_confirm": True,
             "user_metadata": {"display_name": body.nombre, "role": body.role},
         })
+    except HTTPException:
+        raise
     except Exception as e:
         msg = str(e)
         if "already" in msg.lower() or "registered" in msg.lower():
@@ -143,6 +145,8 @@ async def regenerate_password(uid: str, authorization: Optional[str] = Header(No
     password = _gen_password()
     try:
         supabase.auth.admin.update_user_by_id(uid, {"password": password})
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"No se pudo regenerar: {str(e)[:200]}")
     return {"ok": True, "usuario": prof[0].get("email"), "password": password}
@@ -172,6 +176,8 @@ async def delete_staff(uid: str, authorization: Optional[str] = Header(None)):
         raise HTTPException(403, "Ese miembro no pertenece a tu equipo")
     try:
         supabase.auth.admin.delete_user(uid)
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[WARN] no se pudo borrar el auth user {uid}: {e}")
     supabase.table("doctor_profiles").delete().eq("id", uid).execute()

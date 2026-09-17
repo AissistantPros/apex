@@ -6,7 +6,7 @@ Chat general con IA — home de APEX
 - Solo texto de salida (el médico puede enviar imágenes)
 """
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Union
 from anthropic import Anthropic
@@ -113,6 +113,8 @@ async def do_web_search(query: str) -> str:
         return "\n\n---\n\n".join(parts)
     except ImportError:
         return "Búsqueda web no disponible en este entorno."
+    except HTTPException:
+        raise
     except Exception as e:
         return f"Error en búsqueda: {str(e)}"
 
@@ -145,6 +147,8 @@ async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(
         kb = consultar_biblioteca(_ultimo_texto_usuario(req.messages), area=None, match_count=6)
         if kb:
             system += "\n\n" + kb
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[WARN] biblioteca en chat no disponible: {e}")
 
