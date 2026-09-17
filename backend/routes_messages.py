@@ -51,6 +51,21 @@ async def list_messages(canal: str = "general", after: Optional[str] = None, lim
     return {"messages": msgs, "me": actor["user_id"], "role": actor["role"]}
 
 
+@router.get("/roster")
+async def roster(authorization: Optional[str] = Header(None)):
+    """Miembros de la clínica con la identidad (nombre + foto) que cada quien puso
+    en su perfil. El chat lo usa para mostrar nombres y fotos reales en canales y
+    mensajes, en vez de etiquetas genéricas de rol."""
+    actor = get_actor(authorization)
+    if not _puede_chat(actor):
+        return {"members": []}
+    clinic = actor["doctor_id"]
+    # El doctor/admin es la fila cuyo id == clinic; el staff cuelga por parent_doctor_id.
+    rows = supabase.table("doctor_profiles").select("id, display_name, photo_url, role")\
+        .or_(f"id.eq.{clinic},parent_doctor_id.eq.{clinic}").execute().data or []
+    return {"members": rows, "me": actor["user_id"]}
+
+
 @router.get("/unread")
 async def unread(after: str, authorization: Optional[str] = Header(None)):
     """Cuántos mensajes nuevos hay por canal desde un timestamp (para el badge)."""

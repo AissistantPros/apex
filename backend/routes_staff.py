@@ -189,3 +189,35 @@ async def whoami(authorization: Optional[str] = Header(None)):
     if actor["role"] in ("doctor", "admin") and not actor.get("permissions"):
         actor["permissions"] = {a: "edit" for a in AREAS}
     return actor
+
+
+# ── Perfil personal (cada quien edita SU propia identidad) ──────────────────────
+# Campos que un miembro puede editar de sí mismo. Nunca role/permissions/parent.
+_ME_EDITABLE = {"display_name", "photo_url", "phone", "ai_name_preference"}
+
+
+@router.get("/me")
+async def my_profile(authorization: Optional[str] = Header(None)):
+    """Identidad propia del usuario en sesión (su fila, no la del consultorio)."""
+    actor = get_actor(authorization)
+    r = supabase.table("doctor_profiles").select(
+        "id, display_name, email, phone, photo_url, role, ai_name_preference"
+    ).eq("id", actor["user_id"]).limit(1).execute().data
+    prof = r[0] if r else {"id": actor["user_id"], "role": actor["role"]}
+    prof["role"] = actor["role"]
+    return prof
+
+
+@router.put("/me")
+async def update_my_profile(body: dict, authorization: Optional[str] = Header(None)):
+    actor = get_actor(authorization)
+    patch = {k: v for k, v in (body or {}).items() if k in _ME_EDITABLE}
+    if not patch:
+        raise HTTPException(400, "Sin cambios válidos")
+    exists = supabase.table("doctor_profiles").select("id").eq("id", actor["user_id"]).limit(1).execute().data
+    if exists:
+        supabase.table("doctor_profiles").update(patch).eq("id", actor["user_id"]).execute()
+    else:
+        # Fila mínima si aún no existe (p.ej. el propio doctor recién creado)
+        supabase.table("doctor_profiles").insert({"id": actor["user_id"], "role": actor["role"], **patch}).execute()
+    return {"ok": True, **patch}

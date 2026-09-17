@@ -15,7 +15,22 @@ const CANALES: { id: string; label: string; icon: string }[] = [
   { id: 'medico', label: 'Médico', icon: '🩺' },
 ];
 const ROLE_LABEL: Record<string, string> = { doctor: 'Médico', receptionist: 'Recepción', nurse: 'Enfermería', accounting: 'Contabilidad', marketing: 'Marketing' };
-const ROLE_COLOR: Record<string, string> = { doctor: '#a78bfa', receptionist: '#0ea5e9', nurse: '#f97316' };
+const ROLE_COLOR: Record<string, string> = { doctor: '#a78bfa', receptionist: '#0ea5e9', nurse: '#f97316', admin: '#a78bfa' };
+// Canal de área → rol que lo atiende (para etiquetar el canal con la persona real)
+const CHANNEL_ROLE: Record<string, string> = { recepcion: 'receptionist', enfermeria: 'nurse', medico: 'doctor' };
+
+type Member = { id: string; display_name?: string; photo_url?: string; role?: string };
+
+// Avatar: foto del perfil o inicial sobre un color de rol
+function Avatar({ name, photo, color, size = 44 }: { name?: string; photo?: string; color?: string; size?: number }) {
+  const c = color || '#7a95aa';
+  if (photo) return <img src={photo} alt="" className="rounded-full object-cover shrink-0" style={{ width: size, height: size, border: `1.5px solid ${c}55` }} />;
+  const ini = (name || '?').trim()[0]?.toUpperCase() || '?';
+  return (
+    <span className="rounded-full flex items-center justify-center font-bold shrink-0"
+      style={{ width: size, height: size, background: c + '22', color: c, fontSize: size * 0.42 }}>{ini}</span>
+  );
+}
 
 async function authHeaders(): Promise<Record<string, string>> {
   const s = await getSession().catch(() => null);
@@ -23,6 +38,17 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 type Msg = { id: string; canal: string; author_id?: string; author_name?: string; author_role?: string; content: string; created_at: string };
+
+// Cómo se muestra un canal: la persona real (nombre + foto que puso en su perfil)
+// en vez de la etiqueta genérica del rol.
+function canalIdentidad(canalId: string, byRole: Record<string, Member>) {
+  if (canalId === 'general') return { titulo: 'General (todo el equipo)', sub: 'Visible para todos', member: null as Member | null };
+  const rol = CHANNEL_ROLE[canalId];
+  const m = byRole[rol];
+  const genLabel = ROLE_LABEL[rol] || canalId;
+  const nombre = m?.display_name || genLabel;
+  return { titulo: nombre, sub: `Mensaje directo · ${genLabel}`, member: m || null };
+}
 
 // A cada rol le corresponde SU canal de área — no debe poder mandarse mensajes a sí mismo.
 const OWN_CHANNEL: Record<string, string> = { receptionist: 'recepcion', nurse: 'enfermeria', doctor: 'medico' };
@@ -36,6 +62,8 @@ export default function TeamChat() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [me, setMe] = useState('');
+  const [byId, setById] = useState<Record<string, Member>>({});
+  const [byRole, setByRole] = useState<Record<string, Member>>({});
   const [unread, setUnread] = useState<Record<string, number>>({});
   const lastSeenRef = useRef<string>(new Date(Date.now() - 86400000).toISOString());
   const prevTotalRef = useRef<number>(0);
@@ -67,6 +95,30 @@ export default function TeamChat() {
       Notification.requestPermission().catch(() => {});
     }
   }, []);
+
+  // Roster de la clínica: nombre + foto que cada quien puso en su perfil.
+  useEffect(() => {
+    if (!enabled) return;
+    const cargarRoster = async () => {
+      try {
+        const r = await fetch(`${B()}/messages/roster`, { headers: await authHeaders() });
+        if (!r.ok) return;
+        const d = await r.json();
+        const id: Record<string, Member> = {};
+        const rol: Record<string, Member> = {};
+        (d.members || []).forEach((m: Member) => {
+          id[m.id] = m;
+          const rr = m.role === 'admin' ? 'doctor' : (m.role || '');
+          // Si hay varios del mismo rol, se queda el que tenga foto/nombre configurado.
+          if (!rol[rr] || (!rol[rr].photo_url && m.photo_url)) rol[rr] = m;
+        });
+        setById(id); setByRole(rol);
+      } catch { /* silencioso */ }
+    };
+    cargarRoster();
+    const t = setInterval(cargarRoster, 30000);
+    return () => clearInterval(t);
+  }, [enabled]);
 
   // Canales visibles: General + las OTRAS dos áreas (no la propia). Admin ve todas.
   const visibleCanales = CANALES.filter(c => c.id === 'general' || c.id !== OWN_CHANNEL[role]);
@@ -207,15 +259,18 @@ export default function TeamChat() {
               <div className="flex-1 overflow-y-auto p-2">
                 {visibleCanales.map(c => {
                   const n = unread[c.id] || 0;
-                  const col = c.id === 'general' ? '#00e5a0' : (ROLE_COLOR[Object.keys(OWN_CHANNEL).find(k => OWN_CHANNEL[k] === c.id) || ''] || '#7a95aa');
+                  const rol = CHANNEL_ROLE[c.id];
+                  const col = c.id === 'general' ? '#00e5a0' : (ROLE_COLOR[rol] || '#7a95aa');
+                  const info = canalIdentidad(c.id, byRole);
                   return (
                     <button key={c.id} onClick={() => { setCanal(c.id); setView('chat'); }}
                       className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-[#111820] transition text-left">
-                      <span className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
-                        style={{ background: col + '22' }}>{c.icon}</span>
+                      {c.id === 'general'
+                        ? <span className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0" style={{ background: col + '22' }}>{c.icon}</span>
+                        : <Avatar name={info.titulo} photo={info.member?.photo_url} color={col} size={44} />}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-[#dde6ef]">{c.id === 'general' ? 'General (todo el equipo)' : c.label}</p>
-                        <p className="text-[11px] text-[#7a95aa]">{c.id === 'general' ? 'Visible para todos' : `Mensaje directo a ${c.label}`}</p>
+                        <p className="text-sm font-semibold text-[#dde6ef] truncate">{info.titulo}</p>
+                        <p className="text-[11px] text-[#7a95aa] truncate">{info.sub}</p>
                       </div>
                       {n > 0 && <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#f43f5e] text-white text-[11px] font-bold flex items-center justify-center shrink-0">{n}</span>}
                       <span className="text-[#3d5870] shrink-0">›</span>
@@ -229,23 +284,32 @@ export default function TeamChat() {
           {/* ── VISTA CONVERSACIÓN ── */}
           {view === 'chat' && (
             <>
-              <div className="px-3 py-3 border-b border-[#1e2d3d] flex items-center gap-2">
+              <div className="px-3 py-3 border-b border-[#1e2d3d] flex items-center gap-2.5">
                 <button onClick={() => setView('list')} className="text-[#00e5a0] text-lg px-1" title="Volver">‹</button>
-                <span className="text-lg">{visibleCanales.find(c => c.id === canal)?.icon}</span>
-                <p className="text-sm font-semibold text-[#dde6ef]">{canal === 'general' ? 'General' : visibleCanales.find(c => c.id === canal)?.label}</p>
+                {(() => {
+                  const info = canalIdentidad(canal, byRole);
+                  const col = canal === 'general' ? '#00e5a0' : (ROLE_COLOR[CHANNEL_ROLE[canal]] || '#7a95aa');
+                  return canal === 'general'
+                    ? <><span className="text-lg">💬</span><p className="text-sm font-semibold text-[#dde6ef]">General</p></>
+                    : <><Avatar name={info.titulo} photo={info.member?.photo_url} color={col} size={32} /><p className="text-sm font-semibold text-[#dde6ef] truncate">{info.titulo}</p></>;
+                })()}
               </div>
 
               <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
                 {msgs.length === 0 && <p className="text-xs text-[#3d5870] text-center mt-8">Aún no hay mensajes. Escribe el primero.</p>}
                 {msgs.map(m => {
                   const mine = m.author_id === me;
-                  const color = ROLE_COLOR[m.author_role || ''] || '#7a95aa';
+                  const rol = m.author_role === 'admin' ? 'doctor' : (m.author_role || '');
+                  const color = ROLE_COLOR[rol] || '#7a95aa';
+                  const perfil = m.author_id ? byId[m.author_id] : undefined;
+                  const nombre = perfil?.display_name || m.author_name || ROLE_LABEL[rol] || 'Alguien';
                   return (
-                    <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div className="max-w-[80%]">
+                    <div key={m.id} className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
+                      {!mine && <Avatar name={nombre} photo={perfil?.photo_url} color={color} size={28} />}
+                      <div className="max-w-[76%]">
                         {!mine && (
                           <p className="text-[10px] mb-0.5" style={{ color }}>
-                            {m.author_name || ROLE_LABEL[m.author_role || ''] || 'Alguien'} · {ROLE_LABEL[m.author_role || ''] || ''}
+                            {nombre} · {ROLE_LABEL[rol] || ''}
                           </p>
                         )}
                         <div className="rounded-2xl px-3 py-2 text-sm"

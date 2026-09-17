@@ -16,6 +16,9 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [activeRole, setActiveRole] = useState<UserRole>('doctor');
+  // La asistente/enfermera edita solo SU identidad (nombre + foto para el chat),
+  // no la config del consultorio (membrete, clínica, IA). Separación por rol.
+  const isStaff = activeRole === 'receptionist' || activeRole === 'nurse';
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
@@ -45,12 +48,15 @@ export default function ProfilePage() {
       const u = await getUser();
       if (!u) { router.push('/auth/login'); return; }
       setUser(u);
-      setActiveRole(getRole());
+      const r = getRole();
+      setActiveRole(r);
+      const staff = r === 'receptionist' || r === 'nurse';
       try {
         const session = await getSession();
         const tok = session?.access_token;
         const headers: Record<string, string> = tok ? { Authorization: `Bearer ${tok}` } : {};
-        const res = await fetch(`${BACKEND()}/doctor/profile`, { headers });
+        // Staff lee SU propia identidad; el doctor lee la config completa del consultorio.
+        const res = await fetch(`${BACKEND()}${staff ? '/staff/me' : '/doctor/profile'}`, { headers });
         const data = await res.json();
         setForm({
           display_name: data.display_name || u.user_metadata?.full_name || '',
@@ -81,10 +87,14 @@ export default function ProfilePage() {
       const tok = session?.access_token;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (tok) headers['Authorization'] = `Bearer ${tok}`;
-      await fetch(`${BACKEND()}/doctor/profile`, {
+      // Staff solo puede tocar su propia identidad; el doctor guarda todo el perfil.
+      const body = isStaff
+        ? { display_name: form.display_name, photo_url: form.photo_url, phone: form.phone, ai_name_preference: form.ai_name_preference }
+        : form;
+      await fetch(`${BACKEND()}${isStaff ? '/staff/me' : '/doctor/profile'}`, {
         method: 'PUT',
         headers,
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
       notifyDoctorProfileUpdated();
       setSaved(true);
@@ -107,7 +117,11 @@ export default function ProfilePage() {
 
         <div className="mb-8">
           <h1 className="text-2xl font-serif font-bold text-[#dde6ef] mb-1">👤 Mi Perfil</h1>
-          <p className="text-[#7a95aa] text-sm">Personaliza cómo APEX te identifica y cómo la IA se dirige a ti.</p>
+          <p className="text-[#7a95aa] text-sm">
+            {isStaff
+              ? 'Personaliza tu nombre y tu foto — así te ve el equipo en el chat y en las notas.'
+              : 'Personaliza cómo APEX te identifica y cómo la IA se dirige a ti.'}
+          </p>
         </div>
 
         {/* Foto / logo actual */}
@@ -123,8 +137,8 @@ export default function ProfilePage() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-[#dde6ef] text-lg">{displayName}</p>
-            <p className="text-sm text-[#3d5870]">{form.clinic_name || 'Sin clínica configurada'}</p>
-            <p className="text-xs text-[#3d5870] mt-1 font-mono">{form.email}</p>
+            <p className="text-sm text-[#3d5870]">{isStaff ? ROLE_LABELS[activeRole] : (form.clinic_name || 'Sin clínica configurada')}</p>
+            {!isStaff && <p className="text-xs text-[#3d5870] mt-1 font-mono">{form.email}</p>}
           </div>
         </div>
 
@@ -132,28 +146,23 @@ export default function ProfilePage() {
 
           {/* Datos personales */}
           <Card title="Datos personales" icon="👤">
-            <Field label="¿Cómo quieres que APEX te llame?">
+            <Field label={isStaff ? '¿Cómo quieres que te vean en el sistema y el chat?' : '¿Cómo quieres que APEX te llame?'}>
               <input
                 value={form.display_name}
                 onChange={e => set('display_name', e.target.value)}
                 className={inp}
-                placeholder="Ej: García, Alejandro, Dr. Martínez..."
+                placeholder="Ej: Alejandra, Dra. Alejandra, Enf. Gloria..."
               />
-              <p className="text-xs text-[#3d5870] mt-1">Este nombre se usa en el saludo del home y en las respuestas de la IA.</p>
-            </Field>
-            <Field label="Correo electrónico">
-              <input value={form.email} onChange={e => set('email', e.target.value)} className={inp} placeholder="doctor@clinica.com" />
+              <p className="text-xs text-[#3d5870] mt-1">
+                {isStaff
+                  ? 'Así te verá el equipo en el chat y en las notas — con tu nombre y foto, no como “Recepción” o “Enfermería”.'
+                  : 'Este nombre se usa en el saludo del home y en las respuestas de la IA.'}
+              </p>
             </Field>
             <Field label="Celular / WhatsApp">
               <input value={form.phone} onChange={e => set('phone', e.target.value)} className={inp} placeholder="+52 55 1234 5678" />
             </Field>
-          </Card>
-
-          {/* Clínica */}
-          <Card title="Mi clínica" icon="🏥">
-            <Field label="Nombre de la clínica o consultorio">
-              <input value={form.clinic_name} onChange={e => set('clinic_name', e.target.value)} className={inp} placeholder="Clínica Longevidad, Consultorio García..." />
-            </Field>
+            {/* Foto de perfil — visible para todos (es la que aparece en el chat) */}
             <Field label="FOTO DE PERFIL">
               <div className="flex items-center gap-4">
                 {/* Preview */}
@@ -197,10 +206,22 @@ export default function ProfilePage() {
                 </button>
               )}
             </Field>
-            <Field label="URL del logo de la clínica (opcional)">
-              <input value={form.clinic_logo_url} onChange={e => set('clinic_logo_url', e.target.value)} className={inp} placeholder="https://..." />
-            </Field>
           </Card>
+
+          {/* Clínica — solo el doctor/admin configura el consultorio */}
+          {!isStaff && (
+            <Card title="Mi clínica" icon="🏥">
+              <Field label="Correo electrónico">
+                <input value={form.email} onChange={e => set('email', e.target.value)} className={inp} placeholder="doctor@clinica.com" />
+              </Field>
+              <Field label="Nombre de la clínica o consultorio">
+                <input value={form.clinic_name} onChange={e => set('clinic_name', e.target.value)} className={inp} placeholder="Clínica Longevidad, Consultorio García..." />
+              </Field>
+              <Field label="URL del logo de la clínica (opcional)">
+                <input value={form.clinic_logo_url} onChange={e => set('clinic_logo_url', e.target.value)} className={inp} placeholder="https://..." />
+              </Field>
+            </Card>
+          )}
 
           {/* Rol activo */}
           <Card title="Rol activo (temporal hasta auth real)" icon="🔑">
@@ -225,7 +246,8 @@ export default function ProfilePage() {
             </Field>
           </Card>
 
-          {/* Preferencias de IA */}
+          {/* Preferencias de IA — solo doctor/admin */}
+          {!isStaff && (
           <Card title="Preferencias para la IA" icon="🤖">
             <Field label="¿Cómo quieres que la IA te dirija en los análisis?">
               <select value={form.ai_name_preference} onChange={e => set('ai_name_preference', e.target.value)} className={inp}>
@@ -237,8 +259,10 @@ export default function ProfilePage() {
               <p className="text-xs text-[#3d5870] mt-1">Esto personaliza cómo la IA redacta los diagnósticos y protocolos.</p>
             </Field>
           </Card>
+          )}
 
-          {/* Membrete de la receta / documentos */}
+          {/* Membrete de la receta / documentos — solo doctor/admin */}
+          {!isStaff && (
           <Card title="Membrete para recetas y documentos" icon="📄">
             <p className="text-xs text-[#7a95aa] -mt-2">Aparece en las recetas, reportes y solicitudes de estudios que entregas al paciente.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -264,6 +288,7 @@ export default function ProfilePage() {
               ))}
             </div>
           </Card>
+          )}
 
           {/* Botón guardar */}
           <button
