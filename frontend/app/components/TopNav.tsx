@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from '@/app/lib/auth';
-import { getRole, setRole, setPerms, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
+import { getRole, setRole, setPerms, clearRoleCache, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
 import { useEffect, useState } from 'react';
 
 interface TopNavProps {
@@ -50,8 +50,8 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     const saved = getTheme();
     setThemeState(saved);
     applyTheme(saved);
-    // Sincroniza el rol REAL desde el backend (recepcionista vs médico), donde sea que
-    // haya iniciado sesión. Sin sesión, el backend responde 'doctor' (fallback).
+    // Sincroniza el rol REAL desde el backend según la cuenta autenticada.
+    // Sin sesión válida no se cambia nada (el usuario será enviado al login por la página).
     (async () => {
       try {
         const { getSession } = await import('@/app/lib/auth');
@@ -170,7 +170,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
 
       {/* Salir */}
       <button
-        onClick={async () => { await signOut(); router.push('/auth/login'); }}
+        onClick={async () => { clearRoleCache(); await signOut(); router.push('/auth/login'); }}
         className="px-3 py-1.5 rounded-lg text-xs font-mono transition"
         style={{ color: 'var(--c-text-2)', border: '1px solid transparent' }}
         onMouseEnter={e => {

@@ -28,6 +28,13 @@ export function setPerms(perms: Partial<Record<Area, PermLevel>>) {
   if (typeof window !== 'undefined') localStorage.setItem('apex_perms', JSON.stringify(perms || {}));
 }
 
+/** Limpia el rol/permisos cacheados (al cerrar sesión) para no arrastrar el rol del usuario anterior. */
+export function clearRoleCache() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('apex_role');
+  localStorage.removeItem('apex_perms');
+}
+
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin:        'Administrador',
   doctor:       'Médico',

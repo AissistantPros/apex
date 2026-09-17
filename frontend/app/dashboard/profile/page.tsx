@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
-import { getRole, setRole, UserRole, ROLE_LABELS } from '@/app/lib/role';
+import { getRole, UserRole, ROLE_LABELS, ROLE_COLORS } from '@/app/lib/role';
 import { notifyDoctorProfileUpdated } from '@/app/lib/useDoctorProfile';
 import PhotoCropModal from '@/app/components/PhotoCropModal';
 
@@ -223,27 +223,17 @@ export default function ProfilePage() {
             </Card>
           )}
 
-          {/* Rol activo */}
-          <Card title="Rol activo (temporal hasta auth real)" icon="🔑">
-            <Field label="¿CON QUÉ ROL ESTÁS USANDO APEX AHORA?">
-              <div className="flex gap-3">
-                {(['doctor','nurse','receptionist'] as UserRole[]).map(r => (
-                  <button key={r}
-                    onClick={() => { setRole(r); setActiveRole(r); }}
-                    className="flex-1 py-3 rounded-xl text-sm font-bold transition border"
-                    style={{
-                      background: activeRole === r ? (r==='doctor' ? '#a78bfa' : r==='nurse' ? '#f97316' : '#0ea5e9') + '20' : 'transparent',
-                      color:      activeRole === r ? (r==='doctor' ? '#a78bfa' : r==='nurse' ? '#f97316' : '#0ea5e9') : '#7a95aa',
-                      borderColor: activeRole === r ? (r==='doctor' ? '#a78bfa' : r==='nurse' ? '#f97316' : '#0ea5e9') : '#1e2d3d',
-                    }}>
-                    {r==='doctor' ? '🟣' : r==='nurse' ? '🟨' : '🟦'} {ROLE_LABELS[r]}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-[#3d5870] mt-2">
-                El menú superior cambia según el rol. Cuando se implemente auth real, esto será automático.
+          {/* Tu rol (definido por tu cuenta — ya no se cambia a mano) */}
+          <Card title="Tu rol en la clínica" icon="🔑">
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1.5 rounded-lg text-sm font-bold"
+                style={{ background: (ROLE_COLORS[activeRole] || '#7a95aa') + '22', color: ROLE_COLORS[activeRole] || '#7a95aa' }}>
+                {ROLE_LABELS[activeRole] || activeRole}
+              </span>
+              <p className="text-xs text-[#7a95aa]">
+                Tu acceso lo determina tu cuenta. Si necesitas otro rol o más permisos, pídelo al administrador de la clínica.
               </p>
-            </Field>
+            </div>
           </Card>
 
           {/* Preferencias de IA — solo doctor/admin */}

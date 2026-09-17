@@ -11,3 +11,4 @@ openpyxl==3.1.5
 pypdf==5.1.0
 pypdfium2==4.30.0
 voyageai>=0.3.0
+PyJWT[crypto]>=2.8.0

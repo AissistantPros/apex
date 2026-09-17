@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn, getSession, resetPassword } from '@/app/lib/auth';
+import { setRole, setPerms } from '@/app/lib/role';
 
 // ─── Tipos de fase ────────────────────────────────────────────────────────────
 type Phase = 'login' | 'booting' | 'done';
@@ -187,6 +188,15 @@ export default function LoginPage() {
         return;
       }
       if (data?.session) {
+        // Fijar el rol y permisos REALES de esta cuenta (los define el backend, no el usuario)
+        try {
+          const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+          const who = await fetch(`${B}/staff/whoami`, {
+            headers: { Authorization: `Bearer ${data.session.access_token}` },
+          }).then(r => r.ok ? r.json() : null);
+          if (who?.role) setRole(who.role);
+          if (who?.permissions) setPerms(who.permissions);
+        } catch { /* el TopNav lo re-sincroniza igual */ }
         authDone.current = true;
         tryRedirect();
       }

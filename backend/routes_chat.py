@@ -11,12 +11,12 @@ from pydantic import BaseModel
 from typing import Optional, List, Union
 from anthropic import Anthropic
 from db import get_doctor_profile
+from auth import get_actor
 import json, re
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 client = Anthropic()
 
-FALLBACK_DOCTOR_ID = "1c330e4b-c0e8-424b-8b06-0700e9e3dcc5"
 MODEL = "claude-sonnet-4-5"
 
 # ─── Modelos ──────────────────────────────────────────────────────────────────
@@ -134,7 +134,8 @@ def _ultimo_texto_usuario(mensajes) -> str:
 
 @router.post("")
 async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(None)):
-    profile = get_doctor_profile(FALLBACK_DOCTOR_ID) or {}
+    actor = get_actor(authorization)          # exige sesión válida (401 si no)
+    profile = get_doctor_profile(actor["doctor_id"]) or {}
     system  = build_system_prompt(profile)
 
     # Fundamentar la respuesta en la biblioteca del médico (si hay algo relevante).
