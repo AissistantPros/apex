@@ -40,7 +40,7 @@ class ResultIn(BaseModel):
 
 
 def _puede(actor: dict, area: str, nivel: str = "view") -> bool:
-    if actor["role"] == "doctor":
+    if actor["role"] in ("doctor", "admin"):
         return True
     p = (actor.get("permissions") or {}).get(area)
     return p == "edit" or (nivel == "view" and p in ("view", "edit"))

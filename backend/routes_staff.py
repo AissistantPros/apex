@@ -77,7 +77,7 @@ class PermsIn(BaseModel):
 
 
 def _require_manage(actor: dict):
-    if (actor.get("permissions") or {}).get("equipo") != "edit" and actor["role"] != "doctor":
+    if (actor.get("permissions") or {}).get("equipo") != "edit" and actor["role"] not in ("doctor", "admin"):
         raise HTTPException(403, "No tienes permiso para gestionar al equipo")
 
 
@@ -186,6 +186,6 @@ async def defaults():
 @router.get("/whoami")
 async def whoami(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
-    if actor["role"] == "doctor" and not actor.get("permissions"):
+    if actor["role"] in ("doctor", "admin") and not actor.get("permissions"):
         actor["permissions"] = {a: "edit" for a in AREAS}
     return actor
