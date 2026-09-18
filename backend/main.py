@@ -18,6 +18,7 @@ from routes_clinic import router as clinic_router
 from routes_staff import router as staff_router
 from routes_marketing import router as marketing_router
 from routes_messages import router as messages_router
+from routes_admin import router as admin_router
 
 app = FastAPI(title="APEX Backend", version="0.1.0")
 
@@ -42,6 +43,24 @@ async def health_check():
         "status": "ok",
         "message": "APEX Backend is running",
     }
+
+
+@app.get("/auth/resolve-username/{username}")
+async def resolve_username(username: str):
+    """Login por USUARIO (sin correo): resuelve el usuario a su correo interno para que
+    el frontend pueda autenticar. Solo devuelve el correo; no expone nada sensible."""
+    from db import supabase
+    u = (username or "").strip().lower()
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    # Si ya viene un correo, se usa tal cual.
+    if "@" in u:
+        return {"email": u}
+    r = supabase.table("doctor_profiles").select("email")\
+        .eq("username", u).limit(1).execute().data
+    if not r or not r[0].get("email"):
+        raise HTTPException(404, "Usuario no encontrado")
+    return {"email": r[0]["email"]}
 
 @app.post("/verify-token")
 async def verify_token(authorization: Optional[str] = Header(None)):
@@ -68,6 +87,7 @@ app.include_router(clinic_router)
 app.include_router(staff_router)
 app.include_router(marketing_router)
 app.include_router(messages_router)
+app.include_router(admin_router)
 
 if __name__ == "__main__":
     import uvicorn

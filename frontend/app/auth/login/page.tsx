@@ -169,7 +169,16 @@ export default function LoginPage() {
 
     // 4. Auth en paralelo
     try {
-      const { data, error: authError } = await signIn(email, password);
+      // Login por USUARIO (sin correo): si no escribieron un correo, resolvemos el usuario.
+      const B0 = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      let loginEmail = email.trim();
+      if (!loginEmail.includes('@')) {
+        try {
+          const res = await fetch(`${B0}/auth/resolve-username/${encodeURIComponent(loginEmail.toLowerCase())}`);
+          if (res.ok) loginEmail = (await res.json()).email || loginEmail;
+        } catch { /* si falla, se intenta tal cual */ }
+      }
+      const { data, error: authError } = await signIn(loginEmail, password);
       if (authError) {
         // Si falla, volver al login
         setTimeout(() => {
@@ -196,6 +205,8 @@ export default function LoginPage() {
           }).then(r => r.ok ? r.json() : null);
           if (who?.role) setRole(who.role);
           if (who?.permissions) setPerms(who.permissions);
+          // El admin proveedor va a SU plataforma, no al dashboard clínico.
+          if (who?.role === 'admin') redirectTo.current = '/admin';
         } catch { /* el TopNav lo re-sincroniza igual */ }
         authDone.current = true;
         tryRedirect();
@@ -374,8 +385,8 @@ export default function LoginPage() {
               <label className="block font-mono text-[11px] tracking-[1px] text-[#7a95aa] mb-1.5">
                 USUARIO / CORREO
               </label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="dr.juarez@clinica.mx" autoComplete="email"
+              <input type="text" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="usuario o correo" autoComplete="username"
                 className="w-full px-3.5 py-[11px] bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-[15px] outline-none transition-all focus:border-[#00e5a0] focus:shadow-[0_0_0_3px_rgba(0,229,160,.1)] placeholder-[#3d5870]"
               />
             </div>

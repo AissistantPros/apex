@@ -33,6 +33,8 @@ export default function DashboardPage() {
   useEffect(() => {
     getUser().then(u => {
       if (!u) { router.push('/auth/login'); return; }
+      // El admin proveedor no usa el dashboard clínico: va a su plataforma.
+      if (getRole() === 'admin') { router.replace('/admin'); return; }
       setUser(u);
       setIsDoctor(getRole() === 'doctor');
       fetchData();
