@@ -20,6 +20,7 @@ const ALL_LINKS = [
   { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['admin'] },
   { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['admin','doctor'] },
   { href: '/dashboard/soporte',  icon: '💬', label: 'Soporte',    roles: ['doctor'] },
+  { href: '/dashboard/aprobaciones', icon: '✅', label: 'Aprobaciones', roles: ['doctor'] },
 ];
 
 // ── Helpers de tema ──────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const pathname = usePathname();
   const [role, setRoleState]     = useState<UserRole>('doctor');
   const [theme, setThemeState]   = useState<'dark' | 'light'>('dark');
+  const [aprobCount, setAprobCount] = useState(0);
 
   useEffect(() => {
     setRoleState(getRole());
@@ -76,6 +78,25 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     setThemeState(next);
     applyTheme(next);
   };
+
+  // Aviso de bajas de expediente pendientes (solo el doctor las aprueba)
+  useEffect(() => {
+    if (role !== 'doctor') { setAprobCount(0); return; }
+    let alive = true;
+    const poll = async () => {
+      try {
+        const { getSession } = await import('@/app/lib/auth');
+        const s = await getSession().catch(() => null);
+        if (!s?.access_token) return;
+        const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const r = await fetch(`${B}/deletions/pending/count`, { headers: { Authorization: `Bearer ${s.access_token}` } });
+        if (r.ok && alive) setAprobCount((await r.json()).count || 0);
+      } catch { /* silencioso */ }
+    };
+    poll();
+    const t = setInterval(poll, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [role]);
 
   const links = ALL_LINKS.filter(l => l.roles.includes(role));
 
@@ -116,6 +137,9 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
             }}>
             <span>{icon}</span>
             <span className="hidden md:inline">{label}</span>
+            {href === '/dashboard/aprobaciones' && aprobCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{aprobCount}</span>
+            )}
           </button>
         ))}
       </nav>

@@ -33,6 +33,8 @@ export default function PatientPage() {
   const [showDanger,    setShowDanger]    = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting,      setDeleting]      = useState(false);
+  const [pendingDel,    setPendingDel]    = useState<any>(null);   // solicitud de baja pendiente
+  const [delReason,     setDelReason]     = useState('');
   const dangerRevealRef  = useRevealScroll<HTMLDivElement>(showDanger);
   const confirmRevealRef = useRevealScroll<HTMLDivElement>(confirmDelete);
   const [patientNotes,    setPatientNotes]    = useState<Note[]>([]);
@@ -111,20 +113,35 @@ export default function PatientPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirmDelete) { setConfirmDelete(true); return; }
+  // ¿Ya hay una solicitud de baja pendiente para este expediente?
+  useEffect(() => {
+    if (!patientId) return;
+    (async () => {
+      try {
+        const session = await getSession();
+        const headers: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+        const r = await fetch(`${BACKEND()}/deletions/for-patient/${patientId}`, { headers });
+        if (r.ok) { const d = await r.json(); setPendingDel(d.pending ? d.request : null); }
+      } catch { /* silencioso */ }
+    })();
+  }, [patientId]);
+
+  // Solicitar la baja del expediente (NO borra: la aprueba el doctor).
+  const requestDeletion = async () => {
     setDeleting(true);
     try {
       const session = await getSession();
-      const token   = session?.access_token;
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      await fetch(`${BACKEND()}/patients/${patientId}`, { method: 'DELETE', headers });
-      router.push('/dashboard/patients');
-    } catch {
-      alert('Error al eliminar paciente');
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) };
+      const r = await fetch(`${BACKEND()}/deletions/request`, {
+        method: 'POST', headers, body: JSON.stringify({ patient_id: patientId, reason: delReason }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'No se pudo enviar la solicitud');
+      setPendingDel(d.request || { reason: delReason });
+      setConfirmDelete(false); setDelReason('');
+    } catch (e: any) {
+      alert(e.message || 'No se pudo enviar la solicitud de baja');
+    } finally { setDeleting(false); }
   };
 
   if (loading) return (
@@ -520,35 +537,50 @@ export default function PatientPage() {
               />
             </div>
 
-            {/* Zona de peligro */}
+            {/* Baja de expediente (por ley, requiere aprobación del doctor) */}
             <div className="mt-2 border border-[#f43f5e]/20 rounded-2xl p-5 bg-[#f43f5e]/5">
               <button onClick={() => setShowDanger(!showDanger)}
                 className="flex items-center gap-2 text-[#f43f5e] font-semibold text-sm hover:opacity-80 transition">
-                ⚠️ Zona de peligro {showDanger ? '▲' : '▼'}
+                ⚠️ Baja de expediente {showDanger ? '▲' : '▼'}
               </button>
               {showDanger && (
                 <div ref={dangerRevealRef} className="mt-4 space-y-3">
-                  <p className="text-sm text-[#7a95aa]">Esta acción es permanente. Se eliminará al paciente y todas sus visitas.</p>
-                  {!confirmDelete ? (
-                    <button onClick={handleDelete}
-                      className="px-5 py-2.5 bg-[#f43f5e]/20 text-[#f43f5e] border border-[#f43f5e]/40 text-sm font-bold rounded-xl hover:bg-[#f43f5e]/30 transition">
-                      🗑 Eliminar paciente permanentemente
-                    </button>
-                  ) : (
-                    <div ref={confirmRevealRef} className="bg-[#f43f5e]/10 border border-[#f43f5e]/50 rounded-xl p-4 space-y-3">
-                      <p className="text-sm font-bold text-[#f43f5e]">¿Está seguro? Esta acción no se puede deshacer.</p>
-                      <p className="text-xs text-[#7a95aa]">Se eliminará permanentemente a <strong className="text-[#dde6ef]">{patient.full_name}</strong> y todas sus visitas.</p>
-                      <div className="flex gap-3">
-                        <button onClick={handleDelete} disabled={deleting}
-                          className="px-5 py-2.5 bg-[#f43f5e] text-white text-sm font-bold rounded-xl hover:opacity-90 disabled:opacity-50 transition">
-                          {deleting ? 'Eliminando...' : 'Sí, eliminar definitivamente'}
-                        </button>
-                        <button onClick={() => setConfirmDelete(false)}
-                          className="px-5 py-2.5 text-sm text-[#7a95aa] border border-[#1e2d3d] rounded-xl hover:border-[#7a95aa] transition">
-                          Cancelar
-                        </button>
-                      </div>
+                  {pendingDel ? (
+                    <div className="bg-[#f59e0b]/10 border border-[#f59e0b]/40 rounded-xl p-4">
+                      <p className="text-sm font-bold text-[#f59e0b]">⏳ Baja pendiente de aprobación del doctor</p>
+                      <p className="text-xs text-[#7a95aa] mt-1">Ya se solicitó la baja de este expediente. Solo el doctor puede aprobarla desde su plataforma. Nadie más puede borrarlo.</p>
+                      {pendingDel.reason && <p className="text-xs text-[#7a95aa] mt-1">Motivo: <span className="text-[#dde6ef]">{pendingDel.reason}</span></p>}
                     </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-[#7a95aa]">
+                        Por ley el expediente debe conservarse. No se borra directamente: se envía una
+                        <strong className="text-[#dde6ef]"> solicitud de baja</strong> que <strong className="text-[#dde6ef]">solo el doctor puede aprobar</strong>.
+                      </p>
+                      {!confirmDelete ? (
+                        <button onClick={() => setConfirmDelete(true)}
+                          className="px-5 py-2.5 bg-[#f43f5e]/20 text-[#f43f5e] border border-[#f43f5e]/40 text-sm font-bold rounded-xl hover:bg-[#f43f5e]/30 transition">
+                          🗑 Solicitar baja de expediente
+                        </button>
+                      ) : (
+                        <div ref={confirmRevealRef} className="bg-[#f43f5e]/10 border border-[#f43f5e]/50 rounded-xl p-4 space-y-3">
+                          <p className="text-sm font-bold text-[#f43f5e]">Solicitar baja de <strong className="text-[#dde6ef]">{patient.full_name}</strong></p>
+                          <textarea value={delReason} onChange={e => setDelReason(e.target.value)} rows={3}
+                            placeholder="Motivo de la baja (recomendado)…"
+                            className="w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] text-sm outline-none focus:border-[#f43f5e]" />
+                          <div className="flex gap-3">
+                            <button onClick={requestDeletion} disabled={deleting}
+                              className="px-5 py-2.5 bg-[#f43f5e] text-white text-sm font-bold rounded-xl hover:opacity-90 disabled:opacity-50 transition">
+                              {deleting ? 'Enviando…' : 'Enviar solicitud al doctor'}
+                            </button>
+                            <button onClick={() => { setConfirmDelete(false); setDelReason(''); }}
+                              className="px-5 py-2.5 text-sm text-[#7a95aa] border border-[#1e2d3d] rounded-xl hover:border-[#7a95aa] transition">
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

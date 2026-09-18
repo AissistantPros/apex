@@ -261,15 +261,13 @@ async def delete_patient(
     patient_id: str,
     authorization: Optional[str] = Header(None),
 ):
-    """Eliminar paciente permanentemente"""
-    try:
-        from db import supabase
-        supabase.table("patients").delete().eq("id", patient_id).execute()
-        return {"deleted": True, "id": patient_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    """El borrado directo está deshabilitado. Por ley el expediente debe conservarse:
+    la baja se hace por solicitud (POST /deletions/request) y SOLO el doctor la aprueba."""
+    raise HTTPException(
+        403,
+        "El expediente no se puede borrar directamente. Envía una solicitud de baja; "
+        "solo el doctor puede aprobarla desde su plataforma.",
+    )
 
 
 # ── Última prescripción + envío al paciente ─────────────
