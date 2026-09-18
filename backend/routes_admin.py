@@ -78,9 +78,11 @@ async def list_clinics(authorization: Optional[str] = Header(None)):
     # Conteos por clínica (ubicaciones y usuarios)
     locs = supabase.table("locations").select("id, clinic_id").execute().data or []
     users = supabase.table("doctor_profiles").select("id, clinic_id, role").execute().data or []
+    from services.plans import PLAN_LABELS
     for c in clinics:
         c["locations_count"] = sum(1 for l in locs if l.get("clinic_id") == c["id"])
         c["users_count"] = sum(1 for u in users if u.get("clinic_id") == c["id"])
+        c["plan_label"] = PLAN_LABELS.get(c.get("plan") or "apex", c.get("plan"))
     return {"clinics": clinics}
 
 
@@ -111,7 +113,11 @@ async def clinic_detail(clinic_id: str, authorization: Optional[str] = Header(No
         by_user.setdefault(row["user_id"], []).append(row["location_id"])
     for u in users:
         u["location_ids"] = by_user.get(u["id"], [])
-    return {"clinic": c[0], "locations": locations, "users": users}
+    from services.plans import entitlements_for_clinic, FEATURES, FEATURE_LABELS, PLAN_LABELS
+    ent = entitlements_for_clinic(c[0])
+    return {"clinic": c[0], "locations": locations, "users": users,
+            "entitlements": ent, "feature_list": FEATURES,
+            "feature_labels": FEATURE_LABELS, "plan_labels": PLAN_LABELS}
 
 
 @router.put("/clinics/{clinic_id}")
@@ -122,12 +128,54 @@ async def update_clinic(clinic_id: str, body: ClinicIn, authorization: Optional[
     return {"ok": True}
 
 
+@router.put("/clinics/{clinic_id}/plan")
+async def set_plan(clinic_id: str, body: dict, authorization: Optional[str] = Header(None)):
+    """Fija el plan (preset), los servicios (features), límites y créditos de IA."""
+    _require_admin(authorization)
+    from services.plans import PLAN_PRESETS, preset_features, FEATURES
+    patch: dict = {}
+    plan = body.get("plan")
+    if plan in PLAN_PRESETS:
+        patch["plan"] = plan
+        # Si no mandan features explícitas, aplica el preset del plan
+        if not isinstance(body.get("features"), dict):
+            patch["features"] = preset_features(plan)
+    if isinstance(body.get("features"), dict):
+        patch["features"] = {f: bool(body["features"].get(f)) for f in FEATURES}
+    if isinstance(body.get("limits"), dict):
+        lim = {}
+        for k in ("max_users", "max_locations"):
+            if body["limits"].get(k) is not None:
+                try: lim[k] = int(body["limits"][k])
+                except Exception: pass
+        patch["limits"] = lim
+    if body.get("ai_credits") is not None:
+        try: patch["ai_credits"] = int(body["ai_credits"])
+        except Exception: pass
+    if not patch:
+        raise HTTPException(400, "Sin cambios")
+    supabase.table("clinics").update(patch).eq("id", clinic_id).execute()
+    from services.plans import get_entitlements
+    return {"ok": True, "entitlements": get_entitlements(clinic_id)}
+
+
 # ─── Ubicaciones ──────────────────────────────────────────────────────────────
+def _limit_of(clinic_id: str, key: str) -> Optional[int]:
+    from services.plans import get_entitlements
+    v = (get_entitlements(clinic_id).get("limits") or {}).get(key)
+    return v if isinstance(v, int) and v > 0 else None
+
+
 @router.post("/clinics/{clinic_id}/locations")
 async def add_location(clinic_id: str, body: LocationIn, authorization: Optional[str] = Header(None)):
     _require_admin(authorization)
     if not body.name.strip():
         raise HTTPException(400, "El nombre de la ubicación es requerido")
+    lim = _limit_of(clinic_id, "max_locations")
+    if lim is not None:
+        cur = supabase.table("locations").select("id", count="exact").eq("clinic_id", clinic_id).execute()
+        if (cur.count or 0) >= lim:
+            raise HTTPException(403, f"El plan permite hasta {lim} ubicaciones. Sube el plan o el límite para agregar más.")
     row = {**body.dict(), "name": body.name.strip(), "clinic_id": clinic_id}
     r = supabase.table("locations").insert(row).execute()
     return r.data[0] if r.data else {}
@@ -164,6 +212,11 @@ async def create_user(clinic_id: str, body: UserIn, authorization: Optional[str]
         raise HTTPException(400, "Rol inválido")
     if not body.nombre.strip():
         raise HTTPException(400, "El nombre es requerido")
+    lim = _limit_of(clinic_id, "max_users")
+    if lim is not None:
+        cur = supabase.table("doctor_profiles").select("id", count="exact").eq("clinic_id", clinic_id).execute()
+        if (cur.count or 0) >= lim:
+            raise HTTPException(403, f"El plan permite hasta {lim} usuarios. Sube el plan o el límite para agregar más.")
 
     # El doctor es dueño (sin parent). El resto del staff cuelga del doctor principal.
     parent = None

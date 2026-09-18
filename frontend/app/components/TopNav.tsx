@@ -12,12 +12,12 @@ interface TopNavProps {
 
 const ALL_LINKS = [
   { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['admin','doctor','nurse','receptionist','accounting','marketing'] },
-  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'] },
-  { href: '/dashboard/agenda',   icon: '📅', label: 'Agenda',     roles: ['doctor','nurse','receptionist'] },
-  { href: '/dashboard/proximos', icon: '🔜', label: 'Próximos',   roles: ['doctor'] },
-  { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['admin','doctor','accounting'] },
-  { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'] },
-  { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['admin','doctor','marketing'] },
+  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes' },
+  { href: '/dashboard/agenda',   icon: '📅', label: 'Agenda',     roles: ['doctor','nurse','receptionist'], feature: 'agenda' },
+  { href: '/dashboard/proximos', icon: '🔜', label: 'Próximos',   roles: ['doctor'], feature: 'sala_espera' },
+  { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['admin','doctor','accounting'], feature: 'contabilidad' },
+  { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'], feature: 'contabilidad' },
+  { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['admin','doctor','marketing'], feature: 'marketing' },
   { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['admin'] },
   { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['admin','doctor'] },
   { href: '/dashboard/soporte',  icon: '💬', label: 'Soporte',    roles: ['doctor'] },
@@ -49,6 +49,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const [role, setRoleState]     = useState<UserRole>('doctor');
   const [theme, setThemeState]   = useState<'dark' | 'light'>('dark');
   const [aprobCount, setAprobCount] = useState(0);
+  const [feats, setFeats] = useState<Record<string, boolean> | null>(null);  // servicios contratados
 
   useEffect(() => {
     setRoleState(getRole());
@@ -70,6 +71,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
           setRole(who.role); setRoleState(who.role);
         }
         if (who?.permissions) setPerms(who.permissions);
+        if (who?.entitlements?.features) setFeats(who.entitlements.features);
       } catch { /* silencioso */ }
     })();
   }, []);
@@ -99,7 +101,9 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     return () => { alive = false; clearInterval(t); };
   }, [role]);
 
-  const links = ALL_LINKS.filter(l => l.roles.includes(role));
+  // Se muestran solo los módulos del rol Y de los servicios contratados (si ya se cargaron)
+  const links = ALL_LINKS.filter(l =>
+    l.roles.includes(role) && (!('feature' in l) || !feats || feats[(l as any).feature] !== false));
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);

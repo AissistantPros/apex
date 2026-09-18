@@ -212,7 +212,20 @@ async def whoami(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if actor["role"] in ("doctor", "admin") and not actor.get("permissions"):
         actor["permissions"] = {a: "edit" for a in AREAS}
+    # Servicios contratados (para que el menú/UI muestre solo lo habilitado)
+    try:
+        from services.plans import get_entitlements
+        actor["entitlements"] = get_entitlements(actor.get("clinic_id"))
+    except Exception:
+        actor["entitlements"] = None
     return actor
+
+
+@router.get("/entitlements")
+async def entitlements(authorization: Optional[str] = Header(None)):
+    actor = get_actor(authorization)
+    from services.plans import get_entitlements
+    return get_entitlements(actor.get("clinic_id"))
 
 
 # ── Perfil personal (cada quien edita SU propia identidad) ──────────────────────

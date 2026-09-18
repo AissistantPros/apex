@@ -369,6 +369,9 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
         </div>
       )}
 
+      {/* Plan y servicios */}
+      <PlanPanel detail={detail} reload={reload} flash={flash} />
+
       {/* Ubicaciones */}
       <section className="mb-8">
         <div className="flex items-center justify-between mb-3">
@@ -683,5 +686,80 @@ function TicketsView({ flash }: { flash: (t: string) => void }) {
         </button>
       ))}
     </div>
+  );
+}
+
+// ─── Panel de Plan y servicios (poner/quitar según lo contratado) ──────────────
+function PlanPanel({ detail, reload, flash }: { detail: any; reload: () => void; flash: (t: string) => void }) {
+  const ent = detail.entitlements || { plan: 'apex', features: {}, limits: {}, ai_credits: 0, ai_credits_used: 0 };
+  const featureList: string[] = detail.feature_list || [];
+  const labels: Record<string, string> = detail.feature_labels || {};
+  const planLabels: Record<string, string> = detail.plan_labels || {};
+  const [open, setOpen] = useState(false);
+  const [plan, setPlan] = useState(ent.plan);
+  const [feats, setFeats] = useState<Record<string, boolean>>({ ...ent.features });
+  const [maxU, setMaxU] = useState(ent.limits?.max_users ?? '');
+  const [maxL, setMaxL] = useState(ent.limits?.max_locations ?? '');
+  const [credits, setCredits] = useState(ent.ai_credits ?? 0);
+
+  const applyPreset = async (p: string) => {
+    setPlan(p);
+    try { const r = await api('/admin/clinics/' + detail.clinic.id + '/plan', { method: 'PUT', body: JSON.stringify({ plan: p }) });
+      setFeats({ ...r.entitlements.features }); flash('Plan aplicado: ' + (planLabels[p] || p)); reload(); }
+    catch (e: any) { flash(e.message); }
+  };
+  const save = async () => {
+    try {
+      await api('/admin/clinics/' + detail.clinic.id + '/plan', { method: 'PUT', body: JSON.stringify({
+        features: feats, limits: { max_users: Number(maxU) || 0, max_locations: Number(maxL) || 0 }, ai_credits: Number(credits) || 0,
+      }) });
+      flash('Servicios actualizados'); reload();
+    } catch (e: any) { flash(e.message); }
+  };
+
+  return (
+    <section className="mb-8 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-[#dde6ef]">🎛️ Plan y servicios</h2>
+          <p className="text-[12px] text-[#7a95aa] mt-0.5">{planLabels[ent.plan] || ent.plan} · {Object.values(ent.features || {}).filter(Boolean).length} servicios activos · {ent.ai_credits} créditos IA</p>
+        </div>
+        <button onClick={() => setOpen(o => !o)} className={`${btn} text-xs`} style={{ background: '#111820', border: `1px solid ${C.border}`, color: C.green }}>{open ? 'Cerrar' : 'Configurar'}</button>
+      </div>
+
+      {open && (
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Plan (precarga los servicios)</label>
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(planLabels).map(p => (
+                <button key={p} onClick={() => applyPreset(p)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+                  style={{ background: plan === p ? C.green : '#111820', borderColor: plan === p ? C.green : '#2a3a4d', color: plan === p ? '#000' : C.text }}>{planLabels[p]}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Servicios (enciende/apaga por cliente)</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {featureList.map(f => (
+                <label key={f} className="flex items-center gap-2 text-sm text-[#dde6ef] bg-[#111820] rounded-lg px-3 py-2 cursor-pointer">
+                  <input type="checkbox" checked={!!feats[f]} onChange={e => setFeats({ ...feats, [f]: e.target.checked })} />
+                  {labels[f] || f}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Máx. usuarios</label><input type="number" min={0} value={maxU} onChange={e => setMaxU(e.target.value)} className={inp} placeholder="0 = ilimitado" /></div>
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Máx. ubicaciones</label><input type="number" min={0} value={maxL} onChange={e => setMaxL(e.target.value)} className={inp} placeholder="0 = ilimitado" /></div>
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Créditos de IA</label><input type="number" min={0} value={credits} onChange={e => setCredits(e.target.value as any)} className={inp} /></div>
+          </div>
+
+          <button onClick={save} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>Guardar servicios y límites</button>
+        </div>
+      )}
+    </section>
   );
 }
