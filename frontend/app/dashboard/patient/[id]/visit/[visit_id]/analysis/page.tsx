@@ -2241,9 +2241,10 @@ function ClarifyStep({
 
 // ─── Select Analysis Step ───────────────────────────────────────────────────────
 function SelectAnalysisStep({
-  selected, onToggle, onContinue,
+  selected, onToggle, onContinue, available = ALL_TYPES,
 }: {
   selected: AnalysisType[]; onToggle: (t: AnalysisType) => void; onContinue: () => void;
+  available?: AnalysisType[];
 }) {
   return (
     <div className="py-4">
@@ -2256,7 +2257,7 @@ function SelectAnalysisStep({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        {ALL_TYPES.map(t => {
+        {available.map(t => {
           const meta = TYPE_META[t];
           const isOn = selected.includes(t);
           return (
@@ -2453,8 +2454,28 @@ export default function AnalysisPage() {
   const [funcClarifyAnswers, setFuncClarifyAnswers]     = useState<string[]>([]);
   const [funcClarifyLoading, setFuncClarifyLoading]     = useState(false);
 
+  // Servicios de IA contratados (para ofrecer solo las voces habilitadas)
+  const [aiFeatures, setAiFeatures] = useState<Record<string, boolean> | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const session = await getSession();
+        const headers: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+        const r = await fetch(`${apiBase}/staff/entitlements`, { headers });
+        if (r.ok) setAiFeatures((await r.json()).features || {});
+      } catch { /* si falla, se ofrecen todas */ }
+    })();
+  }, []); // eslint-disable-line
+  const availableTypes = useMemo<AnalysisType[]>(() => ALL_TYPES.filter(t =>
+    t === 'traditional'
+    || (t === 'functional' && aiFeatures?.ia_funcional !== false)
+    || (t === 'longevity' && aiFeatures?.ia_longevidad !== false)
+  ), [aiFeatures]);
+
   // Selección de tipos de análisis a ejecutar
   const [selectedTypes, setSelectedTypes] = useState<AnalysisType[]>(['traditional', 'functional', 'longevity']);
+  // Al conocer los servicios, quita de la selección lo no contratado
+  useEffect(() => { setSelectedTypes(prev => prev.filter(t => availableTypes.includes(t))); }, [availableTypes]);
   const activeTypes = useMemo(() => ALL_TYPES.filter(t => selectedTypes.includes(t)), [selectedTypes]);
   const stepOrder = useMemo<Step[]>(() => {
     // Flujo intercalado por especialidad: diagnóstico → tratamiento → (siguiente especialidad).
@@ -2974,6 +2995,7 @@ export default function AnalysisPage() {
           {step === 'select' && (
             <SelectAnalysisStep
               selected={selectedTypes}
+              available={availableTypes}
               onToggle={t => setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
               onContinue={startClarify}
             />
