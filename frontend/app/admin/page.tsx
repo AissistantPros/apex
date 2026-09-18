@@ -34,7 +34,7 @@ async function api(path: string, opts: RequestInit = {}) {
 }
 
 type Clinic = { id: string; name: string; website?: string; address?: string; phone?: string; email?: string; logo_url?: string; locations_count?: number; users_count?: number };
-type Loc = { id: string; name: string; phone?: string; address?: string; image_url?: string };
+type Loc = { id: string; name: string; phone?: string; address?: string; image_url?: string; color?: string };
 type User = { id: string; display_name: string; username?: string; email?: string; role: string; is_local_admin?: boolean; parent_doctor_id?: string | null; location_ids?: string[] };
 
 // ─── Modal de credenciales (se muestran una sola vez) ──────────────────────────
@@ -262,7 +262,7 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
   { detail: { clinic: Clinic; locations: Loc[]; users: User[] }; onBack: () => void; reload: () => void; onCred: (c: any) => void; flash: (t: string) => void }) {
   const { clinic, locations, users } = detail;
   const [locOpen, setLocOpen] = useState(false);
-  const [lf, setLf] = useState<any>({ name: '', phone: '', address: '', image_url: '' });
+  const [lf, setLf] = useState<any>({ name: '', phone: '', address: '', image_url: '', color: '#0ea5e9' });
   const [userOpen, setUserOpen] = useState(false);
   const hasDoctor = users.some(u => u.role === 'doctor');
   const [uf, setUf] = useState<any>({ nombre: '', role: 'doctor', is_local_admin: false, location_ids: [] as string[] });
@@ -295,7 +295,7 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
 
   const addLoc = async () => {
     if (!lf.name.trim()) return flash('Nombre de la ubicación requerido');
-    try { await api(`/admin/clinics/${clinic.id}/locations`, { method: 'POST', body: JSON.stringify(lf) }); setLf({ name: '', phone: '', address: '', image_url: '' }); setLocOpen(false); reload(); }
+    try { await api(`/admin/clinics/${clinic.id}/locations`, { method: 'POST', body: JSON.stringify(lf) }); setLf({ name: '', phone: '', address: '', image_url: '', color: '#0ea5e9' }); setLocOpen(false); reload(); }
     catch (e: any) { flash(e.message); }
   };
   const delLoc = async (id: string) => {
@@ -367,6 +367,15 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
               <input className={inp} placeholder="Teléfono" value={lf.phone} onChange={e => setLf({ ...lf, phone: e.target.value })} />
               <input className={inp} placeholder="Dirección" value={lf.address} onChange={e => setLf({ ...lf, address: e.target.value })} />
             </div>
+            <div>
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Color de la sede (para el calendario)</label>
+              <div className="flex flex-wrap gap-2">
+                {['#0ea5e9', '#a78bfa', '#f97316', '#00e5a0', '#f472b6', '#f59e0b', '#22d3ee', '#f43f5e'].map(col => (
+                  <button key={col} type="button" onClick={() => setLf({ ...lf, color: col })}
+                    className="w-7 h-7 rounded-full transition" style={{ background: col, outline: lf.color === col ? '2px solid #fff' : 'none', outlineOffset: 2 }} />
+                ))}
+              </div>
+            </div>
             <ImageUpload label="Imagen de la ubicación" shape="wide" value={lf.image_url} onChange={v => setLf({ ...lf, image_url: v })} />
             <button onClick={addLoc} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>Guardar ubicación</button>
           </div>
@@ -378,7 +387,10 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
                 ? <img src={l.image_url} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                 : <span className="text-lg">📍</span>}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{l.name}</p>
+                <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                  {l.color && <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: l.color }} />}
+                  {l.name}
+                </p>
                 <p className="text-[11px] text-[#7a95aa] truncate">{l.phone || 's/tel'} · {l.address || 's/dir'}</p>
               </div>
               <button onClick={() => delLoc(l.id)} className="text-[#f43f5e] text-xs hover:underline">Eliminar</button>

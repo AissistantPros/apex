@@ -59,6 +59,7 @@ class LocationIn(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     image_url: Optional[str] = None
+    color: Optional[str] = None
 
 class UserIn(BaseModel):
     nombre: str
