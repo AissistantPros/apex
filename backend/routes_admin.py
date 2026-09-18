@@ -228,7 +228,8 @@ async def create_user(clinic_id: str, body: UserIn, authorization: Optional[str]
     email = (body.email or "").strip()
     if not email:
         email = f"{_slug(body.nombre)}.{secrets.randbelow(900) + 100}@staff.apex.mx"
-    username = _slug(body.nombre)
+    from routes_staff import _unique_username
+    username = _unique_username(body.nombre)
     password = _gen_password()
 
     try:
@@ -297,7 +298,8 @@ async def update_user(uid: str, body: dict, authorization: Optional[str] = Heade
     if isinstance(body.get("display_name"), str) and body["display_name"].strip():
         patch["display_name"] = body["display_name"].strip()
     if isinstance(body.get("username"), str) and body["username"].strip():
-        patch["username"] = _slug(body["username"])
+        from routes_staff import _unique_username
+        patch["username"] = _unique_username(body["username"], exclude_id=uid)
     if isinstance(body.get("phone"), str):
         patch["phone"] = body["phone"].strip()
     if isinstance(body.get("photo_url"), str):

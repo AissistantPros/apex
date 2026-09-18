@@ -65,6 +65,20 @@ def _gen_password(n: int = 12) -> str:
     return "".join(secrets.choice(PW_ALPHABET) for _ in range(n))
 
 
+def _unique_username(nombre_o_user: str, exclude_id: Optional[str] = None) -> str:
+    """Usuario (login) único. Si el base ya existe, agrega un sufijo numérico."""
+    base = _slug(nombre_o_user)
+    rows = supabase.table("doctor_profiles").select("id, username")\
+        .ilike("username", f"{base}%").execute().data or []
+    taken = {r["username"] for r in rows if r.get("username") and r.get("id") != exclude_id}
+    if base not in taken:
+        return base
+    i = 2
+    while f"{base}{i}" in taken:
+        i += 1
+    return f"{base}{i}"
+
+
 class StaffIn(BaseModel):
     nombre: str
     email: Optional[str] = None       # opcional; si falta se genera un usuario con el nombre
@@ -135,13 +149,15 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
     if not uid:
         raise HTTPException(500, "No se obtuvo el id del nuevo usuario")
 
+    username = _unique_username(body.nombre)
     supabase.table("doctor_profiles").upsert({
-        "id": uid, "display_name": body.nombre, "email": email, "role": body.role,
+        "id": uid, "display_name": body.nombre, "email": email, "username": username,
+        "role": body.role, "clinic_id": actor.get("clinic_id"),
         "parent_doctor_id": actor["doctor_id"], "permissions": perms_para(body.role, body.permissions),
     }).execute()
 
     # La contraseña se devuelve UNA vez; no se guarda de forma legible.
-    return {"ok": True, "id": uid, "usuario": email, "password": password,
+    return {"ok": True, "id": uid, "usuario": username, "password": password,
             "nombre": body.nombre, "role": body.role}
 
 
@@ -150,7 +166,7 @@ async def regenerate_password(uid: str, authorization: Optional[str] = Header(No
     """Genera una NUEVA contraseña. La anterior no se puede recuperar."""
     actor = get_actor(authorization)
     _require_manage(actor)
-    prof = supabase.table("doctor_profiles").select("id, parent_doctor_id, email")\
+    prof = supabase.table("doctor_profiles").select("id, parent_doctor_id, email, username")\
         .eq("id", uid).execute().data
     if not prof or prof[0].get("parent_doctor_id") != actor["doctor_id"]:
         raise HTTPException(403, "Ese miembro no pertenece a tu equipo")
@@ -161,7 +177,7 @@ async def regenerate_password(uid: str, authorization: Optional[str] = Header(No
         raise
     except Exception as e:
         raise HTTPException(500, f"No se pudo regenerar: {str(e)[:200]}")
-    return {"ok": True, "usuario": prof[0].get("email"), "password": password}
+    return {"ok": True, "usuario": prof[0].get("username") or prof[0].get("email"), "password": password}
 
 
 @router.put("/{uid}/permissions")
@@ -194,7 +210,7 @@ async def update_member_profile(uid: str, body: dict, authorization: Optional[st
     if isinstance(body.get("phone"), str):
         patch["phone"] = body["phone"].strip()
     if isinstance(body.get("username"), str) and body["username"].strip():
-        patch["username"] = _slug(body["username"])
+        patch["username"] = _unique_username(body["username"], exclude_id=uid)
     if isinstance(body.get("photo_url"), str):
         patch["photo_url"] = body["photo_url"]
     if not patch:
