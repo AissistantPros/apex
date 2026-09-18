@@ -144,6 +144,141 @@ async def patient_search(q: str, authorization: Optional[str] = Header(None)):
     return {"results": out}
 
 
+# ─── Sala de espera del doctor: próximos pacientes + resumen con IA ───────────
+def _edad(p: dict) -> Optional[int]:
+    from datetime import date
+    dob = p.get("date_of_birth") or p.get("birth_date")
+    if not dob:
+        return None
+    try:
+        y, m, d = str(dob)[:10].split("-")
+        today = date.today()
+        return today.year - int(y) - ((today.month, today.day) < (int(m), int(d)))
+    except Exception:
+        return None
+
+
+@router.get("/upcoming")
+async def upcoming(authorization: Optional[str] = Header(None)):
+    """Próximas citas (ventana de -2h a +24h) para que el doctor vea quién sigue."""
+    actor = _require_agenda(authorization)
+    if actor["role"] != "doctor":
+        raise HTTPException(403, "Solo el doctor ve la sala de espera")
+    clinic = _clinic_of(actor)
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    desde = (now - timedelta(hours=2)).isoformat()
+    hasta = (now + timedelta(hours=24)).isoformat()
+    appts = supabase.table("appointments").select("*").eq("clinic_id", clinic)\
+        .gte("starts_at", desde).lte("starts_at", hasta)\
+        .in_("status", ["scheduled", "confirmed", "arrived"]).order("starts_at").execute().data or []
+    # Solo las del propio doctor o sin asignar
+    appts = [a for a in appts if not a.get("doctor_id") or a.get("doctor_id") == actor["user_id"]]
+    pids = list({a["patient_id"] for a in appts if a.get("patient_id")})
+    facts = {}
+    if pids:
+        ps = supabase.table("patients").select("id, full_name, surgeries, chronic_diseases, medications, date_of_birth, birth_date")\
+            .in_("id", pids).execute().data or []
+        vs = supabase.table("visits").select("patient_id, created_at").in_("patient_id", pids).execute().data or []
+        last_visit = {}
+        for v in vs:
+            pid = v["patient_id"]
+            if pid not in last_visit or (v.get("created_at") or "") > last_visit[pid]:
+                last_visit[pid] = v.get("created_at") or ""
+        for p in ps:
+            surg = p.get("surgeries")
+            facts[p["id"]] = {
+                "edad": _edad(p),
+                "ultima_consulta": last_visit.get(p["id"]),
+                "tiene_cirugia": bool(surg) and str(surg).strip() not in ("", "[]", "{}", "Ninguna", "ninguna"),
+                "cronicas": p.get("chronic_diseases"),
+            }
+    for a in appts:
+        a["facts"] = facts.get(a.get("patient_id")) if a.get("patient_id") else None
+    return {"appointments": appts}
+
+
+def _resumen_ia(p: dict, visits: list, analyses: list) -> str:
+    """Resumen breve del paciente para el doctor antes de que entre. Best-effort."""
+    ctx = {
+        "nombre": p.get("full_name"), "edad": _edad(p), "sexo": p.get("sexo_biologico"),
+        "enfermedades_cronicas": p.get("chronic_diseases"), "cirugias": p.get("surgeries"),
+        "alergias": {k: p.get(k) for k in ("allergies_medications", "allergies_foods", "allergies_environmental") if p.get(k)},
+        "medicamentos_actuales": p.get("medications"),
+        "ultimas_visitas": [{"fecha": v.get("created_at"), "motivo": v.get("motivo") or v.get("visit_reason"),
+                              "dx": v.get("dx_presuntivo")} for v in visits[:3]],
+        "ultima_prescripcion": ({"protocolo": (analyses[0].get("protocol_traditional") or "")[:1200],
+                                 "notas_doctor": (analyses[0].get("doctor_traditional") or "")[:800]} if analyses else None),
+    }
+    import json as _json
+    prompt = (
+        "Eres un asistente clínico. Resume en español, en 4-6 líneas y en viñetas, lo que el "
+        "médico debe saber de este paciente ANTES de que entre a consulta: última vez que vino, "
+        "medicamentos que se le mandaron, instrucciones/plan previo, cirugías previas y alertas "
+        "(alergias, crónicas). Sé conciso y clínico. Si falta información, dilo brevemente.\n\n"
+        "DATOS DEL PACIENTE (JSON):\n" + _json.dumps(ctx, ensure_ascii=False, default=str)
+    )
+    try:
+        from anthropic import Anthropic
+        client = Anthropic()
+        resp = client.messages.create(
+            model="claude-sonnet-4-5", max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        texto = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        try:
+            from services.usage import log_event
+            tok = (resp.usage.input_tokens or 0) + (resp.usage.output_tokens or 0)
+            log_event(None, None, "doctor", "brief.summary", "Sala de espera", ai_tokens=tok)
+        except Exception:
+            pass
+        return texto.strip() or "Sin resumen disponible."
+    except Exception:
+        # Fallback sin IA
+        partes = []
+        if visits:
+            partes.append(f"• Última consulta: {str(visits[0].get('created_at'))[:10]}")
+        if p.get("medications"):
+            partes.append(f"• Medicamentos: {p.get('medications')}")
+        if p.get("surgeries"):
+            partes.append(f"• Cirugías previas: {p.get('surgeries')}")
+        if p.get("chronic_diseases"):
+            partes.append(f"• Crónicas: {p.get('chronic_diseases')}")
+        return "\n".join(partes) or "Sin información previa registrada."
+
+
+@router.get("/patient-brief/{pid}")
+async def patient_brief(pid: str, authorization: Optional[str] = Header(None)):
+    actor = _require_agenda(authorization)
+    if actor["role"] != "doctor":
+        raise HTTPException(403, "Solo el doctor puede ver el resumen clínico")
+    clinic = _clinic_of(actor)
+    pr = supabase.table("patients").select("*").eq("id", pid).limit(1).execute().data
+    if not pr:
+        raise HTTPException(404, "Paciente no encontrado")
+    p = pr[0]
+    if p.get("clinic_id") not in (clinic, None) and p.get("doctor_id") != clinic:
+        raise HTTPException(403, "Ese paciente no pertenece a tu clínica")
+    visits = supabase.table("visits").select("*").eq("patient_id", pid)\
+        .order("created_at", desc=True).limit(3).execute().data or []
+    analyses = supabase.table("analyses").select(
+        "protocol_traditional, doctor_traditional, updated_at").eq("patient_id", pid)\
+        .order("updated_at", desc=True).limit(1).execute().data or []
+    notes = supabase.table("patient_notes").select("*").eq("patient_id", pid)\
+        .order("created_at", desc=True).limit(30).execute().data or []
+    resumen = _resumen_ia(p, visits, analyses)
+    return {
+        "patient": {"id": p["id"], "full_name": p.get("full_name"), "edad": _edad(p),
+                    "sexo": p.get("sexo_biologico"), "chronic_diseases": p.get("chronic_diseases"),
+                    "surgeries": p.get("surgeries"), "medications": p.get("medications"),
+                    "allergies_medications": p.get("allergies_medications")},
+        "ultima_consulta": (visits[0].get("created_at") if visits else None),
+        "resumen_ia": resumen,
+        "notas": [{"content": n.get("content"), "author_role": n.get("author_role"),
+                   "audiencia": n.get("audiencia"), "created_at": n.get("created_at")} for n in notes],
+    }
+
+
 # ─── Listar citas + bloqueos en un rango ─────────────────────────────────────
 @router.get("")
 async def list_appointments(desde: str, hasta: str,
