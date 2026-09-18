@@ -19,6 +19,7 @@ from routes_staff import router as staff_router
 from routes_marketing import router as marketing_router
 from routes_messages import router as messages_router
 from routes_admin import router as admin_router
+from routes_appointments import router as appointments_router
 
 app = FastAPI(title="APEX Backend", version="0.1.0")
 
@@ -88,6 +89,7 @@ app.include_router(staff_router)
 app.include_router(marketing_router)
 app.include_router(messages_router)
 app.include_router(admin_router)
+app.include_router(appointments_router)
 
 if __name__ == "__main__":
     import uvicorn

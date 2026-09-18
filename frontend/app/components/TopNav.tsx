@@ -13,6 +13,7 @@ interface TopNavProps {
 const ALL_LINKS = [
   { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['admin','doctor','nurse','receptionist','accounting','marketing'] },
   { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'] },
+  { href: '/dashboard/agenda',   icon: '📅', label: 'Agenda',     roles: ['doctor','nurse','receptionist'] },
   { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['admin','doctor','accounting'] },
   { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'] },
   { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['admin','doctor','marketing'] },
