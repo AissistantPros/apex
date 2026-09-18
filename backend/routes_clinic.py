@@ -224,7 +224,7 @@ async def cancel_sale(sid: str, authorization: Optional[str] = Header(None)):
 async def list_expenses(limit: int = 200, authorization: Optional[str] = Header(None)):
     from access import require
     actor = get_actor(authorization)
-    require(actor, "doctor", "admin", "accounting")
+    require(actor, "doctor", "accounting")
     did = actor["doctor_id"]
     r = supabase.table("expenses").select("*").eq("doctor_id", did)\
         .order("fecha", desc=True).limit(limit).execute()
@@ -234,7 +234,7 @@ async def list_expenses(limit: int = 200, authorization: Optional[str] = Header(
 async def create_expense(body: ExpenseIn, authorization: Optional[str] = Header(None)):
     from access import require
     actor = get_actor(authorization)
-    require(actor, "doctor", "admin", "accounting")
+    require(actor, "doctor", "accounting")
     row = body.model_dump()
     row["doctor_id"] = actor["doctor_id"]
     row["created_by"] = actor["user_id"]
@@ -256,7 +256,7 @@ async def overview(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     # El dashboard financiero (balance, gráficos, ROI) NO lo ve recepción ni enfermería.
     from access import require
-    require(actor, "doctor", "admin", "accounting")
+    require(actor, "doctor", "accounting")
     did = actor["doctor_id"]
     ventas = supabase.table("sales").select("*").eq("doctor_id", did).execute().data or []
     gastos = supabase.table("expenses").select("*").eq("doctor_id", did).execute().data or []

@@ -77,8 +77,20 @@ class PermsIn(BaseModel):
 
 
 def _require_manage(actor: dict):
-    if (actor.get("permissions") or {}).get("equipo") != "edit" and actor["role"] not in ("doctor", "admin"):
-        raise HTTPException(403, "No tienes permiso para gestionar al equipo")
+    """Pueden administrar staff: el admin proveedor, el doctor (super-admin local) y
+    quien el doc haya designado como admin local (is_local_admin o permiso 'equipo'=edit)."""
+    if (actor["role"] in ("doctor", "admin")
+            or actor.get("is_local_admin")
+            or (actor.get("permissions") or {}).get("equipo") == "edit"):
+        return
+    raise HTTPException(403, "No tienes permiso para gestionar al equipo")
+
+
+def _es_doctor_principal(uid: str, clinic_owner: str) -> bool:
+    """El doctor principal es el dueño de la clínica (parent de todos). Intocable:
+    sin él se pierde el acceso a los pacientes. Solo el proveedor puede removerlo,
+    y solo tras exportar la DB (flujo aparte)."""
+    return bool(uid) and uid == clinic_owner
 
 
 @router.get("")
@@ -170,6 +182,12 @@ async def update_perms(uid: str, body: PermsIn, authorization: Optional[str] = H
 async def delete_staff(uid: str, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     _require_manage(actor)
+    # El doctor principal es intocable: nadie (ni un admin local) lo puede quitar, porque sin
+    # él se pierde el acceso a los pacientes. Solo el proveedor puede, y por un flujo aparte
+    # que exige exportar la DB primero.
+    if _es_doctor_principal(uid, actor["doctor_id"]):
+        raise HTTPException(403, "El doctor principal no se puede eliminar. Contacta al proveedor "
+                                 "(requiere exportar y resguardar la base de pacientes primero).")
     prof = supabase.table("doctor_profiles").select("id, parent_doctor_id")\
         .eq("id", uid).execute().data
     if not prof or prof[0].get("parent_doctor_id") != actor["doctor_id"]:

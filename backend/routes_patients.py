@@ -289,7 +289,7 @@ async def last_prescription(patient_id: str, authorization: Optional[str] = Head
     """VER la última prescripción — solo médico/admin. Recepción puede ENVIARLA, no verla."""
     from auth import get_actor
     from access import require
-    require(get_actor(authorization), "doctor", "admin")
+    require(get_actor(authorization), "doctor")
     p = get_patient(patient_id) or {}
     pres = _last_prescription(patient_id)
     return {
@@ -359,7 +359,7 @@ async def send_prescription(patient_id: str, authorization: Optional[str] = Head
     # médico/admin. Recepción puede enviar (con Resend en producción) pero nunca ver el reporte.
     from auth import get_actor
     actor = get_actor(authorization)
-    if actor["role"] not in ("doctor", "admin"):
+    if actor["role"] != "doctor":
         return {"ok": False, "enviado": False, "via": "sin_correo",
                 "nota": "El envío automático requiere el proveedor de correo (aún no configurado). "
                         "Recepción no puede ver el contenido de la prescripción."}

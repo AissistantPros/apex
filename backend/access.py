@@ -2,8 +2,11 @@
 Control de acceso por rol (RBAC) — la barrera de seguridad REAL del sistema.
 
 Roles:
-  admin        → todo el sistema, incluida la biblioteca y lo interno (el proveedor).
-  doctor       → todo lo clínico y operativo de SU clínica, EXCEPTO la biblioteca (eso es del admin).
+  admin        → el PROVEEDOR (nosotros). Administra la estructura (clínicas, ubicaciones,
+                 personal, permisos), la biblioteca y ve logs/tickets. NUNCA ve datos de
+                 pacientes, historial clínico, cobranza ni finanzas de una clínica.
+  doctor       → super-admin LOCAL de su clínica. Único que ve el HISTORIAL clínico. Absorbe
+                 enfermería/recepción si esos roles no existen. No controla el sistema.
   receptionist → solo lo que ella captura (datos generales, contacto, facturación, encuesta de
                  entrada) y el historial de cobros. Nada médico. Puede ENVIAR el reporte al
                  paciente pero no verlo.
@@ -12,13 +15,21 @@ Roles:
   accounting   → finanzas, gastos e ingresos (ver/descargar). No datos clínicos.
   marketing    → ROI y captura de marketing. Nada clínico ni cobros.
 
-Cada quien ve/edita LO SUYO. Doctor y admin ven todo (con la excepción de la biblioteca para
-el doctor).
+REGLAS DURAS:
+- Solo los médicos ven el HISTORIAL clínico (ni el admin proveedor, ni un admin local no-médico).
+- El admin proveedor NO ve datos de pacientes de ninguna clínica.
+- `is_local_admin` (asistente/enfermera designada por el doc) puede administrar staff, pero
+  NUNCA ve el historial clínico.
 """
 from typing import Optional
 from fastapi import HTTPException
 
-VE_TODO = {"admin", "doctor"}
+# Solo estos roles ven el historial/ficha clínica completa. Regla dura.
+HISTORIAL_ROLES = {"doctor"}
+# El admin es el proveedor: administra, pero no ve datos clínicos ni de pacientes.
+PROVIDER_ROLES = {"admin"}
+# Compat: "ve todo lo clínico" = solo el doctor.
+VE_TODO = HISTORIAL_ROLES
 
 # ── Campos del paciente que puede ver/editar cada rol ────────────────────────────
 # Recepción: datos generales, contacto, facturación, origen/marketing, clasificación.
@@ -63,19 +74,32 @@ def require(actor: dict, *roles: str):
 
 
 def is_admin(actor: dict) -> bool:
+    """Admin proveedor (global)."""
     return actor.get("role") == "admin"
 
 
+def is_local_admin(actor: dict) -> bool:
+    """Puede administrar staff en su clínica: el doctor (super-admin local) o quien el
+    doc haya designado con is_local_admin. NO implica acceso clínico."""
+    return actor.get("role") == "doctor" or bool(actor.get("is_local_admin"))
+
+
+def puede_ver_historial(role: str) -> bool:
+    return role in HISTORIAL_ROLES
+
+
 def ve_todo(actor: dict) -> bool:
-    return actor.get("role") in VE_TODO
+    return actor.get("role") in HISTORIAL_ROLES
 
 
 def filter_patient(patient: dict, role: str) -> dict:
     """Devuelve solo los campos del paciente que ese rol puede ver."""
     if not patient:
         return patient
-    if role in VE_TODO:
+    if role in HISTORIAL_ROLES:          # doctor: ve todo
         return patient
+    if role in PROVIDER_ROLES:           # admin proveedor: NO ve pacientes
+        return {}
     allowed = PATIENT_FIELDS_BY_ROLE.get(role)
     if allowed is None:
         # accounting / marketing no ven fichas de paciente
@@ -84,9 +108,11 @@ def filter_patient(patient: dict, role: str) -> dict:
 
 
 def allowed_write_fields(role: str) -> Optional[set]:
-    """Campos que ese rol puede escribir. None = todos (doctor/admin)."""
-    if role in VE_TODO:
+    """Campos que ese rol puede escribir. None = todos (solo doctor)."""
+    if role in HISTORIAL_ROLES:
         return None
+    if role in PROVIDER_ROLES:           # admin proveedor no escribe fichas
+        return set()
     return PATIENT_FIELDS_BY_ROLE.get(role, set())
 
 

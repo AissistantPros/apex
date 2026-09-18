@@ -15,8 +15,9 @@ from db import supabase
 router = APIRouter(prefix="/messages", tags=["team-chat"])
 
 CANALES = ["general", "recepcion", "enfermeria", "medico"]
-# Roles que participan en el chat del equipo (nada más — los tres pidió el médico)
-ROLES_CHAT = {"admin", "doctor", "receptionist", "nurse"}
+# Roles que participan en el chat del equipo de UNA clínica (el admin proveedor no es
+# parte del equipo de ninguna clínica, así que no entra al chat).
+ROLES_CHAT = {"doctor", "receptionist", "nurse"}
 # Canal propio de cada rol — no tiene sentido mandarse mensajes a sí mismo.
 CANAL_PROPIO = {"receptionist": "recepcion", "nurse": "enfermeria", "doctor": "medico"}
 

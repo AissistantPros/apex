@@ -50,7 +50,7 @@ async def overview(authorization: Optional[str] = Header(None)):
     # Estadísticas clínicas: solo médico/admin.
     from auth import get_actor
     from access import require
-    require(get_actor(authorization), "doctor", "admin")
+    require(get_actor(authorization), "doctor")
     doctor_id = get_doctor_id_from_token(authorization)
 
     pacientes = (supabase.table("patients").select(
