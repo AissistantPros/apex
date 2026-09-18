@@ -111,9 +111,24 @@ def _es_doctor_principal(uid: str, clinic_owner: str) -> bool:
 async def list_staff(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     _require_manage(actor)
-    r = supabase.table("doctor_profiles").select("id, display_name, email, username, phone, role, permissions, created_at")\
+    r = supabase.table("doctor_profiles").select(
+        "id, display_name, email, username, phone, role, is_local_admin, permissions, created_at")\
         .eq("parent_doctor_id", actor["doctor_id"]).execute()
-    return {"staff": r.data or [], "areas": AREAS, "roles": ROLES}
+    staff = r.data or []
+    # Sedes de la clínica + asignación de cada miembro (para editar dónde trabaja)
+    clinic = actor.get("clinic_id") or actor["doctor_id"]
+    locations = supabase.table("locations").select("id, name").eq("clinic_id", clinic)\
+        .order("created_at").execute().data or []
+    if staff:
+        ids = [m["id"] for m in staff]
+        ul = supabase.table("user_locations").select("user_id, location_id")\
+            .in_("user_id", ids).execute().data or []
+        by_user: dict = {}
+        for row in ul:
+            by_user.setdefault(row["user_id"], []).append(row["location_id"])
+        for m in staff:
+            m["location_ids"] = by_user.get(m["id"], [])
+    return {"staff": staff, "areas": AREAS, "roles": ROLES, "locations": locations}
 
 
 @router.post("")
@@ -200,7 +215,7 @@ async def update_member_profile(uid: str, body: dict, authorization: Optional[st
     Puede hacerlo quien gestione al equipo (doctor o admin local)."""
     actor = get_actor(authorization)
     _require_manage(actor)
-    prof = supabase.table("doctor_profiles").select("id, parent_doctor_id")\
+    prof = supabase.table("doctor_profiles").select("id, parent_doctor_id, role")\
         .eq("id", uid).execute().data
     if not prof or prof[0].get("parent_doctor_id") != actor["doctor_id"]:
         raise HTTPException(403, "Ese miembro no pertenece a tu equipo")
@@ -213,9 +228,47 @@ async def update_member_profile(uid: str, body: dict, authorization: Optional[st
         patch["username"] = _unique_username(body["username"], exclude_id=uid)
     if isinstance(body.get("photo_url"), str):
         patch["photo_url"] = body["photo_url"]
-    if not patch:
+    if body.get("role") in ROLES and body["role"] != "doctor":
+        patch["role"] = body["role"]
+        # Reaplica permisos por defecto del nuevo rol si no mandan permisos explícitos
+        if not isinstance(body.get("permissions"), dict):
+            patch["permissions"] = perms_para(body["role"])
+    if isinstance(body.get("permissions"), dict):
+        patch["permissions"] = perms_para(patch.get("role") or prof[0].get("role") or "receptionist", body["permissions"])
+    if "is_local_admin" in body:
+        patch["is_local_admin"] = bool(body["is_local_admin"])
+
+    # Cambio de correo (login) — actualiza también la cuenta de auth
+    nuevo_email = body.get("email")
+    if isinstance(nuevo_email, str) and nuevo_email.strip():
+        nuevo_email = nuevo_email.strip()
+        if not _EMAIL_RE.match(nuevo_email):
+            raise HTTPException(400, "Correo inválido")
+        try:
+            supabase.auth.admin.update_user_by_id(uid, {"email": nuevo_email, "email_confirm": True})
+            patch["email"] = nuevo_email
+        except HTTPException:
+            raise
+        except Exception as e:
+            msg = str(e)
+            if "already" in msg.lower() or "registered" in msg.lower():
+                raise HTTPException(409, "Ya existe una cuenta con ese correo")
+            raise HTTPException(500, f"No se pudo cambiar el correo: {msg[:200]}")
+
+    if patch:
+        supabase.table("doctor_profiles").update(patch).eq("id", uid).execute()
+
+    # Sedes donde trabaja
+    if isinstance(body.get("location_ids"), list):
+        supabase.table("user_locations").delete().eq("user_id", uid).execute()
+        for lid in body["location_ids"]:
+            try:
+                supabase.table("user_locations").upsert({"user_id": uid, "location_id": lid}).execute()
+            except Exception:
+                pass
+
+    if not patch and not isinstance(body.get("location_ids"), list):
         raise HTTPException(400, "Sin cambios válidos")
-    supabase.table("doctor_profiles").update(patch).eq("id", uid).execute()
     return {"ok": True, **patch}
 
 

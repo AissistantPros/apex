@@ -96,6 +96,7 @@ function CredModal({ cred, onClose }: { cred: { usuario: string; password: strin
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [defaults, setDefaults] = useState<Record<string, Record<string, PermLevel>>>({});
   const [msg, setMsg] = useState('');
@@ -113,7 +114,7 @@ export default function StaffPage() {
   const load = useCallback(async () => {
     try {
       const [d, s] = await Promise.all([api('/staff/defaults'), api('/staff')]);
-      setAreas(d.areas || []); setDefaults(d.defaults || {}); setStaff(s.staff || []);
+      setAreas(d.areas || []); setDefaults(d.defaults || {}); setStaff(s.staff || []); setLocations(s.locations || []);
     } catch (e: any) {
       if (String(e.message).includes('403') || /permiso/i.test(e.message)) setDenied(true); else setMsg(e.message);
     } finally { setLoading(false); }
@@ -202,7 +203,7 @@ export default function StaffPage() {
             <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-8 text-center"><p className="text-3xl mb-2">👥</p><p className="text-sm text-[#7a95aa]">Aún no has dado de alta a nadie.</p></div>
           ) : (
             <div className="space-y-3">
-              {staff.filter(m => m.role !== 'doctor').map(m => <StaffCard key={m.id} m={m} areas={areas} onSave={savePerms} onRegen={regen} onDelete={del} onSaveData={saveData} />)}
+              {staff.filter(m => m.role !== 'doctor').map(m => <StaffCard key={m.id} m={m} areas={areas} locations={locations} onSave={savePerms} onRegen={regen} onDelete={del} onSaveData={saveData} />)}
             </div>
           )}
       </main>
@@ -211,15 +212,19 @@ export default function StaffPage() {
   );
 }
 
-function StaffCard({ m, areas, onSave, onRegen, onDelete, onSaveData }:
-  { m: any; areas: Area[]; onSave: (m: any, p: Record<string, PermLevel>) => void; onRegen: (m: any) => void; onDelete: (m: any) => void; onSaveData: (m: any, d: any) => void }) {
+const ASSIGN_ROLES: UserRole[] = ['receptionist', 'nurse', 'accounting', 'marketing'];
+
+function StaffCard({ m, areas, locations, onSave, onRegen, onDelete, onSaveData }:
+  { m: any; areas: Area[]; locations: any[]; onSave: (m: any, p: Record<string, PermLevel>) => void; onRegen: (m: any) => void; onDelete: (m: any) => void; onSaveData: (m: any, d: any) => void }) {
   const [tab, setTab] = useState<'' | 'perms' | 'data'>('');
   const [perms, setPerms] = useState<Record<string, PermLevel>>(m.permissions || {});
-  const [data, setData] = useState({ display_name: m.display_name || '', phone: m.phone || '', username: m.username || '' });
+  const initData = { display_name: m.display_name || '', email: m.email || '', phone: m.phone || '', username: m.username || '', role: m.role, is_local_admin: !!m.is_local_admin, location_ids: (m.location_ids || []) as string[] };
+  const [data, setData] = useState<any>(initData);
   const color = ROLE_COLORS[m.role as UserRole] || '#7a95aa';
   const dirty = JSON.stringify(perms) !== JSON.stringify(m.permissions || {});
-  const dataDirty = data.display_name !== (m.display_name || '') || data.phone !== (m.phone || '') || data.username !== (m.username || '');
+  const dataDirty = JSON.stringify(data) !== JSON.stringify(initData);
   const di = 'w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0]';
+  const toggleLoc = (id: string) => setData((d: any) => ({ ...d, location_ids: d.location_ids.includes(id) ? d.location_ids.filter((x: string) => x !== id) : [...d.location_ids, id] }));
   return (
     <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3">
@@ -237,12 +242,48 @@ function StaffCard({ m, areas, onSave, onRegen, onDelete, onSaveData }:
       </div>
 
       {tab === 'data' && (
-        <div className="border-t border-[#1e2d3d] px-4 py-3 space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="border-t border-[#1e2d3d] px-4 py-3 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Nombre</label><input className={di} value={data.display_name} onChange={e => setData({ ...data, display_name: e.target.value })} /></div>
-            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Teléfono</label><input className={di} value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} placeholder="+52 …" /></div>
             <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Usuario (login)</label><input className={di} value={data.username} onChange={e => setData({ ...data, username: e.target.value })} /></div>
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Correo</label><input className={di} value={data.email} onChange={e => setData({ ...data, email: e.target.value })} placeholder="correo@…" /></div>
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Teléfono</label><input className={di} value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} placeholder="+52 …" /></div>
           </div>
+
+          <div>
+            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Rol</label>
+            <div className="flex flex-wrap gap-1.5">
+              {ASSIGN_ROLES.map(r => (
+                <button key={r} onClick={() => setData({ ...data, role: r })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+                  style={{ background: data.role === r ? ROLE_COLORS[r] : '#111820', borderColor: data.role === r ? ROLE_COLORS[r] : '#2a3a4d', color: data.role === r ? '#000' : '#dde6ef' }}>
+                  {ROLE_LABELS[r]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-[#dde6ef] cursor-pointer">
+            <input type="checkbox" checked={data.is_local_admin} onChange={e => setData({ ...data, is_local_admin: e.target.checked })} />
+            Admin local (puede administrar staff — nunca ve historial clínico)
+          </label>
+
+          {locations.length > 0 && (
+            <div>
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Sedes donde trabaja</label>
+              <div className="flex flex-wrap gap-1.5">
+                {locations.map((l: any) => {
+                  const on = data.location_ids.includes(l.id);
+                  return (
+                    <button key={l.id} onClick={() => toggleLoc(l.id)} className="px-3 py-1.5 rounded-lg text-xs border transition"
+                      style={{ background: on ? C.green : '#111820', borderColor: on ? C.green : '#2a3a4d', color: on ? '#000' : '#dde6ef' }}>
+                      {l.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {dataDirty && <div className="flex justify-end pt-1"><button onClick={() => onSaveData(m, data)} className={btn} style={{ background: C.green, color: '#000' }}>Guardar datos</button></div>}
         </div>
       )}
