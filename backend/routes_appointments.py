@@ -193,44 +193,6 @@ async def create_appointment(body: ApptIn, authorization: Optional[str] = Header
     return r.data[0] if r.data else {}
 
 
-@router.put("/{appt_id}")
-async def update_appointment(appt_id: str, body: dict, authorization: Optional[str] = Header(None)):
-    actor = _require_agenda(authorization)
-    clinic = _clinic_of(actor)
-    cur = supabase.table("appointments").select("*").eq("id", appt_id).limit(1).execute().data
-    if not cur or cur[0].get("clinic_id") != clinic:
-        raise HTTPException(404, "Cita no encontrada")
-    campos = {"starts_at", "ends_at", "location_id", "doctor_id", "patient_id", "patient_name",
-              "patient_phone", "patient_email", "reason", "notes", "status",
-              "notify_email", "notify_whatsapp"}
-    patch = {k: v for k, v in (body or {}).items() if k in campos}
-    if "status" in patch and patch["status"] not in ESTADOS:
-        patch.pop("status")
-    # Si cambia el horario/lugar y no es cancelación, revalida choques.
-    if patch.get("status") != "cancelled" and any(k in patch for k in ("starts_at", "ends_at", "location_id", "doctor_id")):
-        merged = {**cur[0], **patch}
-        if merged.get("starts_at") and merged.get("ends_at"):
-            choque = _conflict(clinic, merged["starts_at"], merged["ends_at"],
-                               merged.get("location_id"), merged.get("doctor_id"), exclude_id=appt_id)
-            if choque:
-                raise HTTPException(409, choque)
-    if patch:
-        patch["updated_at"] = datetime.now(timezone.utc).isoformat()
-        supabase.table("appointments").update(patch).eq("id", appt_id).execute()
-    return {"ok": True, **patch}
-
-
-@router.delete("/{appt_id}")
-async def cancel_appointment(appt_id: str, authorization: Optional[str] = Header(None)):
-    actor = _require_agenda(authorization)
-    cur = supabase.table("appointments").select("clinic_id").eq("id", appt_id).limit(1).execute().data
-    if not cur or cur[0].get("clinic_id") != _clinic_of(actor):
-        raise HTTPException(404, "Cita no encontrada")
-    supabase.table("appointments").update({"status": "cancelled",
-        "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", appt_id).execute()
-    return {"ok": True}
-
-
 # ─── Bloqueos ────────────────────────────────────────────────────────────────
 @router.post("/blocks")
 async def create_block(body: BlockIn, authorization: Optional[str] = Header(None)):
@@ -277,3 +239,43 @@ async def set_hours(body: HoursIn, authorization: Optional[str] = Header(None)):
     if rows:
         supabase.table("location_hours").insert(rows).execute()
     return {"ok": True, "count": len(rows)}
+
+
+# ─── Editar / cancelar una cita (rutas dinámicas AL FINAL, para no “tragarse”
+#     las rutas estáticas como /hours o /blocks) ────────────────────────────────
+@router.put("/{appt_id}")
+async def update_appointment(appt_id: str, body: dict, authorization: Optional[str] = Header(None)):
+    actor = _require_agenda(authorization)
+    clinic = _clinic_of(actor)
+    cur = supabase.table("appointments").select("*").eq("id", appt_id).limit(1).execute().data
+    if not cur or cur[0].get("clinic_id") != clinic:
+        raise HTTPException(404, "Cita no encontrada")
+    campos = {"starts_at", "ends_at", "location_id", "doctor_id", "patient_id", "patient_name",
+              "patient_phone", "patient_email", "reason", "notes", "status",
+              "notify_email", "notify_whatsapp"}
+    patch = {k: v for k, v in (body or {}).items() if k in campos}
+    if "status" in patch and patch["status"] not in ESTADOS:
+        patch.pop("status")
+    # Si cambia el horario/lugar y no es cancelación, revalida choques.
+    if patch.get("status") != "cancelled" and any(k in patch for k in ("starts_at", "ends_at", "location_id", "doctor_id")):
+        merged = {**cur[0], **patch}
+        if merged.get("starts_at") and merged.get("ends_at"):
+            choque = _conflict(clinic, merged["starts_at"], merged["ends_at"],
+                               merged.get("location_id"), merged.get("doctor_id"), exclude_id=appt_id)
+            if choque:
+                raise HTTPException(409, choque)
+    if patch:
+        patch["updated_at"] = datetime.now(timezone.utc).isoformat()
+        supabase.table("appointments").update(patch).eq("id", appt_id).execute()
+    return {"ok": True, **patch}
+
+
+@router.delete("/{appt_id}")
+async def cancel_appointment(appt_id: str, authorization: Optional[str] = Header(None)):
+    actor = _require_agenda(authorization)
+    cur = supabase.table("appointments").select("clinic_id").eq("id", appt_id).limit(1).execute().data
+    if not cur or cur[0].get("clinic_id") != _clinic_of(actor):
+        raise HTTPException(404, "Cita no encontrada")
+    supabase.table("appointments").update({"status": "cancelled",
+        "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", appt_id).execute()
+    return {"ok": True}

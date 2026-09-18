@@ -23,8 +23,17 @@ async function authHeaders(): Promise<Record<string, string>> {
   return { 'Content-Type': 'application/json', ...(s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}) };
 }
 async function api(path: string, opts: RequestInit = {}) {
-  const r = await fetch(`${B()}${path}`, { ...opts, headers: { ...(await authHeaders()), ...(opts.headers || {}) } });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+  let r: Response;
+  try {
+    r = await fetch(`${B()}${path}`, { ...opts, headers: { ...(await authHeaders()), ...(opts.headers || {}) } });
+  } catch {
+    throw new Error('No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.');
+  }
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 401) throw new Error('Tu sesión expiró. Cierra sesión y vuelve a entrar.');
+    throw new Error(d.detail || `Ocurrió un problema (error ${r.status}).`);
+  }
   return r.json();
 }
 

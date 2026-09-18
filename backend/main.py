@@ -5,8 +5,9 @@ from dotenv import load_dotenv
 # LOAD ENV VARIABLES FIRST (before any other imports)
 load_dotenv('.env.local')
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from routes_patients import router as patients_router, doctor_profile_router
 from routes_visits import router as visits_router
@@ -31,6 +32,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Cualquier error no controlado devuelve JSON en español (con CORS), para que el
+# navegador no lo reporte como "Failed to fetch" sin explicación.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Ocurrió un error en el servidor. Inténtalo de nuevo en un momento."},
+    )
+
 
 # Models
 class HealthResponse(BaseModel):
