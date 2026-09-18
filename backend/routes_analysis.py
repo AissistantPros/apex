@@ -114,7 +114,10 @@ CONSCIENCE_MAX_ROUNDS = 1
 
 
 async def get_doctor_id(authorization: Optional[str] = Header(None)) -> str:
-    return "550e8400-e29b-41d4-a716-446655440000"
+    # Usa la sesión REAL (antes estaba hardcodeado a un doctor fijo — bypass de auth
+    # y de multi-tenant). get_actor exige token válido (401) y resuelve la clínica.
+    from auth import get_actor
+    return get_actor(authorization)["doctor_id"]
 
 
 class FunctionalRequest(BaseModel):
