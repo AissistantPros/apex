@@ -62,6 +62,12 @@ export default function AgendaPage() {
   const [hoursModal, setHoursModal] = useState(false);
   const [sel, setSel] = useState<{ day: string; a: number; b: number } | null>(null);
   const dragRef = useRef<{ day: Date; startY: number; col: HTMLElement } | null>(null);
+  // Arrastre de citas (mover como Google Calendar)
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [move, setMove] = useState<{ appt: Appt; offsetMin: number } | null>(null);
+  const [preview, setPreview] = useState<{ di: number; startMin: number; ok: boolean } | null>(null);
+  const apptMovedRef = useRef(false);
+  const [confirmMove, setConfirmMove] = useState<{ appt: Appt; day: Date; startMin: number } | null>(null);
   const flash = (t: string, ms = 3500) => { setMsg(t); setTimeout(() => setMsg(''), ms); };
 
   const days7 = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(wkStart); d.setDate(d.getDate() + i); return d; }), [wkStart]);
@@ -107,6 +113,62 @@ export default function AgendaPage() {
     return scopeHours.filter(h => h.weekday === wd).map(h => [h.open_min, h.close_min] as [number, number]);
   }, [scopeHours]);
 
+  // Traduce un punto del cursor a {columna(día), minuto del día}
+  const pointToTime = useCallback((clientX: number, clientY: number) => {
+    const el = gridRef.current; if (!el || !days.length) return null;
+    const rect = el.getBoundingClientRect();
+    const colW = (rect.width - 56) / days.length;
+    let di = Math.floor((clientX - rect.left - 56) / colW);
+    di = Math.max(0, Math.min(days.length - 1, di));
+    let min = minH * 60 + ((clientY - rect.top) / HOUR_PX) * 60;
+    min = Math.max(minH * 60, Math.min(maxH * 60, Math.round(min / SNAP) * SNAP));
+    return { di, min };
+  }, [days, minH, maxH]);
+
+  const apptDur = (a: Appt) => a.ends_at ? Math.round((+new Date(a.ends_at) - +new Date(a.starts_at)) / 60000) : 20;
+
+  // ¿Se puede colocar la cita en ese día/minuto? (dentro del horario, sin choques)
+  const canPlace = useCallback((appt: Appt, day: Date, startMin: number) => {
+    const dur = apptDur(appt);
+    const endMin = startMin + dur;
+    const intervals = openIntervals(day);
+    if (!intervals.some(([o, c]) => startMin >= o && endMin <= c)) return false;
+    const start = new Date(day); start.setHours(0, 0, 0, 0); start.setMinutes(startMin);
+    const end = new Date(+start + dur * 60000);
+    for (const a of appts) {
+      if (a.id === appt.id || a.status === 'cancelled' || !a.ends_at) continue;
+      const same = (appt.doctor_id && a.doctor_id === appt.doctor_id) || (appt.location_id && a.location_id === appt.location_id);
+      if (same && start < new Date(a.ends_at) && end > new Date(a.starts_at)) return false;
+    }
+    for (const b of blocks) {
+      if (appt.location_id && b.location_id && b.location_id !== appt.location_id) continue;
+      if (start < new Date(b.ends_at) && end > new Date(b.starts_at)) return false;
+    }
+    return true;
+  }, [appts, blocks, openIntervals]);
+
+  const startMoveAppt = (a: Appt, e: React.MouseEvent) => {
+    const pt = pointToTime(e.clientX, e.clientY);
+    const s = new Date(a.starts_at);
+    const apptStartMin = s.getHours() * 60 + s.getMinutes();
+    setMove({ appt: a, offsetMin: pt ? pt.min - apptStartMin : 0 });
+    apptMovedRef.current = false;
+  };
+
+  const doMove = async () => {
+    if (!confirmMove) return;
+    const { appt, day, startMin } = confirmMove;
+    const dur = apptDur(appt);
+    const start = new Date(day); start.setHours(0, 0, 0, 0); start.setMinutes(startMin);
+    const end = new Date(+start + dur * 60000);
+    try {
+      await api(`/appointments/${appt.id}`, { method: 'PUT', body: JSON.stringify({
+        starts_at: start.toISOString(), ends_at: end.toISOString(),
+        location_id: appt.location_id, doctor_id: appt.doctor_id }) });
+      setConfirmMove(null); load();
+    } catch (e: any) { setConfirmMove(null); flash(e.message); }
+  };
+
   const locColor = (id?: string) => ctx?.locations.find(l => l.id === id)?.color || '#0ea5e9';
   const docName = (id?: string) => ctx?.doctors.find(d => d.id === id)?.display_name || '';
   const yToMin = (col: HTMLElement, clientY: number) => {
@@ -123,12 +185,28 @@ export default function AgendaPage() {
     setSel({ day: ymd(day), a: y, b: y + (blockMode ? 30 : 20) });
   };
   const onMove = (e: React.MouseEvent) => {
+    if (move) {
+      const pt = pointToTime(e.clientX, e.clientY);
+      if (!pt) return;
+      const startMin = Math.round((pt.min - move.offsetMin) / SNAP) * SNAP;
+      apptMovedRef.current = true;
+      setPreview({ di: pt.di, startMin, ok: canPlace(move.appt, days[pt.di], startMin) });
+      return;
+    }
     if (!dragRef.current) return;
     const y = yToMin(dragRef.current.col, e.clientY);
     const a = Math.min(dragRef.current.startY, y), b = Math.max(dragRef.current.startY, y);
     setSel({ day: ymd(dragRef.current.day), a, b: Math.max(b, a + SNAP) });
   };
   const onUp = async () => {
+    if (move) {
+      const m = move; const p = preview; setMove(null); setPreview(null);
+      if (apptMovedRef.current && p) {
+        if (!p.ok) { flash('No es posible mover la cita a ese horario (fuera de horario o se empalma con otra cita/bloqueo).'); }
+        else setConfirmMove({ appt: m.appt, day: days[p.di], startMin: p.startMin });
+      }
+      return;
+    }
     const d = dragRef.current; dragRef.current = null;
     if (!d || !sel) return;
     const dur = Math.max(SNAP, sel.b - sel.a);
@@ -283,7 +361,7 @@ export default function AgendaPage() {
                 ))}
               </div>
               {/* Rejilla */}
-              <div className="grid relative" style={{ gridTemplateColumns: `56px ${colW}` }}>
+              <div ref={gridRef} className="grid relative" style={{ gridTemplateColumns: `56px ${colW}` }}>
                 <div>{hoursRows.map(h => <div key={h} className="border-r border-b border-[#1e2d3d] text-[10px] text-[#7a95aa] pr-1 text-right" style={{ height: HOUR_PX }}>{pad(h)}:00</div>)}</div>
                 {days.map((day, di) => {
                   const intervals = openIntervals(day);
@@ -321,14 +399,32 @@ export default function AgendaPage() {
                         const height = Math.max(18, (durMin / 60) * HOUR_PX - 2);
                         const col = locColor(a.location_id);
                         return (
-                          <button key={a.id} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); openEdit(a); }}
+                          <button key={a.id}
+                            onMouseDown={e => { e.stopPropagation(); startMoveAppt(a, e); }}
+                            onClick={e => { e.stopPropagation(); if (apptMovedRef.current) { apptMovedRef.current = false; return; } openEdit(a); }}
                             className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-0.5 text-left overflow-hidden"
-                            style={{ top, height, background: col + '2e', borderLeft: `3px solid ${col}` }}>
+                            style={{ top, height, background: col + '2e', borderLeft: `3px solid ${col}`, opacity: move?.appt.id === a.id ? 0.35 : 1, cursor: 'grab' }}>
                             <p className="text-[10px] font-semibold text-[#dde6ef] truncate leading-tight">{hm(s)} {a.patient_name}</p>
                             {height > 28 && <p className="text-[9px] text-[#7a95aa] truncate">{docName(a.doctor_id) || a.reason || ''}</p>}
                           </button>
                         );
                       })}
+                      {/* Fantasma de la cita mientras se arrastra */}
+                      {move && preview && preview.di === di && (() => {
+                        const dur = apptDur(move.appt);
+                        const top = (preview.startMin - minH * 60) / 60 * HOUR_PX;
+                        const h = Math.max(18, dur / 60 * HOUR_PX - 2);
+                        const col = preview.ok ? '#00e5a0' : '#f43f5e';
+                        return (
+                          <div className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-0.5 pointer-events-none z-10"
+                            style={{ top, height: h, background: col + '33', border: `1.5px solid ${col}` }}>
+                            <p className="text-[10px] font-semibold truncate leading-tight" style={{ color: col }}>
+                              {minToHM(preview.startMin)} {move.appt.patient_name}
+                            </p>
+                            {!preview.ok && <p className="text-[8px] text-[#f43f5e]">no disponible</p>}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -338,6 +434,29 @@ export default function AgendaPage() {
         )}
         <p className="text-[11px] text-[#3d5870] mt-2">Arrastra para elegir el horario de una cita. Toca una cita para editarla.</p>
       </main>
+
+      {/* Confirmar mover cita */}
+      {confirmMove && (() => {
+        const fmt = (d: Date) => d.toLocaleString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', hour12: true });
+        const oldD = new Date(confirmMove.appt.starts_at);
+        const newD = new Date(confirmMove.day); newD.setHours(0, 0, 0, 0); newD.setMinutes(confirmMove.startMin);
+        return (
+          <div className="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" onClick={() => setConfirmMove(null)}>
+            <div className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+              <p className="text-3xl text-center mb-2">🔄</p>
+              <p className="text-center text-[#dde6ef] text-sm leading-relaxed">
+                ¿Quieres cambiar la cita de <b>{confirmMove.appt.patient_name}</b><br />
+                del <span className="text-[#7a95aa]">{fmt(oldD)}</span><br />
+                al <span className="text-[#00e5a0] font-semibold">{fmt(newD)}</span>?
+              </p>
+              <div className="flex gap-2 mt-5">
+                <button onClick={() => setConfirmMove(null)} className="flex-1 py-2.5 rounded-lg text-sm text-[#7a95aa] border border-[#1e2d3d]">No, dejar igual</button>
+                <button onClick={doMove} className="flex-1 py-2.5 rounded-lg text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>Sí, cambiar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {modal && <ApptModal ctx={ctx} modal={modal} setModal={setModal} onSave={save} onCancel={cancelar} />}
       {hoursModal && ctx && <HoursModal ctx={ctx} onClose={() => setHoursModal(false)} onSaved={async () => { setHoursModal(false); setCtx(await api('/appointments/context')); }} flash={flash} />}
