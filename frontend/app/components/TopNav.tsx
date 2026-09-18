@@ -19,6 +19,7 @@ const ALL_LINKS = [
   { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['admin','doctor','marketing'] },
   { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['admin'] },
   { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['admin','doctor'] },
+  { href: '/dashboard/soporte',  icon: '💬', label: 'Soporte',    roles: ['doctor'] },
 ];
 
 // ── Helpers de tema ──────────────────────────────────────────────────────────

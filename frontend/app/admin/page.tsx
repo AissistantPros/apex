@@ -123,6 +123,7 @@ function ImageUpload({ value, onChange, label = 'Imagen', shape = 'square' }:
 export default function AdminPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [tab, setTab] = useState<'clinics' | 'logs' | 'tickets'>('clinics');
   const [ov, setOv] = useState<any>(null);
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [sel, setSel] = useState<string | null>(null);
@@ -186,17 +187,24 @@ export default function AdminPage() {
           </div>
         )}
 
-        {!sel ? (
+        {/* Pestañas */}
+        <div className="flex gap-1 mb-5 border-b border-[#1e2d3d]">
+          {([['clinics', '🏥 Clínicas'], ['logs', '📊 Uso'], ['tickets', '💬 Soporte']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => { setTab(k); setSel(null); }}
+              className="px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition"
+              style={{ borderColor: tab === k ? '#00e5a0' : 'transparent', color: tab === k ? '#00e5a0' : '#7a95aa' }}>{l}</button>
+          ))}
+        </div>
+
+        {tab === 'clinics' && (!sel ? (
           <ClinicsList clinics={clinics} onSelect={setSel} onCreated={loadClinics} flash={flash} />
         ) : detail ? (
-          <ClinicDetail
-            detail={detail}
-            onBack={() => setSel(null)}
-            reload={() => { loadDetail(sel); loadClinics(); }}
-            onCred={setCred}
-            flash={flash}
-          />
-        ) : <p className="text-[#7a95aa] text-sm">Cargando clínica…</p>}
+          <ClinicDetail detail={detail} onBack={() => setSel(null)}
+            reload={() => { loadDetail(sel); loadClinics(); }} onCred={setCred} flash={flash} />
+        ) : <p className="text-[#7a95aa] text-sm">Cargando clínica…</p>)}
+
+        {tab === 'logs' && <LogsView flash={flash} />}
+        {tab === 'tickets' && <TicketsView flash={flash} />}
       </main>
 
       {cred && <CredModal cred={cred} onClose={() => setCred(null)} />}
@@ -545,5 +553,135 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
         </div>
       </section>
     </>
+  );
+}
+
+// ─── Vista de Uso (logs + resumen) ─────────────────────────────────────────────
+function LogsView({ flash }: { flash: (t: string) => void }) {
+  const [sum, setSum] = useState<any>(null);
+  const [events, setEvents] = useState<any[]>([]);
+  useEffect(() => {
+    api('/admin/usage-summary').then(setSum).catch(e => flash(e.message));
+    api('/admin/logs').then(d => setEvents(d.events || [])).catch(e => flash(e.message));
+  }, []); // eslint-disable-line
+  const maxF = Math.max(1, ...(sum?.by_feature || []).map((f: any) => f.count));
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {[['Eventos', sum?.total_events ?? '—'], ['Usuarios activos', sum?.active_users ?? '—'], ['Tokens de IA', sum?.ai_tokens ?? '—']].map(([l, v]: any) => (
+          <div key={l} className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl px-4 py-3.5">
+            <p className="text-[10px] font-mono tracking-wider text-[#7a95aa] uppercase">{l}</p>
+            <p className="mt-1 font-bold text-2xl" style={{ color: '#00e5a0' }}>{v}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
+        <p className="text-sm font-semibold text-[#dde6ef] mb-3">Funciones más usadas</p>
+        {(sum?.by_feature || []).length === 0 && <p className="text-[#3d5870] text-sm">Aún no hay actividad registrada.</p>}
+        <div className="space-y-2">
+          {(sum?.by_feature || []).map((f: any) => (
+            <div key={f.feature} className="flex items-center gap-3">
+              <div className="w-32 shrink-0 text-right text-xs text-[#dde6ef] truncate">{f.feature}</div>
+              <div className="flex-1 h-5 bg-[#111820] rounded-md overflow-hidden relative">
+                <div className="h-full rounded-md" style={{ width: `${(f.count / maxF) * 100}%`, background: '#0ea5e9', opacity: 0.85 }} />
+                <span className="absolute inset-y-0 right-2 flex items-center text-[11px] font-mono text-[#dde6ef]">{f.count}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
+        <p className="text-sm font-semibold text-[#dde6ef] mb-3">Actividad reciente</p>
+        <div className="space-y-1 max-h-[420px] overflow-y-auto">
+          {events.length === 0 && <p className="text-[#3d5870] text-sm">Sin eventos aún.</p>}
+          {events.map((e, i) => (
+            <div key={i} className="flex items-center gap-3 text-xs py-1.5 border-b border-[#1e2d3d]/50">
+              <span className="text-[#7a95aa] font-mono w-28 shrink-0">{new Date(e.created_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="text-[#dde6ef] w-32 shrink-0 truncate">{e.user_name || '—'}</span>
+              <span className="text-[#7a95aa] w-24 shrink-0 truncate">{e.user_role || ''}</span>
+              <span className="text-[#0ea5e9] w-28 shrink-0 truncate">{e.feature}</span>
+              <span className="text-[#3d5870] font-mono truncate flex-1">{e.action}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Vista de Soporte (bandeja de tickets del proveedor) ───────────────────────
+function TicketsView({ flash }: { flash: (t: string) => void }) {
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [sel, setSel] = useState<string | null>(null);
+  const [detail, setDetail] = useState<any>(null);
+  const [reply, setReply] = useState('');
+  const KIND: Record<string, string> = { feature: 'Función', bug: 'Problema', question: 'Consulta', other: 'Otro' };
+  const STCOL: Record<string, string> = { open: '#f59e0b', in_progress: '#0ea5e9', closed: '#7a95aa' };
+  const STLBL: Record<string, string> = { open: 'Abierto', in_progress: 'En proceso', closed: 'Cerrado' };
+  const load = () => api('/admin/tickets').then(d => setTickets(d.tickets || [])).catch(e => flash(e.message));
+  const loadDetail = (id: string) => api(`/admin/tickets/${id}`).then(setDetail).catch(e => flash(e.message));
+  useEffect(() => { load(); }, []); // eslint-disable-line
+  useEffect(() => { if (sel) loadDetail(sel); else setDetail(null); }, [sel]); // eslint-disable-line
+  const send = async () => {
+    if (!reply.trim()) return;
+    try { await api(`/admin/tickets/${sel}/reply`, { method: 'POST', body: JSON.stringify({ body: reply }) }); setReply(''); loadDetail(sel!); load(); }
+    catch (e: any) { flash(e.message); }
+  };
+  const setStatus = async (st: string) => {
+    try { await api(`/admin/tickets/${sel}`, { method: 'PUT', body: JSON.stringify({ status: st }) }); loadDetail(sel!); load(); }
+    catch (e: any) { flash(e.message); }
+  };
+
+  if (sel && detail) {
+    const t = detail.ticket;
+    return (
+      <div>
+        <button onClick={() => setSel(null)} className="text-[#00e5a0] text-sm mb-4">‹ Todos los tickets</button>
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
+          <div className="flex items-start gap-2 mb-1">
+            <p className="font-semibold text-[#dde6ef] flex-1">{t.subject}</p>
+            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: STCOL[t.status] + '22', color: STCOL[t.status] }}>{STLBL[t.status]}</span>
+          </div>
+          <p className="text-[11px] text-[#7a95aa] mb-3">{t.clinic_name} · {KIND[t.kind] || t.kind}</p>
+          <div className="space-y-2 max-h-[360px] overflow-y-auto mb-3">
+            <div className="bg-[#111820] rounded-xl px-3 py-2"><p className="text-[10px] text-[#7a95aa] mb-0.5">Clínica</p><p className="text-sm text-[#dde6ef] whitespace-pre-wrap">{t.body}</p></div>
+            {(detail.messages || []).map((m: any) => (
+              <div key={m.id} className={`rounded-xl px-3 py-2 ${m.author_side === 'provider' ? 'bg-[#00e5a0]/10 ml-8' : 'bg-[#111820] mr-8'}`}>
+                <p className="text-[10px] text-[#7a95aa] mb-0.5">{m.author_side === 'provider' ? 'Proveedor (tú)' : 'Clínica'}</p>
+                <p className="text-sm text-[#dde6ef] whitespace-pre-wrap">{m.body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Responder…"
+              className="flex-1 px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0]" />
+            <button onClick={send} className="px-4 rounded-xl font-bold" style={{ background: '#00e5a0', color: '#000' }}>↑</button>
+          </div>
+          <div className="flex gap-2 mt-3">
+            {['open', 'in_progress', 'closed'].map(s => (
+              <button key={s} onClick={() => setStatus(s)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+                style={{ background: t.status === s ? STCOL[s] : '#111820', borderColor: t.status === s ? STCOL[s] : '#2a3a4d', color: t.status === s ? '#000' : '#dde6ef' }}>{STLBL[s]}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {tickets.length === 0 && <p className="text-[#3d5870] text-sm">No hay tickets de soporte.</p>}
+      {tickets.map(t => (
+        <button key={t.id} onClick={() => setSel(t.id)} className="w-full flex items-center gap-3 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl px-5 py-4 hover:border-[#00e5a0]/40 transition text-left">
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-[#dde6ef] truncate">{t.subject}</p>
+            <p className="text-[11px] text-[#7a95aa] truncate">{t.clinic_name} · {KIND[t.kind] || t.kind} · {new Date(t.updated_at || t.created_at).toLocaleDateString('es-MX')}</p>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0" style={{ background: STCOL[t.status] + '22', color: STCOL[t.status] }}>{STLBL[t.status]}</span>
+        </button>
+      ))}
+    </div>
   );
 }

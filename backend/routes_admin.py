@@ -269,14 +269,101 @@ async def update_user(uid: str, body: dict, authorization: Optional[str] = Heade
 
 # ─── Logs de uso (analítica del proveedor) ───────────────────────────────────
 @router.get("/logs")
-async def logs(limit: int = 100, clinic_id: Optional[str] = None,
+async def logs(limit: int = 150, clinic_id: Optional[str] = None,
                authorization: Optional[str] = Header(None)):
     _require_admin(authorization)
     q = supabase.table("usage_events").select("*").order("created_at", desc=True).limit(limit)
     if clinic_id:
         q = q.eq("clinic_id", clinic_id)
     events = q.execute().data or []
+    # Resolver nombres de usuario
+    uids = list({e.get("user_id") for e in events if e.get("user_id")})
+    names = {}
+    if uids:
+        profs = supabase.table("doctor_profiles").select("id, display_name, role")\
+            .in_("id", uids).execute().data or []
+        names = {p["id"]: p for p in profs}
+    for e in events:
+        p = names.get(e.get("user_id")) or {}
+        e["user_name"] = p.get("display_name") or "—"
+        e["user_role"] = e.get("role") or p.get("role")
     return {"events": events}
+
+
+@router.get("/usage-summary")
+async def usage_summary(clinic_id: Optional[str] = None, authorization: Optional[str] = Header(None)):
+    """Resumen: qué funciones se usan más/menos, total de eventos y tokens de IA."""
+    _require_admin(authorization)
+    q = supabase.table("usage_events").select("feature, ai_tokens, user_id").limit(5000)
+    if clinic_id:
+        q = q.eq("clinic_id", clinic_id)
+    rows = q.execute().data or []
+    by_feature: dict = {}
+    tokens = 0
+    users = set()
+    for r in rows:
+        f = r.get("feature") or "otro"
+        by_feature[f] = by_feature.get(f, 0) + 1
+        tokens += r.get("ai_tokens") or 0
+        if r.get("user_id"):
+            users.add(r["user_id"])
+    ranked = sorted(by_feature.items(), key=lambda x: x[1], reverse=True)
+    return {"total_events": len(rows), "ai_tokens": tokens, "active_users": len(users),
+            "by_feature": [{"feature": k, "count": v} for k, v in ranked]}
+
+
+@router.get("/tickets")
+async def admin_tickets(status: Optional[str] = None, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    q = supabase.table("support_tickets").select("*").order("updated_at", desc=True).limit(200)
+    if status:
+        q = q.eq("status", status)
+    rows = q.execute().data or []
+    cids = list({r.get("clinic_id") for r in rows if r.get("clinic_id")})
+    cmap = {}
+    if cids:
+        cs = supabase.table("clinics").select("id, name").in_("id", cids).execute().data or []
+        cmap = {c["id"]: c["name"] for c in cs}
+    for r in rows:
+        r["clinic_name"] = cmap.get(r.get("clinic_id"), "—")
+    return {"tickets": rows}
+
+
+@router.get("/tickets/{tid}")
+async def admin_ticket_detail(tid: str, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    t = supabase.table("support_tickets").select("*").eq("id", tid).limit(1).execute().data
+    if not t:
+        raise HTTPException(404, "Ticket no encontrado")
+    msgs = supabase.table("support_ticket_messages").select("*").eq("ticket_id", tid)\
+        .order("created_at").execute().data or []
+    return {"ticket": t[0], "messages": msgs}
+
+
+@router.post("/tickets/{tid}/reply")
+async def admin_ticket_reply(tid: str, body: dict, authorization: Optional[str] = Header(None)):
+    actor = _require_admin(authorization)
+    from datetime import datetime, timezone
+    text = (body.get("body") or "").strip()
+    if not text:
+        raise HTTPException(400, "Mensaje vacío")
+    now = datetime.now(timezone.utc).isoformat()
+    supabase.table("support_ticket_messages").insert({
+        "ticket_id": tid, "author_id": actor["user_id"], "author_side": "provider",
+        "body": text, "created_at": now}).execute()
+    supabase.table("support_tickets").update({"status": "in_progress", "updated_at": now}).eq("id", tid).execute()
+    return {"ok": True}
+
+
+@router.put("/tickets/{tid}")
+async def admin_ticket_status(tid: str, body: dict, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    from datetime import datetime, timezone
+    st = body.get("status")
+    if st in ("open", "in_progress", "closed"):
+        supabase.table("support_tickets").update({"status": st,
+            "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", tid).execute()
+    return {"ok": True}
 
 
 @router.get("/overview")

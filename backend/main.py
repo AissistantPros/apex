@@ -21,6 +21,7 @@ from routes_marketing import router as marketing_router
 from routes_messages import router as messages_router
 from routes_admin import router as admin_router
 from routes_appointments import router as appointments_router
+from routes_support import router as support_router
 
 app = FastAPI(title="APEX Backend", version="0.1.0")
 
@@ -32,6 +33,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Registro de uso (para la analítica del Admin). Solo acciones relevantes (escrituras
+# y entradas), nunca el polling de alta frecuencia. No bloquea la respuesta.
+@app.middleware("http")
+async def usage_logger(request: Request, call_next):
+    response = await call_next(request)
+    try:
+        method = request.method
+        path = request.url.path
+        interesting = method in ("POST", "PUT", "DELETE") or path == "/staff/whoami"
+        noisy = path.startswith(("/health", "/docs", "/openapi", "/auth/", "/admin/logs",
+                                 "/admin/overview", "/admin/clinics"))
+        auth = request.headers.get("authorization")
+        if interesting and not noisy and method != "OPTIONS" and auth:
+            from auth import get_actor
+            try:
+                actor = get_actor(auth)
+            except Exception:
+                actor = None
+            if actor:
+                from services.usage import log_event, feature_for
+                log_event(actor["user_id"], actor.get("clinic_id"), actor["role"],
+                          f"{method} {path}", feature_for(path), status=response.status_code)
+    except Exception:
+        pass
+    return response
+
 
 # Cualquier error no controlado devuelve JSON en español (con CORS), para que el
 # navegador no lo reporte como "Failed to fetch" sin explicación.
@@ -103,6 +131,7 @@ app.include_router(marketing_router)
 app.include_router(messages_router)
 app.include_router(admin_router)
 app.include_router(appointments_router)
+app.include_router(support_router)
 
 if __name__ == "__main__":
     import uvicorn
