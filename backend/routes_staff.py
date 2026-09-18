@@ -97,7 +97,7 @@ def _es_doctor_principal(uid: str, clinic_owner: str) -> bool:
 async def list_staff(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     _require_manage(actor)
-    r = supabase.table("doctor_profiles").select("id, display_name, email, role, permissions, created_at")\
+    r = supabase.table("doctor_profiles").select("id, display_name, email, username, phone, role, permissions, created_at")\
         .eq("parent_doctor_id", actor["doctor_id"]).execute()
     return {"staff": r.data or [], "areas": AREAS, "roles": ROLES}
 
@@ -176,6 +176,31 @@ async def update_perms(uid: str, body: PermsIn, authorization: Optional[str] = H
     nuevos = perms_para(role, body.permissions)
     supabase.table("doctor_profiles").update({"role": role, "permissions": nuevos}).eq("id", uid).execute()
     return {"ok": True, "role": role, "permissions": nuevos}
+
+
+@router.put("/{uid}/profile")
+async def update_member_profile(uid: str, body: dict, authorization: Optional[str] = Header(None)):
+    """Editar los DATOS de un miembro del equipo (nombre, teléfono, usuario, foto).
+    Puede hacerlo quien gestione al equipo (doctor o admin local)."""
+    actor = get_actor(authorization)
+    _require_manage(actor)
+    prof = supabase.table("doctor_profiles").select("id, parent_doctor_id")\
+        .eq("id", uid).execute().data
+    if not prof or prof[0].get("parent_doctor_id") != actor["doctor_id"]:
+        raise HTTPException(403, "Ese miembro no pertenece a tu equipo")
+    patch = {}
+    if isinstance(body.get("display_name"), str) and body["display_name"].strip():
+        patch["display_name"] = body["display_name"].strip()
+    if isinstance(body.get("phone"), str):
+        patch["phone"] = body["phone"].strip()
+    if isinstance(body.get("username"), str) and body["username"].strip():
+        patch["username"] = _slug(body["username"])
+    if isinstance(body.get("photo_url"), str):
+        patch["photo_url"] = body["photo_url"]
+    if not patch:
+        raise HTTPException(400, "Sin cambios válidos")
+    supabase.table("doctor_profiles").update(patch).eq("id", uid).execute()
+    return {"ok": True, **patch}
 
 
 @router.delete("/{uid}")

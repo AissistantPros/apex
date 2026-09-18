@@ -145,6 +145,10 @@ export default function StaffPage() {
     catch (e: any) { flash(e.message); }
   };
   const del = async (m: any) => { if (!confirm(`¿Eliminar a ${m.display_name}?`)) return; try { await api(`/staff/${m.id}`, { method: 'DELETE' }); load(); } catch (e: any) { flash(e.message); } };
+  const saveData = async (m: any, data: any) => {
+    try { await api(`/staff/${m.id}/profile`, { method: 'PUT', body: JSON.stringify(data) }); flash('Datos actualizados'); load(); }
+    catch (e: any) { flash(e.message); }
+  };
 
   if (denied) return (
     <div className="min-h-screen bg-[#070a0e]"><main className="page-content pt-16 px-6 py-10">
@@ -198,7 +202,7 @@ export default function StaffPage() {
             <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-8 text-center"><p className="text-3xl mb-2">👥</p><p className="text-sm text-[#7a95aa]">Aún no has dado de alta a nadie.</p></div>
           ) : (
             <div className="space-y-3">
-              {staff.filter(m => m.role !== 'doctor').map(m => <StaffCard key={m.id} m={m} areas={areas} onSave={savePerms} onRegen={regen} onDelete={del} />)}
+              {staff.filter(m => m.role !== 'doctor').map(m => <StaffCard key={m.id} m={m} areas={areas} onSave={savePerms} onRegen={regen} onDelete={del} onSaveData={saveData} />)}
             </div>
           )}
       </main>
@@ -207,27 +211,43 @@ export default function StaffPage() {
   );
 }
 
-function StaffCard({ m, areas, onSave, onRegen, onDelete }:
-  { m: any; areas: Area[]; onSave: (m: any, p: Record<string, PermLevel>) => void; onRegen: (m: any) => void; onDelete: (m: any) => void }) {
-  const [open, setOpen] = useState(false);
+function StaffCard({ m, areas, onSave, onRegen, onDelete, onSaveData }:
+  { m: any; areas: Area[]; onSave: (m: any, p: Record<string, PermLevel>) => void; onRegen: (m: any) => void; onDelete: (m: any) => void; onSaveData: (m: any, d: any) => void }) {
+  const [tab, setTab] = useState<'' | 'perms' | 'data'>('');
   const [perms, setPerms] = useState<Record<string, PermLevel>>(m.permissions || {});
+  const [data, setData] = useState({ display_name: m.display_name || '', phone: m.phone || '', username: m.username || '' });
   const color = ROLE_COLORS[m.role as UserRole] || '#7a95aa';
   const dirty = JSON.stringify(perms) !== JSON.stringify(m.permissions || {});
+  const dataDirty = data.display_name !== (m.display_name || '') || data.phone !== (m.phone || '') || data.username !== (m.username || '');
+  const di = 'w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0]';
   return (
     <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
           <span className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: color + '22', color }}>{(m.display_name || '?')[0]?.toUpperCase()}</span>
-          <div className="min-w-0"><p className="text-sm font-semibold text-[#dde6ef] truncate">{m.display_name}</p><p className="text-[11px] text-[#7a95aa] truncate">{m.email}</p></div>
+          <div className="min-w-0"><p className="text-sm font-semibold text-[#dde6ef] truncate">{m.display_name}</p><p className="text-[11px] text-[#7a95aa] truncate">{m.username || m.email}{m.phone ? ` · ${m.phone}` : ''}</p></div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: color + '1a', color }}>{ROLE_LABELS[m.role as UserRole] || m.role}</span>
           <button onClick={() => onRegen(m)} className="text-xs text-[#f59e0b] px-1" title="Generar nueva contraseña">🔑</button>
-          <button onClick={() => setOpen(o => !o)} className="text-xs text-[#0ea5e9] px-2">{open ? 'Cerrar' : 'Permisos'}</button>
+          <button onClick={() => setTab(t => t === 'data' ? '' : 'data')} className="text-xs text-[#00e5a0] px-2">{tab === 'data' ? 'Cerrar' : 'Datos'}</button>
+          <button onClick={() => setTab(t => t === 'perms' ? '' : 'perms')} className="text-xs text-[#0ea5e9] px-2">{tab === 'perms' ? 'Cerrar' : 'Permisos'}</button>
           <button onClick={() => onDelete(m)} className="text-[#f43f5e] text-lg leading-none px-1">×</button>
         </div>
       </div>
-      {open && (
+
+      {tab === 'data' && (
+        <div className="border-t border-[#1e2d3d] px-4 py-3 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Nombre</label><input className={di} value={data.display_name} onChange={e => setData({ ...data, display_name: e.target.value })} /></div>
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Teléfono</label><input className={di} value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} placeholder="+52 …" /></div>
+            <div><label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Usuario (login)</label><input className={di} value={data.username} onChange={e => setData({ ...data, username: e.target.value })} /></div>
+          </div>
+          {dataDirty && <div className="flex justify-end pt-1"><button onClick={() => onSaveData(m, data)} className={btn} style={{ background: C.green, color: '#000' }}>Guardar datos</button></div>}
+        </div>
+      )}
+
+      {tab === 'perms' && (
         <div className="border-t border-[#1e2d3d] px-4 py-3 space-y-2">
           {areas.map(a => (
             <div key={a} className="flex items-center justify-between">
