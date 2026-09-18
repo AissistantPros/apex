@@ -3,25 +3,26 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from '@/app/lib/auth';
 import { getRole, setRole, setPerms, clearRoleCache, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface TopNavProps {
   userName?: string;
   photoUrl?: string | null;
 }
 
+// primary: se muestra siempre en la barra. El resto se agrupa en el menú "Más".
 const ALL_LINKS = [
-  { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['admin','doctor','nurse','receptionist','accounting','marketing'] },
-  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes' },
-  { href: '/dashboard/agenda',   icon: '📅', label: 'Agenda',     roles: ['doctor','nurse','receptionist'], feature: 'agenda' },
-  { href: '/dashboard/proximos', icon: '🔜', label: 'Próximos',   roles: ['doctor'], feature: 'sala_espera' },
+  { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['admin','doctor','nurse','receptionist','accounting','marketing'], primary: true },
+  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes', primary: true },
+  { href: '/dashboard/agenda',   icon: '📅', label: 'Agenda',     roles: ['doctor','nurse','receptionist'], feature: 'agenda', primary: true },
+  { href: '/dashboard/proximos', icon: '🔜', label: 'Próximos',   roles: ['doctor'], feature: 'sala_espera', primary: true },
+  { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'], feature: 'contabilidad', primary: true },
   { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['admin','doctor','accounting'], feature: 'contabilidad' },
-  { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'], feature: 'contabilidad' },
   { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['admin','doctor','marketing'], feature: 'marketing' },
   { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['admin'] },
   { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['admin','doctor'] },
-  { href: '/dashboard/soporte',  icon: '💬', label: 'Soporte',    roles: ['doctor'] },
   { href: '/dashboard/aprobaciones', icon: '✅', label: 'Aprobaciones', roles: ['doctor'] },
+  { href: '/dashboard/soporte',  icon: '💬', label: 'Soporte',    roles: ['doctor'] },
 ];
 
 // ── Helpers de tema ──────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const [theme, setThemeState]   = useState<'dark' | 'light'>('dark');
   const [aprobCount, setAprobCount] = useState(0);
   const [feats, setFeats] = useState<Record<string, boolean> | null>(null);  // servicios contratados
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     setRoleState(getRole());
@@ -104,6 +106,20 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   // Se muestran solo los módulos del rol Y de los servicios contratados (si ya se cargaron)
   const links = ALL_LINKS.filter(l =>
     l.roles.includes(role) && (!('feature' in l) || !feats || feats[(l as any).feature] !== false));
+  const primaryLinks = links.filter(l => (l as any).primary);
+  const overflowLinks = links.filter(l => !(l as any).primary);
+  const overflowBadge = overflowLinks.some(l => l.href === '/dashboard/aprobaciones') ? aprobCount : 0;
+
+  // Cerrar el menú "Más" al hacer clic fuera o con Escape
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: MouseEvent) => { if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false); };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onEsc);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onEsc); };
+  }, [moreOpen]);
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
@@ -130,9 +146,9 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         </span>
       </div>
 
-      {/* Nav links */}
+      {/* Nav links — primarios visibles + menú "Más" para lo secundario */}
       <nav className="flex items-center gap-1">
-        {links.map(({ href, icon, label }) => (
+        {primaryLinks.map(({ href, icon, label }) => (
           <button key={href} onClick={() => router.push(href)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all"
             style={{
@@ -147,6 +163,43 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
             )}
           </button>
         ))}
+
+        {overflowLinks.length > 0 && (
+          <div className="relative" ref={moreRef}>
+            <button onClick={() => setMoreOpen(o => !o)} aria-haspopup="menu" aria-expanded={moreOpen}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all"
+              style={{
+                background: moreOpen ? 'var(--c-green-10)' : 'transparent',
+                color:      moreOpen ? 'var(--c-green)' : 'var(--c-text-2)',
+                border:     moreOpen ? '1px solid var(--c-green-20)' : '1px solid transparent',
+              }}>
+              <span>⋯</span>
+              <span className="hidden md:inline">Más</span>
+              <span aria-hidden className="text-[10px]">▾</span>
+              {!moreOpen && overflowBadge > 0 && (
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{overflowBadge}</span>
+              )}
+            </button>
+
+            {moreOpen && (
+              <div role="menu"
+                className="absolute left-0 top-full mt-2 min-w-[210px] rounded-xl overflow-hidden shadow-2xl py-1 z-50"
+                style={{ background: isDark ? '#0d1520' : '#ffffff', border: `1px solid ${isDark ? '#1e2d3d' : '#cddae6'}` }}>
+                {overflowLinks.map(({ href, icon, label }) => (
+                  <button key={href + label} role="menuitem" onClick={() => { setMoreOpen(false); router.push(href); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-left transition-colors hover:bg-[var(--c-green-10)]"
+                    style={{ color: isActive(href) ? 'var(--c-green)' : 'var(--c-text)' }}>
+                    <span className="text-base">{icon}</span>
+                    <span className="flex-1">{label}</span>
+                    {href === '/dashboard/aprobaciones' && aprobCount > 0 && (
+                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{aprobCount}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       <div className="flex-1" />
