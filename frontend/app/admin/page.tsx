@@ -34,7 +34,7 @@ async function api(path: string, opts: RequestInit = {}) {
 }
 
 type Clinic = { id: string; name: string; website?: string; address?: string; phone?: string; email?: string; logo_url?: string; locations_count?: number; users_count?: number };
-type Loc = { id: string; name: string; phone?: string; address?: string };
+type Loc = { id: string; name: string; phone?: string; address?: string; image_url?: string };
 type User = { id: string; display_name: string; username?: string; email?: string; role: string; is_local_admin?: boolean; parent_doctor_id?: string | null; location_ids?: string[] };
 
 // ─── Modal de credenciales (se muestran una sola vez) ──────────────────────────
@@ -56,6 +56,56 @@ function CredModal({ cred, onClose }: { cred: any; onClose: () => void }) {
           </div>
         </div>
         <button onClick={onClose} className={`${btn} w-full mt-4`} style={{ background: C.green, color: '#000' }}>Listo, la guardé</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Subida de imagen (archivo → base64, reescalada para no inflar la DB) ──────
+async function fileToDataUrl(file: File, maxDim = 640): Promise<string> {
+  const raw = await new Promise<string>((res, rej) => {
+    const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = rej; fr.readAsDataURL(file);
+  });
+  try {
+    const img = document.createElement('img');
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = raw; });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d'); if (!ctx) return raw;
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } catch { return raw; }
+}
+
+function ImageUpload({ value, onChange, label = 'Imagen', shape = 'square' }:
+  { value?: string; onChange: (v: string) => void; label?: string; shape?: 'square' | 'wide' }) {
+  const [busy, setBusy] = useState(false);
+  const cls = shape === 'wide' ? 'w-28 h-16' : 'w-16 h-16';
+  const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return alert('Selecciona una imagen');
+    if (file.size > 15 * 1024 * 1024) return alert('Máximo 15 MB');
+    setBusy(true);
+    try { onChange(await fileToDataUrl(file, shape === 'wide' ? 800 : 640)); } finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">{label}</label>
+      <div className="flex items-center gap-3">
+        <div className={`${cls} rounded-xl overflow-hidden bg-[#111820] border border-[#1e2d3d] flex items-center justify-center shrink-0`}>
+          {value ? <img src={value} alt="" className="w-full h-full object-cover" /> : <span className="text-[#3d5870] text-xl">🖼️</span>}
+        </div>
+        <div className="flex-1 space-y-1.5">
+          <label className="block">
+            <span className="inline-block px-3 py-2 rounded-lg text-xs font-semibold border border-[#1e2d3d] text-[#0ea5e9] hover:border-[#0ea5e9] cursor-pointer transition">
+              {busy ? 'Procesando…' : '📷 Subir imagen'}
+            </span>
+            <input type="file" accept="image/*" className="hidden" onChange={pick} />
+          </label>
+          {value && <button type="button" onClick={() => onChange('')} className="ml-2 text-[11px] text-[#f43f5e] hover:underline">× Quitar</button>}
+        </div>
       </div>
     </div>
   );
@@ -177,10 +227,8 @@ function ClinicsList({ clinics, onSelect, onCreated, flash }:
             <input className={inp} placeholder="Teléfono principal" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} />
           </div>
           <input className={inp} placeholder="Dirección principal" value={f.address} onChange={e => setF({ ...f, address: e.target.value })} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input className={inp} placeholder="Correo de contacto" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
-            <input className={inp} placeholder="URL del logotipo (opcional)" value={f.logo_url} onChange={e => setF({ ...f, logo_url: e.target.value })} />
-          </div>
+          <input className={inp} placeholder="Correo de contacto" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
+          <ImageUpload label="Logotipo de la clínica" shape="wide" value={f.logo_url} onChange={v => setF({ ...f, logo_url: v })} />
           <button onClick={crear} disabled={busy} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>
             {busy ? 'Creando…' : 'Crear clínica'}
           </button>
@@ -214,15 +262,40 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
   { detail: { clinic: Clinic; locations: Loc[]; users: User[] }; onBack: () => void; reload: () => void; onCred: (c: any) => void; flash: (t: string) => void }) {
   const { clinic, locations, users } = detail;
   const [locOpen, setLocOpen] = useState(false);
-  const [lf, setLf] = useState<any>({ name: '', phone: '', address: '' });
+  const [lf, setLf] = useState<any>({ name: '', phone: '', address: '', image_url: '' });
   const [userOpen, setUserOpen] = useState(false);
   const hasDoctor = users.some(u => u.role === 'doctor');
   const [uf, setUf] = useState<any>({ nombre: '', role: 'doctor', is_local_admin: false, location_ids: [] as string[] });
   const [busy, setBusy] = useState(false);
+  // Edición de la clínica
+  const [editClinic, setEditClinic] = useState(false);
+  const [cf, setCf] = useState<any>({ ...clinic });
+  // Edición de un usuario
+  const [editUser, setEditUser] = useState<string | null>(null);
+  const [euf, setEuf] = useState<any>({});
+
+  const saveClinic = async () => {
+    if (!cf.name?.trim()) return flash('El nombre es requerido');
+    try {
+      await api(`/admin/clinics/${clinic.id}`, { method: 'PUT', body: JSON.stringify({
+        name: cf.name, website: cf.website, address: cf.address, phone: cf.phone, email: cf.email, logo_url: cf.logo_url,
+      }) });
+      setEditClinic(false); reload();
+    } catch (e: any) { flash(e.message); }
+  };
+  const openEditUser = (u: User) => {
+    setEditUser(u.id);
+    setEuf({ display_name: u.display_name, username: u.username || '', role: u.role,
+             is_local_admin: !!u.is_local_admin, location_ids: u.location_ids || [] });
+  };
+  const saveUser = async () => {
+    try { await api(`/admin/users/${editUser}`, { method: 'PUT', body: JSON.stringify(euf) }); setEditUser(null); reload(); }
+    catch (e: any) { flash(e.message); }
+  };
 
   const addLoc = async () => {
     if (!lf.name.trim()) return flash('Nombre de la ubicación requerido');
-    try { await api(`/admin/clinics/${clinic.id}/locations`, { method: 'POST', body: JSON.stringify(lf) }); setLf({ name: '', phone: '', address: '' }); setLocOpen(false); reload(); }
+    try { await api(`/admin/clinics/${clinic.id}/locations`, { method: 'POST', body: JSON.stringify(lf) }); setLf({ name: '', phone: '', address: '', image_url: '' }); setLocOpen(false); reload(); }
     catch (e: any) { flash(e.message); }
   };
   const delLoc = async (id: string) => {
@@ -250,8 +323,34 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
   return (
     <>
       <button onClick={onBack} className="text-[#00e5a0] text-sm mb-4">‹ Todas las clínicas</button>
-      <h1 className="text-2xl font-serif font-semibold mb-1">{clinic.name}</h1>
-      <p className="text-sm text-[#7a95aa] mb-6">{clinic.address || 'Sin dirección'} · {clinic.phone || 's/tel'}</p>
+      <div className="flex items-start gap-4 mb-6">
+        <div className="w-16 h-16 rounded-xl overflow-hidden bg-[#111820] border border-[#1e2d3d] flex items-center justify-center shrink-0">
+          {clinic.logo_url ? <img src={clinic.logo_url} alt="" className="w-full h-full object-cover" /> : <span className="text-2xl">🏥</span>}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-serif font-semibold mb-0.5 truncate">{clinic.name}</h1>
+          <p className="text-sm text-[#7a95aa]">{clinic.address || 'Sin dirección'} · {clinic.phone || 's/tel'}</p>
+        </div>
+        <button onClick={() => { setCf({ ...clinic }); setEditClinic(v => !v); }}
+          className={`${btn} text-xs shrink-0`} style={{ background: '#111820', border: `1px solid ${C.border}`, color: C.green }}>
+          {editClinic ? 'Cancelar' : '✎ Editar clínica'}
+        </button>
+      </div>
+
+      {editClinic && (
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 mb-6 space-y-2">
+          <p className="text-xs font-mono text-[#00e5a0] tracking-wider mb-1">DATOS DE LA CLÍNICA</p>
+          <input className={inp} placeholder="Nombre" value={cf.name || ''} onChange={e => setCf({ ...cf, name: e.target.value })} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input className={inp} placeholder="Sitio web" value={cf.website || ''} onChange={e => setCf({ ...cf, website: e.target.value })} />
+            <input className={inp} placeholder="Teléfono principal" value={cf.phone || ''} onChange={e => setCf({ ...cf, phone: e.target.value })} />
+          </div>
+          <input className={inp} placeholder="Dirección principal" value={cf.address || ''} onChange={e => setCf({ ...cf, address: e.target.value })} />
+          <input className={inp} placeholder="Correo de contacto" value={cf.email || ''} onChange={e => setCf({ ...cf, email: e.target.value })} />
+          <ImageUpload label="Logotipo de la clínica" shape="wide" value={cf.logo_url} onChange={v => setCf({ ...cf, logo_url: v })} />
+          <button onClick={saveClinic} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>Guardar cambios</button>
+        </div>
+      )}
 
       {/* Ubicaciones */}
       <section className="mb-8">
@@ -268,13 +367,16 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
               <input className={inp} placeholder="Teléfono" value={lf.phone} onChange={e => setLf({ ...lf, phone: e.target.value })} />
               <input className={inp} placeholder="Dirección" value={lf.address} onChange={e => setLf({ ...lf, address: e.target.value })} />
             </div>
+            <ImageUpload label="Imagen de la ubicación" shape="wide" value={lf.image_url} onChange={v => setLf({ ...lf, image_url: v })} />
             <button onClick={addLoc} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>Guardar ubicación</button>
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {locations.map(l => (
             <div key={l.id} className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl px-4 py-3 flex items-center gap-3">
-              <span className="text-lg">📍</span>
+              {l.image_url
+                ? <img src={l.image_url} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                : <span className="text-lg">📍</span>}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{l.name}</p>
                 <p className="text-[11px] text-[#7a95aa] truncate">{l.phone || 's/tel'} · {l.address || 's/dir'}</p>
@@ -343,23 +445,78 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
         <div className="space-y-2">
           {users.map(u => {
             const principal = u.role === 'doctor' && !u.parent_doctor_id;
+            const editing = editUser === u.id;
             return (
-              <div key={u.id} className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl px-4 py-3 flex items-center gap-3">
-                <span className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
-                  style={{ background: (ROLE_COLOR[u.role] || '#7a95aa') + '22', color: ROLE_COLOR[u.role] || '#7a95aa' }}>
-                  {(u.display_name || '?')[0]?.toUpperCase()}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {u.display_name}
-                    {principal && <span className="ml-2 text-[10px] text-[#f59e0b]">★ doctor principal</span>}
-                    {u.is_local_admin && <span className="ml-2 text-[10px] text-[#0ea5e9]">admin local</span>}
-                  </p>
-                  <p className="text-[11px] text-[#7a95aa] truncate font-mono">
-                    {u.username || u.email} · {ROLE_LABEL[u.role] || u.role}
-                  </p>
+              <div key={u.id} className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl overflow-hidden">
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+                    style={{ background: (ROLE_COLOR[u.role] || '#7a95aa') + '22', color: ROLE_COLOR[u.role] || '#7a95aa' }}>
+                    {(u.display_name || '?')[0]?.toUpperCase()}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {u.display_name}
+                      {principal && <span className="ml-2 text-[10px] text-[#f59e0b]">★ doctor principal</span>}
+                      {u.is_local_admin && <span className="ml-2 text-[10px] text-[#0ea5e9]">admin local</span>}
+                    </p>
+                    <p className="text-[11px] text-[#7a95aa] truncate font-mono">
+                      {u.username || u.email} · {ROLE_LABEL[u.role] || u.role}
+                    </p>
+                  </div>
+                  <button onClick={() => editing ? setEditUser(null) : openEditUser(u)} className="text-[#00e5a0] text-xs hover:underline shrink-0">{editing ? 'Cerrar' : '✎ Editar'}</button>
+                  <button onClick={() => regen(u)} className="text-[#0ea5e9] text-xs hover:underline shrink-0">Regenerar contraseña</button>
                 </div>
-                <button onClick={() => regen(u)} className="text-[#0ea5e9] text-xs hover:underline shrink-0">Regenerar contraseña</button>
+
+                {editing && (
+                  <div className="px-4 pb-4 pt-1 border-t border-[#1e2d3d] space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Nombre</label>
+                        <input className={inp} value={euf.display_name || ''} onChange={e => setEuf({ ...euf, display_name: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Usuario (login)</label>
+                        <input className={inp} value={euf.username || ''} onChange={e => setEuf({ ...euf, username: e.target.value })} />
+                      </div>
+                    </div>
+                    {!principal && (
+                      <div>
+                        <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Rol</label>
+                        <div className="flex flex-wrap gap-2">
+                          {['doctor', 'receptionist', 'nurse', 'accounting', 'marketing'].map(r => (
+                            <button key={r} onClick={() => setEuf({ ...euf, role: r })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+                              style={{ background: euf.role === r ? ROLE_COLOR[r] : '#111820', borderColor: euf.role === r ? ROLE_COLOR[r] : '#2a3a4d', color: euf.role === r ? '#000' : C.text }}>
+                              {ROLE_LABEL[r]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {euf.role !== 'doctor' && (
+                      <label className="flex items-center gap-2 text-sm text-[#dde6ef] cursor-pointer">
+                        <input type="checkbox" checked={!!euf.is_local_admin} onChange={e => setEuf({ ...euf, is_local_admin: e.target.checked })} />
+                        Admin local (administra staff — nunca ve historial clínico)
+                      </label>
+                    )}
+                    <div>
+                      <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Ubicaciones</label>
+                      <div className="flex flex-wrap gap-2">
+                        {locations.map(l => {
+                          const on = (euf.location_ids || []).includes(l.id);
+                          return (
+                            <button key={l.id} onClick={() => setEuf((p: any) => ({ ...p, location_ids: on ? p.location_ids.filter((x: string) => x !== l.id) : [...(p.location_ids || []), l.id] }))}
+                              className="px-3 py-1.5 rounded-lg text-xs border transition"
+                              style={{ background: on ? C.green : '#111820', borderColor: on ? C.green : '#2a3a4d', color: on ? '#000' : C.text }}>
+                              {l.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button onClick={saveUser} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>Guardar cambios</button>
+                  </div>
+                )}
               </div>
             );
           })}

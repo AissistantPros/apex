@@ -240,6 +240,14 @@ async def update_user(uid: str, body: dict, authorization: Optional[str] = Heade
     """Actualiza rol, permisos, admin local y ubicaciones de un usuario."""
     _require_admin(authorization)
     patch = {}
+    if isinstance(body.get("display_name"), str) and body["display_name"].strip():
+        patch["display_name"] = body["display_name"].strip()
+    if isinstance(body.get("username"), str) and body["username"].strip():
+        patch["username"] = _slug(body["username"])
+    if isinstance(body.get("phone"), str):
+        patch["phone"] = body["phone"].strip()
+    if isinstance(body.get("photo_url"), str):
+        patch["photo_url"] = body["photo_url"]
     if body.get("role") in STAFF_ROLES:
         patch["role"] = body["role"]
     if isinstance(body.get("permissions"), dict):
