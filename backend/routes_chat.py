@@ -137,6 +137,18 @@ def _ultimo_texto_usuario(mensajes) -> str:
 @router.post("")
 async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)          # exige sesión válida (401 si no)
+    from services.plans import require_ai, consume_credits
+    require_ai(actor.get("clinic_id"), "ia_consulta")   # servicio contratado + créditos
+    _tok = {"n": 0}
+
+    def _cobrar():
+        try:
+            consume_credits(actor.get("clinic_id"), _tok["n"])
+            from services.usage import log_event
+            log_event(actor["user_id"], actor.get("clinic_id"), actor["role"], "ia.chat", "Chat IA", ai_tokens=_tok["n"])
+        except Exception:
+            pass
+
     profile = get_doctor_profile(actor["doctor_id"]) or {}
     system  = build_system_prompt(profile)
 
@@ -188,11 +200,16 @@ async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(
             tools=[WEB_SEARCH_TOOL],
             messages=messages,
         )
+        try:
+            _tok["n"] += (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
+        except Exception:
+            pass
 
         if response.stop_reason == "end_turn":
             text = "".join(
                 block.text for block in response.content if hasattr(block, "text")
             )
+            _cobrar()
             return {"response": text}
 
         if response.stop_reason == "tool_use":
@@ -215,4 +232,5 @@ async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(
         else:
             break
 
+    _cobrar()
     return {"response": "No se pudo completar la consulta. Intenta de nuevo."}

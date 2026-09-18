@@ -93,3 +93,29 @@ def get_entitlements(clinic_id: Optional[str]) -> dict:
 
 def has_feature(clinic_id: Optional[str], feature: str) -> bool:
     return bool(get_entitlements(clinic_id)["features"].get(feature))
+
+
+def require_ai(clinic_id: Optional[str], feature: Optional[str] = None) -> dict:
+    """Verifica que el servicio de IA esté contratado y que queden créditos.
+    Lanza HTTPException si no. Devuelve los entitlements."""
+    from fastapi import HTTPException
+    ent = get_entitlements(clinic_id)
+    if feature and not ent["features"].get(feature):
+        raise HTTPException(403, "Este servicio de IA no está incluido en el plan de la clínica. "
+                                 "Contacta al proveedor para activarlo.")
+    if (ent.get("ai_credits") or 0) <= (ent.get("ai_credits_used") or 0):
+        raise HTTPException(402, "Se agotaron los créditos de IA de la clínica. "
+                                 "Recarga créditos para seguir usando la IA.")
+    return ent
+
+
+def consume_credits(clinic_id: Optional[str], tokens: int):
+    """Descuenta tokens de la bolsa de créditos (best-effort, no bloquea la respuesta)."""
+    if not clinic_id or not tokens:
+        return
+    try:
+        r = supabase.table("clinics").select("ai_credits_used").eq("id", clinic_id).limit(1).execute().data
+        used = (r[0].get("ai_credits_used") or 0) if r else 0
+        supabase.table("clinics").update({"ai_credits_used": used + int(tokens)}).eq("id", clinic_id).execute()
+    except Exception:
+        pass

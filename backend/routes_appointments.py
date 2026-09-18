@@ -198,7 +198,7 @@ async def upcoming(authorization: Optional[str] = Header(None)):
     return {"appointments": appts}
 
 
-def _resumen_ia(p: dict, visits: list, analyses: list) -> str:
+def _resumen_ia(p: dict, visits: list, analyses: list, clinic_id: str = None) -> str:
     """Resumen breve del paciente para el doctor antes de que entre. Best-effort."""
     ctx = {
         "nombre": p.get("full_name"), "edad": _edad(p), "sexo": p.get("sexo_biologico"),
@@ -228,8 +228,10 @@ def _resumen_ia(p: dict, visits: list, analyses: list) -> str:
         texto = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
         try:
             from services.usage import log_event
+            from services.plans import consume_credits
             tok = (resp.usage.input_tokens or 0) + (resp.usage.output_tokens or 0)
-            log_event(None, None, "doctor", "brief.summary", "Sala de espera", ai_tokens=tok)
+            consume_credits(clinic_id, tok)
+            log_event(None, clinic_id, "doctor", "brief.summary", "Sala de espera", ai_tokens=tok)
         except Exception:
             pass
         return texto.strip() or "Sin resumen disponible."
@@ -259,6 +261,8 @@ async def patient_brief(pid: str, authorization: Optional[str] = Header(None)):
     p = pr[0]
     if p.get("clinic_id") not in (clinic, None) and p.get("doctor_id") != clinic:
         raise HTTPException(403, "Ese paciente no pertenece a tu clínica")
+    from services.plans import require_ai
+    require_ai(clinic, "sala_espera")   # servicio contratado + créditos
     visits = supabase.table("visits").select("*").eq("patient_id", pid)\
         .order("created_at", desc=True).limit(3).execute().data or []
     analyses = supabase.table("analyses").select(
@@ -266,7 +270,7 @@ async def patient_brief(pid: str, authorization: Optional[str] = Header(None)):
         .order("updated_at", desc=True).limit(1).execute().data or []
     notes = supabase.table("patient_notes").select("*").eq("patient_id", pid)\
         .order("created_at", desc=True).limit(30).execute().data or []
-    resumen = _resumen_ia(p, visits, analyses)
+    resumen = _resumen_ia(p, visits, analyses, clinic_id=clinic)
     return {
         "patient": {"id": p["id"], "full_name": p.get("full_name"), "edad": _edad(p),
                     "sexo": p.get("sexo_biologico"), "chronic_diseases": p.get("chronic_diseases"),

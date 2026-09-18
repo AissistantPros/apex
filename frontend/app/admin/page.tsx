@@ -722,7 +722,7 @@ function PlanPanel({ detail, reload, flash }: { detail: any; reload: () => void;
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#dde6ef]">🎛️ Plan y servicios</h2>
-          <p className="text-[12px] text-[#7a95aa] mt-0.5">{planLabels[ent.plan] || ent.plan} · {Object.values(ent.features || {}).filter(Boolean).length} servicios activos · {ent.ai_credits} créditos IA</p>
+          <p className="text-[12px] text-[#7a95aa] mt-0.5">{planLabels[ent.plan] || ent.plan} · {Object.values(ent.features || {}).filter(Boolean).length} servicios activos · IA: {ent.ai_credits_used ?? 0}/{ent.ai_credits} créditos usados</p>
         </div>
         <button onClick={() => setOpen(o => !o)} className={`${btn} text-xs`} style={{ background: '#111820', border: `1px solid ${C.border}`, color: C.green }}>{open ? 'Cerrar' : 'Configurar'}</button>
       </div>

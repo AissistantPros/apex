@@ -456,6 +456,61 @@ def _visit_file_blocks(visit: dict) -> list:
     return [{"type": "text", "text": lead}] + blocks
 
 
+# ── Entitlements de IA: gate por servicio contratado + conteo de créditos ─────
+def _clinic_from_doctor(doctor_id: str):
+    if not doctor_id:
+        return None
+    try:
+        p = get_doctor_profile(doctor_id) or {}
+        return p.get("clinic_id") or doctor_id
+    except Exception:
+        return doctor_id
+
+
+_VISIT_CLINIC_CACHE: dict = {}
+def _clinic_from_visit(visit_id: str):
+    if not visit_id:
+        return None
+    if visit_id in _VISIT_CLINIC_CACHE:
+        return _VISIT_CLINIC_CACHE[visit_id]
+    c = None
+    try:
+        from db import supabase
+        v = supabase.table("visits").select("doctor_id").eq("id", visit_id).limit(1).execute().data
+        did = v[0].get("doctor_id") if v else None
+        c = _clinic_from_doctor(did) if did else None
+    except Exception:
+        c = None
+    _VISIT_CLINIC_CACHE[visit_id] = c
+    return c
+
+
+def _gate_ai(doctor_id: str, feature: str = None):
+    """Bloquea si el servicio de IA no está contratado o no quedan créditos."""
+    from services.plans import require_ai
+    require_ai(_clinic_from_doctor(doctor_id), feature)
+
+
+def _consume_ai(visit_id: str, tokens: int, step: str = ""):
+    if not tokens:
+        return
+    try:
+        from services.plans import consume_credits
+        from services.usage import log_event
+        clinic = _clinic_from_visit(visit_id)
+        consume_credits(clinic, tokens)
+        log_event(None, clinic, "doctor", f"ia.{step or 'call'}", "IA clínica", ai_tokens=int(tokens))
+    except Exception:
+        pass
+
+
+def _usage_tokens(obj) -> int:
+    u = getattr(obj, "usage", None)
+    if not u:
+        return 0
+    return (getattr(u, "input_tokens", 0) or 0) + (getattr(u, "output_tokens", 0) or 0)
+
+
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                  visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
                  attachments: list = None, temperature: float = None) -> str:
@@ -483,6 +538,7 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
     # respuesta — hay que buscar el primer bloque de tipo "text". Con web_search puede
     # haber bloques server_tool_use/web_search_tool_result antes del texto también.
     text = next((b.text for b in response.content if b.type == "text"), "")
+    _consume_ai(visit_id, _usage_tokens(response), step)
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
         try:
@@ -545,6 +601,10 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
         for delta in stream.text_stream:
             chunks.append(delta)
             yield delta
+        try:
+            _consume_ai(visit_id, _usage_tokens(stream.get_final_message()), step)
+        except Exception:
+            pass
     text = "".join(chunks)
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -808,6 +868,7 @@ async def trigger_extract_labs(
     El frontend lo llama al dejar la sección de estudios, para que la transcripción ya
     esté lista (cacheada en labs_extracted) cuando el médico llegue al análisis, en vez
     de esperar ~15s en la primera corrida. Retorna al instante; es idempotente."""
+    _gate_ai(doctor_id, "ia_estudios")
     def _job():
         try:
             visit = get_visit(visit_id) or {}
@@ -1198,6 +1259,7 @@ async def run_functional_stream(
 ):
     """Igual que /functional pero transmite el texto en vivo por SSE, para que el médico
     vea el diagnóstico apareciendo en pantalla en vez de una espera ciega."""
+    _gate_ai(doctor_id, "ia_funcional")
     prompt, attachments = _build_functional_prompt(visit_id, body, doctor_id)
 
     def event_stream():
@@ -1238,6 +1300,7 @@ async def run_functional(
     doctor_id: str = Depends(get_doctor_id),
 ):
     """Genera el diagnóstico funcional. Fallback no-streaming."""
+    _gate_ai(doctor_id, "ia_funcional")
     try:
         prompt, attachments = _build_functional_prompt(visit_id, body, doctor_id)
         raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional",
@@ -1315,6 +1378,7 @@ async def run_longevity_stream(
     doctor_id: str = Depends(get_doctor_id),
 ):
     """Igual que /longevity pero transmite el texto en vivo por SSE."""
+    _gate_ai(doctor_id, "ia_longevidad")
     prompt, attachments = _build_longevity_prompt(visit_id, body, doctor_id)
 
     def event_stream():
@@ -1355,6 +1419,7 @@ async def run_longevity(
     doctor_id: str = Depends(get_doctor_id),
 ):
     """Genera el diagnóstico de longevidad. Fallback no-streaming."""
+    _gate_ai(doctor_id, "ia_longevidad")
     try:
         prompt, attachments = _build_longevity_prompt(visit_id, body, doctor_id)
         raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity",
