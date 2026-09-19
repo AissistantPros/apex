@@ -267,6 +267,10 @@ export default function NewVisitPage() {
   const [dynConvencional, setDynConvencional] = useState<DynAnswer[]>([]);
   const [dynConsulta,     setDynConsulta]     = useState<DynAnswer[]>([]);
 
+  // Hábitos dinámicos (tabaco/alcohol): se re-preguntan cada visita porque cambian.
+  const [habits,     setHabits]     = useState({ smoking_status: '', alcohol_status: '' });
+  const [habitsOrig, setHabitsOrig] = useState({ smoking_status: '', alcohol_status: '' });
+
   // Formulario clínico — sin talla (se usa la registrada), sin cintura ni cadera
   const [form, setForm] = useState({
     // Signos vitales
@@ -337,7 +341,12 @@ export default function NewVisitPage() {
           fetch(`${BACKEND()}/patients/${patientId}`, { headers }),
           fetch(`${BACKEND()}/visits/${patientId}`,   { headers }),
         ]);
-        setPatient(await pRes.json());
+        const p = await pRes.json();
+        setPatient(p);
+        // Hábitos dinámicos: se prellenan con lo último conocido y se pueden actualizar
+        // en cada visita (los hábitos cambian). Se guardan de vuelta en el paciente.
+        const h = { smoking_status: p?.smoking_status || '', alcohol_status: p?.alcohol_status || '' };
+        setHabits(h); setHabitsOrig(h);
         const vData = await vRes.json();
         setVisits(vData.visits || []);
       } catch (e) { console.error(e); }
@@ -456,11 +465,32 @@ export default function NewVisitPage() {
       );
   };
 
+  // Hábitos dinámicos: si cambiaron respecto a lo previo, se actualizan en el paciente y se
+  // deja una nota fechada para conservar la evolución del hábito en el tiempo.
+  const saveHabitsIfChanged = async (headers: Record<string,string>) => {
+    if (habits.smoking_status === habitsOrig.smoking_status && habits.alcohol_status === habitsOrig.alcohol_status) return;
+    try {
+      await fetch(`${BACKEND()}/patients/${patientId}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ smoking_status: habits.smoking_status, alcohol_status: habits.alcohol_status }),
+      });
+      const partes: string[] = [];
+      if (habits.smoking_status !== habitsOrig.smoking_status) partes.push(`tabaco: ${habits.smoking_status || '—'}`);
+      if (habits.alcohol_status !== habitsOrig.alcohol_status) partes.push(`alcohol: ${habits.alcohol_status || '—'}`);
+      await fetch(`${BACKEND()}/patients/${patientId}/notes`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ content: `Hábitos actualizados en esta visita — ${partes.join(', ')}`, author_role: 'nurse' }),
+      }).catch(() => {});
+      setHabitsOrig({ ...habits });
+    } catch { /* no bloquear el guardado de la visita */ }
+  };
+
   // Al pasar de enfermería a la fase médica: crea la visita con lo capturado (incluidos los
   // estudios) y dispara la transcripción en segundo plano, para que corra durante la consulta.
   const saveNursingAndTrigger = async () => {
     try {
       const headers = await authHeaders();
+      await saveHabitsIfChanged(headers);
       const clean = buildVisitPayload(true);
       let vid = visitId;
       if (vid) {
@@ -484,6 +514,7 @@ export default function NewVisitPage() {
     setSaving(true);
     try {
       const headers = await authHeaders();
+      await saveHabitsIfChanged(headers);
       const clean = buildVisitPayload(!visitId);
       let visitIdFinal = visitId;
       if (visitId) {
@@ -655,6 +686,41 @@ export default function NewVisitPage() {
 
               {/* Nota de recepción */}
               <ReadNote label="📩 NOTA DE RECEPCIÓN" text={receptionNotes} color="#00e5a0" />
+
+              {/* Hábitos dinámicos — se confirman/actualizan cada visita (cambian con el tiempo) */}
+              <div className="bg-[#0d1520] border border-[#0ea5e9]/30 rounded-xl p-4">
+                <p className={`font-mono text-[#0ea5e9] mb-1 ${tb ? 'text-sm' : 'text-xs'}`}>🚬 HÁBITOS (confirmar o actualizar)</p>
+                <p className="text-[10px] text-[#3d5870] mb-3">Los hábitos cambian; confírmalos en cada visita. Los antecedentes fijos (heredofamiliares, cirugías) no se re-preguntan.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className={`font-mono text-[#7a95aa] mb-1.5 ${tb ? 'text-sm' : 'text-xs'}`}>TABACO</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Nunca','Exfumador','Fumador activo'].map(o => (
+                        <button key={o} type="button" onClick={() => setHabits(h => ({ ...h, smoking_status: o }))}
+                          className={`px-3 rounded-lg border transition ${tb ? 'py-2.5 text-sm' : 'py-1.5 text-xs'}`}
+                          style={{ background: habits.smoking_status === o ? '#0ea5e9' : '#1e2d3d', borderColor: habits.smoking_status === o ? '#0ea5e9' : '#2a3a4d', color: habits.smoking_status === o ? '#000' : '#dde6ef' }}>
+                          {o}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className={`font-mono text-[#7a95aa] mb-1.5 ${tb ? 'text-sm' : 'text-xs'}`}>ALCOHOL</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['No','Ocasional','Frecuente','Diario'].map(o => (
+                        <button key={o} type="button" onClick={() => setHabits(h => ({ ...h, alcohol_status: o }))}
+                          className={`px-3 rounded-lg border transition ${tb ? 'py-2.5 text-sm' : 'py-1.5 text-xs'}`}
+                          style={{ background: habits.alcohol_status === o ? '#0ea5e9' : '#1e2d3d', borderColor: habits.alcohol_status === o ? '#0ea5e9' : '#2a3a4d', color: habits.alcohol_status === o ? '#000' : '#dde6ef' }}>
+                          {o}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {(habits.smoking_status !== habitsOrig.smoking_status || habits.alcohol_status !== habitsOrig.alcohol_status) && (
+                  <p className="text-[10px] text-[#00e5a0] mt-3">Se guardará el cambio y quedará registrado con fecha.</p>
+                )}
+              </div>
 
               {/* Stepper interno */}
               <div>
