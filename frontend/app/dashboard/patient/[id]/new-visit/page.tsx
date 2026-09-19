@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
+import DynamicQuestions, { DynAnswer } from '@/app/components/DynamicQuestions';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -262,6 +263,10 @@ export default function NewVisitPage() {
   const [labFiles,  setLabFiles]  = useState<LabFile[]>([]);
   const labInputRef = useRef<HTMLInputElement>(null);
 
+  // Banco de preguntas configurable (render dinámico → guardado en visits.dynamic_answers)
+  const [dynConvencional, setDynConvencional] = useState<DynAnswer[]>([]);
+  const [dynConsulta,     setDynConsulta]     = useState<DynAnswer[]>([]);
+
   // Formulario clínico — sin talla (se usa la registrada), sin cintura ni cadera
   const [form, setForm] = useState({
     // Signos vitales
@@ -431,6 +436,12 @@ export default function NewVisitPage() {
         minicog_notes: form.cognitivo_notas,
         patient_id: patientId,
       };
+      // Respuestas del banco de preguntas configurable (por bloque). Se guardan
+      // autodescriptivas (key+label+value) en visits.dynamic_answers.
+      const dyn: Record<string, DynAnswer[]> = {};
+      if (dynConvencional.length) dyn.convencional = dynConvencional;
+      if (dynConsulta.length)     dyn.consulta     = dynConsulta;
+      if (Object.keys(dyn).length) (mapped as any).dynamic_answers = dyn;
       if (includeLabs) {
         mapped.labs_pdf_url = form.labs_pdf_url;
         mapped.labs_notes   = form.lab_notas;
@@ -633,6 +644,10 @@ export default function NewVisitPage() {
                   className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#00e5a0] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
                   placeholder="Paciente llegó en ayuno, menciona que tiene 3 días con dolor de cabeza. Trae estudios del mes pasado..." />
               </div>
+
+              {/* Banco de preguntas configurable — bloque Convencional (recepción) */}
+              <DynamicQuestions block="convencional" accent="#00e5a0" tablet={tb}
+                title="📋 CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
             </div>
           )}
 
@@ -1842,6 +1857,10 @@ export default function NewVisitPage() {
                       </Field>
                     </div>
                   )}
+
+                  {/* Banco de preguntas configurable — bloque Consulta (médico) */}
+                  <DynamicQuestions block="consulta" accent="#a78bfa" tablet={tb}
+                    title="📋 CUESTIONARIO DE CONSULTA" onChange={setDynConsulta} />
                 </div>
               )}
 

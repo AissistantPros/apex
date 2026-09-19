@@ -267,6 +267,46 @@ Reglas de citación:
 """.strip()
 
 
+_DYN_BLOCK_LABELS = {
+    "convencional": "Cuestionario convencional (recepción)",
+    "consulta": "Cuestionario de consulta (médico)",
+    "funcional": "Cuestionario funcional",
+    "longevidad": "Cuestionario de longevidad",
+}
+
+
+def build_dynamic_answers_context(visit: dict) -> str:
+    """Renderiza las respuestas del BANCO DE PREGUNTAS CONFIGURABLE de la clínica
+    (visits.dynamic_answers). Cada respuesta viene autodescriptiva (label + valor + unidad),
+    así queda perfectamente mapeada al prompt sin depender de columnas fijas."""
+    dyn = visit.get("dynamic_answers") if isinstance(visit, dict) else None
+    if not isinstance(dyn, dict) or not dyn:
+        return ""
+    partes = []
+    for block, answers in dyn.items():
+        if not isinstance(answers, list) or not answers:
+            continue
+        lineas = []
+        for a in answers:
+            if not isinstance(a, dict):
+                continue
+            label = (a.get("label") or a.get("key") or "").strip()
+            val = a.get("value")
+            if label == "" or val in (None, "", []):
+                continue
+            if isinstance(val, list):
+                val = ", ".join(str(x) for x in val)
+            unidad = f" {a.get('unit')}" if a.get("unit") else ""
+            lineas.append(f"  • {label}: {val}{unidad}")
+        if lineas:
+            partes.append(f"— {_DYN_BLOCK_LABELS.get(block, block.capitalize())} —")
+            partes.extend(lineas)
+    if not partes:
+        return ""
+    return ("── CUESTIONARIO CONFIGURABLE DE LA CLÍNICA (preguntas definidas por la clínica; "
+            "respuestas capturadas en esta visita) ──\n" + "\n".join(partes))
+
+
 def build_visit_context(visit: dict) -> str:
     """
     Construye el bloque de contexto completo de la visita actual
@@ -445,6 +485,9 @@ def build_visit_context(visit: dict) -> str:
         _fv = date.today()
     fecha_consulta_str = f"{_fv.day} de {_meses_es[_fv.month]} de {_fv.year}"
 
+    dyn_block = build_dynamic_answers_context(visit)
+    dyn_section = f"\n{dyn_block}\n" if dyn_block else ""
+
     return f"""
 ══════════════════════════════════════════════════
 DATOS DE LA VISITA ACTUAL
@@ -582,6 +625,7 @@ DATOS DE LA VISITA ACTUAL
   • Interpretación de imagen: {visit.get('imaging_findings') or visit.get('img_interpretacion') or 'N/A'}
   • Mini-Cog (tamizaje cognitivo breve): {cog_str}
 
+{dyn_section}
 ── LABORATORIOS Y ESTUDIOS ──
   • Notas / resultados clave de laboratorios: {visit.get('labs_notes') or visit.get('lab_notas') or 'No se ingresaron laboratorios en esta visita'}
   • Documentos/estudios adjuntos: {labs_adjuntos_str}

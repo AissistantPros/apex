@@ -7,6 +7,7 @@ import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 import DeepFunctionalIntake, { esFuncionalCompleta } from '../DeepFunctionalIntake';
 import { getRole } from '@/app/lib/role';
+import DynamicQuestions, { DynAnswer } from '@/app/components/DynamicQuestions';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -207,6 +208,16 @@ function FlowPageInner() {
   type LabFile = { name: string; type: string; size: number; data: string };
   const [labFiles, setLabFiles] = useState<LabFile[]>([]);
   const labFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Banco de preguntas configurable (render dinámico → visits.dynamic_answers)
+  const [dynConvencional, setDynConvencional] = useState<DynAnswer[]>([]);
+  const [dynConsulta,     setDynConsulta]     = useState<DynAnswer[]>([]);
+  const buildDynAnswers = () => {
+    const dyn: Record<string, DynAnswer[]> = {};
+    if (dynConvencional.length) dyn.convencional = dynConvencional;
+    if (dynConsulta.length)     dyn.consulta     = dynConsulta;
+    return Object.keys(dyn).length ? dyn : null;
+  };
 
   // ── Formulario principal ─────────────────────────────────────────────────
   const [f, setF] = useState({
@@ -833,6 +844,7 @@ function FlowPageInner() {
         // Estudios (se capturan aquí para transcribirlos en 2do plano durante la fase 3)
         labs_notes: f.lab_notas,
         labs_files: labFiles.length > 0 ? labFiles.map(lf => ({ name: lf.name, type: lf.type, size: lf.size, data: lf.data })) : null,
+        ...(buildDynAnswers() ? { dynamic_answers: buildDynAnswers() } : {}),
         status: 'nursing_done',
       };
 
@@ -974,6 +986,7 @@ function FlowPageInner() {
             minicog_notes: f.cognitivo_notas,
             // (Los estudios/labs se capturan y transcriben en la fase 2 — no se reenvían aquí
             //  para no re-inflar el binario que ya se soltó tras la extracción.)
+            ...(buildDynAnswers() ? { dynamic_answers: buildDynAnswers() } : {}),
             status: 'complete',
           }),
         });
@@ -1424,6 +1437,10 @@ function FlowPageInner() {
                   </>
                 )}
               </Card>
+
+              {/* Banco de preguntas configurable — bloque Convencional */}
+              <DynamicQuestions block="convencional" accent={pc.color} tablet={false}
+                title="📋 CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
             </>
           )}
 
@@ -2723,6 +2740,10 @@ function FlowPageInner() {
                   )}
                 </div>
               </Card>
+
+              {/* Banco de preguntas configurable — bloque Consulta */}
+              <DynamicQuestions block="consulta" accent={pc.color} tablet={false}
+                title="📋 CUESTIONARIO DE CONSULTA" onChange={setDynConsulta} />
 
               {/* — Nota del médico — */}
               {patientId && (
