@@ -372,6 +372,9 @@ function ClinicDetail({ detail, onBack, reload, onCred, flash }:
       {/* Plan y servicios */}
       <PlanPanel detail={detail} reload={reload} flash={flash} />
 
+      {/* Banco de preguntas configurable */}
+      <QuestionnairePanel clinicId={clinic.id} flash={flash} />
+
       {/* Ubicaciones */}
       <section className="mb-8">
         <div className="flex items-center justify-between mb-3">
@@ -758,6 +761,114 @@ function PlanPanel({ detail, reload, flash }: { detail: any; reload: () => void;
           </div>
 
           <button onClick={save} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>Guardar servicios y límites</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Banco de preguntas configurable (por bloque, con presets por especialidad) ─
+const QBLOCKS: [string, string][] = [['convencional', 'Convencional (signos/registro)'], ['consulta', 'Consulta']];
+const QTYPES: [string, string][] = [['number', 'Número'], ['text', 'Texto'], ['textarea', 'Texto largo'], ['select', 'Opciones'], ['boolean', 'Sí/No'], ['scale', 'Escala 0-10']];
+
+function QuestionnairePanel({ clinicId, flash }: { clinicId: string; flash: (t: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [specialties, setSpecialties] = useState<any[]>([]);
+  const [spec, setSpec] = useState('');
+  const [block, setBlock] = useState('convencional');
+  const [qs, setQs] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const loadPresets = async () => { try { const d = await api('/questionnaires/presets'); setSpecialties(d.specialties || []); } catch (e: any) { flash(e.message); } };
+  const loadBlock = async (b: string) => {
+    try { const d = await api(`/questionnaires/clinic/${clinicId}`); setQs((d.questionnaires?.[b]?.questions) || []); setDirty(false); }
+    catch (e: any) { flash(e.message); }
+  };
+  useEffect(() => { if (open && !loaded) { loadPresets(); loadBlock(block); setLoaded(true); } }, [open]); // eslint-disable-line
+  useEffect(() => { if (loaded) loadBlock(block); }, [block]); // eslint-disable-line
+
+  const applyPreset = async () => {
+    if (!spec) return flash('Elige una especialidad');
+    if (!confirm('Esto reemplaza las preguntas de esta clínica con el preset de la especialidad. ¿Continuar?')) return;
+    try { await api(`/questionnaires/clinic/${clinicId}/apply-preset`, { method: 'POST', body: JSON.stringify({ specialty: spec }) }); flash('Preset aplicado'); loadBlock(block); }
+    catch (e: any) { flash(e.message); }
+  };
+  const save = async () => {
+    try { await api(`/questionnaires/clinic/${clinicId}/${block}`, { method: 'PUT', body: JSON.stringify({ questions: qs, specialty: spec || null }) }); flash('Cuestionario guardado'); setDirty(false); }
+    catch (e: any) { flash(e.message); }
+  };
+  const upd = (i: number, patch: any) => { setQs(qs.map((q, j) => j === i ? { ...q, ...patch } : q)); setDirty(true); };
+  const add = () => { setQs([...qs, { label: '', type: 'text' }]); setDirty(true); };
+  const remove = (i: number) => { setQs(qs.filter((_, j) => j !== i)); setDirty(true); };
+  const move = (i: number, dir: number) => { const j = i + dir; if (j < 0 || j >= qs.length) return; const n = [...qs];[n[i], n[j]] = [n[j], n[i]]; setQs(n); setDirty(true); };
+
+  return (
+    <section className="mb-8 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-[#dde6ef]">📝 Banco de preguntas</h2>
+          <p className="text-[12px] text-[#7a95aa] mt-0.5">Personaliza las preguntas de captura (convencional/consulta). Se mapean a la DB y a la IA por su clave.</p>
+        </div>
+        <button onClick={() => setOpen(o => !o)} className={`${btn} text-xs`} style={{ background: '#111820', border: `1px solid ${C.border}`, color: C.green }}>{open ? 'Cerrar' : 'Configurar'}</button>
+      </div>
+
+      {open && (
+        <div className="mt-4 space-y-4">
+          {/* Preset por especialidad */}
+          <div className="flex flex-wrap items-end gap-2 bg-[#111820] rounded-xl p-3">
+            <div className="flex-1 min-w-[180px]">
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Preset por especialidad</label>
+              <select value={spec} onChange={e => setSpec(e.target.value)} className={inp}>
+                <option value="">— Elige una especialidad —</option>
+                {specialties.map(s => <option key={s.specialty} value={s.specialty}>{s.label}</option>)}
+              </select>
+            </div>
+            <button onClick={applyPreset} className={btn} style={{ background: '#0ea5e9', color: '#000' }}>Aplicar preset</button>
+          </div>
+
+          {/* Bloques */}
+          <div className="flex gap-1">
+            {QBLOCKS.map(([b, l]) => (
+              <button key={b} onClick={() => setBlock(b)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+                style={{ background: block === b ? C.green : '#111820', borderColor: block === b ? C.green : '#2a3a4d', color: block === b ? '#000' : C.text }}>{l}</button>
+            ))}
+          </div>
+
+          {/* Editor de preguntas */}
+          <div className="space-y-2">
+            {qs.length === 0 && <p className="text-[#3d5870] text-sm">Sin preguntas en este bloque. Aplica un preset o agrega preguntas.</p>}
+            {qs.map((q, i) => (
+              <div key={i} className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-3">
+                <div className="flex items-start gap-2">
+                  <div className="flex flex-col gap-0.5 pt-1">
+                    <button onClick={() => move(i, -1)} className="text-[#7a95aa] hover:text-[#dde6ef] text-xs leading-none">▲</button>
+                    <button onClick={() => move(i, 1)} className="text-[#7a95aa] hover:text-[#dde6ef] text-xs leading-none">▼</button>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input className={inp} placeholder="Pregunta / etiqueta" value={q.label || ''} onChange={e => upd(i, { label: e.target.value })} />
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <select value={q.type || 'text'} onChange={e => upd(i, { type: e.target.value })} className="px-2 py-1.5 bg-[#0d1520] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-xs">
+                        {QTYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                      {q.type === 'number' && <input className="w-24 px-2 py-1.5 bg-[#0d1520] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-xs" placeholder="unidad" value={q.unit || ''} onChange={e => upd(i, { unit: e.target.value })} />}
+                      {q.type === 'select' && <input className="flex-1 min-w-[160px] px-2 py-1.5 bg-[#0d1520] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-xs" placeholder="opciones separadas por coma" value={(q.options || []).join(', ')} onChange={e => upd(i, { options: e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean) })} />}
+                      <label className="flex items-center gap-1 text-[11px] text-[#7a95aa]"><input type="checkbox" checked={!!q.required} onChange={e => upd(i, { required: e.target.checked })} /> Obligatoria</label>
+                      <span className="text-[10px] text-[#3d5870] font-mono ml-auto">key: {q.key || '(auto)'}</span>
+                      <button onClick={() => remove(i)} className="text-[#f43f5e] text-xs hover:underline">Quitar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={add} className={`${btn} text-xs`} style={{ background: '#111820', border: `1px solid ${C.border}`, color: C.green }}>+ Agregar pregunta</button>
+            <div className="flex-1" />
+            {dirty && <span className="text-[11px] text-[#f59e0b] self-center">Cambios sin guardar</span>}
+            <button onClick={save} className={btn} style={{ background: C.green, color: '#000' }}>Guardar bloque</button>
+          </div>
         </div>
       )}
     </section>
