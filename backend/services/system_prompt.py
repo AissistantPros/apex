@@ -892,7 +892,21 @@ Si no necesitas preguntar nada:
 {{"questions": []}}"""
 
 
-def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_traditional: str) -> str:
+def _ronda_previa_block(previous_qa: str) -> str:
+    if not previous_qa:
+        return ""
+    return f"""
+
+SEGUNDA RONDA — YA HICISTE ESTAS PREGUNTAS Y EL PACIENTE RESPONDIÓ:
+{previous_qa}
+
+Con base en esas respuestas, haz SOLO las preguntas de SEGUIMIENTO que aún necesites: profundizar en respuestas
+incompletas o vagas, aclarar banderas rojas que surgieron, o cerrar un dominio que quedó a medias. NO repitas lo ya
+preguntado. Sé selectivo: esta es la ÚLTIMA ronda. Si con lo que ya tienes es suficiente, devuelve una lista vacía.
+"""
+
+
+def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_traditional: str, previous_qa: str = "") -> str:
     """
     Genera el CUESTIONARIO funcional/longevidad completo que la IA necesita para tener
     la información suficiente antes del diagnóstico funcional y de longevidad. No hay
@@ -954,7 +968,56 @@ Responde SOLO con este JSON (nada más, sin explicaciones):
 {{"questions": ["[Digestión] ¿Pregunta 1?", "[Sueño] ¿Pregunta 2?"]}}
 
 Si de verdad no falta información:
-{{"questions": []}}"""
+{{"questions": []}}
+{_ronda_previa_block(previous_qa)}"""
+
+
+def get_longevity_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_functional: str = "", previous_qa: str = "") -> str:
+    """Cuestionario de longevidad: TODAS las preguntas necesarias para el análisis de
+    longevidad/healthspan, saltando lo ya registrado. Soporta 2ª ronda."""
+    patient_ctx = build_patient_context(patient_data)
+    visit_ctx = build_visit_context(visit_data)
+    func_block = f"\nDIAGNÓSTICO FUNCIONAL YA GENERADO (contexto):\n{doctor_functional}\n" if doctor_functional else ""
+
+    return f"""Eres APEX, asistente de MEDICINA DE LONGEVIDAD. Vas a preparar el análisis de longevidad/healthspan.
+
+{patient_ctx}
+
+{visit_ctx}
+{func_block}
+
+TAREA: Antes de calcular edad biológica, riesgos a futuro y el plan de longevidad, necesitas la información
+suficiente. Arma el CUESTIONARIO que te falte — tantas preguntas como necesites, sin límite artificial. Es una
+consulta larga y a fondo; es mejor completar que quedarte corto.
+
+COBERTURA (recorre estos dominios y pregunta lo que falte en cada uno):
+- Composición corporal y metabolismo: peso estable/cambios, grasa visceral, masa muscular, circunferencia de cintura.
+- Capacidad física / condición: ejercicio (tipo, frecuencia, intensidad), fuerza (agarre, sentadillas), resistencia
+  (VO2/caminata), equilibrio y movilidad, pasos al día, tiempo sentado.
+- Sueño y recuperación: calidad, duración, apneas, recuperación tras esfuerzo.
+- Nutrición para longevidad: patrón de alimentación, proteína, ultraprocesados, azúcar, alcohol, ayunos, hidratación.
+- Estrés, propósito y conexión social: manejo del estrés, red de apoyo, propósito de vida, estado de ánimo.
+- Hábitos y exposiciones: tabaco, tóxicos, sol/vitamina D, pantallas.
+- Hormonal y sexual: libido y tendencia; en mujeres estado menopáusico; en hombres función/energía.
+- Función cognitiva: memoria, concentración, niebla mental.
+- Suplementos/péptidos: qué toma hoy y su interés/apertura a intervenciones.
+- Historia familiar de LONGEVIDAD y de enfermedad (cardio, cáncer, neurodegenerativa, metabólica).
+- Metas de healthspan del paciente y su percepción de su edad biológica.
+
+REGLAS:
+- NO preguntes lo que YA esté en la información de arriba; sáltalo.
+- Solo preguntas que el paciente pueda responder verbalmente. NO pidas laboratorios/estudios (eso se solicita después).
+- Redáctalas en TERCERA persona (el médico las lee y se las hace al paciente):
+  ✓ "[Condición] ¿Cuántas veces por semana entrena fuerza el paciente y qué tipo de ejercicio hace?"
+- Agrupa por dominio con un prefijo corto entre corchetes: "[Condición] ¿…?", "[Nutrición] ¿…?".
+- Haz TODAS las que hagan falta (típicamente 8-20 si falta mucho). Lista vacía solo si ya tienes TODO.
+
+Responde SOLO con este JSON:
+{{"questions": ["[Condición] ¿Pregunta 1?", "[Nutrición] ¿Pregunta 2?"]}}
+
+Si de verdad no falta información:
+{{"questions": []}}
+{_ronda_previa_block(previous_qa)}"""
 
 
 # ─────────────────────────────────────────────────────────

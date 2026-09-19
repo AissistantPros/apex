@@ -33,6 +33,7 @@ from services.system_prompt import (
     get_protocol_validation_prompt,
     get_secondary_validation_prompt,
     get_functional_clarifying_questions_prompt,
+    get_longevity_clarifying_questions_prompt,
     get_lean_draft_prompt,
     build_patient_context,
     build_visit_context,
@@ -174,7 +175,23 @@ class FinalizeFirstRequest(BaseModel):
 
 class ClarifyFunctionalRequest(BaseModel):
     doctor_traditional: str = ""
+    doctor_functional: str = ""          # dx funcional (para la ronda de longevidad)
     patient_id: str = ""
+    previous: Optional[list] = None      # [{"q": "...", "a": "..."}] de la ronda anterior (2ª ronda)
+
+
+def _fmt_previous_qa(previous) -> str:
+    """Convierte [{q,a}] de la ronda anterior en texto para el prompt de 2ª ronda."""
+    if not previous or not isinstance(previous, list):
+        return ""
+    lineas = []
+    for item in previous:
+        if isinstance(item, dict):
+            q = (item.get("q") or "").strip()
+            a = (item.get("a") or "").strip()
+            if q:
+                lineas.append(f"- P: {q}\n  R: {a or '(sin respuesta)'}")
+    return "\n".join(lineas)
 
 
 def _kb_query_desde_caso(patient: dict, visit: dict) -> str:
@@ -941,7 +958,8 @@ async def get_clarifying_questions(
             "updated_at": datetime.utcnow().isoformat(),
         })
 
-        questions = [q["pregunta"] for q in lean_draft["preguntas"] if q.get("pregunta")][:4]
+        # Convencional: seguimiento breve, tope 5 preguntas.
+        questions = [q["pregunta"] for q in lean_draft["preguntas"] if q.get("pregunta")][:5]
 
         return {"visit_id": visit_id, "questions": questions}
     except HTTPException:
@@ -1181,16 +1199,18 @@ async def get_functional_clarifying_questions(
         patient_id = body.patient_id or visit_record.get("patient_id", "")
         patient_record = get_patient(patient_id) if patient_id else {}
 
-        prompt = get_functional_clarifying_questions_prompt(patient_record, visit_record, body.doctor_traditional)
-        # Sin tope artificial: el cuestionario funcional/longevidad puede ser extenso.
+        previous_qa = _fmt_previous_qa(body.previous)
+        prompt = get_functional_clarifying_questions_prompt(
+            patient_record, visit_record, body.doctor_traditional, previous_qa=previous_qa)
+        # Sin tope artificial: el cuestionario funcional puede ser extenso.
         raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=2500, visit_id=visit_id, step="clarify_functional")
 
         questions = []
         try:
-            m = re.search(r'\{[\s\S]*?"questions"[\s\S]*?\}', raw)
+            m = re.search(r'\{[\s\S]*"questions"[\s\S]*\}', raw)
             if m:
                 data = json_lib.loads(m.group())
-                questions = [q for q in data.get("questions", []) if q][:3]
+                questions = [q for q in data.get("questions", []) if q]
         except Exception:
             questions = []
 
@@ -1199,6 +1219,42 @@ async def get_functional_clarifying_questions(
         raise
     except Exception as e:
         print(f"[ERROR clarify_functional] {str(e)}")
+        return {"visit_id": visit_id, "questions": []}
+
+
+@router.post("/{visit_id}/clarify_longevity")
+async def get_longevity_clarifying_questions(
+    visit_id: str,
+    body: ClarifyFunctionalRequest,
+    doctor_id: str = Depends(get_doctor_id),
+):
+    """Cuestionario de longevidad: la IA arma TODAS las preguntas que necesite para el
+    análisis de longevidad. Soporta 2ª ronda (body.previous con lo ya preguntado)."""
+    _gate_ai(doctor_id, "ia_longevidad")
+    import json as json_lib
+    try:
+        visit_record = get_visit(visit_id) or {}
+        visit_record = _ensure_labs_extracted(visit_id, visit_record)
+        patient_id = body.patient_id or visit_record.get("patient_id", "")
+        patient_record = get_patient(patient_id) if patient_id else {}
+
+        previous_qa = _fmt_previous_qa(body.previous)
+        prompt = get_longevity_clarifying_questions_prompt(
+            patient_record, visit_record, body.doctor_functional, previous_qa=previous_qa)
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=2500, visit_id=visit_id, step="clarify_longevity")
+
+        questions = []
+        try:
+            m = re.search(r'\{[\s\S]*"questions"[\s\S]*\}', raw)
+            if m:
+                questions = [q for q in json_lib.loads(m.group()).get("questions", []) if q]
+        except Exception:
+            questions = []
+        return {"visit_id": visit_id, "questions": questions}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR clarify_longevity] {str(e)}")
         return {"visit_id": visit_id, "questions": []}
 
 

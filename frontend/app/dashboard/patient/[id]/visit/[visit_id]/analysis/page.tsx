@@ -6,7 +6,7 @@ import { getUser, getSession } from '@/app/lib/auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step =
-  | 'init' | 'clarifying' | 'clarifying_functional' | 'select' | 'loading'
+  | 'init' | 'clarifying' | 'clarifying_functional' | 'clarifying_longevity' | 'select' | 'loading'
   | 'review_traditional' | 'review_functional' | 'review_longevity'
   | 'review_protocol_traditional' | 'review_protocol_functional' | 'review_protocol_longevity'
   | 'documents' | 'complete';
@@ -2168,6 +2168,7 @@ function ClarifyStep({
   onSubmit,
   onSkip,
   loadingAnalysis,
+  round = 1,
 }: {
   questions: string[];
   answers: string[];
@@ -2175,6 +2176,7 @@ function ClarifyStep({
   onSubmit: () => void;
   onSkip: () => void;
   loadingAnalysis: boolean;
+  round?: number;
 }) {
   return (
     <div className="py-4">
@@ -2186,8 +2188,11 @@ function ClarifyStep({
           <p className="text-sm text-[#7a95aa] font-serif">
             {questions.length === 0
               ? 'Los datos son suficientes. Continuando con el análisis...'
-              : `Para el análisis funcional y de longevidad necesito completar la información del paciente (${questions.length} ${questions.length === 1 ? 'pregunta' : 'preguntas'}). Responde lo que puedas o continúa.`}
+              : `Para el análisis necesito completar la información del paciente (${questions.length} ${questions.length === 1 ? 'pregunta' : 'preguntas'}). Responde lo que puedas o continúa.`}
           </p>
+          {round >= 2 && questions.length > 0 && (
+            <p className="text-[11px] text-[#f59e0b] mt-1">Segunda y última ronda de preguntas de seguimiento.</p>
+          )}
         </div>
       </div>
 
@@ -2232,7 +2237,7 @@ function ClarifyStep({
           disabled={loadingAnalysis}
           className="px-6 py-2.5 text-black text-sm font-bold rounded-xl disabled:opacity-40 transition"
           style={{ background: '#00e5a0' }}>
-          {loadingAnalysis ? 'Analizando...' : 'Continuar a diagnóstico →'}
+          {loadingAnalysis ? 'Procesando...' : (round >= 2 ? 'Continuar a diagnóstico →' : 'Enviar respuestas →')}
         </button>
         {questions.length > 0 && (
           <button
@@ -2461,6 +2466,19 @@ export default function AnalysisPage() {
   const [funcClarifyQuestions, setFuncClarifyQuestions] = useState<string[]>([]);
   const [funcClarifyAnswers, setFuncClarifyAnswers]     = useState<string[]>([]);
   const [funcClarifyLoading, setFuncClarifyLoading]     = useState(false);
+  const [funcRound, setFuncRound]     = useState(1);              // ronda 1 o 2
+  const [funcPrevQA, setFuncPrevQA]   = useState<{ q: string; a: string }[]>([]);
+  // Longevidad — cuestionario con hasta 2 rondas
+  const [longClarifyQuestions, setLongClarifyQuestions] = useState<string[]>([]);
+  const [longClarifyAnswers, setLongClarifyAnswers]     = useState<string[]>([]);
+  const [longRound, setLongRound]     = useState(1);
+  const [longPrevQA, setLongPrevQA]   = useState<{ q: string; a: string }[]>([]);
+
+  const qaToText = (qa: { q: string; a: string }[]): string => {
+    const withA = qa.filter(x => (x.a || '').trim());
+    if (!withA.length) return '';
+    return withA.map(x => `${x.q}\n${x.a.trim()}`).join('\n\n');
+  };
 
   // Servicios de IA contratados (para ofrecer solo las voces habilitadas)
   const [aiFeatures, setAiFeatures] = useState<Record<string, boolean> | null>(null);
@@ -2593,7 +2611,7 @@ export default function AnalysisPage() {
       review_protocol_traditional: protTrad.doctor_text,
       review_protocol_functional:  protFunc.doctor_text,
       review_protocol_longevity:   protLong.doctor_text,
-      init: '', clarifying: '', clarifying_functional: '', select: '', loading: '', documents: '', complete: '',
+      init: '', clarifying: '', clarifying_functional: '', clarifying_longevity: '', select: '', loading: '', documents: '', complete: '',
     };
     return map[step] || '';
   };
@@ -2748,9 +2766,10 @@ export default function AnalysisPage() {
   // ── Antes de funcional: preguntas dirigidas a buscar la causa raíz ───────────
   const startClarifyFunctional = async () => {
     setError('');
+    setFuncRound(1); setFuncPrevQA([]);
     setFuncClarifyLoading(true);
     setStep('loading');
-    setLoadingLabel('BUSCANDO LA CAUSA RAÍZ...');
+    setLoadingLabel('PREPARANDO CUESTIONARIO FUNCIONAL...');
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_functional`, {
         method: 'POST',
@@ -2761,18 +2780,38 @@ export default function AnalysisPage() {
       const questions: string[] = json.questions || [];
       setFuncClarifyQuestions(questions);
       setFuncClarifyAnswers(new Array(questions.length).fill(''));
-      if (questions.length === 0) {
-        return startFunctional('');
-      }
+      if (questions.length === 0) return startFunctional('');
       setStep('clarifying_functional');
     } catch (e: any) {
-      // Si falla, no bloquear el flujo — continúa directo a funcional
-      setFuncClarifyQuestions([]);
-      setFuncClarifyAnswers([]);
+      setFuncClarifyQuestions([]); setFuncClarifyAnswers([]);
       return startFunctional('');
     } finally {
       setFuncClarifyLoading(false);
     }
+  };
+
+  // Envío del cuestionario funcional: 1ª ronda pide una 2ª si la IA aún tiene dudas.
+  const submitFuncClarify = async () => {
+    const round = funcClarifyQuestions.map((q, i) => ({ q, a: funcClarifyAnswers[i] || '' }));
+    if (funcRound >= 2) {
+      return startFunctional(qaToText([...funcPrevQA, ...round]));
+    }
+    setFuncClarifyLoading(true);
+    setStep('loading');
+    setLoadingLabel('REVISANDO RESPUESTAS...');
+    try {
+      const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_functional`, {
+        method: 'POST', headers: authH(),
+        body: JSON.stringify({ doctor_traditional: traditional.doctor_text, patient_id, previous: round }),
+      });
+      const q2: string[] = (await res.json()).questions || [];
+      if (q2.length === 0) return startFunctional(qaToText(round));
+      setFuncPrevQA(round); setFuncRound(2);
+      setFuncClarifyQuestions(q2); setFuncClarifyAnswers(new Array(q2.length).fill(''));
+      setStep('clarifying_functional');
+    } catch {
+      return startFunctional(qaToText(round));
+    } finally { setFuncClarifyLoading(false); }
   };
 
   const startFunctional = async (doctorAnswersOverride?: string) => {
@@ -2826,6 +2865,50 @@ export default function AnalysisPage() {
     } catch (e: any) {
       setError('Error: ' + e.message);
       setStep(doctorAnswersOverride === undefined ? (activeTypes.includes('functional') ? 'review_functional' : 'review_traditional') : 'select');
+    }
+  };
+
+  // ── Antes de longevidad: cuestionario de longevidad (hasta 2 rondas) ─────────
+  const startClarifyLongevity = async () => {
+    setError('');
+    setLongRound(1); setLongPrevQA([]);
+    setStep('loading');
+    setLoadingLabel('PREPARANDO CUESTIONARIO DE LONGEVIDAD...');
+    try {
+      const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_longevity`, {
+        method: 'POST', headers: authH(),
+        body: JSON.stringify({ doctor_functional: functional.doctor_text, patient_id }),
+      });
+      const questions: string[] = (await res.json()).questions || [];
+      setLongClarifyQuestions(questions);
+      setLongClarifyAnswers(new Array(questions.length).fill(''));
+      if (questions.length === 0) return startLongevity('');
+      setStep('clarifying_longevity');
+    } catch {
+      setLongClarifyQuestions([]); setLongClarifyAnswers([]);
+      return startLongevity('');
+    }
+  };
+
+  const submitLongClarify = async () => {
+    const round = longClarifyQuestions.map((q, i) => ({ q, a: longClarifyAnswers[i] || '' }));
+    if (longRound >= 2) {
+      return startLongevity(qaToText([...longPrevQA, ...round]));
+    }
+    setStep('loading');
+    setLoadingLabel('REVISANDO RESPUESTAS...');
+    try {
+      const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_longevity`, {
+        method: 'POST', headers: authH(),
+        body: JSON.stringify({ doctor_functional: functional.doctor_text, patient_id, previous: round }),
+      });
+      const q2: string[] = (await res.json()).questions || [];
+      if (q2.length === 0) return startLongevity(qaToText(round));
+      setLongPrevQA(round); setLongRound(2);
+      setLongClarifyQuestions(q2); setLongClarifyAnswers(new Array(q2.length).fill(''));
+      setStep('clarifying_longevity');
+    } catch {
+      return startLongevity(qaToText(round));
     }
   };
 
@@ -2893,7 +2976,7 @@ export default function AnalysisPage() {
       const t = m[1] as AnalysisType;
       if (t === 'traditional') return startTraditional();
       if (t === 'functional')  return startClarifyFunctional();
-      return startLongevity();
+      return startClarifyLongevity();
     }
   };
 
@@ -3044,9 +3127,31 @@ export default function AnalysisPage() {
                 questions={funcClarifyQuestions}
                 answers={funcClarifyAnswers}
                 setAnswers={setFuncClarifyAnswers}
-                onSubmit={() => startFunctional(buildAnswersText(funcClarifyQuestions, funcClarifyAnswers))}
-                onSkip={() => startFunctional('')}
+                onSubmit={submitFuncClarify}
+                onSkip={() => startFunctional(funcRound >= 2 ? qaToText(funcPrevQA) : '')}
                 loadingAnalysis={funcClarifyLoading}
+                round={funcRound}
+              />
+            </div>
+          )}
+
+          {step === 'clarifying_longevity' && (
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="px-2.5 py-1 rounded text-[10px] font-mono tracking-wider bg-[rgba(0,229,160,.1)] text-[#00e5a0] border border-[rgba(0,229,160,.25)]">
+                  CUESTIONARIO DE LONGEVIDAD
+                </div>
+                <h2 className="text-xl font-serif text-[#dde6ef]">Antes del análisis de longevidad</h2>
+              </div>
+              {error && <p className="text-[#f43f5e] text-sm mb-4">{error}</p>}
+              <ClarifyStep
+                questions={longClarifyQuestions}
+                answers={longClarifyAnswers}
+                setAnswers={setLongClarifyAnswers}
+                onSubmit={submitLongClarify}
+                onSkip={() => startLongevity(longRound >= 2 ? qaToText(longPrevQA) : '')}
+                loadingAnalysis={false}
+                round={longRound}
               />
             </div>
           )}
