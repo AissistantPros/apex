@@ -231,6 +231,22 @@ con criterio médico, no con la cantidad de texto que cada uno ocupa aquí.
 """.strip()
 
 
+PRINCIPIO_DE_ESTUDIOS = """
+── PRINCIPIO SOBRE ESTUDIOS Y LABORATORIOS (cómo pedirlos bien) ──
+- Prioriza los estudios por lo que CAMBIARÍA el manejo de ESTE paciente, no por completar un panel ideal.
+- NO hagas que el diagnóstico ni el protocolo dependan de tener TODOS los estudios. Trabaja con la información
+  disponible hoy; lo que aún no se pueda confirmar, decláralo como hipótesis a confirmar, nunca como un bloqueo
+  que impide actuar.
+- Realidad de acceso y costo: muchos estudios NO están disponibles en todos lados, o un solo estudio puede ser
+  muy caro. Puedes mencionarlos, pero marca su prioridad (imprescindible / deseable / complementario) para que
+  el médico y el paciente elijan. Nunca omitas el estudio realmente clave solo por precio, pero tampoco exijas
+  una lista larga como condición para dar un diagnóstico o iniciar un manejo seguro.
+- EXCEPCIÓN — estudio o dato que CONDICIONA LA SEGURIDAD: si una intervención concreta (fármaco, péptido,
+  hormona, suplemento) requiere un resultado de laboratorio o un antecedente para decidir con seguridad si se
+  recomienda o no, entonces ESE estudio/dato SÍ es obligatorio para esa intervención — ahí no es opcional.
+""".strip()
+
+
 def get_web_search_sourcing_rules(mexico: bool = False) -> str:
     """
     Reglas de sustento/fuentes basadas en el CONOCIMIENTO PROPIO del modelo (sin búsqueda web:
@@ -1124,6 +1140,8 @@ Analiza este caso clínico — el médico está leyendo esto con el paciente enf
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}
 
+{PRINCIPIO_DE_ESTUDIOS}
+
 {get_web_search_sourcing_rules(mexico=True)}
 
 {patient_ctx}
@@ -1335,6 +1353,8 @@ detección — nunca contradigas los umbrales diagnósticos convencionales (esos
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}
 
+{PRINCIPIO_DE_ESTUDIOS}
+
 {get_web_search_sourcing_rules()}
 
 {patient_ctx}
@@ -1450,6 +1470,8 @@ glucosa muy alta, dolor torácico, arritmia, infección activa, descompensación
 {extra_context}
 
 {CRITERIO_DE_IMPORTANCIA_CLINICA}
+
+{PRINCIPIO_DE_ESTUDIOS}
 
 {get_web_search_sourcing_rules()}
 
@@ -1784,6 +1806,21 @@ gástrico ya puede resolver una diarrea crónica — agregar además un antidiar
 sería un traslape, no una suma de beneficios). Si detectas un traslape:
 - No listes ambos como tratamientos independientes sin relación.
 - Elige el item más adecuado y usa su campo "alerta" o "interacciones" para explicar la relación con el otro problema.
+
+{PRINCIPIO_DE_ESTUDIOS}
+
+TAMIZAJE DE SEGURIDAD ANTES DE RECOMENDAR (obligatorio):
+Antes de incluir CUALQUIER item cuya seguridad dependa de un antecedente o de un resultado de laboratorio, REVISA
+primero los antecedentes del paciente y su historia familiar (arriba) y los estudios disponibles:
+- Si el antecedente/resultado CONTRAINDICA el item, NO lo incluyas (regla 16: lo descartado no aparece en "items");
+  si el médico debería saber por qué lo descartaste, dilo en UNA línea en "monitoreo_general".
+- Si ese dato de seguridad NO está disponible y es crítico, incluye el item como "momento": "condicionado" y en
+  "condicion" escribe el requisito concreto (ej. "Iniciar solo tras descartar malignidad activa"); resume el riesgo
+  en "alerta". Ese estudio/antecedente pasa a ser OBLIGATORIO para ese item (no es un estudio opcional).
+Ejemplo de referencia (aplica tu propio criterio y verifica, no lo tomes como regla fija): los péptidos que
+promueven angiogénesis como BPC-157 o TB-500 pueden ser contraproducentes ante cáncer activo o antecedente/sospecha
+oncológica, porque la angiogénesis puede favorecer el crecimiento tumoral — considera el historial y el tamizaje de
+cáncer antes de recomendarlos. El mismo razonamiento aplica a cualquier otra interacción item ↔ antecedente/laboratorio.
 
 FORMATO DE SALIDA — ESTRICTO:
 Responde ÚNICAMENTE con un objeto JSON válido. Nada de texto antes o después, nada de ```json. Solo el JSON.
