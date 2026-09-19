@@ -102,7 +102,8 @@ async def create_patient(
 ):
     """Crear paciente con todas las 3 fases"""
     try:
-        doctor_id = await get_doctor_id(authorization)
+        from auth import get_actor
+        actor = get_actor(authorization)
 
         first_name = patient_data.get("first_name", "")
         last_name = patient_data.get("last_name", "")
@@ -115,11 +116,14 @@ async def create_patient(
 
         save_data = {
             "id": patient_id,
-            "doctor_id": doctor_id,
             "full_name": f"{first_name} {last_name}",
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
             **patient_data,
+            # El paciente se ancla a la CLÍNICA (multi-tenant), no a quien lo captura.
+            # Se ponen después del spread para que manden sobre cualquier valor entrante.
+            "doctor_id": actor.get("doctor_id"),
+            "clinic_id": actor.get("clinic_id"),
         }
 
         result = insert_patient(clean_patient_data(save_data))

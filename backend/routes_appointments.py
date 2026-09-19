@@ -321,8 +321,11 @@ def _waitroom_rows(clinic: str, stages: set) -> list:
     desde = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     cols = ("id, full_name, date_of_birth, birth_date, care_type, registration_phase, "
             "updated_at, created_at, allergies_medications, allergies_foods, clinic_id, doctor_id")
+    # El paciente puede estar anclado por clinic_id (multi-tenant) o, en cuentas de
+    # doctor solo, por doctor_id — se aceptan ambos, igual que patient_brief.
     rows = supabase.table("patients").select(cols)\
-        .eq("clinic_id", clinic).in_("registration_phase", wanted)\
+        .or_(f"clinic_id.eq.{clinic},doctor_id.eq.{clinic}")\
+        .in_("registration_phase", wanted)\
         .gte("updated_at", desde).order("updated_at", desc=False).execute().data or []
     return rows
 
