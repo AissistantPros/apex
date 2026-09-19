@@ -2581,7 +2581,11 @@ export default function AnalysisPage() {
   // JSON del evento "done".
   const streamSSE = useCallback(async (url: string, body: any, onDelta: (text: string) => void): Promise<any> => {
     const res = await fetch(url, { method: 'POST', headers: authH(), body: JSON.stringify(body) });
-    if (!res.ok || !res.body) throw new Error(await res.text().catch(() => 'Error de streaming'));
+    if (!res.ok || !res.body) {
+      let msg = 'Error de streaming';
+      try { const t = await res.text(); try { msg = JSON.parse(t).detail || t || msg; } catch { msg = t || msg; } } catch {}
+      const err: any = new Error(msg); err.status = res.status; throw err;
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -2873,7 +2877,12 @@ export default function AnalysisPage() {
       );
       setFunctional({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       enterStep('review_functional');
-    } catch (e: any) { setError('Error: ' + e.message); setStep(doctorAnswersOverride === undefined ? 'review_traditional' : 'select'); }
+    } catch (e: any) {
+      setError(e.message || 'Error');
+      // Si venía del cuestionario, regresa a ÉL (conserva las respuestas) en vez de a 'select',
+      // para no perder lo capturado; así puede reintentar tras resolver el problema (p. ej. créditos).
+      setStep(doctorAnswersOverride === undefined ? 'review_traditional' : 'clarifying_functional');
+    }
   };
 
   const startLongevity = async (doctorAnswersOverride?: string) => {
@@ -2901,8 +2910,9 @@ export default function AnalysisPage() {
       setLongevity({ ai_text: json.diagnosis, doctor_text: json.diagnosis, validation: json.validation, confirmed: false, confidence: json.confidence || 75 });
       enterStep('review_longevity');
     } catch (e: any) {
-      setError('Error: ' + e.message);
-      setStep(doctorAnswersOverride === undefined ? (activeTypes.includes('functional') ? 'review_functional' : 'review_traditional') : 'select');
+      setError(e.message || 'Error');
+      // Conserva el cuestionario de longevidad si venía de él (no pierde respuestas).
+      setStep(doctorAnswersOverride === undefined ? (activeTypes.includes('functional') ? 'review_functional' : 'review_traditional') : 'clarifying_longevity');
     }
   };
 
