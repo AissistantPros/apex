@@ -644,10 +644,6 @@ export default function NewVisitPage() {
                   className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#00e5a0] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
                   placeholder="Paciente llegó en ayuno, menciona que tiene 3 días con dolor de cabeza. Trae estudios del mes pasado..." />
               </div>
-
-              {/* Banco de preguntas configurable — bloque Convencional (recepción) */}
-              <DynamicQuestions block="convencional" accent="#00e5a0" tablet={tb}
-                title="📋 CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
             </div>
           )}
 
@@ -1027,6 +1023,10 @@ export default function NewVisitPage() {
                       </Field>
                     </div>
                   </div>
+
+                  {/* Banco de preguntas configurable — bloque Convencional (lo captura enfermería) */}
+                  <DynamicQuestions block="convencional" accent="#0ea5e9" tablet={tb}
+                    title="📋 CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
                 </div>
               )}
             </div>

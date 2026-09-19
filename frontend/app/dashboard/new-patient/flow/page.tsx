@@ -1437,10 +1437,6 @@ function FlowPageInner() {
                   </>
                 )}
               </Card>
-
-              {/* Banco de preguntas configurable — bloque Convencional */}
-              <DynamicQuestions block="convencional" accent={pc.color} tablet={false}
-                title="📋 CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
             </>
           )}
 
@@ -1450,6 +1446,10 @@ function FlowPageInner() {
           {phase === 2 && allowedPhases.includes(2) && (
             <>
               <PatientBadge />
+
+              {/* Banco de preguntas configurable — bloque Convencional (lo captura enfermería) */}
+              <DynamicQuestions block="convencional" accent={pc.color} tablet={false}
+                title="📋 CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
 
               {/* — Antecedentes heredofamiliares — */}
               <Card title="Antecedentes heredofamiliares" icon="🧬" color={pc.color}>
