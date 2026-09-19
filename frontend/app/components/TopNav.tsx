@@ -15,6 +15,7 @@ const ALL_LINKS = [
   { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['admin','doctor','nurse','receptionist','accounting','marketing'], primary: true },
   { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes', primary: true },
   { href: '/dashboard/agenda',   icon: '📅', label: 'Agenda',     roles: ['doctor','nurse','receptionist'], feature: 'agenda', primary: true },
+  { href: '/dashboard/sala',     icon: '🛎️', label: 'Sala',       roles: ['doctor','nurse'], primary: true },
   { href: '/dashboard/proximos', icon: '🔜', label: 'Próximos',   roles: ['doctor'], feature: 'sala_espera', primary: true },
   { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'], feature: 'contabilidad', primary: true },
   { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['admin','doctor','accounting'], feature: 'contabilidad' },
@@ -50,6 +51,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const [role, setRoleState]     = useState<UserRole>('doctor');
   const [theme, setThemeState]   = useState<'dark' | 'light'>('dark');
   const [aprobCount, setAprobCount] = useState(0);
+  const [waitCount, setWaitCount] = useState(0);  // sala de espera en vivo
   const [feats, setFeats] = useState<Record<string, boolean> | null>(null);  // servicios contratados
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -96,6 +98,25 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
         const r = await fetch(`${B}/deletions/pending/count`, { headers: { Authorization: `Bearer ${s.access_token}` } });
         if (r.ok && alive) setAprobCount((await r.json()).count || 0);
+      } catch { /* silencioso */ }
+    };
+    poll();
+    const t = setInterval(poll, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [role]);
+
+  // Aviso de pacientes esperando en la sala en vivo (enfermería y doctor)
+  useEffect(() => {
+    if (role !== 'doctor' && role !== 'nurse') { setWaitCount(0); return; }
+    let alive = true;
+    const poll = async () => {
+      try {
+        const { getSession } = await import('@/app/lib/auth');
+        const s = await getSession().catch(() => null);
+        if (!s?.access_token) return;
+        const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const r = await fetch(`${B}/appointments/waitroom/count`, { headers: { Authorization: `Bearer ${s.access_token}` } });
+        if (r.ok && alive) setWaitCount((await r.json()).count || 0);
       } catch { /* silencioso */ }
     };
     poll();
@@ -160,6 +181,9 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
             <span className="hidden md:inline">{label}</span>
             {href === '/dashboard/aprobaciones' && aprobCount > 0 && (
               <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{aprobCount}</span>
+            )}
+            {href === '/dashboard/sala' && waitCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#00e5a0] text-black text-[10px] font-bold flex items-center justify-center">{waitCount}</span>
             )}
           </button>
         ))}

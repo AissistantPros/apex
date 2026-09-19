@@ -283,6 +283,96 @@ async def patient_brief(pid: str, authorization: Optional[str] = Header(None)):
     }
 
 
+# ─── Sala de espera EN VIVO (flujo recepción → enfermería → doctor) ──────────
+# Distinta de /upcoming (que es por agenda/citas). Aquí van los pacientes que están
+# siendo atendidos AHORA y esperan la siguiente etapa. registration_phase marca la
+# última etapa COMPLETADA: 'reception' = espera enfermería, 'nursing' = espera doctor.
+_PHASE_BY_STAGE = {"nursing": "reception", "doctor": "nursing"}
+_STAGE_BY_PHASE = {v: k for k, v in _PHASE_BY_STAGE.items()}
+
+
+def _clinic_has_role(clinic: str, role_name: str) -> bool:
+    rows = supabase.table("doctor_profiles").select("id")\
+        .eq("clinic_id", clinic).eq("role", role_name).limit(1).execute().data
+    return bool(rows)
+
+
+def _stages_for(actor: dict, clinic: str) -> set:
+    """Qué etapas de la sala de espera atiende este usuario, con absorción de roles:
+    - enfermera → espera de enfermería.
+    - doctor → espera de doctor; y si NO hay enfermera en la clínica, absorbe la de enfermería.
+    - recepción → no espera a nadie (ella alimenta la lista)."""
+    role = actor.get("role")
+    if role == "nurse":
+        return {"nursing"}
+    if role == "doctor":
+        stages = {"doctor"}
+        if not _clinic_has_role(clinic, "nurse"):
+            stages.add("nursing")
+        return stages
+    return set()
+
+
+def _waitroom_rows(clinic: str, stages: set) -> list:
+    if not stages:
+        return []
+    wanted = [_PHASE_BY_STAGE[s] for s in stages]
+    from datetime import timedelta
+    desde = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    cols = ("id, full_name, date_of_birth, birth_date, care_type, registration_phase, "
+            "updated_at, created_at, allergies_medications, allergies_foods, clinic_id, doctor_id")
+    rows = supabase.table("patients").select(cols)\
+        .eq("clinic_id", clinic).in_("registration_phase", wanted)\
+        .gte("updated_at", desde).order("updated_at", desc=False).execute().data or []
+    return rows
+
+
+@router.get("/waitroom")
+async def waitroom(authorization: Optional[str] = Header(None)):
+    actor = _require_agenda(authorization)
+    clinic = _clinic_of(actor)
+    stages = _stages_for(actor, clinic)
+    rows = _waitroom_rows(clinic, stages)
+    pids = [r["id"] for r in rows]
+    notes_by_pid: dict = {}
+    if pids:
+        ns = supabase.table("patient_notes").select(
+            "patient_id, content, author_role, author_name, created_at")\
+            .in_("patient_id", pids).order("created_at", desc=True).execute().data or []
+        for n in ns:
+            notes_by_pid.setdefault(n["patient_id"], []).append(n)
+
+    def _alergias(r: dict) -> str:
+        vals = []
+        for k in ("allergies_medications", "allergies_foods"):
+            v = (r.get(k) or "").strip() if isinstance(r.get(k), str) else r.get(k)
+            if v and str(v).strip().lower() not in ("", "no", "ninguna", "ninguno", "no refiere"):
+                vals.append(str(v).strip())
+        return " · ".join(vals)
+
+    waiting = []
+    for r in rows:
+        nota_recepcion = next((x.get("content") for x in notes_by_pid.get(r["id"], [])
+                               if (x.get("author_role") == "receptionist")), None)
+        waiting.append({
+            "id": r["id"], "full_name": r.get("full_name"), "edad": _edad(r),
+            "care_type": r.get("care_type"),
+            "stage": _STAGE_BY_PHASE.get(r.get("registration_phase")),
+            "esperando_desde": r.get("updated_at") or r.get("created_at"),
+            "alergias": _alergias(r),
+            "nota_recepcion": nota_recepcion,
+        })
+    return {"waiting": waiting, "stages": sorted(stages)}
+
+
+@router.get("/waitroom/count")
+async def waitroom_count(authorization: Optional[str] = Header(None)):
+    actor = _require_agenda(authorization)
+    clinic = _clinic_of(actor)
+    stages = _stages_for(actor, clinic)
+    return {"count": len(_waitroom_rows(clinic, stages))}
+
+
 # ─── Listar citas + bloqueos en un rango ─────────────────────────────────────
 @router.get("")
 async def list_appointments(desde: str, hasta: str,
