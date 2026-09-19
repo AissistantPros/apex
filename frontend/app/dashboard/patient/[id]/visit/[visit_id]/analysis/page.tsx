@@ -2035,6 +2035,7 @@ function DiagnosisCard({
               return <div key={title}><LongevityHero body={body} color={color} /></div>;
             }
             // La cascada de causalidad se presenta como flujo gráfico raíz → síntoma
+            // (compatibilidad con reportes previos; los nuevos usan "LÍNEA DE TIEMPO (ATM)").
             if (title.toUpperCase().includes('CASCADA DE CAUSALIDAD') || title.toUpperCase().includes('CASCADA')) {
               return (
                 <div key={title}>
@@ -2043,10 +2044,25 @@ function DiagnosisCard({
                 </div>
               );
             }
+            // Paso "Tell" (GOTOIT): la historia del paciente, en tarjeta destacada para leerle.
+            if (title.toUpperCase().includes('HISTORIA DEL PACIENTE')) {
+              return (
+                <div key={title} className="rounded-xl p-4" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
+                  <div className="text-[10px] font-mono tracking-widest mb-2 px-1 flex items-center gap-1.5" style={{ color }}>
+                    <span>🗣️</span> {title}
+                  </div>
+                  <SectionContent title={title} body={body} color={color} onToggleSelect={handleToggleSelect} />
+                </div>
+              );
+            }
+            const isAccentTitle = title.toUpperCase().includes('DIAGNÓSTICO PRINCIPAL')
+              || title.toUpperCase().includes('RAÍZ')
+              || title.toUpperCase().includes('LÍNEA DE TIEMPO')
+              || title.toUpperCase().includes('LINEA DE TIEMPO');
             return (
               <div key={title}>
                 <div className="text-[10px] font-mono tracking-widest mb-2 px-1"
-                  style={{ color: title.toUpperCase().includes('DIAGNÓSTICO PRINCIPAL') || title.toUpperCase().includes('RAÍZ') ? color : '#3d5870' }}>
+                  style={{ color: isAccentTitle ? color : '#3d5870' }}>
                   {title}
                 </div>
                 <SectionContent title={title} body={body} color={color} onToggleSelect={handleToggleSelect} />
