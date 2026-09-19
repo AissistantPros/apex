@@ -935,7 +935,6 @@ function FlowPageInner() {
       // 3b: Actualizar visita con motivo + reporte subjetivo + exploración
       // Mismas columnas reales de DB que usa la visita de seguimiento (new-visit.tsx),
       // para que la IA siempre lea de las mismas claves sin importar el tipo de visita.
-      const sh = (val: string) => val && val.trim() !== '' ? val.trim() : 'Sin hallazgos';
       if (visitId) {
         const vRes3 = await fetch(`${B()}/visits/${visitId}`, {
           method: 'PUT',
@@ -975,12 +974,13 @@ function FlowPageInner() {
             self_skin_issues: f.self_skin_issues, hair_loss: f.hair_loss, brittle_nails: f.brittle_nails,
             medication_adherence: f.medication_adherence,
             urine_color: f.orina_color, urine_color_afternoon: f.orina_color_tarde,
-            // Exploración clínica
-            general_inspection: sh(f.exp_general), ecg_interpretation: f.ecg_interpretacion,
-            skin_findings: sh(f.exp_piel), eye_findings: sh(f.exp_ojos),
-            mouth_findings: sh(f.exp_boca), thyroid_findings: sh(f.exp_tiroides),
-            abdomen_findings: sh(f.exp_abdomen), neuro_findings: sh(f.exp_neurologico),
-            other_findings: f.exp_otros, imaging_type: f.img_tipo,
+            // Exploración clínica — redacción libre del médico (general_inspection).
+            // Las secciones por región ya no se capturan aquí; se dejan en null.
+            general_inspection: f.exp_general || null, ecg_interpretation: f.ecg_interpretacion,
+            skin_findings: f.exp_piel || null, eye_findings: f.exp_ojos || null,
+            mouth_findings: f.exp_boca || null, thyroid_findings: f.exp_tiroides || null,
+            abdomen_findings: f.exp_abdomen || null, neuro_findings: f.exp_neurologico || null,
+            other_findings: f.exp_otros || null, imaging_type: f.img_tipo,
             imaging_findings: f.img_interpretacion, minicog_done: f.cognitivo_realizado,
             minicog_words: f.cognitivo_palabras, minicog_clock: f.cognitivo_reloj,
             minicog_notes: f.cognitivo_notas,
@@ -2656,12 +2656,13 @@ function FlowPageInner() {
               </Card>
 
               <Card title="Exploración Clínica" icon="🔬" color={pc.color}>
-                <p className="text-xs text-[#7a95aa] mb-3">Solo lo relevante. No obligatorio campo por campo.</p>
+                <p className="text-xs text-[#7a95aa] mb-3">Redáctala con tus propias palabras. Escribe solo lo relevante.</p>
                 <div className="space-y-3">
-                  <Field label="IMPRESIÓN GENERAL">
-                    <textarea rows={3} className={`${inp} ${fPurp} resize-none`}
+                  <Field label="EXPLORACIÓN CLÍNICA (redacción libre)"
+                    hint="Áreas de interés (recordatorio, no obligatorias): estado general, piel y mucosas, ojos, boca/orofaringe, cuello/tiroides, tórax/cardiopulmonar, abdomen, extremidades, neurológico.">
+                    <textarea rows={9} className={`${inp} ${fPurp}`} style={{ resize: 'vertical' }}
                       value={f.exp_general} onChange={e=>set('exp_general',e.target.value)}
-                      placeholder="Paciente en buen estado general, consciente, orientado, normohidratado..." />
+                      placeholder="Ej. Paciente en buen estado general, consciente y orientada. Piel y mucosas normohidratadas. Cuello sin adenomegalias, tiroides no palpable. Cardiopulmonar sin agregados. Abdomen blando, no doloroso. Neurológico sin focalización..." />
                   </Field>
 
                   {f.ecg_realizado && (
@@ -2671,30 +2672,6 @@ function FlowPageInner() {
                         placeholder="Ritmo sinusal regular, eje normal..." />
                     </Field>
                   )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      { key: 'exp_piel',        label: 'PIEL Y MUCOSAS',  ph: 'Coloración, ictericia, acné...' },
-                      { key: 'exp_ojos',        label: 'OJOS',            ph: 'Ictericia escleral, xantelasmas...' },
-                      { key: 'exp_boca',        label: 'BOCA',            ph: 'Estado dental, lengua...' },
-                      { key: 'exp_tiroides',    label: 'TIROIDES',        ph: 'Palpación, tamaño, nódulos...' },
-                      { key: 'exp_abdomen',     label: 'ABDOMEN',         ph: 'Hepatomegalia, masas...' },
-                      { key: 'exp_neurologico', label: 'NEUROLÓGICO',     ph: 'Temblor, marcha, reflejos...' },
-                    ].map(({ key, label, ph }) => (
-                      <Field key={key} label={label}>
-                        <textarea rows={4} maxLength={500} placeholder={ph}
-                          value={(f as any)[key] as string}
-                          onChange={e=>set(key, e.target.value)}
-                          className={`${inp} ${fPurp} resize-none`} />
-                      </Field>
-                    ))}
-                  </div>
-
-                  <Field label="OTROS HALLAZGOS">
-                    <textarea rows={2} className={`${inp} ${fPurp} resize-none`}
-                      value={f.exp_otros} onChange={e=>set('exp_otros',e.target.value)}
-                      placeholder="Cualquier otro hallazgo..." />
-                  </Field>
 
                   <div className="grid grid-cols-2 gap-4 bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
                     <Field label="TIPO DE ESTUDIO DE IMAGEN">

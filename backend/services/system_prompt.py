@@ -504,6 +504,30 @@ def build_visit_context(visit: dict) -> str:
     dyn_block = build_dynamic_answers_context(visit)
     dyn_section = f"\n{dyn_block}\n" if dyn_block else ""
 
+    # Exploración clínica: el médico la REDACTA libre (general_inspection). Las secciones por
+    # región (piel, ojos, etc.) solo existen en visitas con captura estructurada previa; se
+    # muestran únicamente si traen contenido real (no "Sin hallazgos" ni vacío).
+    _EXPL_VACIO = {"", "sin hallazgos", "sin hallazgos registrados", "no registrada",
+                   "no registrado", "ninguno", "ninguna", "n/a", "na", "no aplica"}
+    def _expl_real(v):
+        return bool(v) and str(v).strip().lower() not in _EXPL_VACIO
+    _expl_narrativa = visit.get("general_inspection") or visit.get("exp_general")
+    _expl_lineas = ["  " + str(_expl_narrativa).strip()] if _expl_real(_expl_narrativa) else ["  No registrada."]
+    _expl_secciones = [
+        ("Piel y mucosas", visit.get("skin_findings") or visit.get("exp_piel")),
+        ("Ojos", visit.get("eye_findings") or visit.get("exp_ojos")),
+        ("Boca / orofaringe", visit.get("mouth_findings") or visit.get("exp_boca")),
+        ("Tiroides / cuello", visit.get("thyroid_findings") or visit.get("exp_tiroides")),
+        ("Abdomen", visit.get("abdomen_findings") or visit.get("exp_abdomen")),
+        ("Neurológico", visit.get("neuro_findings") or visit.get("exp_neurologico")),
+        ("Otros hallazgos", visit.get("other_findings") or visit.get("exp_otros")),
+    ]
+    _expl_extra = [f"  • {lbl}: {str(v).strip()}" for lbl, v in _expl_secciones if _expl_real(v)]
+    if _expl_extra:
+        _expl_lineas.append("  (Hallazgos por región de visitas con captura estructurada:)")
+        _expl_lineas.extend(_expl_extra)
+    exploracion_str = "\n".join(_expl_lineas)
+
     return f"""
 ══════════════════════════════════════════════════
 DATOS DE LA VISITA ACTUAL
@@ -628,15 +652,8 @@ DATOS DE LA VISITA ACTUAL
   Adherencia:
   • Adherencia a medicamentos/suplementos: {visit.get('medication_adherence') or 'N/D'}
 
-── EXPLORACIÓN CLÍNICA (realizada por el médico) ──
-  • Inspección general: {visit.get('general_inspection') or visit.get('exp_general') or 'No registrada'}
-  • Hallazgos en piel: {visit.get('skin_findings') or visit.get('exp_piel') or 'Sin hallazgos'}
-  • Hallazgos oculares: {visit.get('eye_findings') or visit.get('exp_ojos') or 'Sin hallazgos'}
-  • Hallazgos en boca / orofaringe: {visit.get('mouth_findings') or visit.get('exp_boca') or 'Sin hallazgos'}
-  • Hallazgos en tiroides: {visit.get('thyroid_findings') or visit.get('exp_tiroides') or 'Sin hallazgos'}
-  • Hallazgos abdominales: {visit.get('abdomen_findings') or visit.get('exp_abdomen') or 'Sin hallazgos'}
-  • Hallazgos neurológicos: {visit.get('neuro_findings') or visit.get('exp_neurologico') or 'Sin hallazgos'}
-  • Otros hallazgos clínicos: {visit.get('other_findings') or visit.get('exp_otros') or 'Ninguno'}
+── EXPLORACIÓN CLÍNICA (redacción del médico) ──
+{exploracion_str}
   • Imagen (tipo de estudio): {visit.get('imaging_type') or visit.get('img_tipo') or 'No realizado'}
   • Interpretación de imagen: {visit.get('imaging_findings') or visit.get('img_interpretacion') or 'N/A'}
   • Mini-Cog (tamizaje cognitivo breve): {cog_str}

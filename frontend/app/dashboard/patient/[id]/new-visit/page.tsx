@@ -1842,12 +1842,14 @@ export default function NewVisitPage() {
               {doctorStep === 3 && (
                 <div className="space-y-5">
                   <h2 className={`font-serif text-[#dde6ef] ${tb ? 'text-2xl' : 'text-xl'}`}>🔬 Exploración Clínica</h2>
-                  <p className="text-xs text-[#7a95aa]">Solo lo relevante. No obligatorio campo por campo.</p>
+                  <p className="text-xs text-[#7a95aa]">Redáctala con tus propias palabras. Escribe solo lo relevante.</p>
 
-                  <Field label="IMPRESIÓN GENERAL" tablet={tb}>
-                    <textarea rows={tb ? 4 : 3} className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
+                  <Field label="EXPLORACIÓN CLÍNICA (redacción libre)"
+                    hint="Áreas de interés (recordatorio, no obligatorias): estado general, piel y mucosas, ojos, boca/orofaringe, cuello/tiroides, tórax/cardiopulmonar, abdomen, extremidades, neurológico."
+                    tablet={tb}>
+                    <textarea rows={tb ? 10 : 8} className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-y ${tb ? 'text-base' : 'text-sm'}`}
                       value={form.exp_general} onChange={e => set('exp_general', e.target.value)}
-                      placeholder="Paciente en buen estado general, consciente, orientado, normohidratado..." />
+                      placeholder="Ej. Paciente en buen estado general, consciente y orientada. Piel y mucosas normohidratadas. Cuello sin adenomegalias, tiroides no palpable. Cardiopulmonar sin agregados. Abdomen blando, no doloroso. Neurológico sin focalización..." />
                   </Field>
 
                   {form.ecg_realizado && (
@@ -1857,30 +1859,6 @@ export default function NewVisitPage() {
                         placeholder="Ritmo sinusal regular, eje normal..." />
                     </Field>
                   )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      { key: 'exp_piel',       label: 'PIEL Y MUCOSAS',  ph: 'Coloración, ictericia, acné...' },
-                      { key: 'exp_ojos',       label: 'OJOS',            ph: 'Ictericia escleral, xantelasmas...' },
-                      { key: 'exp_boca',       label: 'BOCA',            ph: 'Estado dental, lengua...' },
-                      { key: 'exp_tiroides',   label: 'TIROIDES',        ph: 'Palpación, tamaño, nódulos...' },
-                      { key: 'exp_abdomen',    label: 'ABDOMEN',         ph: 'Hepatomegalia, masas...' },
-                      { key: 'exp_neurologico',label: 'NEUROLÓGICO',     ph: 'Temblor, marcha, reflejos...' },
-                    ].map(({ key, label, ph }) => (
-                      <Field key={key} label={label} tablet={tb}>
-                        <textarea rows={tb ? 5 : 4} maxLength={500} placeholder={ph}
-                          value={form[key as keyof typeof form] as string}
-                          onChange={e => set(key, e.target.value)}
-                          className={`w-full px-3 py-2.5 bg-[#111820] border border-[#1e2d3d] rounded-xl text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`} />
-                      </Field>
-                    ))}
-                  </div>
-
-                  <Field label="OTROS HALLAZGOS" tablet={tb}>
-                    <textarea rows={2} className={`w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] outline-none focus:border-[#a78bfa] transition placeholder-[#3d5870] resize-none ${tb ? 'text-base' : 'text-sm'}`}
-                      value={form.exp_otros} onChange={e => set('exp_otros', e.target.value)}
-                      placeholder="Cualquier otro hallazgo..." />
-                  </Field>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-[#0d1520] border border-[#a78bfa]/20 rounded-xl p-4">
                     <Field label="TIPO DE ESTUDIO DE IMAGEN" tablet={tb}>
