@@ -2186,21 +2186,28 @@ function ClarifyStep({
           <p className="text-sm text-[#7a95aa] font-serif">
             {questions.length === 0
               ? 'Los datos son suficientes. Continuando con el análisis...'
-              : 'Tengo algunas preguntas antes de analizar el caso. Puedes responderlas o continuar directamente.'}
+              : `Para el análisis funcional y de longevidad necesito completar la información del paciente (${questions.length} ${questions.length === 1 ? 'pregunta' : 'preguntas'}). Responde lo que puedas o continúa.`}
           </p>
         </div>
       </div>
 
       {questions.length > 0 && (
         <div className="flex flex-col gap-3 mb-6">
-          {questions.map((q, i) => (
+          {questions.map((q, i) => {
+            const mm = q.match(/^\s*\[(.+?)\]\s*(.*)$/);
+            const dominio = mm ? mm[1] : '';
+            const texto = mm ? mm[2] : q;
+            return (
             <div key={i} className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4">
               <div className="flex items-start gap-3 mb-3">
                 <span className="text-[10px] font-mono px-2 py-1 rounded-lg flex-shrink-0 mt-0.5"
                   style={{ background: 'rgba(167,139,250,.12)', color: '#a78bfa', border: '1px solid rgba(167,139,250,.25)' }}>
                   P{i + 1}
                 </span>
-                <p className="text-lg text-[#dde6ef] leading-relaxed font-serif">{q}</p>
+                <div className="flex-1">
+                  {dominio && <span className="inline-block text-[10px] font-mono uppercase tracking-wider text-[#00e5a0] mb-1">{dominio}</span>}
+                  <p className="text-lg text-[#dde6ef] leading-relaxed font-serif">{texto}</p>
+                </div>
               </div>
               <textarea
                 value={answers[i] || ''}
@@ -2214,7 +2221,8 @@ function ClarifyStep({
                 className="w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-lg text-[#dde6ef] outline-none focus:border-[#a78bfa] resize-none placeholder-[#3d5870] transition"
               />
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

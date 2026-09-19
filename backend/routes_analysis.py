@@ -1182,7 +1182,8 @@ async def get_functional_clarifying_questions(
         patient_record = get_patient(patient_id) if patient_id else {}
 
         prompt = get_functional_clarifying_questions_prompt(patient_record, visit_record, body.doctor_traditional)
-        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=400, visit_id=visit_id, step="clarify_functional")
+        # Sin tope artificial: el cuestionario funcional/longevidad puede ser extenso.
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=2500, visit_id=visit_id, step="clarify_functional")
 
         questions = []
         try:

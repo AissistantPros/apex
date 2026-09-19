@@ -894,13 +894,15 @@ Si no necesitas preguntar nada:
 
 def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_traditional: str) -> str:
     """
-    Genera hasta 3 preguntas dirigidas a buscar la CAUSA RAÍZ del diagnóstico convencional
-    ya confirmado por el médico. Se usan ANTES de generar el diagnóstico funcional.
+    Genera el CUESTIONARIO funcional/longevidad completo que la IA necesita para tener
+    la información suficiente antes del diagnóstico funcional y de longevidad. No hay
+    tope artificial: la IA pregunta TODO lo que le falte, cubriendo los dominios de
+    medicina funcional, saltando solo lo que ya está registrado.
     """
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data)
 
-    return f"""Eres APEX, asistente de medicina funcional. El médico ya confirmó este diagnóstico convencional:
+    return f"""Eres APEX, asistente de medicina funcional y de longevidad. El médico ya confirmó este diagnóstico convencional:
 
 {doctor_traditional}
 
@@ -908,33 +910,50 @@ def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: d
 
 {visit_ctx}
 
-TAREA: La medicina funcional busca el ORIGEN de este diagnóstico, no solo nombrarlo — regresando lo más posible
-hacia atrás en la causa (inflamación, eje HPA/estrés, metabolismo/insulina-glucosa, microbioma/digestión,
-toxinas/desintoxicación, mitocondria/energía, sistema nervioso autónomo).
+TAREA: En medicina funcional y de longevidad, el seguimiento a fondo es ESENCIAL. Antes de razonar la causa raíz
+y el plan de longevidad, necesitas la información suficiente del paciente. Arma el CUESTIONARIO que te haga falta
+para tener una imagen completa — tantas preguntas como necesites, sin límite artificial. Es mejor un cuestionario
+completo que quedarte corto.
 
-Con la información que YA tienes del paciente (historia, antecedentes, situación actual), identifica hasta 3
-preguntas puntuales que, de contestarse, te ayuden a ubicar la causa raíz MÁS PROBABLE de este diagnóstico
-específico en ESTE paciente. No preguntes nada que ya esté respondido en la información de arriba.
+COBERTURA (recorre estos dominios y pregunta lo que falte en CADA uno que sea relevante para este paciente):
+- Digestión y eliminación: número de evacuaciones al día, forma/consistencia (escala de Bristol), esfuerzo,
+  sangre/moco, distensión, gases, reflujo, náusea, relación con comidas; uso reciente de antibióticos, probióticos.
+- Orina: frecuencia diurna y nocturna (nicturia), color, urgencia, ardor.
+- Sueño: hora de acostarse/levantarse, latencia, despertares nocturnos, ronquido/apneas observadas, sueño reparador,
+  somnolencia diurna, siestas.
+- Energía: patrón a lo largo del día (mañana/mediodía/tarde/noche), bajones, dependencia de cafeína.
+- Estrés / eje HPA: nivel de estrés percibido, mente acelerada, ansiedad/pánico, capacidad de relajarse, estrategias.
+- Alimentación e hidratación: número y horario de comidas, antojos, azúcar/ultraprocesados, aceite de cocina,
+  litros de agua, alcohol, cafeína, comer frente a pantallas, ayunos.
+- Movimiento: tipo, frecuencia e intensidad de actividad, horas sentado, nivel de actividad laboral.
+- Tóxicos y exposiciones: fuente de agua, plástico en microondas, amalgamas/tatuajes recientes, exposición química
+  ocupacional, tabaco (propio o de terceros).
+- Ánimo y cognición: estado de ánimo, memoria/concentración, niebla mental.
+- Hormonal / sexual: libido y su tendencia, en mujeres ciclo/menstruación/menopausia, en hombres función eréctil.
+- Piel, cabello y uñas: caída de cabello, uñas quebradizas, problemas de piel.
+- Adherencia: cómo toma sus medicamentos y suplementos actuales.
+- Para LONGEVIDAD: composición corporal, capacidad física/condición (resistencia, fuerza, equilibrio), historia
+  familiar de longevidad y de enfermedad, metas de healthspan y percepción de su edad biológica.
 
-REGLAS ESTRICTAS:
-- Las preguntas deben apuntar a posibles causas raíz del diagnóstico confirmado, no preguntas genéricas
-- Solo preguntas sobre síntomas, sensaciones, hábitos o historia que el paciente puede responder verbalmente
-- NO preguntes por laboratorios o estudios — eso se sugiere después, como estudios a solicitar
-- FORMATO — MUY IMPORTANTE: las preguntas las lee el MÉDICO en pantalla y él se las hace al paciente.
-  Redáctalas en TERCERA persona desde la perspectiva del médico:
-  ✓ Correcto: "¿A qué hora hace el paciente su última comida del día y qué tipo de alimento consume?"
-  ✗ Incorrecto: "¿A qué hora comes tu última comida?" (tú directo al paciente — PROHIBIDO)
-- CAMPOS VACÍOS: si un campo aparece como N/D, "No refiere", "No especificado" o vacío, ese dato ya
-  estaba en el cuestionario y quien lo llenó lo dejó en blanco a propósito — NO lo vuelvas a preguntar.
-  Pregunta solo por matices que el cuestionario genuinamente no cubre.
-- El DEFAULT es 0 preguntas: si la información ya alcanza para apuntar a una causa raíz razonable, no preguntes nada
-- Máximo 2 preguntas, y solo si son realmente necesarias
-- Preguntas cortas, directas, específicas para ESTE paciente y ESTE diagnóstico
+REGLAS:
+- NO preguntes lo que YA esté contestado en la información de arriba. Si un dato ya está, sáltalo.
+- CAMPOS VACÍOS: si un campo aparece como N/D, "No refiere", "No especificado" o vacío, quien llenó el cuestionario
+  lo dejó en blanco a propósito — puedes re-preguntarlo SOLO si es realmente importante para la causa raíz o la
+  longevidad; si es un matiz menor, déjalo.
+- Solo preguntas que el paciente pueda responder verbalmente (síntomas, sensaciones, hábitos, historia).
+  NO pidas laboratorios ni estudios — eso se solicita después.
+- FORMATO — las preguntas las lee el MÉDICO en pantalla y él se las hace al paciente. Redáctalas en TERCERA persona:
+  ✓ "¿Cuántas veces al día evacúa el paciente y de qué consistencia (escala de Bristol)?"
+  ✗ "¿Cuántas veces vas al baño?" (tú directo al paciente — PROHIBIDO)
+- Preguntas claras y específicas para ESTE paciente y ESTE diagnóstico; agrupa por dominio con un prefijo corto
+  entre corchetes al inicio, p. ej. "[Digestión] ¿…?", "[Sueño] ¿…?".
+- Haz TODAS las que hagan falta (típicamente 8-20 si falta mucho). Si la información ya es suficiente en un dominio,
+  no preguntes de ese dominio. Solo devuelve lista vacía si de verdad ya tienes TODO lo necesario.
 
 Responde SOLO con este JSON (nada más, sin explicaciones):
-{{"questions": ["¿Pregunta 1?", "¿Pregunta 2?"]}}
+{{"questions": ["[Digestión] ¿Pregunta 1?", "[Sueño] ¿Pregunta 2?"]}}
 
-Si no necesitas preguntar nada:
+Si de verdad no falta información:
 {{"questions": []}}"""
 
 
