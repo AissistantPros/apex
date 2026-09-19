@@ -1523,6 +1523,20 @@ COFEPRIS (regulación mexicana) — cómo marcarlo:
 """
 
 
+PROTOCOLO_POR_CAPAS_RULE = """
+PROTOCOLO POR CAPAS — ORDEN INNEGOCIABLE (así se construye un protocolo funcional/longevidad serio):
+Propón las intervenciones SIEMPRE de la capa más básica a la más avanzada, nunca al revés:
+  1ª CAPA — Estilo de vida y nutrición (movimiento, alimentación, sueño, manejo del estrés, conexión
+    social). Es la base y va SIEMPRE primero; casi ningún caso debería salir sin al menos un item de esta capa.
+  2ª CAPA — Nutracéuticos y suplementos dirigidos a un DÉFICIT o disfunción DEMOSTRADA o razonablemente
+    esperable en ESTE paciente (no "por si acaso"): solo cuando hay un motivo concreto que lo justifique.
+  3ª CAPA — Herramientas avanzadas (hormonas bioidénticas, péptidos, off-label de longevidad): SOLO cuando
+    el caso lo amerita Y las capas anteriores ya están cubiertas.
+No saltes a la 3ª capa si la 1ª no está puesta. No propongas un péptido o una hormona como SUSTITUTO de lo
+que se corrige con estilo de vida. Cada item avanzado debe poder justificar por qué no bastan las capas de abajo.
+"""
+
+
 def build_doctor_practice_context(preferences: list = None, stats: list = None) -> str:
     """Bloque con las PREFERENCIAS EXPLÍCITAS del médico y su patrón de práctica real.
     El sistema se adapta al médico, no al revés: esto manda sobre el default de la IA."""
@@ -1674,7 +1688,7 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
     if "⭐ ELEGIDO POR EL MÉDICO" in diagnosis:
         star_note = "\n\nIMPORTANTE: dentro del diagnóstico base, la(s) línea(s) marcadas con ⭐ ELEGIDO POR EL MÉDICO son las que el médico seleccionó manualmente como correctas (puede no ser la de mayor % de confianza calculado por la IA). Diseña el protocolo basándote en ESA selección — el criterio clínico del médico tiene prioridad sobre el ranking automático."
 
-    arsenal_block = PEPTIDOS_OFFLABEL_RULE if diagnosis_type in ("functional", "longevity") else ""
+    arsenal_block = (PEPTIDOS_OFFLABEL_RULE + "\n" + PROTOCOLO_POR_CAPAS_RULE) if diagnosis_type in ("functional", "longevity") else ""
     vademecum_block = build_arsenal_context(arsenal_rows, diagnosis_type)
     if vademecum_block:
         arsenal_block += "\n" + vademecum_block + "\n"
@@ -1805,7 +1819,11 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
     "proxima_revision": "4 semanas",
     "labs_control": "Perfil metabólico completo, función renal, electrolitos",
     "criterios_exito": "HbA1c < 6.5%, reducción de peso 5%, mejora de síntomas",
-    "senales_alarma": "Dolor torácico, disnea súbita, edema progresivo — regresar de inmediato"
+    "senales_alarma": "Dolor torácico, disnea súbita, edema progresivo — regresar de inmediato",
+    "plan_por_fases": [
+      {{"fase": "Atacar lo urgente", "foco": "Estabilizar lo agudo/descompensado de este paciente", "cuando": "Esta visita"}},
+      {{"fase": "Dar fuerza", "foco": "Corregir déficits y poner las bases (nutrición, sueño, fundamentos)", "cuando": "1-4 semanas"}}
+    ]
   }}
 }}
 
@@ -1842,7 +1860,22 @@ REGLAS DE LLENADO (síguelas exactamente):
 
 17. NADA DE ITEMS QUE NO SEAN TRATAMIENTOS. "items" contiene solo intervenciones concretas. Las instrucciones de cómo escalonar, titular o secuenciar el tratamiento NO son items: van en "monitoreo_general" y en el campo "momento"/"condicion" de cada item. Nunca inventes un tipo nuevo (como "Plan de escalada" o "Secuencia de inicio") — "tipo" solo puede ser uno de los valores permitidos en la regla 2.
 
-18. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica."""
+18. No agregues campos fuera de los listados arriba. No omitas ningún campo de la lista — usa "" si genuinamente no aplica.
+
+19. "plan_por_fases" — PLAN DE TRABAJO POR FASES (roadmap clínico secuencial). Es la hoja de ruta que ordena el
+   trabajo en el tiempo, más allá de qué se inicia hoy. Es una FORMA DE ORDENAR el manejo, no una plantilla a
+   rellenar a ciegas: incluye solo las fases que de verdad apliquen a ESTE caso y que tu criterio clínico
+   respalde. Cada elemento es un objeto con "fase", "foco" (qué se persigue en ESTE paciente, específico) y
+   "cuando" (horizonte: "Esta visita", "1-4 semanas", "1-3 meses", "6-12 meses", etc.). Usa como marco estas
+   cinco fases, en este orden, tomando las que correspondan:
+   - "Atacar lo urgente": estabilizar lo agudo o descompensado antes que nada.
+   - "Dar fuerza": corregir déficits demostrados y asentar las bases (nutrición, sueño, fundamentos).
+   - "Levantar": construir y mejorar (fuerza/masa muscular, capacidad funcional, causa raíz).
+   - "Sostener": mantener las ganancias y la adherencia.
+   - "Optimizar": afinar hacia rangos óptimos y healthspan cuando lo anterior está firme.
+   Un caso agudo convencional puede tener solo "Atacar lo urgente" y "Sostener"; uno de longevidad puede
+   recorrer las cinco. Si no puedes fundamentar una fase para este paciente, omítela. Usa [] solo si de verdad
+   no aplica ningún plan por fases."""
 
 
 def get_protocol_validation_prompt(protocol_json: str, previous_protocols: dict = None) -> str:

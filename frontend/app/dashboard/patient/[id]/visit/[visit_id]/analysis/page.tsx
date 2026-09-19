@@ -636,6 +636,7 @@ interface ProtocolData {
     criterios_exito?: string;
     senales_alarma?: string;
     nota_doctor?: string;
+    plan_por_fases?: { fase?: string; foco?: string; cuando?: string }[];
   };
 }
 
@@ -896,7 +897,8 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
   approved?: boolean[]; onToggle?: (i: number) => void; onAddItem?: (item: ProtocolItem) => void;
 }) {
   const mg = data.monitoreo_general;
-  const hasGeneral = !!(mg && (mg.proxima_revision || mg.labs_control || mg.criterios_exito || mg.senales_alarma));
+  const hasFases = !!(mg && Array.isArray(mg.plan_por_fases) && mg.plan_por_fases.some(f => f && (f.fase || f.foco)));
+  const hasGeneral = !!(mg && (mg.proxima_revision || mg.labs_control || mg.criterios_exito || mg.senales_alarma || hasFases));
   const groups = groupProtocolItems(data.items);
   const [addingOwn, setAddingOwn] = useState(false);
   const [ownItem, setOwnItem] = useState<ProtocolItem>({ nombre_generico: '' });
@@ -985,6 +987,26 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
       {hasGeneral && (
         <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-4">
           <p className="text-xs font-mono text-[#3d5870] mb-3">SEGUIMIENTO GENERAL DEL PROTOCOLO</p>
+          {hasFases && (
+            <div className="mb-4">
+              <p className="text-[10px] font-mono mb-2 tracking-widest" style={{ color }}>🗺️ PLAN DE TRABAJO POR FASES</p>
+              <div className="space-y-2">
+                {mg!.plan_por_fases!.filter(f => f && (f.fase || f.foco)).map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-[#111820] rounded-lg px-3 py-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono font-bold mt-0.5"
+                      style={{ color, border: `1px solid ${color}55` }}>{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-[#dde6ef]">{f.fase}</span>
+                        {f.cuando && <span className="text-[10px] font-mono text-[#7a95aa]">· {f.cuando}</span>}
+                      </div>
+                      {f.foco && <p className="text-xs text-[#7a95aa] leading-snug mt-0.5">{f.foco}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             {mg!.proxima_revision && (
               <div><p className="text-[10px] font-mono text-[#3d5870]">PRÓXIMA REVISIÓN</p><p className="text-[#dde6ef]">{mg!.proxima_revision}</p></div>
