@@ -2603,16 +2603,26 @@ export default function AnalysisPage() {
 
   const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-  const authH = useCallback((): Record<string, string> => ({
-    Authorization: `Bearer ${token || ''}`,
-    'Content-Type': 'application/json',
-  }), [token]);
+  // Headers de auth con token SIEMPRE fresco: getSession() refresca el access_token si está
+  // por expirar (Supabase autoRefresh). Evita sacar al médico a media entrevista larga (>1h)
+  // por token vencido. Si getSession falla, cae al token en caché como último recurso.
+  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    let t = token;
+    try {
+      const s = await getSession();
+      if (s?.access_token) {
+        t = s.access_token;
+        if (s.access_token !== token) setToken(s.access_token);
+      }
+    } catch { /* usa el token en caché */ }
+    return { Authorization: `Bearer ${t || ''}`, 'Content-Type': 'application/json' };
+  }, [token]);
 
   // Consume un endpoint de streaming SSE (deltas de texto en vivo + un evento final
   // "done" con el JSON completo). onDelta actualiza la UI en vivo; el retorno es el
   // JSON del evento "done".
   const streamSSE = useCallback(async (url: string, body: any, onDelta: (text: string) => void): Promise<any> => {
-    const res = await fetch(url, { method: 'POST', headers: authH(), body: JSON.stringify(body) });
+    const res = await fetch(url, { method: 'POST', headers: await authHeaders(), body: JSON.stringify(body) });
     if (!res.ok || !res.body) {
       let msg = 'Error de streaming';
       try { const t = await res.text(); try { msg = JSON.parse(t).detail || t || msg; } catch { msg = t || msg; } } catch {}
@@ -2637,7 +2647,7 @@ export default function AnalysisPage() {
     }
     if (!done) throw new Error('El stream terminó sin un resultado final');
     return done;
-  }, [authH]);
+  }, [authHeaders]);
 
   useEffect(() => {
     const init = async () => {
@@ -2651,7 +2661,7 @@ export default function AnalysisPage() {
 
   // ── Load patient data ───────────────────────────────────────────────────────
   const loadPatientData = async (): Promise<any> => {
-    const headers = authH();
+    const headers = await authHeaders();
     const [patRes, visRes] = await Promise.all([
       fetch(`${apiBase}/patients/${patient_id}`, { headers }),
       fetch(`${apiBase}/visits/${patient_id}`, { headers }),
@@ -2714,7 +2724,7 @@ export default function AnalysisPage() {
     setChatMessages(prev => [...prev, { role: 'user', content: q }]);
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/${getCurrentStepKey()}/chat`, {
-        method: 'POST', headers: authH(),
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ question: q, current_diagnosis: getCurrentDiagnosisText() }),
       });
       const json = await res.json();
@@ -2752,7 +2762,7 @@ export default function AnalysisPage() {
       const first = activeTypes[0] || 'traditional';
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify`, {
         method: 'POST',
-        headers: authH(),
+        headers: await authHeaders(),
         body: JSON.stringify({ patient_data: data, selected_type: first }),
       });
       const json = await res.json();
@@ -2825,7 +2835,7 @@ export default function AnalysisPage() {
       const payload = { ...data, ...(doctorAnswers ? { _doctor_answers: doctorAnswers } : {}) };
 
       const res = await fetch(`${apiBase}/analyze/${visit_id}/traditional`, {
-        method: 'POST', headers: authH(), body: JSON.stringify(payload),
+        method: 'POST', headers: await authHeaders(), body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -2847,7 +2857,7 @@ export default function AnalysisPage() {
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_functional`, {
         method: 'POST',
-        headers: authH(),
+        headers: await authHeaders(),
         body: JSON.stringify({
           doctor_traditional: traditional.doctor_text, patient_id,
           prior_qa: priorForFunctional(),                 // encadena el Q&A convencional
@@ -2883,7 +2893,7 @@ export default function AnalysisPage() {
     try {
       const nextRound = funcRound + 1;
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_functional`, {
-        method: 'POST', headers: authH(),
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({
           doctor_traditional: traditional.doctor_text, patient_id,
           previous: accumulated,                          // acumulado de ESTA etapa (todas las rondas)
@@ -2972,7 +2982,7 @@ export default function AnalysisPage() {
     setLoadingLabel('PREPARANDO CUESTIONARIO DE LONGEVIDAD...');
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_longevity`, {
-        method: 'POST', headers: authH(),
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({
           doctor_functional: functional.doctor_text, patient_id,
           prior_qa: priorForLongevity(),                 // encadena Q&A convencional + funcional
@@ -3001,7 +3011,7 @@ export default function AnalysisPage() {
     try {
       const nextRound = longRound + 1;
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_longevity`, {
-        method: 'POST', headers: authH(),
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({
           doctor_functional: functional.doctor_text, patient_id,
           previous: accumulated,                          // acumulado de ESTA etapa
@@ -3059,7 +3069,7 @@ export default function AnalysisPage() {
   const closeVisit = async () => {
     try {
       await fetch(`${apiBase}/analyze/${visit_id}/close`, {
-        method: 'POST', headers: authH(),
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({
           doctor_traditional: traditional.doctor_text,
           doctor_functional: functional.doctor_text,
@@ -3091,7 +3101,7 @@ export default function AnalysisPage() {
   const saveDoctorPreference = async (pref: { tipo: string; de_item: string; a_item: string }, cuando = '') => {
     try {
       await fetch(`${apiBase}/analyze/preferences`, {
-        method: 'POST', headers: authH(),
+        method: 'POST', headers: await authHeaders(),
         body: JSON.stringify({ ...pref, cuando, origen: 'chat' }),
       });
       setChatMessages(prev => [...prev, { role: 'divider', content: '★ Preferencia guardada — se aplicará en casos futuros' }]);
@@ -3101,12 +3111,12 @@ export default function AnalysisPage() {
 
   /** Registra qué aceptó/agregó/quitó el médico respecto a lo que propuso la IA.
    *  Sin datos del paciente: solo el caso clínico y el tratamiento (fire-and-forget). */
-  const logPractice = (protocolType: string, aiText: string, doctorText: string) => {
+  const logPractice = async (protocolType: string, aiText: string, doctorText: string) => {
     if (!aiText || !doctorText) return;
     const dxContext = [traditional.doctor_text, functional.doctor_text]
       .filter(Boolean).join(' | ').slice(0, 400);
     fetch(`${apiBase}/analyze/${visit_id}/log_practice`, {
-      method: 'POST', headers: authH(),
+      method: 'POST', headers: await authHeaders(),
       body: JSON.stringify({
         protocol_type: protocolType, diagnostico_contexto: dxContext,
         ai_protocol: aiText, doctor_protocol: doctorText,

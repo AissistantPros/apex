@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getUser, getSession } from '@/app/lib/auth';
+import { getUser, getSession, onAuthStateChange } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 import DeepFunctionalIntake, { esFuncionalCompleta } from '../DeepFunctionalIntake';
@@ -337,6 +337,15 @@ function FlowPageInner() {
   useEffect(() => {
     if (allowedPhases.length && !allowedPhases.includes(phase)) setPhase(allowedPhases[0]);
   }, [userRole]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mantener el token fresco durante entrevistas largas: Supabase auto-refresca el access_token
+  // con la pestaña activa y emite el nuevo; lo guardamos para no sacar al médico a media captura.
+  useEffect(() => {
+    const { data } = onAuthStateChange((session) => {
+      if (session?.access_token) setToken(session.access_token);
+    });
+    return () => { try { data?.subscription?.unsubscribe(); } catch { /* noop */ } };
+  }, []);
 
   useEffect(() => {
     const init = async () => {

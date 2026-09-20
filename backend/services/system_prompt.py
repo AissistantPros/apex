@@ -62,9 +62,17 @@ def _fmt_familia(fam) -> str:
                 enf.append(datos["otra"])
             estado = "Vive" if datos.get("vivo", True) else "Falleció"
             if not datos.get("vivo", True):
-                causa = datos.get("causa_muerte", "")
-                edad_m = datos.get("edad_muerte", "")
-                estado += f" (causa: {causa}, a los {edad_m} años)" if causa else ""
+                causa = str(datos.get("causa_muerte", "") or "").strip()
+                edad_m = str(datos.get("edad_muerte", "") or "").strip()
+                # Mostrar lo que haya: causa y/o edad al fallecer (la edad importa para longevidad,
+                # aunque no se haya registrado la causa).
+                det = []
+                if causa:
+                    det.append(f"causa: {causa}")
+                if edad_m:
+                    det.append(f"a los {edad_m} años")
+                if det:
+                    estado += " (" + ", ".join(det) + ")"
             enf_str = ", ".join(enf) if enf else "Sin enfermedades registradas"
             lines.append(f"  • {pariente.capitalize()}: {enf_str} — {estado}")
     elif isinstance(fam, list):
@@ -1073,6 +1081,8 @@ def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: d
     """
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data)
+    func_ctx = build_func_intake_context(patient_data)
+    func_section = f"\n{func_ctx}\n" if func_ctx else ""
     history_ctx = build_visit_history_context(all_visits, current_visit_id=(visit_data or {}).get("id", ""))
     prior_block = _interrogatorio_previo_block(prior_qa)
 
@@ -1083,7 +1093,7 @@ def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: d
 {patient_ctx}
 
 {visit_ctx}
-
+{func_section}
 {history_ctx}
 {prior_block}
 
@@ -1151,6 +1161,8 @@ def get_longevity_clarifying_questions_prompt(patient_data: dict, visit_data: di
     etapas convencional y funcional (`prior_qa`)."""
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data)
+    func_ctx = build_func_intake_context(patient_data)
+    func_intake_section = f"\n{func_ctx}\n" if func_ctx else ""
     history_ctx = build_visit_history_context(all_visits, current_visit_id=(visit_data or {}).get("id", ""))
     func_block = f"\nDIAGNÓSTICO FUNCIONAL YA GENERADO (contexto):\n{doctor_functional}\n" if doctor_functional else ""
     prior_block = _interrogatorio_previo_block(prior_qa)
@@ -1160,7 +1172,7 @@ def get_longevity_clarifying_questions_prompt(patient_data: dict, visit_data: di
 {patient_ctx}
 
 {visit_ctx}
-
+{func_intake_section}
 {history_ctx}
 {func_block}
 {prior_block}
