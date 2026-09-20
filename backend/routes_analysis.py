@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-import json, re, time, base64, io
+import json, re, time, base64, io, os
 from anthropic import Anthropic
 from db import (
     insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient,
@@ -41,6 +41,26 @@ from services.system_prompt import (
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
 client = Anthropic()
+
+# ── DeepSeek para los 3 pasos de diagnóstico caros (opcional, con fallback a Opus) ──
+# Si NO existe DEEPSEEK_API_KEY, todo funciona idéntico a hoy (Opus). Si existe, los pasos
+# de diagnóstico marcados con diagnostic=True usan DeepSeek (compatible con la API de Anthropic).
+DEEPSEEK_API_KEY  = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/anthropic")
+DEEPSEEK_MODEL    = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+_deepseek_client = None
+
+def _get_deepseek_client():
+    global _deepseek_client
+    if _deepseek_client is None and DEEPSEEK_API_KEY:
+        _deepseek_client = Anthropic(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    return _deepseek_client
+
+def get_diagnostic_client_and_model():
+    """(client, model, is_deepseek) para los 3 pasos de diagnóstico caros.
+    Con DEEPSEEK_API_KEY → DeepSeek; sin ella → Opus (idéntico a hoy)."""
+    ds = _get_deepseek_client()
+    return (ds, DEEPSEEK_MODEL, True) if ds else (client, MODEL_DIAGNOSE, False)
 
 # Modelos por tarea (costo vs calidad) — estrategia tiered para controlar $ y latencia.
 MODEL_DIAGNOSE  = "claude-opus-4-8"    # diagnóstico final — máxima profundidad de razonamiento (calidad crítica)
@@ -539,41 +559,62 @@ def _usage_split(obj) -> tuple:
 
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                  visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
-                 attachments: list = None, temperature: float = None) -> str:
+                 attachments: list = None, temperature: float = None, diagnostic: bool = False) -> str:
     """web_search: "" (sin búsqueda), "global" (fuentes internacionales) o "mx"
-    (internacionales + mexicanas — solo medicina tradicional)."""
+    (internacionales + mexicanas — solo medicina tradicional).
+    diagnostic=True: usa el cliente/modelo de diagnóstico (DeepSeek si hay API key, si no Opus).
+    DeepSeek no soporta web_search server-side de Anthropic → se desactiva en esa ruta, con
+    fallback ÚNICO a Opus (recuperando el web_search original) si DeepSeek falla."""
     if not ENABLE_WEB_SEARCH:
         web_search = ""
+    cli, used_model, is_ds = (client, model, False)
+    web_search_original = web_search
+    if diagnostic:
+        cli, used_model, is_ds = get_diagnostic_client_and_model()
+        if is_ds:
+            web_search = ""   # DeepSeek no tiene la web_search server-side de Anthropic
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
-    kwargs = {
-        "model": model,
-        "max_tokens": max(max_tokens, 12000) if thinking else max_tokens,
-        "messages": [{"role": "user", "content": content}],
-    }
-    if system:
-        kwargs["system"] = system
-    if thinking:
-        kwargs["thinking"] = {"type": "adaptive"}
-    elif temperature is not None:
-        kwargs["temperature"] = temperature   # temperature no es compatible con thinking
-    if web_search:
-        kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
+
+    def _build_kwargs(mdl: str, ws: str) -> dict:
+        kw = {
+            "model": mdl,
+            "max_tokens": max(max_tokens, 12000) if thinking else max_tokens,
+            "messages": [{"role": "user", "content": content}],
+        }
+        if system:
+            kw["system"] = system
+        if thinking:
+            kw["thinking"] = {"type": "adaptive"}
+        elif temperature is not None:
+            kw["temperature"] = temperature   # temperature no es compatible con thinking
+        if ws:
+            kw["tools"] = [WEB_SEARCH_TOOLS[ws]]
+        return kw
+
     start = time.monotonic()
-    response = client.messages.create(**kwargs)
+    try:
+        response = cli.messages.create(**_build_kwargs(used_model, web_search))
+    except Exception as e:
+        if not (diagnostic and is_ds):
+            raise
+        # Fallback ÚNICO a Opus, recuperando el web_search original. Se registra.
+        print(f"[FALLBACK] DeepSeek falló en '{step}' ({e}); reintento con Opus")
+        used_model = MODEL_DIAGNOSE
+        response = client.messages.create(**_build_kwargs(used_model, web_search_original))
     # Con thinking activado, el primer bloque de contenido es el razonamiento, no la
     # respuesta — hay que buscar el primer bloque de tipo "text". Con web_search puede
     # haber bloques server_tool_use/web_search_tool_result antes del texto también.
     text = next((b.text for b in response.content if b.type == "text"), "")
     in_tok, out_tok = _usage_split(response)
     clinic = _clinic_from_visit(visit_id) if visit_id else None
-    _consume_ai(visit_id, in_tok, out_tok, step, model, clinic)
+    _consume_ai(visit_id, in_tok, out_tok, step, used_model, clinic)   # loguea el modelo REAL usado
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
         try:
             insert_ai_call_log({
                 "visit_id": visit_id,
                 "step": step,
-                "model": model,
+                "model": used_model,
                 "prompt": prompt,
                 "response": text,
                 "input_tokens": in_tok,
@@ -592,52 +633,85 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
 
 def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                         visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
-                        attachments: list = None, temperature: float = None):
+                        attachments: list = None, temperature: float = None, diagnostic: bool = False):
     """
     Igual que call_claude, pero yield-ea el texto de la respuesta en deltas conforme
     llegan (para mostrarlo en vivo al médico en vez de una espera ciega). text_stream
     ya filtra los deltas de thinking — solo entrega texto de la respuesta final.
     Al agotarse el generador, ya se guardó el log en ai_call_logs con el texto completo.
     web_search: "" / "global" / "mx" — ver call_claude().
+    diagnostic=True: DeepSeek si hay API key (si no, Opus). DeepSeek no soporta web_search;
+    fallback ÚNICO a Opus SOLO si falla ANTES de emitir el primer delta (ya emitido no se reinicia).
     """
     if not ENABLE_WEB_SEARCH:
         web_search = ""
+    cli, used_model, is_ds = (client, model, False)
+    web_search_original = web_search
+    if diagnostic:
+        cli, used_model, is_ds = get_diagnostic_client_and_model()
+        if is_ds:
+            web_search = ""   # DeepSeek no tiene la web_search server-side de Anthropic
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
-    kwargs = {
-        "model": model,
-        "max_tokens": max(max_tokens, 12000) if thinking else max_tokens,
-        "messages": [{"role": "user", "content": content}],
-    }
-    if thinking:
-        kwargs["thinking"] = {"type": "adaptive"}
-    elif temperature is not None:
-        kwargs["temperature"] = temperature   # temperature no es compatible con thinking
-    if web_search:
-        kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
-    start = time.monotonic()
-    chunks = []
-    in_tok = out_tok = 0
 
-    def _open_stream(kw):
+    def _build_kwargs(mdl: str, ws: str) -> dict:
+        kw = {
+            "model": mdl,
+            "max_tokens": max(max_tokens, 12000) if thinking else max_tokens,
+            "messages": [{"role": "user", "content": content}],
+        }
+        if thinking:
+            kw["thinking"] = {"type": "adaptive"}
+        elif temperature is not None:
+            kw["temperature"] = temperature   # temperature no es compatible con thinking
+        if ws:
+            kw["tools"] = [WEB_SEARCH_TOOLS[ws]]
+        return kw
+
+    def _open_stream(a_client, kw):
         # Algunas versiones del SDK no aceptan 'temperature' en el helper messages.stream().
-        # Si lo rechaza, se reintenta sin él (usa la temperatura por defecto).
         try:
-            return client.messages.stream(**kw)
+            return a_client.messages.stream(**kw)
         except TypeError as e:
             if "temperature" in str(e) and "temperature" in kw:
                 kw.pop("temperature", None)
-                return client.messages.stream(**kw)
+                return a_client.messages.stream(**kw)
             raise
 
-    with _open_stream(kwargs) as stream:
-        for delta in stream.text_stream:
+    start = time.monotonic()
+    chunks = []
+    in_tok = out_tok = 0
+    used_model_final = used_model
+
+    def _stream_deltas(a_client, mdl, ws):
+        """Abre el stream y produce deltas; al terminar setea tokens y el modelo usado."""
+        nonlocal in_tok, out_tok, used_model_final
+        with _open_stream(a_client, _build_kwargs(mdl, ws)) as stream:
+            for delta in stream.text_stream:
+                yield delta
+            try:
+                in_tok, out_tok = _usage_split(stream.get_final_message())
+            except Exception:
+                in_tok, out_tok = 0, 0
+            used_model_final = mdl
+
+    primary = _stream_deltas(cli, used_model, web_search)
+    try:
+        for delta in primary:
             chunks.append(delta)
             yield delta
-        try:
-            in_tok, out_tok = _usage_split(stream.get_final_message())
-            _consume_ai(visit_id, in_tok, out_tok, step, model)
-        except Exception:
-            pass
+    except Exception as e:
+        # Fallback a Opus SOLO si aún no emitimos nada (si ya hubo deltas, no se reinicia).
+        if diagnostic and is_ds and not chunks:
+            print(f"[FALLBACK] DeepSeek falló en stream '{step}' ({e}); reintento con Opus")
+            for delta in _stream_deltas(client, MODEL_DIAGNOSE, web_search_original):
+                chunks.append(delta)
+                yield delta
+        else:
+            raise
+    try:
+        _consume_ai(visit_id, in_tok, out_tok, step, used_model_final)
+    except Exception:
+        pass
     text = "".join(chunks)
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -646,7 +720,7 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
             insert_ai_call_log({
                 "visit_id": visit_id,
                 "step": step,
-                "model": model,
+                "model": used_model_final,
                 "prompt": prompt,
                 "response": text,
                 "input_tokens": in_tok,
@@ -1055,7 +1129,7 @@ async def finalize_first_diagnosis_stream(
     def event_stream():
         chunks = []
         try:
-            for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+            for delta in call_claude_stream(prompt, diagnostic=True, visit_id=visit_id,
                                              step=f"finalize_{draft_type}", thinking=True,
                                              web_search=_search_scope_for(draft_type),
                                              attachments=attachments):
@@ -1107,7 +1181,7 @@ async def finalize_first_diagnosis(
     """
     try:
         prompt, draft_type, attachments = _build_finalize_first_prompt(visit_id, body)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step=f"finalize_{draft_type}", thinking=True,
+        raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step=f"finalize_{draft_type}", thinking=True,
                           web_search=_search_scope_for(draft_type), attachments=attachments)
         metadata, diagnosis = extract_structured_header(raw)
 
@@ -1172,7 +1246,7 @@ async def run_traditional(
 
         extra_context = _biblioteca_para_diagnostico("traditional", full_patient, full_visit, extra_context)
         prompt = get_traditional_diagnosis_prompt(full_patient, full_visit, extra_context=extra_context, all_visits=all_visits)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="traditional", thinking=True, web_search="mx",
+        raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step="traditional", thinking=True, web_search="mx",
                           attachments=_visit_file_blocks(full_visit))
         metadata, diagnosis = extract_structured_header(raw)
 
@@ -1342,7 +1416,7 @@ async def run_functional_stream(
     def event_stream():
         chunks = []
         try:
-            for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+            for delta in call_claude_stream(prompt, diagnostic=True, visit_id=visit_id,
                                              step="functional", thinking=True, web_search="global",
                                              attachments=attachments):
                 chunks.append(delta)
@@ -1380,7 +1454,7 @@ async def run_functional(
     _gate_ai(doctor_id, "ia_funcional")
     try:
         prompt, attachments = _build_functional_prompt(visit_id, body, doctor_id)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="functional",
+        raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step="functional",
                           thinking=True, web_search="global", attachments=attachments)
         metadata, diagnosis = extract_structured_header(raw)
 
@@ -1461,7 +1535,7 @@ async def run_longevity_stream(
     def event_stream():
         chunks = []
         try:
-            for delta in call_claude_stream(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id,
+            for delta in call_claude_stream(prompt, diagnostic=True, visit_id=visit_id,
                                              step="longevity", thinking=True, web_search="global",
                                              attachments=attachments):
                 chunks.append(delta)
@@ -1499,7 +1573,7 @@ async def run_longevity(
     _gate_ai(doctor_id, "ia_longevidad")
     try:
         prompt, attachments = _build_longevity_prompt(visit_id, body, doctor_id)
-        raw = call_claude(prompt, model=MODEL_DIAGNOSE, visit_id=visit_id, step="longevity",
+        raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step="longevity",
                           thinking=True, web_search="global", attachments=attachments)
         metadata, diagnosis = extract_structured_header(raw)
 
