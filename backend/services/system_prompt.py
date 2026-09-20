@@ -1145,8 +1145,12 @@ REGLAS:
   ✗ "¿Cuántas veces vas al baño?" (tú directo al paciente — PROHIBIDO)
 - Preguntas claras y específicas para ESTE paciente y ESTE diagnóstico; agrupa por dominio con un prefijo corto
   entre corchetes al inicio, p. ej. "[Línea de tiempo] ¿…?", "[Digestión] ¿…?", "[Sueño] ¿…?".
-- Haz TODAS las que hagan falta (típicamente 8-20 si falta mucho). Si la información ya es suficiente en un dominio,
-  no preguntes de ese dominio. Solo devuelve lista vacía si de verdad ya tienes TODO lo necesario.
+- MÁXIMO 10 preguntas EN ESTA RONDA. Tienes hasta 5 rondas para cubrir todo, así que prioriza en cada
+  ronda lo más importante; en las siguientes rondas profundizas. NO rellenes: si en esta ronda solo hacen
+  falta 3, haz 3. Si la información ya es suficiente en un dominio, no preguntes de ese dominio.
+- ANTES de incluir una pregunta, VERIFICA que la respuesta NO esté ya en: la ficha, la ENTREVISTA FUNCIONAL
+  PROFUNDA, el HISTORIAL, ni el INTERROGATORIO DIRIGIDO previo (arriba). Si ya está contestada en cualquiera
+  de esas fuentes, NO la vuelvas a preguntar. Solo devuelve lista vacía si de verdad ya tienes TODO lo necesario.
 
 Responde SOLO con este JSON (nada más, sin explicaciones):
 {{"questions": ["[Digestión] ¿Pregunta 1?", "[Sueño] ¿Pregunta 2?"]}}
@@ -1198,13 +1202,15 @@ COBERTURA (recorre estos dominios y pregunta lo que falte en cada uno):
 - Metas de healthspan del paciente y su percepción de su edad biológica.
 
 REGLAS:
-- NO preguntes lo que YA esté en la información de arriba — NI en la ficha, NI en el interrogatorio
-  dirigido de las etapas convencional y funcional. Si un dato ya está en cualquiera de esas fuentes, sáltalo.
+- ANTES de incluir una pregunta, VERIFICA que la respuesta NO esté ya en la ficha, la ENTREVISTA FUNCIONAL
+  PROFUNDA, el HISTORIAL, el DIAGNÓSTICO FUNCIONAL, ni el INTERROGATORIO DIRIGIDO previo de las etapas
+  convencional y funcional (todo arriba). Si ya está contestada en cualquiera de esas fuentes, NO la repitas.
 - Solo preguntas que el paciente pueda responder verbalmente. NO pidas laboratorios/estudios (eso se solicita después).
 - Redáctalas en TERCERA persona (el médico las lee y se las hace al paciente):
   ✓ "[Condición] ¿Cuántas veces por semana entrena fuerza el paciente y qué tipo de ejercicio hace?"
 - Agrupa por dominio con un prefijo corto entre corchetes: "[Condición] ¿…?", "[Nutrición] ¿…?".
-- Haz TODAS las que hagan falta (típicamente 8-20 si falta mucho). Lista vacía solo si ya tienes TODO.
+- MÁXIMO 10 preguntas EN ESTA RONDA (tienes hasta 5 rondas; prioriza lo más importante y profundiza en las
+  siguientes). NO rellenes hasta 10. Lista vacía solo si ya tienes TODO.
 
 Responde SOLO con este JSON:
 {{"questions": ["[Condición] ¿Pregunta 1?", "[Nutrición] ¿Pregunta 2?"]}}
@@ -1250,6 +1256,28 @@ TU ARSENAL: intervenciones anti-envejecimiento — péptidos, medicamentos off-l
 TU ALCANCE: edad biológica, biomarcadores de envejecimiento, riesgo a 5-10 años, healthspan, potencial de mejora — construyendo sobre el diagnóstico convencional y la causa raíz funcional.
 NO ES TU TRABAJO: no repitas el diagnóstico agudo convencional ni la explicación de causa raíz funcional — construye sobre ambos sin reescribirlos ni contradecirlos.
 """ + IDENTITY_OUTPUT_RULE
+
+
+# Regla de PÉPTIDOS — diferenciador clave de la plataforma. Se inyecta en los enfoques
+# funcional y de longevidad (diagnóstico y protocolo) para que la IA NO omita por costumbre
+# opciones de péptidos que encajan en el caso.
+PEPTIDOS_RULE = """
+PÉPTIDOS — CONSIDÉRALOS ACTIVAMENTE (diferenciador clave; el médico QUIERE conocer estas opciones):
+Siempre que un péptido encaje clínicamente en ESTE paciente, MENCIÓNALO explícitamente con su justificación
+fisiológica — no lo omitas por costumbre ni por ser poco convencional. No es una indicación automática ni una
+lista para llenar: solo cuando de verdad aporte al caso. Ejemplos de dónde suelen encajar (guía, no lista cerrada):
+- BPC-157 y TB-500: reparación tisular, lesiones musculoesqueléticas/tendinosas, salud intestinal, recuperación.
+- Selank y Semax: ansiedad, estrés, foco, neuroprotección y cognición.
+- Eje metabólico/peso: incretinas — valora GLP-1/GIP (tirzepatida) y el triple agonista GLP-1/GIP/glucagón
+  (retatrutida); cuando el perfil de eficacia de la retatrutida supere a la tirzepatida para el objetivo del
+  paciente, dilo y explica por qué sería la mejor opción.
+- Otros según el eje a atacar (ipamorelina/CJC-1295, tesamorelina, GHK-Cu, etc.).
+Por CADA péptido que propongas: (1) explica en una línea POR QUÉ encaja en este caso; (2) respeta el gating de
+seguridad (p. ej. BPC-157/TB-500 promueven angiogénesis → considerar antecedente/estudios de cáncer antes de
+recomendarlos); (3) indica SIEMPRE si está o no aprobado por COFEPRIS en México (casi todos son off-label /
+no aprobados) con la teoría honesta de su mecanismo y su nivel de evidencia. Nunca presentes un péptido como
+aprobado si no lo está.
+"""
 
 
 def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "",
@@ -1491,6 +1519,7 @@ detección — nunca contradigas los umbrales diagnósticos convencionales (esos
 
 {traditional_block}{traditional_tx_block}
 {FUNCTIONAL_MEDICINE_AXES}
+{PEPTIDOS_RULE}
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
 REGLAS DE CONFIANZA:
@@ -1610,6 +1639,7 @@ glucosa muy alta, dolor torácico, arritmia, infección activa, descompensación
 {traditional_block}
 {functional_block}
 {treatments_block}
+{PEPTIDOS_RULE}
 {STRUCTURED_HEADER_INSTRUCTIONS}
 
 FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
@@ -1875,12 +1905,16 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
                 "items que se apilen en los mismos mecanismos."
             )
 
+    # Los péptidos aplican al arsenal funcional y de longevidad, no al convencional.
+    peptidos_block = PEPTIDOS_RULE if diagnosis_type in ("functional", "longevity") else ""
+
     return f"""{identity}
 
 Ahora no estás diagnosticando — estás diseñando el protocolo terapéutico de TU especialidad para este caso,
 manteniendo el mismo enfoque y los mismos límites de alcance que ya tienes como especialista.
 
 {get_web_search_sourcing_rules(mexico=(diagnosis_type == "traditional"))}
+{peptidos_block}
 {arsenal_block}{practica_block}
 DIAGNÓSTICO BASE:
 {diagnosis}{star_note}

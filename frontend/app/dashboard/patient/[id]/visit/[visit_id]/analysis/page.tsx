@@ -2524,8 +2524,11 @@ export default function AnalysisPage() {
   };
 
   // Rondas de interrogatorio dirigido permitidas por etapa (convencional = 1, sin follow-up).
-  const MAX_FUNC_ROUNDS = 3;
-  const MAX_LONG_ROUNDS = 2;
+  // Funcional y longevidad: hasta 5 rondas de hasta 10 preguntas cada una — que pregunten TODO
+  // lo que necesiten, tomando en cuenta lo ya respondido antes para no repetir.
+  const MAX_FUNC_ROUNDS = 5;
+  const MAX_LONG_ROUNDS = 5;
+  const MAX_Q_PER_ROUND = 10;
 
   // Q&A dirigido de la etapa convencional (las preguntas de aclaración iniciales + respuestas).
   const convQA = (): { q: string; a: string }[] =>
@@ -2938,7 +2941,7 @@ export default function AnalysisPage() {
         }),
       });
       const json = await res.json();
-      const questions: string[] = json.questions || [];
+      const questions: string[] = (json.questions || []).slice(0, MAX_Q_PER_ROUND);
       setFuncClarifyQuestions(questions);
       setFuncClarifyAnswers(new Array(questions.length).fill(''));
       if (questions.length === 0) { setFuncQAAll([]); return startFunctional(''); }
@@ -2974,7 +2977,7 @@ export default function AnalysisPage() {
           es_ultima_ronda: nextRound >= MAX_FUNC_ROUNDS,
         }),
       });
-      const q2: string[] = (await res.json()).questions || [];
+      const q2: string[] = ((await res.json()).questions || []).slice(0, MAX_Q_PER_ROUND);
       if (q2.length === 0) { setFuncQAAll(accumulated); return startFunctional(qaToText(accumulated)); }
       setFuncPrevQA(accumulated); setFuncRound(nextRound);
       setFuncClarifyQuestions(q2); setFuncClarifyAnswers(new Array(q2.length).fill(''));
@@ -3047,7 +3050,7 @@ export default function AnalysisPage() {
     }
   };
 
-  // ── Antes de longevidad: cuestionario de longevidad (hasta 2 rondas) ─────────
+  // ── Antes de longevidad: cuestionario de longevidad (hasta MAX_LONG_ROUNDS rondas) ─────────
   const startClarifyLongevity = async () => {
     setError('');
     setLongRound(1); setLongPrevQA([]);
@@ -3062,7 +3065,7 @@ export default function AnalysisPage() {
           es_ultima_ronda: MAX_LONG_ROUNDS <= 1,
         }),
       });
-      const questions: string[] = (await res.json()).questions || [];
+      const questions: string[] = ((await res.json()).questions || []).slice(0, MAX_Q_PER_ROUND);
       setLongClarifyQuestions(questions);
       setLongClarifyAnswers(new Array(questions.length).fill(''));
       if (questions.length === 0) return startLongevity('');
@@ -3092,7 +3095,7 @@ export default function AnalysisPage() {
           es_ultima_ronda: nextRound >= MAX_LONG_ROUNDS,
         }),
       });
-      const q2: string[] = (await res.json()).questions || [];
+      const q2: string[] = ((await res.json()).questions || []).slice(0, MAX_Q_PER_ROUND);
       if (q2.length === 0) return startLongevity(qaToText(accumulated));
       setLongPrevQA(accumulated); setLongRound(nextRound);
       setLongClarifyQuestions(q2); setLongClarifyAnswers(new Array(q2.length).fill(''));
