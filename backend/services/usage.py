@@ -35,10 +35,14 @@ def _insert(row: dict):
 
 def log_event(user_id: Optional[str], clinic_id: Optional[str], role: Optional[str],
               action: str, feature: Optional[str] = None, ai_tokens: int = 0,
-              status: Optional[int] = None, meta: Optional[dict] = None):
+              status: Optional[int] = None, meta: Optional[dict] = None,
+              input_tokens: Optional[int] = None, output_tokens: Optional[int] = None,
+              model: Optional[str] = None, visit_id: Optional[str] = None):
     row = {
         "user_id": user_id, "clinic_id": clinic_id, "role": role,
         "action": action, "feature": feature, "ai_tokens": ai_tokens,
+        "input_tokens": input_tokens, "output_tokens": output_tokens,
+        "model": model, "visit_id": visit_id,
         "meta": {**(meta or {}), **({"status": status} if status is not None else {})} or None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }

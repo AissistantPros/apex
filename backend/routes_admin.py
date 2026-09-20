@@ -458,3 +458,63 @@ async def overview(authorization: Optional[str] = Header(None)):
         "users": users.count or 0,
         "open_tickets": tickets.count or 0,
     }
+
+
+# ─── Costos de IA (medición real) ────────────────────────────────────────────
+@router.get("/cost/visit/{visit_id}")
+async def cost_visit(visit_id: str, authorization: Optional[str] = Header(None)):
+    """Costo por paso de una visita (proveedor). Si una fila es previa a la
+    instrumentación (sin tokens), se estima por longitud de texto y se marca."""
+    _require_admin(authorization)
+    from services.costs import cost_usd, cost_if_sonnet, PRECIOS_VERSION
+    rows = supabase.table("ai_call_logs").select(
+        "step, model, input_tokens, output_tokens, prompt, response, created_at"
+    ).eq("visit_id", visit_id).order("created_at").execute().data or []
+    steps, total, total_sonnet = [], 0.0, 0.0
+    for r in rows:
+        it, ot, est = r.get("input_tokens"), r.get("output_tokens"), False
+        if it is None or ot is None:
+            it = len(r.get("prompt") or "") // 4
+            ot = len(r.get("response") or "") // 4
+            est = True
+        c, cs = cost_usd(r["model"], it, ot), cost_if_sonnet(r["model"], it, ot)
+        total += c; total_sonnet += cs
+        steps.append({"step": r["step"], "model": r["model"],
+                      "input_tokens": it, "output_tokens": ot,
+                      "cost_usd": round(c, 4), "cost_if_sonnet_usd": round(cs, 4),
+                      "estimated": est})
+    return {"visit_id": visit_id, "steps": steps,
+            "total_usd": round(total, 4),
+            "total_if_opus_were_sonnet_usd": round(total_sonnet, 4),
+            "ahorro_potencial_usd": round(total - total_sonnet, 4),
+            "precios_version": PRECIOS_VERSION}
+
+
+@router.get("/cost/summary")
+async def cost_summary(days: int = 30, authorization: Optional[str] = Header(None)):
+    """Resumen de costo del periodo (proveedor, todas las clínicas)."""
+    _require_admin(authorization)
+    from services.costs import cost_usd, PRECIOS_VERSION
+    from datetime import datetime, timezone, timedelta
+    desde = (datetime.now(timezone.utc) - timedelta(days=max(1, days))).isoformat()
+    rows = supabase.table("ai_call_logs").select(
+        "visit_id, step, model, input_tokens, output_tokens"
+    ).gte("created_at", desde).execute().data or []
+    por_visita, por_step, total, sin_tokens = {}, {}, 0.0, 0
+    for r in rows:
+        it, ot = r.get("input_tokens"), r.get("output_tokens")
+        if it is None or ot is None:
+            sin_tokens += 1; continue
+        c = cost_usd(r["model"], it, ot); total += c
+        por_visita[r.get("visit_id")] = por_visita.get(r.get("visit_id"), 0.0) + c
+        s = por_step.setdefault(r["step"], {"llamadas": 0, "input": 0, "output": 0, "costo": 0.0})
+        s["llamadas"] += 1; s["input"] += it; s["output"] += ot; s["costo"] += c
+    visitas = len(por_visita)
+    top5 = sorted(por_visita.items(), key=lambda x: -x[1])[:5]
+    return {"dias": days, "visitas_medidas": visitas,
+            "costo_total_usd": round(total, 4),
+            "costo_promedio_por_visita_usd": round(total / visitas, 4) if visitas else 0,
+            "top5_visitas": [{"visit_id": v, "costo_usd": round(c, 4)} for v, c in top5],
+            "por_step": {k: {**v, "costo": round(v["costo"], 4)} for k, v in por_step.items()},
+            "filas_sin_tokens_excluidas": sin_tokens,
+            "precios_version": PRECIOS_VERSION}

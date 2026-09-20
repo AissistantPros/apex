@@ -511,24 +511,30 @@ def _gate_ai(doctor_id: str, feature: str = None):
     require_ai(_clinic_from_doctor(doctor_id), feature)
 
 
-def _consume_ai(visit_id: str, tokens: int, step: str = ""):
-    if not tokens:
+def _consume_ai(visit_id: str, input_tokens: int, output_tokens: int, step: str = "",
+                model: str = "", clinic: str = None):
+    total = int(input_tokens or 0) + int(output_tokens or 0)
+    if not total:
         return
     try:
         from services.plans import consume_credits
         from services.usage import log_event
-        clinic = _clinic_from_visit(visit_id)
-        consume_credits(clinic, tokens)
-        log_event(None, clinic, "doctor", f"ia.{step or 'call'}", "IA clínica", ai_tokens=int(tokens))
+        if clinic is None:
+            clinic = _clinic_from_visit(visit_id)
+        consume_credits(clinic, total)   # los créditos se siguen midiendo por el total
+        log_event(None, clinic, "doctor", f"ia.{step or 'call'}", "IA clínica",
+                  ai_tokens=total, input_tokens=int(input_tokens or 0),
+                  output_tokens=int(output_tokens or 0), model=model, visit_id=visit_id)
     except Exception:
         pass
 
 
-def _usage_tokens(obj) -> int:
+def _usage_split(obj) -> tuple:
+    """(input_tokens, output_tokens) de una respuesta o mensaje final de Anthropic."""
     u = getattr(obj, "usage", None)
     if not u:
-        return 0
-    return (getattr(u, "input_tokens", 0) or 0) + (getattr(u, "output_tokens", 0) or 0)
+        return 0, 0
+    return (getattr(u, "input_tokens", 0) or 0), (getattr(u, "output_tokens", 0) or 0)
 
 
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
@@ -558,7 +564,9 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
     # respuesta — hay que buscar el primer bloque de tipo "text". Con web_search puede
     # haber bloques server_tool_use/web_search_tool_result antes del texto también.
     text = next((b.text for b in response.content if b.type == "text"), "")
-    _consume_ai(visit_id, _usage_tokens(response), step)
+    in_tok, out_tok = _usage_split(response)
+    clinic = _clinic_from_visit(visit_id) if visit_id else None
+    _consume_ai(visit_id, in_tok, out_tok, step, model, clinic)
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
         try:
@@ -568,6 +576,9 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
                 "model": model,
                 "prompt": prompt,
                 "response": text,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "clinic_id": clinic,
                 "latency_ms": latency_ms,
                 "created_at": datetime.utcnow().isoformat(),
             })
@@ -605,6 +616,7 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
         kwargs["tools"] = [WEB_SEARCH_TOOLS[web_search]]
     start = time.monotonic()
     chunks = []
+    in_tok = out_tok = 0
 
     def _open_stream(kw):
         # Algunas versiones del SDK no aceptan 'temperature' en el helper messages.stream().
@@ -622,12 +634,14 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
             chunks.append(delta)
             yield delta
         try:
-            _consume_ai(visit_id, _usage_tokens(stream.get_final_message()), step)
+            in_tok, out_tok = _usage_split(stream.get_final_message())
+            _consume_ai(visit_id, in_tok, out_tok, step, model)
         except Exception:
             pass
     text = "".join(chunks)
     if visit_id:
         latency_ms = int((time.monotonic() - start) * 1000)
+        clinic = _clinic_from_visit(visit_id)
         try:
             insert_ai_call_log({
                 "visit_id": visit_id,
@@ -635,6 +649,9 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
                 "model": model,
                 "prompt": prompt,
                 "response": text,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "clinic_id": clinic,
                 "latency_ms": latency_ms,
                 "created_at": datetime.utcnow().isoformat(),
             })
