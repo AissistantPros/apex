@@ -6,7 +6,7 @@ devuelven `precios_version` para que se note si el número quedó viejo.
 """
 
 # Fecha/versión de esta tabla de precios (se expone en las respuestas de costo).
-PRECIOS_VERSION = "2026-09-19"
+PRECIOS_VERSION = "2026-09-20"
 
 # USD por 1,000,000 de tokens: (input, output).
 PRICES = {
@@ -17,6 +17,10 @@ PRICES = {
     "claude-sonnet-4-5": (3, 15),
     "claude-haiku-4-5":  (1, 5),
     "claude-opus-4-1-20250805": (15, 75),   # legacy
+    # DeepSeek V4 Flash (lo que sirve "deepseek-chat"). Tarifa off-peak aprox — AJUSTAR si cambia.
+    "deepseek-chat":     (0.15, 0.60),
+    "deepseek-v4-flash": (0.15, 0.60),
+    "deepseek-reasoner": (0.15, 0.60),
 }
 DEFAULT_PRICE = (3, 15)          # modelo no listado → se asume tarifa Sonnet
 SONNET = "claude-sonnet-4-6"

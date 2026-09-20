@@ -53,7 +53,7 @@ _deepseek_client = None
 def _get_deepseek_client():
     global _deepseek_client
     if _deepseek_client is None and DEEPSEEK_API_KEY:
-        _deepseek_client = Anthropic(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+        _deepseek_client = Anthropic(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=60)
     return _deepseek_client
 
 def get_diagnostic_client_and_model():
@@ -557,22 +557,36 @@ def _usage_split(obj) -> tuple:
     return (getattr(u, "input_tokens", 0) or 0), (getattr(u, "output_tokens", 0) or 0)
 
 
+def _safe_update_analysis(visit_id: str, data: dict):
+    """Guarda en `analyses` sin tumbar el flujo. El guardado del resultado clínico NUNCA
+    debe depender de que el post-proceso (validación, parseo, conciencia) tenga éxito."""
+    try:
+        update_analysis(visit_id, {**data, "updated_at": datetime.utcnow().isoformat()})
+    except Exception as e:
+        print(f"[WARN] no se pudo persistir en analyses ({list(data)[:2]}): {e}")
+
+
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                  visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
-                 attachments: list = None, temperature: float = None, diagnostic: bool = False) -> str:
+                 attachments: list = None, temperature: float = None, diagnostic: bool = False,
+                 fallback_model: str = None) -> str:
     """web_search: "" (sin búsqueda), "global" (fuentes internacionales) o "mx"
     (internacionales + mexicanas — solo medicina tradicional).
-    diagnostic=True: usa el cliente/modelo de diagnóstico (DeepSeek si hay API key, si no Opus).
-    DeepSeek no soporta web_search server-side de Anthropic → se desactiva en esa ruta, con
-    fallback ÚNICO a Opus (recuperando el web_search original) si DeepSeek falla."""
+    diagnostic=True: rutea a DeepSeek si hay API key (si no, usa `model`). DeepSeek no soporta
+    web_search server-side de Anthropic → se desactiva en esa ruta. Si DeepSeek falla, hace
+    fallback ÚNICO a `fallback_model` (o MODEL_DIAGNOSE) recuperando el web_search original."""
     if not ENABLE_WEB_SEARCH:
         web_search = ""
     cli, used_model, is_ds = (client, model, False)
     web_search_original = web_search
     if diagnostic:
-        cli, used_model, is_ds = get_diagnostic_client_and_model()
-        if is_ds:
+        ds = _get_deepseek_client()
+        if ds:
+            cli, used_model, is_ds = ds, DEEPSEEK_MODEL, True
             web_search = ""   # DeepSeek no tiene la web_search server-side de Anthropic
+        else:
+            # Sin key de DeepSeek: usar el modelo base correcto (Sonnet para protocolos, Opus para dx).
+            used_model = fallback_model or MODEL_DIAGNOSE
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
 
     def _build_kwargs(mdl: str, ws: str) -> dict:
@@ -597,9 +611,9 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
     except Exception as e:
         if not (diagnostic and is_ds):
             raise
-        # Fallback ÚNICO a Opus, recuperando el web_search original. Se registra.
-        print(f"[FALLBACK] DeepSeek falló en '{step}' ({e}); reintento con Opus")
-        used_model = MODEL_DIAGNOSE
+        # Fallback ÚNICO a Anthropic (fallback_model o Opus), recuperando el web_search original.
+        used_model = fallback_model or MODEL_DIAGNOSE
+        print(f"[FALLBACK] DeepSeek falló en '{step}' ({e}); reintento con {used_model}")
         response = client.messages.create(**_build_kwargs(used_model, web_search_original))
     # Con thinking activado, el primer bloque de contenido es el razonamiento, no la
     # respuesta — hay que buscar el primer bloque de tipo "text". Con web_search puede
@@ -633,7 +647,8 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
 
 def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                         visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
-                        attachments: list = None, temperature: float = None, diagnostic: bool = False):
+                        attachments: list = None, temperature: float = None, diagnostic: bool = False,
+                        fallback_model: str = None):
     """
     Igual que call_claude, pero yield-ea el texto de la respuesta en deltas conforme
     llegan (para mostrarlo en vivo al médico en vez de una espera ciega). text_stream
@@ -648,9 +663,12 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
     cli, used_model, is_ds = (client, model, False)
     web_search_original = web_search
     if diagnostic:
-        cli, used_model, is_ds = get_diagnostic_client_and_model()
-        if is_ds:
+        ds = _get_deepseek_client()
+        if ds:
+            cli, used_model, is_ds = ds, DEEPSEEK_MODEL, True
             web_search = ""   # DeepSeek no tiene la web_search server-side de Anthropic
+        else:
+            used_model = fallback_model or MODEL_DIAGNOSE
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
 
     def _build_kwargs(mdl: str, ws: str) -> dict:
@@ -702,8 +720,9 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
     except Exception as e:
         # Fallback a Opus SOLO si aún no emitimos nada (si ya hubo deltas, no se reinicia).
         if diagnostic and is_ds and not chunks:
-            print(f"[FALLBACK] DeepSeek falló en stream '{step}' ({e}); reintento con Opus")
-            for delta in _stream_deltas(client, MODEL_DIAGNOSE, web_search_original):
+            _fb = fallback_model or MODEL_DIAGNOSE
+            print(f"[FALLBACK] DeepSeek falló en stream '{step}' ({e}); reintento con {_fb}")
+            for delta in _stream_deltas(client, _fb, web_search_original):
                 chunks.append(delta)
                 yield delta
         else:
@@ -1136,13 +1155,20 @@ async def finalize_first_diagnosis_stream(
                 chunks.append(delta)
                 yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
             raw = "".join(chunks)
-            metadata, diagnosis = extract_structured_header(raw)
+            try:
+                metadata, diagnosis = extract_structured_header(raw)
+                conf = metadata.get("confidence", 0)
+            except Exception:
+                diagnosis, conf = raw, 0
+            # Persistir YA el diagnóstico (antes de validar), a prueba de fallos: el reporte
+            # depende de esto y no debe perderse aunque el post-proceso falle.
+            _safe_update_analysis(visit_id, {f"diagnosis_{draft_type}": diagnosis})
             validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id,
                                          step=f"validate_finalize_{draft_type}")
             final = {
                 "type": "done", "visit_id": visit_id, "step": draft_type,
                 "diagnosis": diagnosis, "validation": validation,
-                "confidence": metadata["confidence"],
+                "confidence": conf,
             }
             yield f"data: {json.dumps(final)}\n\n"
         except HTTPException:
@@ -1421,14 +1447,17 @@ async def run_functional_stream(
                                              attachments=attachments):
                 chunks.append(delta)
                 yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
-            metadata, diagnosis = extract_structured_header("".join(chunks))
+            raw = "".join(chunks)
+            try:
+                metadata, diagnosis = extract_structured_header(raw)
+                conf = metadata.get("confidence", 0)
+            except Exception:
+                diagnosis, conf = raw, 0
+            _safe_update_analysis(visit_id, {"diagnosis_functional": diagnosis})
             validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
                                          visit_id=visit_id, step="validate_functional")
-            update_analysis(visit_id, {
-                "diagnosis_functional": diagnosis, "validation_functional": validation,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
-            yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+            _safe_update_analysis(visit_id, {"validation_functional": validation})
+            yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': diagnosis, 'validation': validation, 'confidence': conf})}\n\n"
         except HTTPException:
             raise
         except Exception as e:
@@ -1540,14 +1569,17 @@ async def run_longevity_stream(
                                              attachments=attachments):
                 chunks.append(delta)
                 yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
-            metadata, diagnosis = extract_structured_header("".join(chunks))
+            raw = "".join(chunks)
+            try:
+                metadata, diagnosis = extract_structured_header(raw)
+                conf = metadata.get("confidence", 0)
+            except Exception:
+                diagnosis, conf = raw, 0
+            _safe_update_analysis(visit_id, {"diagnosis_longevity": diagnosis})
             validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
                                          visit_id=visit_id, step="validate_longevity")
-            update_analysis(visit_id, {
-                "diagnosis_longevity": diagnosis, "validation_longevity": validation,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
-            yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': diagnosis, 'validation': validation, 'confidence': metadata['confidence']})}\n\n"
+            _safe_update_analysis(visit_id, {"validation_longevity": validation})
+            yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': diagnosis, 'validation': validation, 'confidence': conf})}\n\n"
         except HTTPException:
             raise
         except Exception as e:
@@ -1934,13 +1966,17 @@ async def run_protocol_stream(
     def event_stream():
         chunks = []
         try:
-            for delta in call_claude_stream(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id,
+            for delta in call_claude_stream(prompt, diagnostic=True, fallback_model=MODEL_PROTOCOL,
+                                             max_tokens=14000, visit_id=visit_id,
                                              step=f"protocol_{body.protocol_type}", thinking=False,
                                              web_search=_search_scope_for(body.protocol_type),
                                              attachments=attachments, temperature=0.4):
                 chunks.append(delta)
                 yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
             protocol = _strip_json_fences("".join(chunks))
+            # Persistir YA el protocolo base, antes de la segunda opinión/validación: si esas
+            # fallan, el protocolo no se pierde y el reporte/receta se puede armar igual.
+            _safe_update_analysis(visit_id, {f"protocol_{body.protocol_type}": protocol})
 
             # Voz de conciencia: el crítico reta el protocolo contra el vademécum y lo ya aceptado.
             yield f"data: {json.dumps({'type': 'status', 'text': 'Revisión de segunda opinión…'})}\n\n"
@@ -1955,10 +1991,7 @@ async def run_protocol_stream(
                 if parse_protocol_json_safe(validated) is not None:
                     protocol = validated
 
-            update_analysis(visit_id, {
-                f"protocol_{body.protocol_type}": protocol,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            _safe_update_analysis(visit_id, {f"protocol_{body.protocol_type}": protocol})
             yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': banderas})}\n\n"
         except HTTPException:
             raise
@@ -1984,8 +2017,9 @@ async def run_protocol(
     """Genera el protocolo. Se mantiene como fallback no-streaming."""
     try:
         prompt, previous_protocols, attachments = _build_protocol_prompt(visit_id, body)
-        protocol = call_claude(prompt, model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=False, web_search=_search_scope_for(body.protocol_type), attachments=attachments, temperature=0.4)
+        protocol = call_claude(prompt, diagnostic=True, fallback_model=MODEL_PROTOCOL, max_tokens=14000, visit_id=visit_id, step=f"protocol_{body.protocol_type}", thinking=False, web_search=_search_scope_for(body.protocol_type), attachments=attachments, temperature=0.4)
         protocol = _strip_json_fences(protocol)
+        _safe_update_analysis(visit_id, {f"protocol_{body.protocol_type}": protocol})
 
         # Voz de conciencia: el crítico reta el protocolo contra el vademécum y lo ya aceptado.
         protocol, banderas = deliberate_protocol(protocol, body.protocol_type, previous_protocols,
@@ -2458,10 +2492,11 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
 
     # Reporte sugerido: diagnóstico(s) que el médico confirmó
     partes_reporte = []
-    for campo, titulo in (("doctor_traditional", "Diagnóstico"),
-                          ("doctor_functional", "Enfoque funcional"),
-                          ("doctor_longevity", "Enfoque de longevidad")):
-        txt = (analysis.get(campo) or "").strip()
+    for campo, alt, titulo in (("doctor_traditional", "diagnosis_traditional", "Diagnóstico"),
+                               ("doctor_functional", "diagnosis_functional", "Enfoque funcional"),
+                               ("doctor_longevity", "diagnosis_longevity", "Enfoque de longevidad")):
+        # Preferir la versión confirmada por el médico; si no cerró la visita, usar la generada.
+        txt = ((analysis.get(campo) or "").strip() or (analysis.get(alt) or "").strip())
         if txt:
             partes_reporte.append(f"{titulo}:\n{txt}")
 
