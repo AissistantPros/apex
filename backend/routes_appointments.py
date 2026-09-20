@@ -220,18 +220,31 @@ def _resumen_ia(p: dict, visits: list, analyses: list, clinic_id: str = None) ->
     )
     try:
         from anthropic import Anthropic
-        client = Anthropic()
-        resp = client.messages.create(
-            model="claude-sonnet-4-5", max_tokens=500,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        from services.deepseek import get_deepseek_client, DEEPSEEK_MODEL
+        # Resumen de solo texto → DeepSeek para ahorrar, con fallback a Sonnet.
+        _ds = get_deepseek_client()
+        _model = DEEPSEEK_MODEL if _ds else "claude-sonnet-4-6"
+        _cli = _ds or Anthropic()
+        try:
+            resp = _cli.messages.create(
+                model=_model, max_tokens=500,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as e:
+            print(f"[FALLBACK] DeepSeek brief falló ({e}); reintento con Sonnet")
+            _model = "claude-sonnet-4-6"
+            resp = Anthropic().messages.create(
+                model=_model, max_tokens=500,
+                messages=[{"role": "user", "content": prompt}],
+            )
         texto = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
         try:
             from services.usage import log_event
             from services.plans import consume_credits
             tok = (resp.usage.input_tokens or 0) + (resp.usage.output_tokens or 0)
             consume_credits(clinic_id, tok)
-            log_event(None, clinic_id, "doctor", "brief.summary", "Sala de espera", ai_tokens=tok)
+            log_event(None, clinic_id, "doctor", "brief.summary", "Sala de espera",
+                      ai_tokens=tok, model=_model)
         except Exception:
             pass
         return texto.strip() or "Sin resumen disponible."

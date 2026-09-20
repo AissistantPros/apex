@@ -723,6 +723,44 @@ def _dias_desde(fecha_iso: str, hoy: date) -> str:
         return ""
 
 
+def _resumen_indicado_previo(analysis: dict) -> str:
+    """Resumen COMPACTO de lo que se le INDICÓ al paciente en una visita previa:
+    medicamentos/suplementos y estudios solicitados (extraídos de los protocolos confirmados).
+    Es lo que permite dar seguimiento — pero recuerda que 'indicado' NO es 'cumplido'."""
+    if not isinstance(analysis, dict):
+        return ""
+    import json as _json
+    meds, estudios = [], []
+    for campo in ("protocol_traditional", "protocol_functional", "protocol_longevity"):
+        raw = analysis.get(campo)
+        if not raw:
+            continue
+        try:
+            data = _json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        for it in (data.get("items") or []):
+            if not isinstance(it, dict):
+                continue
+            nombre = (it.get("nombre_generico") or it.get("nombre")
+                      or it.get("nombre_comercial") or "").strip()
+            if nombre:
+                meds.append(nombre)
+        mg = data.get("monitoreo_general") or {}
+        if isinstance(mg, dict):
+            for e in (mg.get("estudios") or []):
+                if e:
+                    estudios.append(str(e).strip())
+    partes = []
+    if meds:
+        partes.append("Tx indicado: " + ", ".join(list(dict.fromkeys(meds))[:8]))
+    if estudios:
+        partes.append("Estudios solicitados: " + ", ".join(list(dict.fromkeys(estudios))[:8]))
+    return " — ".join(partes)
+
+
 def build_visit_history_context(visits: list, current_visit_id: str = "") -> str:
     """
     Construye un resumen compacto de las visitas ANTERIORES de este mismo paciente (peso, PA,
@@ -736,7 +774,16 @@ def build_visit_history_context(visits: list, current_visit_id: str = "") -> str
 ══════════════════════════════════════════════════
 HISTORIAL DE VISITAS ANTERIORES DEL PACIENTE
 ══════════════════════════════════════════════════
-HOY ES: {hoy.isoformat()}. Úsalo para calcular cuánto tiempo ha pasado entre visitas."""
+HOY ES: {hoy.isoformat()}. Úsalo para calcular cuánto tiempo ha pasado entre visitas.
+
+SEGUIMIENTO Y ADHERENCIA (regla clave — esto es un paciente que regresa, no una consulta única):
+• Toma en cuenta lo que ya se le diagnosticó, indicó y estudió antes: cada línea trae, cuando existe,
+  el tratamiento/medicamentos y los estudios que se le INDICARON en esa visita.
+• "Indicado" NO es "cumplido": NO des por hecho que el paciente tomó los medicamentos, siguió el
+  tratamiento o se hizo los estudios que se le pidieron. Eso hay que PREGUNTARLO explícitamente
+  (adherencia, dosis real, efectos, por qué no lo hizo) — inclúyelo en tus preguntas de aclaración.
+• Los RESULTADOS de estudios previos (labs) SÍ cuéntalos como dato válido para comparar tendencia,
+  pero un estudio "solicitado" sin resultado registrado sigue pendiente hasta confirmarlo con el paciente."""
 
     previas = [v for v in (visits or []) if v and v.get("id") != current_visit_id]
     if not previas:
@@ -798,6 +845,10 @@ HOY ES: {hoy.isoformat()}. Úsalo para calcular cuánto tiempo ha pasado entre v
         if _sueno:
             line += " — Sueño/SAOS: " + "; ".join(_sueno)
         lines.append(line)
+        # Lo que se le INDICÓ en esa visita (tratamiento/estudios) — para dar seguimiento.
+        _ind = _resumen_indicado_previo(v.get("_analysis") or {})
+        if _ind:
+            lines.append(f"      ↳ {_ind}  (confirmar con el paciente si lo cumplió)")
 
     if total_previas > len(mostradas):
         lines.append(f"  (+{total_previas - len(mostradas)} visita(s) más antigua(s) no mostradas por espacio)")
@@ -969,29 +1020,61 @@ Si no necesitas preguntar nada:
 {{"questions": []}}"""
 
 
-def _ronda_previa_block(previous_qa: str) -> str:
+def _ronda_previa_block(previous_qa: str, es_ultima: bool = True) -> str:
+    """Bloque de rondas de seguimiento DENTRO de la misma etapa (funcional/longevidad).
+    `previous_qa` acumula TODO lo ya preguntado en esta etapa (todas las rondas previas)."""
     if not previous_qa:
         return ""
+    cierre = (
+        "Sé selectivo: esta es la ÚLTIMA ronda permitida. Si con lo que ya tienes es suficiente, "
+        "devuelve una lista vacía."
+        if es_ultima else
+        "Sé selectivo. Si con lo que ya tienes es suficiente, devuelve una lista vacía "
+        "(todavía quedaría otra ronda más adelante si de verdad hiciera falta)."
+    )
     return f"""
 
-SEGUNDA RONDA — YA HICISTE ESTAS PREGUNTAS Y EL PACIENTE RESPONDIÓ:
+RONDA DE SEGUIMIENTO — EN ESTA MISMA ETAPA YA HICISTE ESTAS PREGUNTAS Y EL PACIENTE RESPONDIÓ:
 {previous_qa}
 
 Con base en esas respuestas, haz SOLO las preguntas de SEGUIMIENTO que aún necesites: profundizar en respuestas
 incompletas o vagas, aclarar banderas rojas que surgieron, o cerrar un dominio que quedó a medias. NO repitas lo ya
-preguntado. Sé selectivo: esta es la ÚLTIMA ronda. Si con lo que ya tienes es suficiente, devuelve una lista vacía.
+preguntado. {cierre}
 """
 
 
-def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_traditional: str, previous_qa: str = "") -> str:
+def _interrogatorio_previo_block(prior_qa: str) -> str:
+    """Q&A del interrogatorio dirigido de ETAPAS ANTERIORES de esta misma consulta
+    (convencional → funcional → longevidad). Se encadena hacia adelante para que cada
+    etapa siguiente NO vuelva a preguntar lo que otra etapa ya respondió."""
+    if not prior_qa or not prior_qa.strip():
+        return ""
+    return f"""
+
+══════════════════════════════════════════════════
+INTERROGATORIO DIRIGIDO YA REALIZADO EN ETAPAS PREVIAS DE ESTA MISMA CONSULTA
+══════════════════════════════════════════════════
+Además de la ficha completa de arriba, en las etapas anteriores del análisis el médico ya le hizo
+al paciente estas preguntas y el paciente YA respondió. Tómalas como información en firme:
+NO vuelvas a preguntar nada que aquí (o en la ficha) ya esté contestado. Úsalo como base; solo
+profundiza si una respuesta quedó incompleta o vaga Y es realmente relevante para TU enfoque.
+
+{prior_qa.strip()}
+"""
+
+
+def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_traditional: str, previous_qa: str = "", prior_qa: str = "", es_ultima_ronda: bool = True, all_visits: list = None) -> str:
     """
-    Genera el CUESTIONARIO funcional/longevidad completo que la IA necesita para tener
-    la información suficiente antes del diagnóstico funcional y de longevidad. No hay
-    tope artificial: la IA pregunta TODO lo que le falte, cubriendo los dominios de
-    medicina funcional, saltando solo lo que ya está registrado.
+    Genera el CUESTIONARIO funcional que la IA necesita para tener la información
+    suficiente antes del diagnóstico funcional. Recibe la ficha completa del paciente,
+    el HISTORIAL de visitas anteriores (dx/tratamiento/estudios previos, para dar
+    seguimiento y preguntar adherencia) MÁS el interrogatorio dirigido ya realizado en la
+    etapa convencional (`prior_qa`), para no volver a preguntar lo ya contestado.
     """
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data)
+    history_ctx = build_visit_history_context(all_visits, current_visit_id=(visit_data or {}).get("id", ""))
+    prior_block = _interrogatorio_previo_block(prior_qa)
 
     return f"""Eres APEX, asistente de medicina funcional y de longevidad. El médico ya confirmó este diagnóstico convencional:
 
@@ -1000,6 +1083,9 @@ def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: d
 {patient_ctx}
 
 {visit_ctx}
+
+{history_ctx}
+{prior_block}
 
 TAREA: En medicina funcional y de longevidad, el seguimiento a fondo es ESENCIAL. Antes de razonar la causa raíz
 y el plan de longevidad, necesitas la información suficiente del paciente. Arma el CUESTIONARIO que te haga falta
@@ -1035,7 +1121,8 @@ COBERTURA (recorre estos dominios y pregunta lo que falte en CADA uno que sea re
   familiar de longevidad y de enfermedad, metas de healthspan y percepción de su edad biológica.
 
 REGLAS:
-- NO preguntes lo que YA esté contestado en la información de arriba. Si un dato ya está, sáltalo.
+- NO preguntes lo que YA esté contestado en la información de arriba — NI en la ficha, NI en el
+  interrogatorio dirigido de etapas previas. Si un dato ya está en cualquiera de esas fuentes, sáltalo.
 - CAMPOS VACÍOS: si un campo aparece como N/D, "No refiere", "No especificado" o vacío, quien llenó el cuestionario
   lo dejó en blanco a propósito — puedes re-preguntarlo SOLO si es realmente importante para la causa raíz o la
   longevidad; si es un matiz menor, déjalo.
@@ -1054,22 +1141,29 @@ Responde SOLO con este JSON (nada más, sin explicaciones):
 
 Si de verdad no falta información:
 {{"questions": []}}
-{_ronda_previa_block(previous_qa)}"""
+{_ronda_previa_block(previous_qa, es_ultima=es_ultima_ronda)}"""
 
 
-def get_longevity_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_functional: str = "", previous_qa: str = "") -> str:
+def get_longevity_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_functional: str = "", previous_qa: str = "", prior_qa: str = "", es_ultima_ronda: bool = True, all_visits: list = None) -> str:
     """Cuestionario de longevidad: TODAS las preguntas necesarias para el análisis de
-    longevidad/healthspan, saltando lo ya registrado. Soporta 2ª ronda."""
+    longevidad/healthspan, saltando lo ya registrado. Recibe la ficha completa, el HISTORIAL
+    de visitas anteriores (para seguimiento/adherencia) MÁS el interrogatorio dirigido de las
+    etapas convencional y funcional (`prior_qa`)."""
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data)
+    history_ctx = build_visit_history_context(all_visits, current_visit_id=(visit_data or {}).get("id", ""))
     func_block = f"\nDIAGNÓSTICO FUNCIONAL YA GENERADO (contexto):\n{doctor_functional}\n" if doctor_functional else ""
+    prior_block = _interrogatorio_previo_block(prior_qa)
 
     return f"""Eres APEX, asistente de MEDICINA DE LONGEVIDAD. Vas a preparar el análisis de longevidad/healthspan.
 
 {patient_ctx}
 
 {visit_ctx}
+
+{history_ctx}
 {func_block}
+{prior_block}
 
 TAREA: Antes de calcular edad biológica, riesgos a futuro y el plan de longevidad, necesitas la información
 suficiente. Arma el CUESTIONARIO que te falte — tantas preguntas como necesites, sin límite artificial. Es una
@@ -1090,7 +1184,8 @@ COBERTURA (recorre estos dominios y pregunta lo que falte en cada uno):
 - Metas de healthspan del paciente y su percepción de su edad biológica.
 
 REGLAS:
-- NO preguntes lo que YA esté en la información de arriba; sáltalo.
+- NO preguntes lo que YA esté en la información de arriba — NI en la ficha, NI en el interrogatorio
+  dirigido de las etapas convencional y funcional. Si un dato ya está en cualquiera de esas fuentes, sáltalo.
 - Solo preguntas que el paciente pueda responder verbalmente. NO pidas laboratorios/estudios (eso se solicita después).
 - Redáctalas en TERCERA persona (el médico las lee y se las hace al paciente):
   ✓ "[Condición] ¿Cuántas veces por semana entrena fuerza el paciente y qué tipo de ejercicio hace?"
@@ -1102,7 +1197,7 @@ Responde SOLO con este JSON:
 
 Si de verdad no falta información:
 {{"questions": []}}
-{_ronda_previa_block(previous_qa)}"""
+{_ronda_previa_block(previous_qa, es_ultima=es_ultima_ronda)}"""
 
 
 # ─────────────────────────────────────────────────────────

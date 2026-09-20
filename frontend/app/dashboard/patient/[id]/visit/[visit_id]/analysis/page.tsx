@@ -2207,6 +2207,7 @@ function ClarifyStep({
   onSkip,
   loadingAnalysis,
   round = 1,
+  maxRound = 1,
 }: {
   questions: string[];
   answers: string[];
@@ -2215,7 +2216,9 @@ function ClarifyStep({
   onSkip: () => void;
   loadingAnalysis: boolean;
   round?: number;
+  maxRound?: number;
 }) {
+  const isLastRound = round >= maxRound;
   return (
     <div className="py-4">
       {/* AI header */}
@@ -2229,7 +2232,9 @@ function ClarifyStep({
               : `Para el análisis necesito completar la información del paciente (${questions.length} ${questions.length === 1 ? 'pregunta' : 'preguntas'}). Responde lo que puedas o continúa.`}
           </p>
           {round >= 2 && questions.length > 0 && (
-            <p className="text-[11px] text-[#f59e0b] mt-1">Segunda y última ronda de preguntas de seguimiento.</p>
+            <p className="text-[11px] text-[#f59e0b] mt-1">
+              Ronda {round} de {maxRound}{isLastRound ? ' (última ronda de seguimiento)' : ' — puede haber una ronda más si hace falta'}.
+            </p>
           )}
         </div>
       </div>
@@ -2275,7 +2280,7 @@ function ClarifyStep({
           disabled={loadingAnalysis}
           className="px-6 py-2.5 text-black text-sm font-bold rounded-xl disabled:opacity-40 transition"
           style={{ background: '#00e5a0' }}>
-          {loadingAnalysis ? 'Procesando...' : (round >= 2 ? 'Continuar a diagnóstico →' : 'Enviar respuestas →')}
+          {loadingAnalysis ? 'Procesando...' : (isLastRound ? 'Continuar a diagnóstico →' : 'Enviar respuestas →')}
         </button>
         {questions.length > 0 && (
           <button
@@ -2517,6 +2522,33 @@ export default function AnalysisPage() {
     if (!withA.length) return '';
     return withA.map(x => `${x.q}\n${x.a.trim()}`).join('\n\n');
   };
+
+  // Rondas de interrogatorio dirigido permitidas por etapa (convencional = 1, sin follow-up).
+  const MAX_FUNC_ROUNDS = 3;
+  const MAX_LONG_ROUNDS = 2;
+
+  // Q&A dirigido de la etapa convencional (las preguntas de aclaración iniciales + respuestas).
+  const convQA = (): { q: string; a: string }[] =>
+    clarifyQuestions.map((q, i) => ({ q, a: clarifyAnswers[i] || '' }));
+
+  // Q&A dirigido acumulado de la etapa funcional (todas sus rondas) — se fija al cerrar funcional.
+  const [funcQAAll, setFuncQAAll] = useState<{ q: string; a: string }[]>([]);
+
+  // Arma el bloque de "interrogatorio dirigido previo" (encadenado) para pasarlo a la etapa siguiente.
+  const labeledPriorQA = (sections: { title: string; qa: { q: string; a: string }[] }[]): string =>
+    sections
+      .map(s => { const t = qaToText(s.qa); return t ? `## ${s.title}\n${t}` : ''; })
+      .filter(Boolean)
+      .join('\n\n');
+
+  const priorForFunctional = (): string =>
+    labeledPriorQA([{ title: 'Interrogatorio dirigido — Medicina convencional', qa: convQA() }]);
+
+  const priorForLongevity = (): string =>
+    labeledPriorQA([
+      { title: 'Interrogatorio dirigido — Medicina convencional', qa: convQA() },
+      { title: 'Interrogatorio dirigido — Medicina funcional', qa: funcQAAll },
+    ]);
 
   // Servicios de IA contratados (para ofrecer solo las voces habilitadas)
   const [aiFeatures, setAiFeatures] = useState<Record<string, boolean> | null>(null);
@@ -2808,7 +2840,7 @@ export default function AnalysisPage() {
   // ── Antes de funcional: preguntas dirigidas a buscar la causa raíz ───────────
   const startClarifyFunctional = async () => {
     setError('');
-    setFuncRound(1); setFuncPrevQA([]);
+    setFuncRound(1); setFuncPrevQA([]); setFuncQAAll([]);
     setFuncClarifyLoading(true);
     setStep('loading');
     setLoadingLabel('PREPARANDO CUESTIONARIO FUNCIONAL...');
@@ -2816,43 +2848,57 @@ export default function AnalysisPage() {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_functional`, {
         method: 'POST',
         headers: authH(),
-        body: JSON.stringify({ doctor_traditional: traditional.doctor_text, patient_id }),
+        body: JSON.stringify({
+          doctor_traditional: traditional.doctor_text, patient_id,
+          prior_qa: priorForFunctional(),                 // encadena el Q&A convencional
+          es_ultima_ronda: MAX_FUNC_ROUNDS <= 1,
+        }),
       });
       const json = await res.json();
       const questions: string[] = json.questions || [];
       setFuncClarifyQuestions(questions);
       setFuncClarifyAnswers(new Array(questions.length).fill(''));
-      if (questions.length === 0) return startFunctional('');
+      if (questions.length === 0) { setFuncQAAll([]); return startFunctional(''); }
       setStep('clarifying_functional');
     } catch (e: any) {
       setFuncClarifyQuestions([]); setFuncClarifyAnswers([]);
+      setFuncQAAll([]);
       return startFunctional('');
     } finally {
       setFuncClarifyLoading(false);
     }
   };
 
-  // Envío del cuestionario funcional: 1ª ronda pide una 2ª si la IA aún tiene dudas.
+  // Envío del cuestionario funcional: hasta MAX_FUNC_ROUNDS rondas; cada ronda acumula el Q&A.
   const submitFuncClarify = async () => {
     const round = funcClarifyQuestions.map((q, i) => ({ q, a: funcClarifyAnswers[i] || '' }));
-    if (funcRound >= 2) {
-      return startFunctional(qaToText([...funcPrevQA, ...round]));
+    const accumulated = [...funcPrevQA, ...round];   // todo el Q&A funcional hasta ahora
+    if (funcRound >= MAX_FUNC_ROUNDS) {
+      setFuncQAAll(accumulated);
+      return startFunctional(qaToText(accumulated));
     }
     setFuncClarifyLoading(true);
     setStep('loading');
     setLoadingLabel('REVISANDO RESPUESTAS...');
     try {
+      const nextRound = funcRound + 1;
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_functional`, {
         method: 'POST', headers: authH(),
-        body: JSON.stringify({ doctor_traditional: traditional.doctor_text, patient_id, previous: round }),
+        body: JSON.stringify({
+          doctor_traditional: traditional.doctor_text, patient_id,
+          previous: accumulated,                          // acumulado de ESTA etapa (todas las rondas)
+          prior_qa: priorForFunctional(),                 // encadena el Q&A convencional
+          es_ultima_ronda: nextRound >= MAX_FUNC_ROUNDS,
+        }),
       });
       const q2: string[] = (await res.json()).questions || [];
-      if (q2.length === 0) return startFunctional(qaToText(round));
-      setFuncPrevQA(round); setFuncRound(2);
+      if (q2.length === 0) { setFuncQAAll(accumulated); return startFunctional(qaToText(accumulated)); }
+      setFuncPrevQA(accumulated); setFuncRound(nextRound);
       setFuncClarifyQuestions(q2); setFuncClarifyAnswers(new Array(q2.length).fill(''));
       setStep('clarifying_functional');
     } catch {
-      return startFunctional(qaToText(round));
+      setFuncQAAll(accumulated);
+      return startFunctional(qaToText(accumulated));
     } finally { setFuncClarifyLoading(false); }
   };
 
@@ -2871,6 +2917,7 @@ export default function AnalysisPage() {
           ai_traditional_original: traditional.ai_text,
           protocol_traditional: protTrad.doctor_text,
           doctor_answers: doctorAnswersOverride || '',
+          prior_qa: priorForFunctional(),               // Q&A dirigido convencional (encadenado)
           patient_id,
         },
         (delta) => setStreamedText(prev => prev + delta),
@@ -2903,6 +2950,7 @@ export default function AnalysisPage() {
           protocol_traditional: protTrad.doctor_text,
           protocol_functional: protFunc.doctor_text,
           doctor_answers: doctorAnswersOverride || '',
+          prior_qa: priorForLongevity(),                // Q&A convencional + funcional (encadenado)
           patient_id,
         },
         (delta) => setStreamedText(prev => prev + delta),
@@ -2925,7 +2973,11 @@ export default function AnalysisPage() {
     try {
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_longevity`, {
         method: 'POST', headers: authH(),
-        body: JSON.stringify({ doctor_functional: functional.doctor_text, patient_id }),
+        body: JSON.stringify({
+          doctor_functional: functional.doctor_text, patient_id,
+          prior_qa: priorForLongevity(),                 // encadena Q&A convencional + funcional
+          es_ultima_ronda: MAX_LONG_ROUNDS <= 1,
+        }),
       });
       const questions: string[] = (await res.json()).questions || [];
       setLongClarifyQuestions(questions);
@@ -2940,23 +2992,30 @@ export default function AnalysisPage() {
 
   const submitLongClarify = async () => {
     const round = longClarifyQuestions.map((q, i) => ({ q, a: longClarifyAnswers[i] || '' }));
-    if (longRound >= 2) {
-      return startLongevity(qaToText([...longPrevQA, ...round]));
+    const accumulated = [...longPrevQA, ...round];
+    if (longRound >= MAX_LONG_ROUNDS) {
+      return startLongevity(qaToText(accumulated));
     }
     setStep('loading');
     setLoadingLabel('REVISANDO RESPUESTAS...');
     try {
+      const nextRound = longRound + 1;
       const res = await fetch(`${apiBase}/analyze/${visit_id}/clarify_longevity`, {
         method: 'POST', headers: authH(),
-        body: JSON.stringify({ doctor_functional: functional.doctor_text, patient_id, previous: round }),
+        body: JSON.stringify({
+          doctor_functional: functional.doctor_text, patient_id,
+          previous: accumulated,                          // acumulado de ESTA etapa
+          prior_qa: priorForLongevity(),                 // encadena Q&A convencional + funcional
+          es_ultima_ronda: nextRound >= MAX_LONG_ROUNDS,
+        }),
       });
       const q2: string[] = (await res.json()).questions || [];
-      if (q2.length === 0) return startLongevity(qaToText(round));
-      setLongPrevQA(round); setLongRound(2);
+      if (q2.length === 0) return startLongevity(qaToText(accumulated));
+      setLongPrevQA(accumulated); setLongRound(nextRound);
       setLongClarifyQuestions(q2); setLongClarifyAnswers(new Array(q2.length).fill(''));
       setStep('clarifying_longevity');
     } catch {
-      return startLongevity(qaToText(round));
+      return startLongevity(qaToText(accumulated));
     }
   };
 
@@ -3176,9 +3235,10 @@ export default function AnalysisPage() {
                 answers={funcClarifyAnswers}
                 setAnswers={setFuncClarifyAnswers}
                 onSubmit={submitFuncClarify}
-                onSkip={() => startFunctional(funcRound >= 2 ? qaToText(funcPrevQA) : '')}
+                onSkip={() => { setFuncQAAll(funcPrevQA); startFunctional(funcRound >= 2 ? qaToText(funcPrevQA) : ''); }}
                 loadingAnalysis={funcClarifyLoading}
                 round={funcRound}
+                maxRound={MAX_FUNC_ROUNDS}
               />
             </div>
           )}
@@ -3200,6 +3260,7 @@ export default function AnalysisPage() {
                 onSkip={() => startLongevity(longRound >= 2 ? qaToText(longPrevQA) : '')}
                 loadingAnalysis={false}
                 round={longRound}
+                maxRound={MAX_LONG_ROUNDS}
               />
             </div>
           )}

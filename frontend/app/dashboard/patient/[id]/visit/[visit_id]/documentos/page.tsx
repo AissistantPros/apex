@@ -26,6 +26,7 @@ export default function DocumentosPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [finishing, setFinishing] = useState(false);
 
   // Selección + contenido editable
   const [incReceta, setIncReceta] = useState(false);
@@ -50,6 +51,19 @@ export default function DocumentosPage() {
   }, [visit_id]);
   useEffect(() => { load(); }, [load]);
 
+  // Terminar visita: saca al paciente de la sala de espera (registration_phase → complete,
+  // best-effort para que aplique también a visitas de seguimiento) y regresa a home.
+  const terminarVisita = useCallback(async () => {
+    setFinishing(true);
+    try {
+      await api(`/patients/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ registration_phase: 'complete' }),
+      });
+    } catch { /* best-effort: aun si falla, cerramos la visita en la UI */ }
+    router.push('/dashboard');
+  }, [id, router]);
+
   const lh = data?.letterhead || {};
   const pac = data?.patient || {};
   const nada = !incReceta && !incReporte && !incEstudios;
@@ -72,6 +86,7 @@ export default function DocumentosPage() {
         <div className="apex-chat-slot flex items-center mr-2" />
         <button onClick={() => window.print()} disabled={nada} className={btn} style={{ background: C.green, color: '#000' }}>🖨️ Imprimir / PDF</button>
         <button disabled title="Disponible cuando se configure el correo" className={btn} style={{ background: '#1e2d3d', color: C.muted }}>✉️ Enviar por correo</button>
+        <button onClick={terminarVisita} disabled={finishing} className={btn} style={{ background: '#0d9488', color: '#fff' }}>{finishing ? 'Cerrando…' : '✓ Terminar visita'}</button>
       </header>
 
       <main className="pt-14">
@@ -146,6 +161,16 @@ export default function DocumentosPage() {
                 </div>
               </div>
             )}
+
+            {/* Cerrar la visita y volver a home */}
+            <button
+              onClick={terminarVisita}
+              disabled={finishing}
+              className="w-full px-4 py-3 rounded-2xl text-sm font-bold transition disabled:opacity-40"
+              style={{ background: '#0d9488', color: '#fff' }}
+            >
+              {finishing ? 'Cerrando visita…' : '✓ Terminar visita y volver al inicio'}
+            </button>
           </div>
 
           {/* Previsualización (esto se imprime) */}

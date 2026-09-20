@@ -126,6 +126,18 @@ def update_analysis(visit_id: str, data: dict) -> dict:
     result = supabase.table("analyses").update(data).eq("visit_id", visit_id).execute()
     return result.data[0] if result.data else None
 
+def list_patient_analyses(patient_id: str) -> list:
+    """Análisis (diagnósticos + protocolos/recetas confirmados) de TODAS las visitas del
+    paciente. Sirve para dar SEGUIMIENTO: qué se le diagnosticó, qué tratamiento/medicamentos
+    y qué estudios se le indicaron en visitas anteriores."""
+    if not patient_id:
+        return []
+    result = supabase.table("analyses").select(
+        "visit_id, doctor_traditional, doctor_functional, doctor_longevity, "
+        "protocol_traditional, protocol_functional, protocol_longevity, updated_at"
+    ).eq("patient_id", patient_id).execute()
+    return result.data if result.data else []
+
 def insert_ai_call_log(data: dict) -> dict:
     """Registra una llamada a la IA (prompt/respuesta/latencia) para poder auditarla después"""
     result = supabase.table("ai_call_logs").insert(data).execute()

@@ -13,7 +13,7 @@ import json, re, time, base64, io, os
 from anthropic import Anthropic
 from db import (
     insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient,
-    insert_ai_call_log, list_ai_call_logs, list_patient_visits,
+    insert_ai_call_log, list_ai_call_logs, list_patient_visits, list_patient_analyses,
     find_medications, find_upgrades_for,
     save_doctor_preference, get_doctor_preferences, deactivate_doctor_preference,
     log_prescriptions, get_prescription_stats,
@@ -145,7 +145,8 @@ class FunctionalRequest(BaseModel):
     doctor_traditional: str = ""
     ai_traditional_original: str = ""
     protocol_traditional: str = ""
-    doctor_answers: str = ""
+    doctor_answers: str = ""            # Q&A del interrogatorio funcional (esta etapa)
+    prior_qa: str = ""                  # Q&A dirigido de la etapa convencional (encadenado)
     patient_id: str = ""
 
 
@@ -156,7 +157,8 @@ class LongevityRequest(BaseModel):
     ai_functional_original: str = ""
     protocol_traditional: str = ""
     protocol_functional: str = ""
-    doctor_answers: str = ""
+    doctor_answers: str = ""            # Q&A del interrogatorio de longevidad (esta etapa)
+    prior_qa: str = ""                  # Q&A dirigido de convencional + funcional (encadenado)
     patient_id: str = ""
 
 
@@ -197,7 +199,9 @@ class ClarifyFunctionalRequest(BaseModel):
     doctor_traditional: str = ""
     doctor_functional: str = ""          # dx funcional (para la ronda de longevidad)
     patient_id: str = ""
-    previous: Optional[list] = None      # [{"q": "...", "a": "..."}] de la ronda anterior (2ª ronda)
+    previous: Optional[list] = None      # [{"q","a"}] acumulado de rondas previas de ESTA etapa
+    prior_qa: str = ""                   # Q&A dirigido de etapas ANTERIORES (encadenado)
+    es_ultima_ronda: bool = True         # si la ronda a generar es la última permitida
 
 
 def _fmt_previous_qa(previous) -> str:
@@ -212,6 +216,25 @@ def _fmt_previous_qa(previous) -> str:
             if q:
                 lineas.append(f"- P: {q}\n  R: {a or '(sin respuesta)'}")
     return "\n".join(lineas)
+
+
+def _all_visits(patient_id: str) -> list:
+    """Visitas del paciente enriquecidas con el análisis (dx + tratamiento/estudios) de cada una,
+    para que el contexto de historial pueda dar SEGUIMIENTO real (qué se indicó antes) y no
+    tratar cada visita como la primera. El análisis de cada visita queda en v['_analysis']."""
+    if not patient_id:
+        return []
+    visits = list_patient_visits(patient_id) or []
+    try:
+        analyses = list_patient_analyses(patient_id) or []
+        by_visit = {a.get("visit_id"): a for a in analyses if a.get("visit_id")}
+        for v in visits:
+            a = by_visit.get(v.get("id"))
+            if a:
+                v["_analysis"] = a
+    except Exception as e:
+        print(f"[WARN _all_visits analyses] {e}")
+    return visits
 
 
 def _kb_query_desde_caso(patient: dict, visit: dict) -> str:
@@ -566,27 +589,45 @@ def _safe_update_analysis(visit_id: str, data: dict):
         print(f"[WARN] no se pudo persistir en analyses ({list(data)[:2]}): {e}")
 
 
+def _has_binary_blocks(attachments) -> bool:
+    """True si hay adjuntos que requieren VISIÓN (imágenes/PDF). DeepSeek es solo texto,
+    así que no se le pueden enrutar tareas con este tipo de adjuntos."""
+    if not attachments:
+        return False
+    for b in attachments:
+        if isinstance(b, dict) and b.get("type") in ("image", "document"):
+            return True
+    return False
+
+
 def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_tokens: int = 2000,
                  visit_id: str = "", step: str = "", thinking: bool = False, web_search: str = "",
                  attachments: list = None, temperature: float = None, diagnostic: bool = False,
-                 fallback_model: str = None) -> str:
+                 fallback_model: str = None, cheap: bool = False) -> str:
     """web_search: "" (sin búsqueda), "global" (fuentes internacionales) o "mx"
     (internacionales + mexicanas — solo medicina tradicional).
     diagnostic=True: rutea a DeepSeek si hay API key (si no, usa `model`). DeepSeek no soporta
     web_search server-side de Anthropic → se desactiva en esa ruta. Si DeepSeek falla, hace
-    fallback ÚNICO a `fallback_model` (o MODEL_DIAGNOSE) recuperando el web_search original."""
+    fallback ÚNICO a `fallback_model` (o MODEL_DIAGNOSE) recuperando el web_search original.
+    cheap=True: tareas auxiliares de SOLO TEXTO (aclaración, validación, borrador, chat) — rutea a
+    DeepSeek para ahorrar, con fallback a `model`. Si hay adjuntos binarios (visión), NO rutea a
+    DeepSeek y usa `model` tal cual, porque DeepSeek no puede leer imágenes/PDF."""
     if not ENABLE_WEB_SEARCH:
         web_search = ""
     cli, used_model, is_ds = (client, model, False)
     web_search_original = web_search
-    if diagnostic:
+    # Modelo Anthropic de respaldo según el tipo de tarea.
+    _default_fb = MODEL_DIAGNOSE if diagnostic else (fallback_model or model)
+    # cheap NO se rutea a DeepSeek si trae adjuntos que requieren visión.
+    route_ds = diagnostic or (cheap and not _has_binary_blocks(attachments))
+    if route_ds:
         ds = _get_deepseek_client()
         if ds:
             cli, used_model, is_ds = ds, DEEPSEEK_MODEL, True
             web_search = ""   # DeepSeek no tiene la web_search server-side de Anthropic
         else:
-            # Sin key de DeepSeek: usar el modelo base correcto (Sonnet para protocolos, Opus para dx).
-            used_model = fallback_model or MODEL_DIAGNOSE
+            # Sin key de DeepSeek: usar el modelo base correcto (Sonnet/Haiku/Opus según la tarea).
+            used_model = fallback_model or _default_fb
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
 
     def _build_kwargs(mdl: str, ws: str) -> dict:
@@ -609,10 +650,10 @@ def call_claude(prompt: str, system: str = "", model: str = MODEL_DIAGNOSE, max_
     try:
         response = cli.messages.create(**_build_kwargs(used_model, web_search))
     except Exception as e:
-        if not (diagnostic and is_ds):
+        if not (route_ds and is_ds):
             raise
-        # Fallback ÚNICO a Anthropic (fallback_model o Opus), recuperando el web_search original.
-        used_model = fallback_model or MODEL_DIAGNOSE
+        # Fallback ÚNICO a Anthropic (fallback_model o el modelo base de la tarea), recuperando web_search.
+        used_model = fallback_model or _default_fb
         print(f"[FALLBACK] DeepSeek falló en '{step}' ({e}); reintento con {used_model}")
         response = client.messages.create(**_build_kwargs(used_model, web_search_original))
     # Con thinking activado, el primer bloque de contenido es el razonamiento, no la
@@ -758,7 +799,7 @@ def maybe_validate(prompt_text: str, visit_id: str = "", step: str = "") -> str:
     """Corre la validación secundaria (chequeo de alucinaciones) solo si está activada."""
     if not ENABLE_SECONDARY_VALIDATION:
         return ""
-    return call_claude(prompt_text, model=MODEL_VALIDATE, max_tokens=800, visit_id=visit_id, step=step)
+    return call_claude(prompt_text, model=MODEL_VALIDATE, max_tokens=800, visit_id=visit_id, step=step, cheap=True)
 
 
 # ── Extracción de estudios: leer el PDF/foto UNA vez, guardar los datos, soltar el binario ──
@@ -1033,7 +1074,7 @@ async def get_clarifying_questions(
 
         full_patient = {**body.patient_data, **patient_record}
         full_visit = visit_record
-        all_visits = list_patient_visits(patient_id) if patient_id else []
+        all_visits = _all_visits(patient_id)
         diagnosis_type = body.selected_type if body.selected_type in ("traditional", "functional", "longevity") else "traditional"
 
         if not get_analysis(visit_id):
@@ -1053,7 +1094,7 @@ async def get_clarifying_questions(
         # (funcional/longevidad tienen su propio flujo de aclaración, sin cambios).
         draft_prompt = get_lean_draft_prompt(full_patient, full_visit, all_visits=all_visits)
         raw_draft = call_claude(draft_prompt, model=MODEL_DRAFT, visit_id=visit_id, step=f"draft_{diagnosis_type}",
-                                attachments=_visit_file_blocks(full_visit))
+                                attachments=_visit_file_blocks(full_visit), cheap=True)
         lean_draft = parse_lean_draft_json(raw_draft)
 
         hipotesis = lean_draft["hipotesis"]
@@ -1100,7 +1141,7 @@ def _build_finalize_first_prompt(visit_id: str, body: FinalizeFirstRequest) -> t
     visit_record = _ensure_labs_extracted(visit_id, visit_record)
     patient_id = analysis.get("patient_id")
     patient_data = get_patient(patient_id) if patient_id else {}
-    all_visits = list_patient_visits(patient_id) if patient_id else []
+    all_visits = _all_visits(patient_id)
 
     respuestas_block = (
         f"""
@@ -1255,7 +1296,7 @@ async def run_traditional(
         # Mezclar lo que venga del frontend con lo de Supabase (Supabase tiene precedencia)
         full_patient = {**patient_data, **patient_record}
         full_visit = visit_record
-        all_visits = list_patient_visits(patient_id) if patient_id else []
+        all_visits = _all_visits(patient_id)
 
         # Crear registro en Supabase si aún no existe (puede ya existir desde /clarify)
         if not get_analysis(visit_id):
@@ -1318,9 +1359,11 @@ async def get_functional_clarifying_questions(
 
         previous_qa = _fmt_previous_qa(body.previous)
         prompt = get_functional_clarifying_questions_prompt(
-            patient_record, visit_record, body.doctor_traditional, previous_qa=previous_qa)
+            patient_record, visit_record, body.doctor_traditional,
+            previous_qa=previous_qa, prior_qa=body.prior_qa, es_ultima_ronda=body.es_ultima_ronda,
+            all_visits=_all_visits(patient_id))
         # Sin tope artificial: el cuestionario funcional puede ser extenso.
-        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=2500, visit_id=visit_id, step="clarify_functional")
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=2500, visit_id=visit_id, step="clarify_functional", cheap=True)
 
         questions = []
         try:
@@ -1357,8 +1400,10 @@ async def get_longevity_clarifying_questions(
 
         previous_qa = _fmt_previous_qa(body.previous)
         prompt = get_longevity_clarifying_questions_prompt(
-            patient_record, visit_record, body.doctor_functional, previous_qa=previous_qa)
-        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=2500, visit_id=visit_id, step="clarify_longevity")
+            patient_record, visit_record, body.doctor_functional,
+            previous_qa=previous_qa, prior_qa=body.prior_qa, es_ultima_ronda=body.es_ultima_ronda,
+            all_visits=_all_visits(patient_id))
+        raw = call_claude(prompt, model=MODEL_CHAT, max_tokens=2500, visit_id=visit_id, step="clarify_longevity", cheap=True)
 
         questions = []
         try:
@@ -1401,16 +1446,22 @@ def _build_functional_prompt(visit_id: str, body: FunctionalRequest, doctor_id: 
     visit_record = _ensure_labs_extracted(visit_id, get_visit(visit_id) or {})
     patient_id = analysis.get("patient_id")
     patient_data = get_patient(patient_id) if patient_id else {}
-    all_visits = list_patient_visits(patient_id) if patient_id else []
+    all_visits = _all_visits(patient_id)
 
     doctor_context = ""
     if body.doctor_traditional and body.doctor_traditional.strip():
         doctor_context = build_doctor_context(
             body.ai_traditional_original, body.doctor_traditional, "DIAGNÓSTICO TRADICIONAL"
         )
+    if body.prior_qa and body.prior_qa.strip():
+        doctor_context += (
+            "\n\nINTERROGATORIO DIRIGIDO DE LA ETAPA CONVENCIONAL (preguntas que el médico ya le "
+            "hizo al paciente y sus respuestas — información en firme, ya la tienes):\n"
+            + body.prior_qa
+        )
     if body.doctor_answers and body.doctor_answers.strip():
         doctor_context += (
-            "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
+            "\n\nRESPUESTAS DEL MÉDICO A LAS PREGUNTAS DE ACLARACIÓN FUNCIONAL "
             "(tómalas en cuenta — son información adicional directa del paciente):\n"
             + body.doctor_answers
         )
@@ -1516,7 +1567,7 @@ def _build_longevity_prompt(visit_id: str, body: LongevityRequest, doctor_id: st
     visit_record = _ensure_labs_extracted(visit_id, get_visit(visit_id) or {})
     patient_id = analysis.get("patient_id")
     patient_data = get_patient(patient_id) if patient_id else {}
-    all_visits = list_patient_visits(patient_id) if patient_id else []
+    all_visits = _all_visits(patient_id)
 
     ctx_trad = ""
     if body.doctor_traditional and body.doctor_traditional.strip():
@@ -1529,9 +1580,15 @@ def _build_longevity_prompt(visit_id: str, body: LongevityRequest, doctor_id: st
             body.ai_functional_original, body.doctor_functional, "DIAGNÓSTICO FUNCIONAL"
         )
     ctx_answers = ""
+    if body.prior_qa and body.prior_qa.strip():
+        ctx_answers += (
+            "\n\nINTERROGATORIO DIRIGIDO DE LAS ETAPAS CONVENCIONAL Y FUNCIONAL (preguntas que el "
+            "médico ya le hizo al paciente y sus respuestas — información en firme, ya la tienes):\n"
+            + body.prior_qa
+        )
     if body.doctor_answers and body.doctor_answers.strip():
-        ctx_answers = (
-            "\n\nRESPUESTAS DEL MÉDICO A PREGUNTAS DE ACLARACIÓN "
+        ctx_answers += (
+            "\n\nRESPUESTAS DEL MÉDICO A LAS PREGUNTAS DE ACLARACIÓN DE LONGEVIDAD "
             "(tómalas en cuenta — son información adicional directa del paciente):\n"
             + body.doctor_answers
         )
@@ -1790,7 +1847,7 @@ TRATAMIENTOS YA ACEPTADOS POR EL MÉDICO EN PASOS ANTERIORES (revisa redundancia
 Contesta las 5 preguntas y responde SOLO con el JSON del veredicto."""
 
     raw = call_claude(prompt, system=CONSCIENCE_SYSTEM, model=MODEL_VALIDATE, max_tokens=1500,
-                      visit_id=visit_id, step=f"conscience_{protocol_type}", temperature=0.2)
+                      visit_id=visit_id, step=f"conscience_{protocol_type}", temperature=0.2, cheap=True)
     try:
         cleaned = _strip_json_fences(raw)
         start = cleaned.find("{")
@@ -1850,7 +1907,7 @@ OBJECIONES DEL REVISOR:
 Emite el PATCH con las correcciones que procedan."""
 
     raw = call_claude(prompt, system=system, model=MODEL_PROTOCOL, max_tokens=6000,
-                      visit_id=visit_id, step=f"conscience_fix_{protocol_type}", temperature=0.3)
+                      visit_id=visit_id, step=f"conscience_fix_{protocol_type}", temperature=0.3, cheap=True)
     m = re.search(r"<<<PATCH>>>\s*(\{.*?\})\s*<<<FIN_PATCH>>>", raw or "", re.DOTALL)
     if not m:
         return protocol_text
@@ -1904,7 +1961,7 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
     visit_record = _ensure_labs_extracted(visit_id, visit_record)
     patient_id = analysis.get("patient_id")
     patient_data = get_patient(patient_id) if patient_id else {}
-    all_visits = list_patient_visits(patient_id) if patient_id else []
+    all_visits = _all_visits(patient_id)
 
     # El sistema se adapta al médico: sus preferencias explícitas y su patrón real de
     # práctica entran al prompt con prioridad sobre el default de la IA.
@@ -1986,7 +2043,7 @@ async def run_protocol_stream(
             if ENABLE_SECONDARY_VALIDATION:
                 val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
                 validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id,
-                                         step=f"validate_protocol_{body.protocol_type}")
+                                         step=f"validate_protocol_{body.protocol_type}", cheap=True)
                 validated = _strip_json_fences(validated)
                 if parse_protocol_json_safe(validated) is not None:
                     protocol = validated
@@ -2027,7 +2084,7 @@ async def run_protocol(
 
         if ENABLE_SECONDARY_VALIDATION:
             val_prompt = get_protocol_validation_prompt(protocol, previous_protocols)
-            validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id, step=f"validate_protocol_{body.protocol_type}")
+            validated = call_claude(val_prompt, model=MODEL_VALIDATE, max_tokens=8000, visit_id=visit_id, step=f"validate_protocol_{body.protocol_type}", cheap=True)
             validated = _strip_json_fences(validated)
             if parse_protocol_json_safe(validated) is not None:
                 protocol = validated
@@ -2316,14 +2373,16 @@ REGLAS:
 
         history.append({"role": "user", "content": body.question})
 
-        # Sonnet + patches pequeños: el chat NO regenera el reporte completo, solo emite un patch
-        # con las operaciones mínimas del cambio. Sube muy rápido, cuesta poco.
-        response = client.messages.create(
-            model=MODEL_DRAFT,
-            max_tokens=4000,
-            system=system,
-            messages=history,
-        )
+        # El chat NO regenera el reporte completo, solo emite un patch con las operaciones mínimas
+        # del cambio. Rutea a DeepSeek para ahorrar (solo texto, sin adjuntos) con fallback a Sonnet.
+        def _mk_chat(cli, mdl):
+            return cli.messages.create(model=mdl, max_tokens=4000, system=system, messages=history)
+        _ds = _get_deepseek_client()
+        try:
+            response = _mk_chat(_ds, DEEPSEEK_MODEL) if _ds else _mk_chat(client, MODEL_DRAFT)
+        except Exception as e:
+            print(f"[FALLBACK] DeepSeek chat falló ({e}); reintento con {MODEL_DRAFT}")
+            response = _mk_chat(client, MODEL_DRAFT)
         answer_full = next((b.text for b in response.content if b.type == "text"), "")
 
         # ¿El chat propuso un patch? Extráelo, aplícalo sobre el reporte actual y devuelve
