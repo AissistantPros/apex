@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getUser, getSession, onAuthStateChange } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
-import DeepFunctionalIntake, { esFuncionalCompleta } from '../DeepFunctionalIntake';
+import { esFuncionalCompleta } from '../DeepFunctionalIntake';
 import { getRole } from '@/app/lib/role';
 import DynamicQuestions, { DynAnswer } from '@/app/components/DynamicQuestions';
 
@@ -1948,10 +1948,9 @@ function FlowPageInner() {
                 </Card>
               )}
 
-              {/* Capa profunda funcional/longevidad — solo si el paciente fue clasificado así */}
-              {careType === 'funcional_longevidad' && (
-                <DeepFunctionalIntake value={funcIntake} onChange={setFuncIntake} />
-              )}
+              {/* La capa profunda funcional/longevidad YA NO se captura en el registro:
+                  el registro es solo lo básico (convencional). La IA hace todo el interrogatorio
+                  funcional y de longevidad en sus rondas de aclaración durante el análisis. */}
             </>
           )}
 

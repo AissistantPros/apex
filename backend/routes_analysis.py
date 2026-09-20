@@ -1448,6 +1448,12 @@ def _build_functional_prompt(visit_id: str, body: FunctionalRequest, doctor_id: 
     patient_data = get_patient(patient_id) if patient_id else {}
     all_visits = _all_visits(patient_id)
 
+    # El interrogatorio funcional ahora lo hace la IA en sus rondas de aclaración (ya no se
+    # captura al registro). Si el médico respondió esas preguntas, la entrevista está completa
+    # para efectos del diagnóstico (evita el MODO PRELIMINAR heredado del registro).
+    if body.doctor_answers and body.doctor_answers.strip():
+        patient_data = {**patient_data, "entrevista_funcional_completa": True}
+
     doctor_context = ""
     if body.doctor_traditional and body.doctor_traditional.strip():
         doctor_context = build_doctor_context(
@@ -1568,6 +1574,11 @@ def _build_longevity_prompt(visit_id: str, body: LongevityRequest, doctor_id: st
     patient_id = analysis.get("patient_id")
     patient_data = get_patient(patient_id) if patient_id else {}
     all_visits = _all_visits(patient_id)
+
+    # La entrevista de longevidad la hace la IA en sus rondas; si el médico respondió, está
+    # completa (evita el MODO PRELIMINAR heredado del registro, que ya no captura esta capa).
+    if body.doctor_answers and body.doctor_answers.strip():
+        patient_data = {**patient_data, "entrevista_funcional_completa": True}
 
     ctx_trad = ""
     if body.doctor_traditional and body.doctor_traditional.strip():
