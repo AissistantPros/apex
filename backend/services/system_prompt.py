@@ -931,12 +931,14 @@ TAREA — sigue este orden:
    EXCEPCIÓN a la regla anterior: inclúyela igual, aunque parezca de bajo valor informativo, si
    sirve para descartar un diagnóstico grave aunque sea poco probable (bandera roja clínica) —
    marca ese caso con "descarta_grave": true.
-4. El número de preguntas es VARIABLE y el DEFAULT ES CERO. Máximo 2 preguntas, y SOLO si son
-   ABSOLUTAMENTE necesarias para cambiar o confirmar el diagnóstico principal. Si el caso ya es
-   razonablemente claro con la información disponible, entrega [] y no preguntes nada. No rellenes
-   hasta un número fijo, no preguntes "por si acaso", y no hagas preguntas de bajo impacto: cada
-   pregunta le cuesta tiempo al médico con el paciente enfrente, así que solo vale la pena si su
-   respuesta realmente mueve la aguja diagnóstica.
+4. El número de preguntas es VARIABLE. Es UNA sola ronda, así que incluye TODAS las preguntas que
+   de verdad necesites para cambiar o confirmar el diagnóstico — pero con un MÁXIMO ESTRICTO de 10.
+   No estás obligado a llegar a 10: si con 2 o 3 basta, deja solo esas; si el caso ya es claro con
+   la información disponible, entrega [] y no preguntes nada. NO rellenes hasta un número fijo, no
+   preguntes "por si acaso" ni hagas preguntas de bajo impacto: cada pregunta le cuesta tiempo al
+   médico con el paciente enfrente, así que solo vale la pena si su respuesta realmente mueve la
+   aguja diagnóstica. Como es la única ronda del enfoque convencional, prioriza no dejar fuera algo
+   importante, sin caer en preguntas de relleno.
 
 FORMATO DE LAS PREGUNTAS — MUY IMPORTANTE:
 - Las preguntas las lee el MÉDICO en pantalla y las hace AL PACIENTE. Redáctalas en tercera

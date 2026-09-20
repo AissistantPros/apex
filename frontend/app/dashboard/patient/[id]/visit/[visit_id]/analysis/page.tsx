@@ -3273,7 +3273,7 @@ export default function AnalysisPage() {
                 Análisis en {stepperLabels.length} pasos: {activeTypes.length || 3} diagnósticos + {activeTypes.length || 3} protocolos. Cada paso espera tu confirmación.
               </p>
               <p className="text-xs font-mono text-[#3d5870] max-w-md mx-auto mb-10">
-                APEX analiza el caso completo primero, y solo si hace falta te hace hasta 3 preguntas clave sobre el paciente.
+                APEX analiza el caso completo primero, y solo si hace falta te hace las preguntas clave que necesite sobre el paciente (una ronda, máximo 10).
               </p>
               <div className="flex items-center justify-center gap-2 mb-10 flex-wrap">
                 {stepperLabels.map((s, i) => (

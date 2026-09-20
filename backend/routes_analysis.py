@@ -1109,8 +1109,8 @@ async def get_clarifying_questions(
             "updated_at": datetime.utcnow().isoformat(),
         })
 
-        # Convencional: seguimiento breve, tope 5 preguntas.
-        questions = [q["pregunta"] for q in lean_draft["preguntas"] if q.get("pregunta")][:5]
+        # Convencional: UNA sola ronda; tantas preguntas como necesite, tope estricto 10.
+        questions = [q["pregunta"] for q in lean_draft["preguntas"] if q.get("pregunta")][:10]
 
         return {"visit_id": visit_id, "questions": questions}
     except HTTPException:
