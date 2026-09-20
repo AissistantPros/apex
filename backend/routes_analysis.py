@@ -2549,10 +2549,28 @@ def _estudios_de_diagnostico(raw) -> list:
         data = None
     if isinstance(data, dict):
         for d in (data.get("diagnosticos") or []):
-            if isinstance(d, dict):
-                for e in (d.get("estudios_sugeridos") or []):
-                    if e:
-                        out.append(str(e).strip())
+            if not isinstance(d, dict):
+                continue
+            sug = d.get("estudios_sugeridos") or []
+            sel = d.get("estudios_seleccionados")
+            if isinstance(sel, list) and len(sel) == len(sug):
+                # Respeta la selección del médico: solo los estudios que aceptó.
+                for s, chosen in zip(sug, sel):
+                    if chosen and s:
+                        out.append(str(s).strip())
+            else:
+                # Sin arreglo de selección (dx no editado): incluye los sugeridos.
+                for s in sug:
+                    if s:
+                        out.append(str(s).strip())
+            # Estudios que el médico agregó a mano a este diagnóstico.
+            for s in (d.get("estudios_doctor") or []):
+                if s:
+                    out.append(str(s).strip())
+        # Estudios adicionales globales + fallback a nivel raíz.
+        for e in (data.get("estudios_adicionales") or []):
+            if e:
+                out.append(str(e).strip())
         for e in (data.get("estudios_sugeridos") or []):
             if e:
                 out.append(str(e).strip())
