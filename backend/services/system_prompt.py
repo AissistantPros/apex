@@ -1663,6 +1663,13 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 
 PEPTIDOS_OFFLABEL_RULE = """
 ARSENAL AMPLIADO (medicina funcional y de longevidad) — RECORDATORIO ACTIVO:
+Este es un DIFERENCIADOR clave: el médico QUIERE que le presentes las opciones de péptidos y off-label
+que encajen, además de los suplementos. Por eso: SIEMPRE que un péptido o un off-label encaje clínicamente
+con lo que ESTE paciente necesita, PROPONLO explícitamente como item del protocolo y explica en una línea
+POR QUÉ encaja — no lo omitas por costumbre, por ser "poco convencional" o por no estar aprobado. No es
+relleno (solo si de verdad aporta a un eje real del caso), pero si aplica y lo dejas fuera, es un error.
+Ejemplo concreto: si la retatrutida (triple agonista) supera a la tirzepatida para el objetivo metabólico
+del paciente, recomiéndala y di por qué es mejor opción.
 No te limites a lo convencional. En tu especialidad SÍ puedes —y DEBES cuando aplique al caso—
 considerar activamente:
 
@@ -1905,16 +1912,12 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
                 "items que se apilen en los mismos mecanismos."
             )
 
-    # Los péptidos aplican al arsenal funcional y de longevidad, no al convencional.
-    peptidos_block = PEPTIDOS_RULE if diagnosis_type in ("functional", "longevity") else ""
-
     return f"""{identity}
 
 Ahora no estás diagnosticando — estás diseñando el protocolo terapéutico de TU especialidad para este caso,
 manteniendo el mismo enfoque y los mismos límites de alcance que ya tienes como especialista.
 
 {get_web_search_sourcing_rules(mexico=(diagnosis_type == "traditional"))}
-{peptidos_block}
 {arsenal_block}{practica_block}
 DIAGNÓSTICO BASE:
 {diagnosis}{star_note}

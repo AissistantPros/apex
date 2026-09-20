@@ -2523,6 +2523,85 @@ def _parse_protocol(raw) -> tuple:
     return meds, estudios
 
 
+def _estudios_de_diagnostico(raw) -> list:
+    """Estudios sugeridos de UN diagnóstico. El convencional es JSON con
+    diagnosticos[].estudios_sugeridos; el funcional/longevidad es texto con una sección
+    '═══ ESTUDIOS SUGERIDOS ... ═══' cuyas viñetas son 'Estudio — clasificación — motivo'.
+    Devuelve solo los NOMBRES de estudio (lo anterior al primer ' — ')."""
+    if not raw:
+        return []
+    out = []
+    # 1) Formato JSON (convencional)
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        data = None
+    if isinstance(data, dict):
+        for d in (data.get("diagnosticos") or []):
+            if isinstance(d, dict):
+                for e in (d.get("estudios_sugeridos") or []):
+                    if e:
+                        out.append(str(e).strip())
+        for e in (data.get("estudios_sugeridos") or []):
+            if e:
+                out.append(str(e).strip())
+        return out
+    # 2) Formato texto (funcional/longevidad): sección delimitada por ═══ con "ESTUDIO"
+    if isinstance(raw, str):
+        capturing = False
+        for ln in raw.splitlines():
+            s = ln.strip()
+            if "═══" in s or (s.startswith("===") and s.endswith("===")):
+                up = s.upper()
+                capturing = ("ESTUDIO" in up or "LABORATORIO" in up)
+                continue
+            if capturing and s:
+                if s.startswith("(") or s.lower().startswith("máximo"):
+                    continue
+                item = re.sub(r'^[\-•\*\d\.\)\s]+', '', s).strip()
+                # "Estudio — clasificación — motivo" → tomar solo el nombre del estudio
+                nombre = re.split(r'\s[—–-]\s', item)[0].strip()
+                if nombre and len(nombre) <= 120:
+                    out.append(nombre)
+    return out
+
+
+def _seccion_delimitada(raw: str, keyword: str) -> str:
+    """Extrae el cuerpo de una sección '═══ ... KEYWORD ... ═══' de un diagnóstico en texto."""
+    if not raw or not isinstance(raw, str):
+        return ""
+    cuerpo, capturing = [], False
+    for ln in raw.splitlines():
+        s = ln.strip()
+        if "═══" in s or (s.startswith("===") and s.endswith("===")):
+            capturing = keyword.upper() in s.upper()
+            continue
+        if capturing:
+            cuerpo.append(ln)
+    return "\n".join(cuerpo).strip()
+
+
+def _dx_convencional_legible(raw) -> list:
+    """Lista estructurada [{nombre, confianza, resumen}] del diagnóstico convencional (JSON)."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return []
+    if not isinstance(data, dict):
+        return []
+    out = []
+    for d in (data.get("diagnosticos") or []):
+        if isinstance(d, dict) and d.get("nombre"):
+            out.append({
+                "nombre": str(d.get("nombre") or "").strip(),
+                "confianza": d.get("confianza"),
+                "resumen": str(d.get("resumen_breve") or "").strip(),
+            })
+    return out
+
+
 @router.get("/{visit_id}/documents")
 async def get_documents(visit_id: str, authorization: Optional[str] = Header(None)):
     """Ensambla los datos para los 3 documentos de salida: receta, reporte y estudios.
@@ -2538,26 +2617,78 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
     perfil = get_doctor_profile(doctor_id) if doctor_id else {}
     letterhead = (perfil or {}).get("letterhead") or {}
 
-    receta, estudios = [], []
+    # Medicamentos (receta) y hábitos (estilo de vida / ejercicio) de los protocolos.
+    receta, habitos = [], []
     for campo in ("protocol_traditional", "protocol_functional", "protocol_longevity"):
-        meds, est = _parse_protocol(analysis.get(campo))
+        raw = analysis.get(campo)
+        meds, _ = _parse_protocol(raw)
         receta.extend(meds)
-        estudios.extend(est)
-    # de-duplicar estudios conservando orden
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            data = None
+        if isinstance(data, dict):
+            for it in (data.get("items") or []):
+                if isinstance(it, dict) and (it.get("tipo") or "").strip().lower() in ("estilo de vida", "ejercicio"):
+                    habitos.append(it)
+
+    # Estudios: se leen del DIAGNÓSTICO de cada enfoque (ahí viven los "estudios_sugeridos"),
+    # no del protocolo. Se juntan de los 3 enfoques y se de-duplican.
+    estudios = []
+    for campo, alt in (("doctor_traditional", "diagnosis_traditional"),
+                       ("doctor_functional", "diagnosis_functional"),
+                       ("doctor_longevity", "diagnosis_longevity")):
+        fuente = (analysis.get(campo) or "").strip() or (analysis.get(alt) or "").strip()
+        estudios.extend(_estudios_de_diagnostico(fuente))
     vistos, estudios_u = set(), []
     for e in estudios:
-        if e.lower() not in vistos:
-            vistos.add(e.lower()); estudios_u.append(e)
+        k = e.lower().strip()
+        if k and k not in vistos:
+            vistos.add(k); estudios_u.append(e)
 
-    # Reporte sugerido: diagnóstico(s) que el médico confirmó
+    # Diagnósticos legibles para el REPORTE (sin JSON crudo).
+    dx_convencional = _dx_convencional_legible(
+        (analysis.get("doctor_traditional") or "").strip() or (analysis.get("diagnosis_traditional") or "").strip())
+    # Funcional/longevidad vienen en texto; quitamos la línea JSON de confianza que los abre.
+    def _sin_confianza(t: str) -> str:
+        t = (t or "").strip()
+        if t.startswith("{"):
+            nl = t.find("\n")
+            if nl != -1 and t[:nl].strip().endswith("}"):
+                return t[nl + 1:].strip()
+        return t
+    func_txt = _sin_confianza((analysis.get("doctor_functional") or "").strip() or (analysis.get("diagnosis_functional") or "").strip())
+    long_txt = _sin_confianza((analysis.get("doctor_longevity") or "").strip() or (analysis.get("diagnosis_longevity") or "").strip())
+
+    # Explicación al paciente (paso "Tell" del método): la historia en lenguaje llano.
+    explicacion_paciente = _seccion_delimitada(func_txt, "HISTORIA DEL PACIENTE")
+
+    # Plan de seguimiento (monitoreo_general del protocolo): próxima revisión, señales de alarma…
+    plan = {}
+    for campo in ("protocol_traditional", "protocol_functional", "protocol_longevity"):
+        raw = analysis.get(campo)
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            data = None
+        mg = (data or {}).get("monitoreo_general") if isinstance(data, dict) else None
+        if isinstance(mg, dict):
+            for k in ("proxima_revision", "criterios_exito", "senales_alarma"):
+                if mg.get(k) and not plan.get(k):
+                    plan[k] = mg.get(k)
+            if isinstance(mg.get("plan_por_fases"), list) and not plan.get("plan_por_fases"):
+                plan["plan_por_fases"] = mg.get("plan_por_fases")
+
+    # Reporte sugerido legible (texto plano, SIN JSON) para el textarea editable.
     partes_reporte = []
-    for campo, alt, titulo in (("doctor_traditional", "diagnosis_traditional", "Diagnóstico"),
-                               ("doctor_functional", "diagnosis_functional", "Enfoque funcional"),
-                               ("doctor_longevity", "diagnosis_longevity", "Enfoque de longevidad")):
-        # Preferir la versión confirmada por el médico; si no cerró la visita, usar la generada.
-        txt = ((analysis.get(campo) or "").strip() or (analysis.get(alt) or "").strip())
-        if txt:
-            partes_reporte.append(f"{titulo}:\n{txt}")
+    if dx_convencional:
+        líneas = [f"• {d['nombre']}" + (f" (confianza {d['confianza']}%)" if d.get("confianza") is not None else "")
+                  + (f": {d['resumen']}" if d.get("resumen") else "") for d in dx_convencional]
+        partes_reporte.append("Diagnóstico:\n" + "\n".join(líneas))
+    if func_txt:
+        partes_reporte.append("Enfoque funcional:\n" + func_txt)
+    if long_txt:
+        partes_reporte.append("Enfoque de longevidad:\n" + long_txt)
 
     # Edad del paciente
     edad = None
@@ -2578,7 +2709,11 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
         },
         "letterhead": letterhead,
         "receta": receta,
+        "habitos": habitos,
         "estudios": estudios_u,
+        "diagnosticos": dx_convencional,
+        "explicacion_paciente": explicacion_paciente,
+        "plan": plan,
         "reporte_sugerido": "\n\n".join(partes_reporte),
         "fecha": None,
         "disponibles": {
