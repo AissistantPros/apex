@@ -159,6 +159,29 @@ async def set_plan(clinic_id: str, body: dict, authorization: Optional[str] = He
     return {"ok": True, "entitlements": get_entitlements(clinic_id)}
 
 
+@router.post("/clinics/{clinic_id}/recharge")
+async def recharge_credits(clinic_id: str, body: dict, authorization: Optional[str] = Header(None)):
+    """Recarga créditos de IA: suma `amount` al saldo (ai_credits). Opcional `reset_used`
+    para poner el consumo en 0. Solo el proveedor (admin)."""
+    _require_admin(authorization)
+    try:
+        amount = int(body.get("amount") or 0)
+    except Exception:
+        raise HTTPException(400, "Monto inválido")
+    if amount <= 0 and not body.get("reset_used"):
+        raise HTTPException(400, "Indica un monto a recargar")
+    cur = supabase.table("clinics").select("ai_credits, ai_credits_used").eq("id", clinic_id)\
+        .limit(1).execute().data
+    if not cur:
+        raise HTTPException(404, "Clínica no encontrada")
+    patch = {"ai_credits": (cur[0].get("ai_credits") or 0) + amount}
+    if body.get("reset_used"):
+        patch["ai_credits_used"] = 0
+    supabase.table("clinics").update(patch).eq("id", clinic_id).execute()
+    from services.plans import get_entitlements
+    return {"ok": True, "entitlements": get_entitlements(clinic_id)}
+
+
 # ─── Ubicaciones ──────────────────────────────────────────────────────────────
 def _limit_of(clinic_id: str, key: str) -> Optional[int]:
     from services.plans import get_entitlements

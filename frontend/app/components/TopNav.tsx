@@ -53,6 +53,8 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const [aprobCount, setAprobCount] = useState(0);
   const [waitCount, setWaitCount] = useState(0);  // sala de espera en vivo
   const [feats, setFeats] = useState<Record<string, boolean> | null>(null);  // servicios contratados
+  const [credits, setCredits] = useState<{ remaining: number; low: boolean; empty: boolean } | null>(null);
+  const [rechargeSent, setRechargeSent] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -76,6 +78,10 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         }
         if (who?.permissions) setPerms(who.permissions);
         if (who?.entitlements?.features) setFeats(who.entitlements.features);
+        const ent = who?.entitlements;
+        if (ent && typeof ent.ai_credits_remaining === 'number') {
+          setCredits({ remaining: ent.ai_credits_remaining, low: !!ent.ai_credits_low, empty: !!ent.ai_credits_empty });
+        }
       } catch { /* silencioso */ }
     })();
   }, []);
@@ -84,6 +90,29 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     const next = theme === 'dark' ? 'light' : 'dark';
     setThemeState(next);
     applyTheme(next);
+  };
+
+  // El doctor no controla el cobro (eso es del proveedor); ante créditos bajos, SOLICITA la
+  // recarga y se abre un ticket de soporte al proveedor.
+  const requestRecharge = async () => {
+    if (rechargeSent) return;
+    if (!window.confirm('¿Enviar una solicitud de recarga de créditos de IA al proveedor?')) return;
+    try {
+      const { getSession } = await import('@/app/lib/auth');
+      const s = await getSession().catch(() => null);
+      if (!s?.access_token) return;
+      const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      await fetch(`${B}/support/tickets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.access_token}` },
+        body: JSON.stringify({
+          subject: 'Solicitud de recarga de créditos IA',
+          body: 'La clínica solicita recargar créditos de IA (saldo bajo o agotado).',
+          kind: 'other',
+        }),
+      });
+      setRechargeSent(true);
+    } catch { /* silencioso */ }
   };
 
   // Aviso de bajas de expediente pendientes (solo el doctor las aprueba)
@@ -227,6 +256,24 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
       </nav>
 
       <div className="flex-1" />
+
+      {/* Aviso de créditos de IA bajos/agotados (doctor: solicita recarga; admin: recarga) */}
+      {credits && (credits.low || credits.empty) && (role === 'doctor' || role === 'admin') && (
+        <button
+          onClick={role === 'admin' ? () => router.push('/admin') : requestRecharge}
+          title={`Créditos de IA restantes: ${credits.remaining.toLocaleString('es-MX')}`}
+          className="hidden sm:flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg flex-shrink-0 mr-1.5"
+          style={{
+            color: credits.empty ? '#f43f5e' : '#f59e0b',
+            background: (credits.empty ? '#f43f5e' : '#f59e0b') + '15',
+            border: `1px solid ${(credits.empty ? '#f43f5e' : '#f59e0b')}44`,
+          }}
+        >
+          <span>⚡</span>
+          <span>{credits.empty ? 'IA sin créditos' : 'IA: créditos bajos'}</span>
+          <span className="opacity-70">· {role === 'admin' ? 'Recargar' : (rechargeSent ? 'Solicitud enviada ✓' : 'Solicitar recarga')}</span>
+        </button>
+      )}
 
       {/* Ancla del chat del equipo — TeamChat monta aquí su botón (barra superior, siempre visible) */}
       <div className="apex-chat-slot flex items-center mr-1.5" />

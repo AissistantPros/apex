@@ -720,12 +720,23 @@ function PlanPanel({ detail, reload, flash }: { detail: any; reload: () => void;
     } catch (e: any) { flash(e.message); }
   };
 
+  const remaining = (ent.ai_credits_remaining ?? ((ent.ai_credits ?? 0) - (ent.ai_credits_used ?? 0)));
+  const low = ent.ai_credits_low ?? (remaining <= 150000 && (ent.ai_credits ?? 0) > 0);
+  const empty = ent.ai_credits_empty ?? (remaining <= 0);
+  const recharge = async (amount: number, reset_used = false) => {
+    try {
+      await api('/admin/clinics/' + detail.clinic.id + '/recharge', { method: 'POST', body: JSON.stringify({ amount, reset_used }) });
+      flash(reset_used ? 'Créditos recargados y consumo reiniciado' : `Recargados ${amount.toLocaleString('es-MX')} créditos`);
+      reload();
+    } catch (e: any) { flash(e.message); }
+  };
+
   return (
     <section className="mb-8 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#dde6ef]">🎛️ Plan y servicios</h2>
-          <p className="text-[12px] text-[#7a95aa] mt-0.5">{planLabels[ent.plan] || ent.plan} · {Object.values(ent.features || {}).filter(Boolean).length} servicios activos · IA: {ent.ai_credits_used ?? 0}/{ent.ai_credits} créditos usados</p>
+          <p className="text-[12px] text-[#7a95aa] mt-0.5">{planLabels[ent.plan] || ent.plan} · {Object.values(ent.features || {}).filter(Boolean).length} servicios activos · IA: {ent.ai_credits_used ?? 0}/{ent.ai_credits} usados · restan <span style={{ color: empty ? '#f43f5e' : low ? '#f59e0b' : C.green }}>{remaining.toLocaleString('es-MX')}</span>{empty ? ' (agotados)' : low ? ' (bajos)' : ''}</p>
         </div>
         <button onClick={() => setOpen(o => !o)} className={`${btn} text-xs`} style={{ background: '#111820', border: `1px solid ${C.border}`, color: C.green }}>{open ? 'Cerrar' : 'Configurar'}</button>
       </div>
@@ -761,6 +772,20 @@ function PlanPanel({ detail, reload, flash }: { detail: any; reload: () => void;
           </div>
 
           <button onClick={save} className={`${btn} w-full`} style={{ background: C.green, color: '#000' }}>Guardar servicios y límites</button>
+
+          {/* Recarga rápida de créditos de IA (suma al saldo, sin re-escribir el plan) */}
+          <div className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-3">
+            <p className="text-[10px] font-mono text-[#7a95aa] uppercase mb-2">Recarga rápida de créditos</p>
+            <div className="flex flex-wrap gap-2">
+              {[500000, 1000000, 2000000].map(a => (
+                <button key={a} onClick={() => recharge(a)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+                  style={{ background: '#0d1520', borderColor: C.green, color: C.green }}>+{(a / 1000).toLocaleString('es-MX')}k</button>
+              ))}
+              <button onClick={() => recharge(0, true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+                style={{ background: '#0d1520', borderColor: '#2a3a4d', color: C.text }}>Reiniciar consumo a 0</button>
+            </div>
+            <p className="text-[10px] text-[#3d5870] mt-2">Suma créditos al saldo de inmediato. Restan {remaining.toLocaleString('es-MX')}.</p>
+          </div>
         </div>
       )}
     </section>

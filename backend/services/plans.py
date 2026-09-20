@@ -55,6 +55,9 @@ DEFAULT_LIMITS = {
     "apex_full":       {"max_users": 20, "max_locations": 5},
 }
 
+# Umbral para avisar "créditos bajos" (en tokens de IA). ~una corrida de análisis de margen.
+LOW_CREDITS_THRESHOLD = 150000
+
 
 def preset_features(plan: str) -> dict:
     on = PLAN_PRESETS.get(plan, PLAN_PRESETS["apex"])
@@ -72,10 +75,17 @@ def entitlements_for_clinic(clinic: dict) -> dict:
         base = preset_features(plan)
         features = {f: bool(features.get(f, base[f])) for f in FEATURES}
     limits = clinic.get("limits") if isinstance(clinic.get("limits"), dict) else DEFAULT_LIMITS.get(plan, {})
+    credits = clinic.get("ai_credits") or 0
+    used = clinic.get("ai_credits_used") or 0
+    remaining = credits - used
     return {
         "plan": plan, "features": features, "limits": limits,
-        "ai_credits": clinic.get("ai_credits") or 0,
-        "ai_credits_used": clinic.get("ai_credits_used") or 0,
+        "ai_credits": credits,
+        "ai_credits_used": used,
+        "ai_credits_remaining": remaining,
+        # Aviso de créditos bajos: ~una corrida de análisis de margen (draft+clarify+protocolo).
+        "ai_credits_low": credits > 0 and remaining <= LOW_CREDITS_THRESHOLD,
+        "ai_credits_empty": remaining <= 0,
     }
 
 
