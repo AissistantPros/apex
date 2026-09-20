@@ -61,6 +61,8 @@ export default function DocumentosPage() {
         body: JSON.stringify({ registration_phase: 'complete' }),
       });
     } catch { /* best-effort: aun si falla, cerramos la visita en la UI */ }
+    // La visita quedó cerrada: ya no necesitamos el borrador local del interrogatorio.
+    try { localStorage.removeItem(`apex_analysis_draft_${visit_id}`); } catch { /* sin storage */ }
     router.push('/dashboard');
   }, [id, router]);
 

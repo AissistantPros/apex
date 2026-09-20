@@ -2659,6 +2659,79 @@ export default function AnalysisPage() {
     init();
   }, [router]);
 
+  // ── Autoguardado local del interrogatorio (para no perder nada si la sesión caduca) ──
+  // Guarda todo el avance de la consulta en localStorage por visita. Si el médico tiene que
+  // volver a iniciar sesión a media entrevista, al regresar a esta visita se restaura solo.
+  const STORAGE_KEY = `apex_analysis_draft_${visit_id}`;
+  const hydratedRef = useRef(false);
+  const [restored, setRestored] = useState(false);
+
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* entorno sin storage */ }
+  }, [STORAGE_KEY]);
+
+  // Restaurar (una sola vez, al montar) lo guardado de esta visita.
+  useEffect(() => {
+    if (!visit_id || hydratedRef.current) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        // TTL de 24h para no resucitar sesiones viejas.
+        if (s && s.savedAt && (Date.now() - s.savedAt) < 24 * 60 * 60 * 1000) {
+          if (s.step) setStep(s.step);
+          if (typeof s.completedStepIdx === 'number') setCompletedStepIdx(s.completedStepIdx);
+          if (Array.isArray(s.selectedTypes)) setSelectedTypes(s.selectedTypes);
+          if (Array.isArray(s.clarifyQuestions)) setClarifyQuestions(s.clarifyQuestions);
+          if (Array.isArray(s.clarifyAnswers)) setClarifyAnswers(s.clarifyAnswers);
+          if (Array.isArray(s.funcClarifyQuestions)) setFuncClarifyQuestions(s.funcClarifyQuestions);
+          if (Array.isArray(s.funcClarifyAnswers)) setFuncClarifyAnswers(s.funcClarifyAnswers);
+          if (typeof s.funcRound === 'number') setFuncRound(s.funcRound);
+          if (Array.isArray(s.funcPrevQA)) setFuncPrevQA(s.funcPrevQA);
+          if (Array.isArray(s.funcQAAll)) setFuncQAAll(s.funcQAAll);
+          if (Array.isArray(s.longClarifyQuestions)) setLongClarifyQuestions(s.longClarifyQuestions);
+          if (Array.isArray(s.longClarifyAnswers)) setLongClarifyAnswers(s.longClarifyAnswers);
+          if (typeof s.longRound === 'number') setLongRound(s.longRound);
+          if (Array.isArray(s.longPrevQA)) setLongPrevQA(s.longPrevQA);
+          if (s.traditional) setTraditional(s.traditional);
+          if (s.functional) setFunctional(s.functional);
+          if (s.longevity) setLongevity(s.longevity);
+          if (s.protTrad) setProtTrad(s.protTrad);
+          if (s.protFunc) setProtFunc(s.protFunc);
+          if (s.protLong) setProtLong(s.protLong);
+          // Solo avisamos si había algo capturado que valga la pena.
+          const algoCapturado = (s.clarifyAnswers || []).some((x: string) => (x || '').trim())
+            || (s.funcClarifyAnswers || []).some((x: string) => (x || '').trim())
+            || (s.longClarifyAnswers || []).some((x: string) => (x || '').trim())
+            || !!(s.traditional?.doctor_text || s.functional?.doctor_text || s.longevity?.doctor_text);
+          if (algoCapturado) setRestored(true);
+        }
+      }
+    } catch { /* JSON corrupto / sin storage: empezar limpio */ }
+    hydratedRef.current = true;
+  }, [visit_id, STORAGE_KEY]);
+
+  // Guardar el avance cada vez que cambie algo relevante (tras hidratar).
+  useEffect(() => {
+    if (!visit_id || !hydratedRef.current) return;
+    // Al terminar (documentos/completo) ya no es un borrador: se limpia.
+    if (step === 'documents' || step === 'complete') { clearDraft(); return; }
+    try {
+      const snap = {
+        step, completedStepIdx, selectedTypes,
+        clarifyQuestions, clarifyAnswers,
+        funcClarifyQuestions, funcClarifyAnswers, funcRound, funcPrevQA, funcQAAll,
+        longClarifyQuestions, longClarifyAnswers, longRound, longPrevQA,
+        traditional, functional, longevity, protTrad, protFunc, protLong,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
+    } catch { /* cuota excedida / ventana privada: no bloquear el flujo */ }
+  }, [visit_id, STORAGE_KEY, clearDraft, step, completedStepIdx, selectedTypes,
+      clarifyQuestions, clarifyAnswers, funcClarifyQuestions, funcClarifyAnswers,
+      funcRound, funcPrevQA, funcQAAll, longClarifyQuestions, longClarifyAnswers,
+      longRound, longPrevQA, traditional, functional, longevity, protTrad, protFunc, protLong]);
+
   // ── Load patient data ───────────────────────────────────────────────────────
   const loadPatientData = async (): Promise<any> => {
     const headers = await authHeaders();
@@ -3166,6 +3239,30 @@ export default function AnalysisPage() {
 
       <main className="pt-16 pb-32">
         <div className="page-content px-6 py-8">
+
+          {restored && (
+            <div className="flex items-center justify-between gap-3 bg-[rgba(0,229,160,.08)] border border-[rgba(0,229,160,.3)] rounded-xl px-4 py-3 mb-5">
+              <p className="text-sm text-[#00e5a0]">
+                ✓ Recuperamos tu progreso de esta consulta. Puedes continuar donde te quedaste.
+              </p>
+              <button onClick={() => setRestored(false)}
+                className="text-[#7a95aa] hover:text-[#dde6ef] text-lg leading-none px-2">✕</button>
+            </div>
+          )}
+
+          {!!error && /(sesión|sesion|expir)/i.test(error) && (
+            <div className="bg-[rgba(245,158,11,.08)] border border-[rgba(245,158,11,.35)] rounded-xl px-4 py-3 mb-5">
+              <p className="text-sm text-[#f59e0b] font-semibold mb-1">Tu sesión expiró.</p>
+              <p className="text-xs text-[#dde6ef] mb-3">
+                Tranquilo: <strong>tus respuestas de esta consulta están guardadas</strong>. Inicia sesión de
+                nuevo y vuelve a esta visita — retomarás justo donde te quedaste.
+              </p>
+              <button onClick={() => router.push('/auth/login')}
+                className="px-4 py-2 bg-[#f59e0b] text-black text-xs font-bold rounded-lg hover:opacity-90 transition">
+                Iniciar sesión de nuevo
+              </button>
+            </div>
+          )}
 
           {/* ── INIT ── */}
           {step === 'init' && (
