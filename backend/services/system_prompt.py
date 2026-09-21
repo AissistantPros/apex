@@ -958,6 +958,16 @@ FORMATO DE LAS PREGUNTAS — MUY IMPORTANTE:
   solo estorba. Tus preguntas (si acaso) deben ser sobre matices clínicos que el cuestionario
   estructurado genuinamente NO cubre, nunca sobre casillas que quedaron vacías.
 
+PASO FINAL OBLIGATORIO — AUTO-REVISIÓN ANTES DE RESPONDER (no lo omitas):
+Ya que armaste tu lista de preguntas, REVISA UNA POR UNA contra TODO el expediente de arriba
+(ficha del paciente, DATOS DE LA VISITA ACTUAL —incluye el tamizaje de sueño/apnea, digestión,
+hábitos, antecedentes— y el HISTORIAL de visitas). Para cada pregunta pregúntate: "¿esto ya está
+contestado, aunque sea parcialmente, en algún dato de arriba?". Si la respuesta es sí, ELIMINA esa
+pregunta de la lista. Ejemplo real a evitar: si en la visita ya se registró que hay pausas de
+respiración al dormir "solo algunas noches" y que NO despierta con boca seca, NO preguntes de nuevo
+por la frecuencia de las pausas ni por la boca seca — ya lo tienes. Solo deben sobrevivir preguntas
+cuya respuesta NO exista en ningún lado del expediente y que de verdad muevan la aguja diagnóstica.
+
 FORMATO DE SALIDA — ESTRICTO. Responde ÚNICAMENTE con este JSON, nada de texto antes o después,
 nada de ```json:
 
@@ -1152,6 +1162,10 @@ REGLAS:
   PROFUNDA, el HISTORIAL, ni el INTERROGATORIO DIRIGIDO previo (arriba). Si ya está contestada en cualquiera
   de esas fuentes, NO la vuelvas a preguntar. Solo devuelve lista vacía si de verdad ya tienes TODO lo necesario.
 
+PASO FINAL OBLIGATORIO — AUTO-REVISIÓN antes de responder: ya que armaste tu lista, revísala UNA POR UNA
+contra todo el expediente de arriba y ELIMINA cada pregunta cuya respuesta ya exista (aunque sea parcial) en
+la ficha, la visita, el historial o el interrogatorio previo. Solo sobreviven las que de verdad faltan.
+
 Responde SOLO con este JSON (nada más, sin explicaciones):
 {{"questions": ["[Digestión] ¿Pregunta 1?", "[Sueño] ¿Pregunta 2?"]}}
 
@@ -1211,6 +1225,11 @@ REGLAS:
 - Agrupa por dominio con un prefijo corto entre corchetes: "[Condición] ¿…?", "[Nutrición] ¿…?".
 - MÁXIMO 10 preguntas EN ESTA RONDA (tienes hasta 5 rondas; prioriza lo más importante y profundiza en las
   siguientes). NO rellenes hasta 10. Lista vacía solo si ya tienes TODO.
+
+PASO FINAL OBLIGATORIO — AUTO-REVISIÓN antes de responder: ya que armaste tu lista, revísala UNA POR UNA
+contra todo el expediente de arriba y ELIMINA cada pregunta cuya respuesta ya exista (aunque sea parcial) en
+la ficha, la visita, el historial, el diagnóstico funcional o el interrogatorio previo. Solo sobreviven las
+que de verdad faltan.
 
 Responde SOLO con este JSON:
 {{"questions": ["[Condición] ¿Pregunta 1?", "[Nutrición] ¿Pregunta 2?"]}}
