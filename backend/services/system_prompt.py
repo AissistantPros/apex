@@ -1109,12 +1109,21 @@ def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: d
 {history_ctx}
 {prior_block}
 
-TAREA: En medicina funcional y de longevidad, el seguimiento a fondo es ESENCIAL. Antes de razonar la causa raíz
-y el plan de longevidad, necesitas la información suficiente del paciente. Arma el CUESTIONARIO que te haga falta
-para tener una imagen completa — tantas preguntas como necesites, sin límite artificial. Es mejor un cuestionario
-completo que quedarte corto.
+TAREA: reúne SOLO la información que te FALTE para razonar la causa raíz — nada más. Pregunta lo MÍNIMO
+indispensable, no lo máximo posible.
 
-COBERTURA (recorre estos dominios y pregunta lo que falte en CADA uno que sea relevante para este paciente):
+MENTALIDAD (crítica — el médico se quejó de interrogatorios largos y repetitivos):
+- Las rondas disponibles son un TOPE de seguridad, NO una meta. NO intentes llenarlas ni "aprovechar" el espacio.
+  Preguntar de más es un ERROR: cansa y molesta al paciente y al médico.
+- PROHIBIDO REPETIR O REFORMULAR: no vuelvas a preguntar algo que ya está contestado (en la ficha, la entrevista
+  previa, el historial o rondas anteriores), NI lo preguntes "con otras palabras" o "por partes" para confirmarlo.
+  No eres un interrogatorio policial que busca la verdad preguntando lo mismo de diez formas — si ya te lo dijeron,
+  DALO POR CIERTO y sigue.
+- Antes de escribir una pregunta, ubica el dato en el expediente; si ya está (aunque sea parcial), NO preguntes.
+- Si con lo que YA tienes puedes razonar la causa raíz de forma responsable, devuelve [] y no preguntes nada.
+- Prioriza en CADA ronda lo de mayor valor diagnóstico; deja lo secundario fuera en vez de estirarlo.
+
+COBERTURA (revisa estos dominios y pregunta SOLO lo que falte y sea relevante para este paciente — no barras todo):
 - Línea de tiempo de salud (modelo ATM) — ESENCIAL, es el corazón de la entrevista funcional, no lo omitas:
   · Antecedentes: embarazo y parto de la madre (complicaciones, prematurez, cesárea), lactancia, primeros años,
     uso prolongado de antibióticos en la infancia, enfermedades de la niñez, y antecedentes familiares relevantes.
@@ -1155,9 +1164,9 @@ REGLAS:
   ✗ "¿Cuántas veces vas al baño?" (tú directo al paciente — PROHIBIDO)
 - Preguntas claras y específicas para ESTE paciente y ESTE diagnóstico; agrupa por dominio con un prefijo corto
   entre corchetes al inicio, p. ej. "[Línea de tiempo] ¿…?", "[Digestión] ¿…?", "[Sueño] ¿…?".
-- MÁXIMO 10 preguntas EN ESTA RONDA. Tienes hasta 5 rondas para cubrir todo, así que prioriza en cada
-  ronda lo más importante; en las siguientes rondas profundizas. NO rellenes: si en esta ronda solo hacen
-  falta 3, haz 3. Si la información ya es suficiente en un dominio, no preguntes de ese dominio.
+- MÁXIMO 10 preguntas EN ESTA RONDA, pero lo TÍPICO es 3-6. Hay pocas rondas y son un tope, no una meta:
+  pregunta solo lo esencial y NO rellenes. Si en esta ronda solo hacen falta 2, haz 2. Si un dominio ya está
+  cubierto, no preguntes de él.
 - ANTES de incluir una pregunta, VERIFICA que la respuesta NO esté ya en: la ficha, la ENTREVISTA FUNCIONAL
   PROFUNDA, el HISTORIAL, ni el INTERROGATORIO DIRIGIDO previo (arriba). Si ya está contestada en cualquiera
   de esas fuentes, NO la vuelvas a preguntar. Solo devuelve lista vacía si de verdad ya tienes TODO lo necesario.
@@ -1197,11 +1206,18 @@ def get_longevity_clarifying_questions_prompt(patient_data: dict, visit_data: di
 {func_block}
 {prior_block}
 
-TAREA: Antes de calcular edad biológica, riesgos a futuro y el plan de longevidad, necesitas la información
-suficiente. Arma el CUESTIONARIO que te falte — tantas preguntas como necesites, sin límite artificial. Es una
-consulta larga y a fondo; es mejor completar que quedarte corto.
+TAREA: reúne SOLO lo que te FALTE para el análisis de longevidad — lo MÍNIMO indispensable, no lo máximo posible.
 
-COBERTURA (recorre estos dominios y pregunta lo que falte en cada uno):
+MENTALIDAD (crítica — el médico se quejó de interrogatorios largos y repetitivos):
+- Las rondas son un TOPE de seguridad, NO una meta. NO intentes llenarlas. Preguntar de más es un ERROR.
+- PROHIBIDO REPETIR O REFORMULAR lo ya contestado (ficha, entrevista previa, historial, diagnóstico funcional,
+  rondas anteriores) — ni "con otras palabras" ni "por partes" para confirmar. Si ya te lo dijeron, DALO POR CIERTO.
+- Recuerda: gran parte de longevidad (composición, ejercicio, sueño, nutrición, hábitos) ya se preguntó en la etapa
+  FUNCIONAL. NO lo vuelvas a preguntar aquí — reutilízalo. Pregunta solo lo específico de longevidad que falte
+  (metas de healthspan, historia familiar de longevidad, percepción de edad biológica) y que no esté ya arriba.
+- Si con lo que YA tienes puedes hacer el análisis, devuelve [] y no preguntes nada.
+
+COBERTURA (revisa estos dominios y pregunta SOLO lo que falte y no se haya cubierto en funcional):
 - Composición corporal y metabolismo: peso estable/cambios, grasa visceral, masa muscular, circunferencia de cintura.
 - Capacidad física / condición: ejercicio (tipo, frecuencia, intensidad), fuerza (agarre, sentadillas), resistencia
   (VO2/caminata), equilibrio y movilidad, pasos al día, tiempo sentado.
@@ -1223,8 +1239,8 @@ REGLAS:
 - Redáctalas en TERCERA persona (el médico las lee y se las hace al paciente):
   ✓ "[Condición] ¿Cuántas veces por semana entrena fuerza el paciente y qué tipo de ejercicio hace?"
 - Agrupa por dominio con un prefijo corto entre corchetes: "[Condición] ¿…?", "[Nutrición] ¿…?".
-- MÁXIMO 10 preguntas EN ESTA RONDA (tienes hasta 5 rondas; prioriza lo más importante y profundiza en las
-  siguientes). NO rellenes hasta 10. Lista vacía solo si ya tienes TODO.
+- MÁXIMO 10 preguntas EN ESTA RONDA, pero lo TÍPICO es 3-6. Las rondas son un tope, no una meta: NO rellenes.
+  Lista vacía en cuanto ya tengas lo esencial.
 
 PASO FINAL OBLIGATORIO — AUTO-REVISIÓN antes de responder: ya que armaste tu lista, revísala UNA POR UNA
 contra todo el expediente de arriba y ELIMINA cada pregunta cuya respuesta ya exista (aunque sea parcial) en
@@ -1681,49 +1697,53 @@ FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdo
 
 
 PEPTIDOS_OFFLABEL_RULE = """
-ARSENAL AMPLIADO (medicina funcional y de longevidad) — RECORDATORIO ACTIVO:
-Este es un DIFERENCIADOR clave: el médico QUIERE que le presentes las opciones de péptidos y off-label
-que encajen, además de los suplementos. Por eso: SIEMPRE que un péptido o un off-label encaje clínicamente
-con lo que ESTE paciente necesita, PROPONLO explícitamente como item del protocolo y explica en una línea
-POR QUÉ encaja — no lo omitas por costumbre, por ser "poco convencional" o por no estar aprobado. No es
-relleno (solo si de verdad aporta a un eje real del caso), pero si aplica y lo dejas fuera, es un error.
-Ejemplo concreto: si la retatrutida (triple agonista) supera a la tirzepatida para el objetivo metabólico
-del paciente, recomiéndala y di por qué es mejor opción.
-No te limites a lo convencional. En tu especialidad SÍ puedes —y DEBES cuando aplique al caso—
-considerar activamente:
+ARSENAL AVANZADO (péptidos, regenerativos y off-label) — REVISIÓN OBLIGATORIA Y SISTEMÁTICA:
+Es un DIFERENCIADOR central de la plataforma. Antes de cerrar tu protocolo, RECORRE el catálogo de abajo y
+pregúntate, uno por uno: "¿esto le aporta a ESTE paciente para el problema que estamos atacando en esta fase?".
+- Presenta los que apliquen (el médico elige cuál sí y cuál no). Si un péptido/regenerativo NO aplica o su
+  beneficio sería marginal para este caso, NO lo pongas. Pero NO los ignores por costumbre: si aplican, TIENEN
+  que aparecer en el plan.
+- Elige la MEJOR opción y la MEJOR forma, no la más conservadora: p. ej. NAD+ directo (IV/SC) es superior a
+  pastillas precursoras (NR/NMN) que se degradan en el intestino — si el objetivo es subir NAD+ de verdad, propón
+  la forma directa; glutatión/ SS-31 para mitocondria antes que antioxidantes genéricos; retatrutida sobre
+  tirzepatida cuando su eficacia supere para el objetivo del paciente. Di POR QUÉ es la mejor opción.
 
-PÉPTIDOS (por eje/indicación, revisa cuál aplica a ESTE paciente):
-- Regeneración/reparación tisular: BPC-157, TB-500, GHK-Cu (cobre-péptido).
-- Piel/mucosas/anti-inflamatorio local: KPV (oral o inyección), LL-37, GHK-Cu.
-- Sueño / eje HPA / calidad de descanso: DSIP (péptido inductor de sueño delta), Selank.
-- Metabolismo / mitocondria / longevidad celular: MOTS-c, Humanin, SS-31 (elamipretida),
-  Epitalón.
-- Eje GH/IGF (composición corporal, recuperación): CJC-1295 + Ipamorelin, Tesamorelina.
-- Cognitivo / neuroplasticidad: Semax, Cerebrolisina, Dihexa.
-- Timo / inmunomodulación: Timosina alfa-1 (TA-1), Timosina beta-4.
-- Antiaging vascular / senescencia: FOXO4-DRI (senolítico experimental).
+CATÁLOGO POR ESPECIALIDAD (para qué sirve · forma de uso típica):
+FUNCIONAL (reparar/regenerar y corregir la causa raíz AHORA):
+- BPC-157 — reparación de tendón/ligamento/mucosa intestinal, antiinflamatorio · SC local o cerca de la lesión.
+- TB-500 (timosina β4) — reparación tisular/miofascial, angiogénesis · SC. (Gating cáncer: angiogénesis.)
+- GHK-Cu — piel, colágeno, cicatrización · SC o tópico.
+- KPV / LL-37 — antiinflamatorio de mucosas / intestino · oral o SC.
+- Selank / Semax — ansiedad, foco, neuroprotección · intranasal.
+- DSIP — sueño profundo / eje HPA · SC nocturno.
+- CJC-1295 + Ipamorelina, Tesamorelina — eje GH/IGF, composición corporal, grasa visceral · SC.
+- Timosina α-1 — inmunomodulación · SC.
+- PRP (plasma rico en plaquetas) — regeneración de tendón/articulación (p. ej. tendinopatía aquílea) · infiltración.
+- Células madre / exosomas — regeneración avanzada articular/tisular cuando el caso lo justifique.
+LONGEVIDAD (extender healthspan, cuando lo agudo ya esté bajo control):
+- Epitalón — regulación de telomerasa/pineal · ciclos SC.
+- MOTS-c, Humanin, SS-31 (elamipretida) — función mitocondrial/metabólica · SC.
+- Cerebrolisina, Dihexa — neuroplasticidad/cognición · IM/SC.
+- FOXO4-DRI y senolíticos (fisetina, dasatinib+quercetina) — limpieza de células senescentes · ciclos.
+- NAD+ (directo), GlyNAC (glicina+NAC), glutatión — soporte redox/mitocondrial.
 
-MEDICAMENTOS OFF-LABEL con racional fisiológico:
-Metformina (anti-aging), rapamicina (mTOR), dosis bajas de naltrexona (LDN), berberina,
-GLP-1 fuera de diabetes/obesidad, telmisartán (PPAR-γ), pioglitazona baja dosis, spironolactona,
-espermidina, resveratrol/pterostilbene, NAD+ / NR / NMN, urolitin A, glicina + NAC (GlyNAC).
+OFF-LABEL con racional (SÍ pueden ir en receta): metformina, rapamicina (mTOR), naltrexona dosis baja (LDN),
+berberina, GLP-1/GIP e incretinas (tirzepatida, retatrutida), telmisartán, pioglitazona baja dosis, espermidina.
 
-Considera SIEMPRE si alguno encaja con lo que este paciente necesita — no los descartes por
-"raros" o por falta de aprobación regulatoria. Basa la elección en tu conocimiento médico
-(no hay búsqueda web activa).
+SEPARACIÓN FUNCIONAL vs LONGEVIDAD (respétala): los péptidos de reparación (BPC-157, TB-500, PRP, células madre)
+son de FUNCIONAL, no de longevidad. Longevidad va por telómeros/neuro/senescencia/mitocondria PROFUNDA — y SOLO
+cuando lo agudo/metabólico ya esté controlado. NO repitas en longevidad un item que ya pusiste en funcional o
+convencional.
 
-COFEPRIS (regulación mexicana) — cómo marcarlo:
-- Muchos péptidos, usos off-label y suplementos NO cuentan con aprobación de COFEPRIS para esta
-  indicación; su respaldo es preliminar o anecdótico. Eso NO es motivo para omitirlos —el médico
-  decide—, pero SÍ debes ser transparente: marca esos items con "cofepris": "no_aprobado".
-- Los fármacos aprobados y con indicación formal en México van con "cofepris": "aprobado".
-- Cuando el concepto de aprobación no aplica (ejercicio, hidratación, dieta, hábitos), usa
-  "cofepris": "na".
-- Para todo item marcado "no_aprobado", el campo "mecanismo" DEBE explicar de forma clara y honesta
-  la TEORÍA de cómo funcionaría y cuál es el nivel de evidencia (preliminar/anecdótico/estudios en
-  animales/series pequeñas). El frontend muestra un badge discreto "(no aprobado por COFEPRIS)" y
-  despliega esa teoría en un desplegable — no hace falta que satures el resto de los campos con
-  advertencias, basta con marcar el campo y dar la teoría en "mecanismo".
+COFEPRIS y RECETA (importante):
+- Marca "cofepris": "aprobado" (fármaco con registro e indicación en México), "no_aprobado" (péptido, regenerativo,
+  off-label o suplemento sin aprobación formal para esta indicación) o "na" (ejercicio/dieta/hábitos).
+- Los PÉPTIDOS, PRP y CÉLULAS MADRE se marcan con "tipo": "Péptido", "PRP" o "Células madre" respectivamente
+  (NO como "Off-label"). Estos NO van en la receta oficial —no son de venta en farmacia regulada— pero SÍ se
+  presentan en el PLAN como recomendación para que el médico decida. Los suplementos y los medicamentos off-label
+  SÍ pueden ir en la receta.
+- Para todo item "no_aprobado", el campo "mecanismo" DEBE dar la teoría honesta de cómo funciona y su nivel de
+  evidencia (preliminar/anecdótico/animales/series pequeñas). El frontend lo muestra en un desplegable.
 """
 
 
@@ -1877,8 +1897,16 @@ def get_protocol_prompt(patient_data: dict, diagnosis: str, diagnosis_type: str,
             "de vida, dirigidos a la CAUSA RAÍZ del caso clínico y a los síntomas que el paciente tiene hoy"
         ),
         "longevity":   (
-            "intervenciones para extender healthspan y lifespan: NAD+ y precursores, péptidos de "
-            "longevidad, senolíticos, hormonas bioidénticas, optimización metabólica y ejercicio terapéutico"
+            "intervenciones para extender healthspan/lifespan (NAD+ directo —preferido sobre precursores—, "
+            "péptidos de longevidad como epitalón/MOTS-c/SS-31, senolíticos, cerebrolisina, hormonas "
+            "bioidénticas, optimización metabólica y ejercicio). PERO con una REGLA DE PRIORIDAD INNEGOCIABLE: "
+            "si el paciente tiene problemas AGUDOS o metabólicos SIN CONTROLAR (glucosa/HbA1c altas, PA elevada, "
+            "síndrome metabólico, dolor/lesión activa), NO apiles optimización de longevidad encima. Di "
+            "explícitamente que PRIMERO hay que controlar eso con lo convencional/funcional ya indicado, y que la "
+            "capa de longevidad/optimización se activa en una fase posterior, cuando esté estable. Solo entrega "
+            "1-3 palancas de longevidad de base (ejercicio de fuerza/zona 2, sueño, la evaluación de edad "
+            "biológica) y deja el resto para después. NO metas péptidos de reparación tisular (BPC-157, TB-500, "
+            "PRP): esos son de funcional, no de longevidad"
         ),
     }.get(diagnosis_type, "intervención terapéutica")
 
@@ -2048,7 +2076,7 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
 
 REGLAS DE LLENADO (síguelas exactamente):
 1. Incluye un objeto en "items" por CADA intervención del protocolo (medicamentos, suplementos, ejercicio, etc. — todos van en la misma lista "items", diferenciados por "tipo").
-2. "tipo" debe ser uno de: "Fármaco", "Off-label", "Suplemento", "Vitamina", "Estilo de vida", "Ejercicio". NUNCA uses "Estudio" — los estudios/laboratorios NO se piden aquí, ya se proponen en el paso de diagnóstico. Si crees que falta un estudio, no lo incluyas como item.
+2. "tipo" debe ser uno de: "Fármaco", "Off-label", "Suplemento", "Vitamina", "Estilo de vida", "Ejercicio", "Péptido", "PRP", "Células madre". Usa "Péptido"/"PRP"/"Células madre" para esos (NO "Off-label"): definen que NO van en la receta oficial pero sí en el plan. NUNCA uses "Estudio" — los estudios/laboratorios NO se piden aquí, ya se proponen en el paso de diagnóstico.
 3. "nombre_comercial": usa "" (string vacío) si no aplica — NUNCA inventes un nombre comercial para suplementos genéricos o ejercicio.
 4. "alerta": describe la contraindicación absoluta, interacción grave o riesgo en embarazo más importante para ESTE paciente. Si NO hay ninguna alerta relevante, usa exactamente: "" (string vacío) — el frontend ya muestra un mensaje neutro de "sin contraindicaciones" cuando está vacío, no lo escribas tú.
 5. Si es OFF-LABEL: en "nivel_evidencia" pon "Uso off-label — consenso de expertos" y en "indicacion" aclara que no está aprobado para esta indicación específica pero hay evidencia secundaria.
@@ -2059,7 +2087,19 @@ REGLAS DE LLENADO (síguelas exactamente):
 7. Si es EJERCICIO TERAPÉUTICO: "nombre_generico" es el tipo de ejercicio (ej. "Ejercicio aeróbico de moderada intensidad"), "presentacion" puede ser "30 minutos" o "3 series de 12 repeticiones", "via" se omite con "", "frecuencia" indica los días por semana.
 8. Si es ESTILO DE VIDA de hidratación o dieta: "nombre_generico" describe la recomendación (ej. "Hidratación dirigida", "Dieta alta en fibra", "Dieta baja en calorías") usando SOLO categorías generales de dieta — nunca nombres de dietas comerciales (keto, paleo, etc.) ni listas de alimentos específicos.
 9. PROTOCOLO CONVENCIONAL ("traditional"): además de los fármacos, incluye siempre que aplique al caso al menos un item de hidratación (tipo "Estilo de vida"), uno de tipo de dieta (tipo "Estilo de vida") y uno de ejercicio (tipo "Ejercicio").
-10. PROTOCOLO FUNCIONAL ("functional"): incluye suplementos/nutracéuticos/péptidos SOLO cuando ataquen un eje que el protocolo convencional ya prescrito NO cubre (inflamación sistémica, microbioma, mitocondria, sueño/HPA, desintoxicación, regeneración). Prohibido llenar la lista con "hipoglucemiantes suaves" si el paciente ya tiene GLP-1 + biguanida — eso es duplicar, no complementar. Prefiere 4-6 items de alto impacto por ejes distintos sobre 15 items apilados. Si genuinamente no aplica ningún suplemento porque los fármacos convencionales ya cubren todo, dilo en "monitoreo_general" y entrega solo hábitos/estilo de vida.
+10. PROTOCOLO FUNCIONAL ("functional"): incluye suplementos/nutracéuticos/péptidos SOLO cuando ataquen un eje que el protocolo convencional ya prescrito NO cubre (inflamación sistémica, microbioma, mitocondria, sueño/HPA, desintoxicación, regeneración). Prohibido llenar la lista con "hipoglucemiantes suaves" si el paciente ya tiene GLP-1 + biguanida — eso es duplicar, no complementar.
+
+TOPE DURO DE ITEMS Y ENFOQUE (crítica — el médico rechazó listas de 40 cosas):
+- MÁXIMO 8 items en total (excluyendo hábitos/ejercicio de estilo de vida base). Lo ideal son 4-6 de ALTO impacto.
+  NO apiles: prohibido un "stack" de 15 suplementos. Si dos cosas hacen lo mismo, elige UNA (la mejor forma). Ejemplo
+  real a evitar: NO pongas NR y NMN juntos (redundantes); si buscas subir NAD+, usa NAD+ directo.
+- PRIORIZA POR FASES: no todo se ataca en la primera visita. Pon en la fase inicial SOLO lo que ataca los problemas
+  más urgentes/de mayor impacto de ESTE paciente (usa "momento":"iniciar_ahora"); lo demás va en fases posteriores
+  ("momento":"ajustar_segun" o "condicion" con cuándo) y descríbelo en "plan_por_fases". El paciente y el médico
+  deben ver "primero atacamos esto, cuando mejore seguimos con esto".
+- NO DUPLIQUES lo que ya está en el protocolo convencional (ni, si es longevidad, lo del funcional). Es contexto de arriba.
+- Presenta los PÉPTIDOS/PRP/células madre que apliquen (ver ARSENAL AVANZADO) — el médico elige. Si ninguno aplica o el beneficio es marginal, no los pongas.
+- Si genuinamente los fármacos convencionales ya cubren todo, dilo en "monitoreo_general" y entrega solo hábitos.
 11. "ajuste_especial": úsalo solo si hay ajuste renal/hepático real para este paciente; si no aplica, usa "".
 12. Todos los campos de texto deben ser específicos a ESTE paciente — nunca genéricos de libro de texto.
 13. "para_que_sirve" es OBLIGATORIO — UNA sola línea clara (≤25 palabras), sin jerga, orientada a un médico convencional. No repitas "indicacion". El médico puede hacer clic en "Aprende más" para investigar afuera; aquí solo la esencia.

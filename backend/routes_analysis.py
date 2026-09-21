@@ -2506,8 +2506,13 @@ async def get_analysis_logs(visit_id: str):
 
 
 # ── Documentos de salida de la consulta (receta, reporte, estudios) ──────────────
-_MED_TYPES = {"fármaco", "farmaco", "off-label", "suplemento", "vitamina",
-              "mineral", "terapia iv", "péptido", "peptido", "hormona"}
+# Tipos que SÍ pueden ir en la RECETA oficial (farmacia): fármacos aprobados, off-label,
+# suplementos, vitaminas y minerales. Los péptidos, PRP, células madre, hormonas bioidénticas
+# y terapias IV NO van en la receta (COFEPRIS) — se presentan en el PLAN, no se recetan.
+_MED_TYPES = {"fármaco", "farmaco", "off-label", "suplemento", "vitamina", "mineral"}
+# Tipos que aparecen en el PLAN pero NUNCA en la receta oficial.
+_NO_RECETA_TYPES = {"péptido", "peptido", "prp", "células madre", "celulas madre",
+                    "hormona", "terapia iv", "estilo de vida", "ejercicio"}
 
 
 def _parse_protocol(raw) -> tuple:
@@ -2646,8 +2651,11 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
     perfil = get_doctor_profile(doctor_id) if doctor_id else {}
     letterhead = (perfil or {}).get("letterhead") or {}
 
-    # Medicamentos (receta) y hábitos (estilo de vida / ejercicio) de los protocolos.
-    receta, habitos = [], []
+    # Clasificación de los items del protocolo:
+    #  - receta: fármacos/off-label/suplementos/vitaminas/minerales (van en la receta oficial).
+    #  - avanzados: péptidos/PRP/células madre/hormonas/terapia IV (van en el PLAN, NO en la receta).
+    #  - habitos: estilo de vida / ejercicio.
+    receta, habitos, avanzados = [], [], []
     for campo in ("protocol_traditional", "protocol_functional", "protocol_longevity"):
         raw = analysis.get(campo)
         meds, _ = _parse_protocol(raw)
@@ -2657,9 +2665,15 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
         except Exception:
             data = None
         if isinstance(data, dict):
+            enfoque = campo.replace("protocol_", "")
             for it in (data.get("items") or []):
-                if isinstance(it, dict) and (it.get("tipo") or "").strip().lower() in ("estilo de vida", "ejercicio"):
+                if not isinstance(it, dict):
+                    continue
+                tipo = (it.get("tipo") or "").strip().lower()
+                if tipo in ("estilo de vida", "ejercicio"):
                     habitos.append(it)
+                elif tipo in _NO_RECETA_TYPES:
+                    avanzados.append({**it, "_enfoque": enfoque})
 
     # Estudios: se leen del DIAGNÓSTICO de cada enfoque (ahí viven los "estudios_sugeridos"),
     # no del protocolo. Se juntan de los 3 enfoques y se de-duplican.
@@ -2738,6 +2752,7 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
         },
         "letterhead": letterhead,
         "receta": receta,
+        "avanzados": avanzados,
         "habitos": habitos,
         "estudios": estudios_u,
         "diagnosticos": dx_convencional,

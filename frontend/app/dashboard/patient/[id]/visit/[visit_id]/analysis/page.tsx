@@ -2524,10 +2524,10 @@ export default function AnalysisPage() {
   };
 
   // Rondas de interrogatorio dirigido permitidas por etapa (convencional = 1, sin follow-up).
-  // Funcional y longevidad: hasta 5 rondas de hasta 10 preguntas cada una — que pregunten TODO
-  // lo que necesiten, tomando en cuenta lo ya respondido antes para no repetir.
-  const MAX_FUNC_ROUNDS = 5;
-  const MAX_LONG_ROUNDS = 5;
+  // Funcional y longevidad: las rondas son un TOPE, no una meta. La IA debe preguntar SOLO lo
+  // que realmente falta y parar en cuanto tenga lo esencial (no llenar el espacio disponible).
+  const MAX_FUNC_ROUNDS = 4;
+  const MAX_LONG_ROUNDS = 3;
   const MAX_Q_PER_ROUND = 10;
 
   // Q&A dirigido de la etapa convencional (las preguntas de aclaración iniciales + respuestas).

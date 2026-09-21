@@ -72,6 +72,7 @@ export default function DocumentosPage() {
   const lh = data?.letterhead || {};
   const pac = data?.patient || {};
   const habitos: Med[] = data?.habitos || [];
+  const avanzados: Med[] = data?.avanzados || [];
   const diagnosticos: Dx[] = data?.diagnosticos || [];
   const explicacion: string = data?.explicacion_paciente || '';
   const plan: Plan = data?.plan || {};
@@ -194,7 +195,7 @@ export default function DocumentosPage() {
             {incReporte && (
               <Hoja lh={lh} pac={pac} titulo="Reporte para el paciente">
                 <ReporteBody diagnosticos={diagnosticos} explicacion={explicacion}
-                  receta={receta} habitos={habitos} estudios={estudios} plan={plan} nota={notaMedico} />
+                  receta={receta} avanzados={avanzados} habitos={habitos} estudios={estudios} plan={plan} nota={notaMedico} />
               </Hoja>
             )}
 
@@ -210,14 +211,17 @@ export default function DocumentosPage() {
       {/* Pie que se repite en CADA página impresa (mantiene relacionadas las hojas). */}
       <div className="print-footer">{pieId}</div>
 
-      {/* Estilos de impresión: tamaño carta, saltos de página, pie repetido. */}
-      <style jsx global>{`
+      {/* Estilos de impresión: tamaño carta, saltos de página, pie repetido.
+          Se usa <style> plano (no styled-jsx) para no arriesgar el scoping de @page. */}
+      <style dangerouslySetInnerHTML={{ __html: `
         .print-footer { display: none; }
         @media print {
           @page { size: letter; margin: 14mm 14mm 18mm; }
-          html, body { background: #fff !important; }
+          html, body { background: #fff !important; height: auto !important; }
+          /* Anular alturas de contenedores que impedirían la paginación */
+          .min-h-screen { min-height: 0 !important; }
           .no-print { display: none !important; }
-          .print-area { margin: 0 !important; }
+          main, .print-area { margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; }
           .hoja {
             box-shadow: none !important; border: none !important; border-radius: 0 !important;
             width: 100% !important; max-width: none !important; min-height: 0 !important;
@@ -231,7 +235,7 @@ export default function DocumentosPage() {
             border-top: 1px solid #e5e7eb; padding-top: 3px;
           }
         }
-      `}</style>
+      ` }} />
     </div>
   );
 }
@@ -386,9 +390,10 @@ function MedCard({ m }: { m: Med }) {
   );
 }
 
-function ReporteBody({ diagnosticos, explicacion, receta, habitos, estudios, plan, nota }:
-  { diagnosticos: Dx[]; explicacion: string; receta: Med[]; habitos: Med[]; estudios: string[]; plan: Plan; nota: string }) {
+function ReporteBody({ diagnosticos, explicacion, receta, avanzados, habitos, estudios, plan, nota }:
+  { diagnosticos: Dx[]; explicacion: string; receta: Med[]; avanzados: Med[]; habitos: Med[]; estudios: string[]; plan: Plan; nota: string }) {
   const meds = receta.filter(m => m.nombre_generico);
+  const avz = (avanzados || []).filter(m => m.nombre_generico);
   const habs = habitos.filter(h => h.nombre_generico);
   const ests = estudios.filter(Boolean);
   const fases = Array.isArray(plan.plan_por_fases) ? plan.plan_por_fases : [];
@@ -421,6 +426,31 @@ function ReporteBody({ diagnosticos, explicacion, receta, habitos, estudios, pla
         <>
           <SectionTitle icon="💊" color={MED_TEAL}>Tu tratamiento — cómo tomarlo</SectionTitle>
           {meds.map((m, i) => <MedCard key={i} m={m} />)}
+        </>
+      )}
+
+      {/* Terapias avanzadas sugeridas (péptidos / PRP / células madre) — NO van en receta */}
+      {avz.length > 0 && (
+        <>
+          <SectionTitle icon="🧬" color="#0891b2">Terapias avanzadas sugeridas (opcionales)</SectionTitle>
+          <p className="text-[11px] text-gray-500 mb-2 -mt-1">Estas opciones NO forman parte de la receta oficial; el médico las comenta contigo y tú decides.</p>
+          {avz.map((m, i) => (
+            <div key={i} className="avoid-break rounded-xl border border-gray-200 overflow-hidden mb-2">
+              <div className="flex items-center gap-2 px-4 py-2" style={{ background: '#0891b210' }}>
+                <span className="text-lg">🧬</span>
+                <p className="font-bold text-[13px] flex-1">{m.nombre_generico}
+                  <span className="ml-2 text-[9px] font-normal text-gray-500">{m.tipo}</span>
+                </p>
+                {m.cofepris === 'no_aprobado' && <span className="text-[8px] text-amber-700 border border-amber-300 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
+              </div>
+              <div className="px-4 py-2">
+                {[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).length > 0 && (
+                  <p className="text-[11px] text-gray-600 mb-1">{[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).join(' · ')}</p>
+                )}
+                {m.para_que_sirve && <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: '#0891b2' }}>¿Para qué? </span>{m.para_que_sirve}</p>}
+              </div>
+            </div>
+          ))}
         </>
       )}
 
