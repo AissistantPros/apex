@@ -157,7 +157,7 @@ function FlowPageInner() {
   const [showBifurcation, setShowBifurcation] = useState(false);
   const [funcIntake, setFuncIntake]       = useState<Record<string, any>>({});
   // Handoff por rol: confirmación al terminar la etapa que le toca a cada quien
-  const [handoff, setHandoff]             = useState<null | { titulo: string; sub: string }>(null);
+  const [handoff, setHandoff]             = useState<null | { titulo: string; sub: string; next?: 'home' | 'bifurcation' }>(null);
   const [userRole, setUserRole]           = useState<string>('doctor');
   const [handoffNote, setHandoffNote]     = useState('');
   const [handoffAud, setHandoffAud]       = useState<'general' | 'nurse' | 'doctor'>('general');
@@ -703,19 +703,27 @@ function FlowPageInner() {
       };
       const authH: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) authH['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${B()}/patients/`, {
-        method: 'POST',
-        headers: authH,
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Error'); }
-      const data = await res.json();
-      const newId = data.id;
-      setPatientId(newId);
-      // Actualizar URL para que un reload conserve el progreso
-      router.replace(`/dashboard/new-patient/flow?patient_id=${newId}&phase=2`);
-      // En un alta NUEVA sin clasificar, mostrar la bifurcación. En edición no (ya se clasificó).
-      if (!careType && !isEditMode) { setShowBifurcation(true); }
+      // IDEMPOTENTE: si ya existe el paciente (p. ej. se reingresa a esta pantalla o se hace
+      // doble clic), se ACTUALIZA — nunca se crea un duplicado con un nuevo id.
+      let newId = patientId;
+      if (patientId) {
+        const res = await fetch(`${B()}/patients/${patientId}`, {
+          method: 'PUT', headers: authH, body: JSON.stringify(payload),
+        });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Error'); }
+      } else {
+        const res = await fetch(`${B()}/patients/`, {
+          method: 'POST', headers: authH, body: JSON.stringify(payload),
+        });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Error'); }
+        const data = await res.json();
+        newId = data.id;
+        setPatientId(newId);
+        // Actualizar URL para que un reload conserve el progreso (solo el doctor de captura completa).
+        if (userRole !== 'receptionist') {
+          router.replace(`/dashboard/new-patient/flow?patient_id=${newId}&phase=2`);
+        }
+      }
 
       // Guardar nota pendiente si la hay
       if (pendingNote.trim()) {
@@ -742,16 +750,30 @@ function FlowPageInner() {
         setHandoff({
           titulo: `${f.first_name} ${f.last_name} — cambios guardados`,
           sub: '¿Deseas dejar una nota antes de terminar?',
+          next: 'home',
         });
       } else if (userRole === 'receptionist') {
-        // Alta nueva: si ya está clasificado, confirma y a home; si no, la bifurcación (ya
-        // activada arriba) lo lleva a home al elegir.
-        if (careType) setHandoff({
-          titulo: `${f.first_name} ${f.last_name} ha sido guardado`,
-          sub: 'Se envió al área de enfermería. ¿Deseas dejar una nota antes de terminar?',
-        });
+        // Orden deseado: guardar → popup de NOTA → selector de tipo → home.
+        if (careType) {
+          // Ya está clasificado: nota y a home (el selector ya no hace falta).
+          setHandoff({
+            titulo: `${f.first_name} ${f.last_name} ha sido guardado`,
+            sub: 'Se enviará al área de enfermería. ¿Deseas dejar una nota antes de terminar?',
+            next: 'home',
+          });
+        } else {
+          // Nota primero; al continuar, se muestra el selector de tipo de atención.
+          setHandoff({
+            titulo: `${f.first_name} ${f.last_name} ha sido guardado`,
+            sub: 'Antes de enviarlo a enfermería, ¿deseas dejar una nota?',
+            next: 'bifurcation',
+          });
+        }
       } else if (careType) {
         setPhase(2);
+      } else {
+        // Doctor de captura completa sin clasificar: selector y luego continúa a enfermería.
+        setShowBifurcation(true);
       }
     } catch (e: any) {
       alert('Error al guardar: ' + e.message);
@@ -773,14 +795,10 @@ function FlowPageInner() {
         });
       } catch (_) {}
     }
-    // Recepción termina aquí: confirmación + vuelve a home. El médico (o quien haga toda la
-    // captura) continúa a la fase de enfermería.
+    // Recepción termina aquí: la nota ya se pidió antes del selector, así que vuelve a home
+    // directamente. El médico (o quien haga toda la captura) continúa a la fase de enfermería.
     if (userRole === 'receptionist') {
-      setHandoff({
-        titulo: isEditMode ? `${f.first_name} ${f.last_name} — datos actualizados`
-                           : `${f.first_name} ${f.last_name} ha sido guardado`,
-        sub: 'Se envió al área de enfermería. ¿Deseas dejar una nota antes de terminar?',
-      });
+      router.push('/dashboard');
     } else {
       setPhase(2);
     }
@@ -1053,7 +1071,15 @@ function FlowPageInner() {
         });
       } catch (_) {}
     }
-    router.push('/dashboard');
+    const next = handoff?.next;
+    setHandoffNote('');
+    setHandoff(null);
+    if (next === 'bifurcation') {
+      // La nota ya se guardó; ahora se elige el tipo de atención y de ahí a home.
+      setShowBifurcation(true);
+    } else {
+      router.push('/dashboard');
+    }
   };
 
   return (
@@ -1080,7 +1106,9 @@ function FlowPageInner() {
               ))}
             </div>
             <button onClick={terminarHandoff} className="w-full py-3 rounded-xl text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>
-              {handoffNote.trim() ? 'Enviar nota y terminar' : 'Terminar'}
+              {handoff?.next === 'bifurcation'
+                ? (handoffNote.trim() ? 'Guardar nota y continuar →' : 'Continuar →')
+                : (handoffNote.trim() ? 'Enviar nota y terminar' : 'Terminar')}
             </button>
           </div>
         </div>
