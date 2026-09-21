@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getUser } from '@/app/lib/auth';
+import { getUser, getSession } from '@/app/lib/auth';
 
 export default function PatientsPage() {
   const router = useRouter();
@@ -20,7 +20,10 @@ export default function PatientsPage() {
 
   const fetchPatients = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients?limit=200`);
+      const session = await getSession().catch(() => null);
+      const headers: Record<string, string> = session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients?limit=200`, { headers });
       const data = await res.json();
       setPatients(data.patients || []);
     } catch (e) {

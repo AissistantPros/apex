@@ -86,7 +86,9 @@ async def get_all_patients(
         from auth import get_actor
         from access import filter_patient
         actor = get_actor(authorization)
-        patients = list_patients(limit=limit)
+        # Aislamiento por clínica: cada quien ve solo los pacientes de su clínica.
+        clinic = actor.get("clinic_id") or actor.get("doctor_id")
+        patients = list_patients(limit=limit, clinic=clinic)
         patients = [filter_patient(p, actor["role"]) for p in patients]
         return {"total": len(patients), "patients": patients}
     except HTTPException:

@@ -37,9 +37,15 @@ def check_duplicate_patients(first_name: str, last_name: str, date_of_birth: str
     ]
     return matches
 
-def list_patients(doctor_id: str = None, limit: int = 50) -> list:
-    """Lista todos los pacientes"""
-    query = supabase.table("patients").select("id, full_name, first_name, last_name, date_of_birth, birth_date, email, phone, created_at").order("created_at", desc=True).limit(limit)
+def list_patients(doctor_id: str = None, limit: int = 50, clinic: str = None) -> list:
+    """Lista pacientes. Si `clinic` viene, SOLO devuelve los de esa clínica (anclados por
+    clinic_id o, en cuentas de doctor solo, por doctor_id) — aislamiento multi-tenant."""
+    query = supabase.table("patients").select(
+        "id, full_name, first_name, last_name, date_of_birth, birth_date, email, phone, created_at"
+    )
+    if clinic:
+        query = query.or_(f"clinic_id.eq.{clinic},doctor_id.eq.{clinic}")
+    query = query.order("created_at", desc=True).limit(limit)
     result = query.execute()
     return result.data if result.data else []
 
