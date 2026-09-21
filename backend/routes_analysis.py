@@ -53,7 +53,9 @@ _deepseek_client = None
 def _get_deepseek_client():
     global _deepseek_client
     if _deepseek_client is None and DEEPSEEK_API_KEY:
-        _deepseek_client = Anthropic(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=60)
+        # 180s: los diagnósticos funcional/longevidad con thinking + contexto grande pueden
+        # tardar bastante ANTES del primer token; 60s se quedaba corto y cortaba el stream.
+        _deepseek_client = Anthropic(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=180)
     return _deepseek_client
 
 def get_diagnostic_client_and_model():
@@ -713,12 +715,17 @@ def call_claude_stream(prompt: str, model: str = MODEL_DIAGNOSE, max_tokens: int
     content = [{"type": "text", "text": prompt}] + attachments if attachments else prompt
 
     def _build_kwargs(mdl: str, ws: str) -> dict:
+        # DeepSeek NO usa 'thinking' en streaming: el "pensar" genera un gap silencioso (sin
+        # texto al frontend) que un proxy puede cortar por inactividad. Sin thinking empieza a
+        # emitir texto de inmediato. Se mantiene el max_tokens alto para no truncar. El fallback
+        # a Opus SÍ usa thinking (mejor razonamiento). El presupuesto de tokens no cambia.
+        use_thinking = thinking and (mdl != DEEPSEEK_MODEL)
         kw = {
             "model": mdl,
             "max_tokens": max(max_tokens, 12000) if thinking else max_tokens,
             "messages": [{"role": "user", "content": content}],
         }
-        if thinking:
+        if use_thinking:
             kw["thinking"] = {"type": "adaptive"}
         elif temperature is not None:
             kw["temperature"] = temperature   # temperature no es compatible con thinking

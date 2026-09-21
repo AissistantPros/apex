@@ -2635,6 +2635,8 @@ export default function AnalysisPage() {
     const decoder = new TextDecoder();
     let buffer = '';
     let done: any = null;
+    let errMsg = '';
+    let acc = '';  // texto acumulado, por si el stream se corta antes del evento final
     while (true) {
       const { value, done: readerDone } = await reader.read();
       if (readerDone) break;
@@ -2643,13 +2645,20 @@ export default function AnalysisPage() {
       buffer = lines.pop() || '';
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
-        const payload = JSON.parse(line.slice(6));
-        if (payload.type === 'delta') onDelta(payload.text);
+        let payload: any;
+        try { payload = JSON.parse(line.slice(6)); } catch { continue; }
+        if (payload.type === 'delta') { onDelta(payload.text); acc += payload.text || ''; }
         else if (payload.type === 'done') done = payload;
+        else if (payload.type === 'error') errMsg = payload.message || 'Error en el análisis';
       }
     }
-    if (!done) throw new Error('El stream terminó sin un resultado final');
-    return done;
+    if (done) return done;
+    // El stream se cortó sin evento final. Si ya llegó texto suficiente, lo APROVECHAMOS
+    // (no perder el diagnóstico); si no, mostramos el error real del backend.
+    if (acc.trim().length > 40) {
+      return { diagnosis: acc, validation: null, confidence: 0, _salvaged: true };
+    }
+    throw new Error(errMsg || 'El análisis se interrumpió antes de terminar. Intenta de nuevo (tus respuestas se conservan).');
   }, [authHeaders]);
 
   useEffect(() => {
