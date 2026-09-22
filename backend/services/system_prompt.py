@@ -1555,41 +1555,43 @@ detección — nunca contradigas los umbrales diagnósticos convencionales (esos
 {traditional_block}{traditional_tx_block}
 {FUNCTIONAL_MEDICINE_AXES}
 {PEPTIDOS_RULE}
-{STRUCTURED_HEADER_INSTRUCTIONS}
 
-REGLAS DE CONFIANZA:
-- Es normal y esperado NO llegar al 100% de certeza en una primera consulta sin estudios de laboratorio.
-- Si tu hipótesis de causa raíz tiene MENOS del 50% de confianza con la información disponible, dilo explícitamente
-  en "RAÍZ DEL PROBLEMA" (ej. "Hipótesis preliminar, confianza baja — requiere estudios para confirmar") en vez de
-  presentarla como un hallazgo firme. No inventes certeza que no tienes.
-- Cada nodo que menciones en "NODOS DESREGULADOS" debe estar respaldado por un dato concreto del paciente (historia,
-  antecedentes, situación actual o exploración) — no menciones un nodo solo porque es plausible en teoría.
+SALIDA — RESPONDE ÚNICAMENTE CON ESTE JSON (nada de texto antes o después, nada de ```json). El sistema lo
+muestra al médico por BLOQUES (una tarjeta a la vez) durante la consulta, así que cada campo debe ser CLARO,
+CORTO y sin relleno. Nada de párrafos largos.
 
-FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
-═══ RAÍZ DEL PROBLEMA ═══
-[causa raíz más probable, explicando cómo conecta con el diagnóstico tradicional, en 2-3 líneas con datos concretos del paciente. Si la confianza es <50%, dilo explícitamente aquí.]
+{{
+  "confianza": <número 0-100>,
+  "confianza_nota": "1 línea: por qué esa confianza y qué la subiría (ej. 'requiere laboratorio para confirmar')",
+  "cadena_causal": {{
+    "terreno": "antecedentes/genética/exposiciones que predisponen — frase corta con el dato del paciente",
+    "disparador": "el evento que inició el problema y cuándo (o 'no identificado con la información actual')",
+    "motor": "la CAUSA RAÍZ / motor central (el nodo dominante), en 1 frase corta",
+    "perpetuadores": "lo que lo mantiene activo hoy (hábitos/ambiente), telegráfico",
+    "sintoma": "cómo desemboca en el diagnóstico convencional / la queja del paciente"
+  }},
+  "raiz": "2-3 líneas: la causa raíz más probable y cómo conecta con el diagnóstico convencional. Si la confianza es <50%, dilo aquí.",
+  "nodos": [
+    {{"nodo": "Nodo de la matriz IFM (ej. Comunicación: insulina/glucosa)", "mecanismo": "1 línea", "evidencia": "dato concreto del paciente"}}
+  ],
+  "perpetuantes": [
+    {{"factor": "factor de estilo de vida/ambiente que mantiene el problema", "impacto": "cómo contribuye, 1 línea"}}
+  ],
+  "estudios": [
+    {{"estudio": "estudio específico", "prioridad": "URGENTE", "confirma": "qué nodo/hipótesis confirma", "impacto": "qué decisión clínica cambia según el resultado"}}
+  ],
+  "historia_paciente": "2-4 líneas en lenguaje LLANO (paso Tell): qué lo predispuso, qué lo disparó y qué lo mantiene, como una historia con sentido para el paciente."
+}}
 
-═══ LÍNEA DE TIEMPO (modelo ATM) ═══
-Antecedentes: [lo que predispuso — genética, vida temprana, exposiciones; con el dato del paciente]
-Disparador (trigger): [el evento que inició el problema y cuándo — o "no identificado con la información actual"]
-Mediadores: [lo que mantiene el problema activo hoy]
-→ Desemboca en: [diagnóstico tradicional / síntoma visible]
-
-═══ NODOS DESREGULADOS ═══
-(ordénalos del de MAYOR impacto y MENOR riesgo de corregir primero — paso "Order")
-1. [Nodo de la matriz IFM] — [mecanismo en 1 línea] — Evidencia: [dato concreto del paciente]
-2. [Nodo] — [mecanismo] — Evidencia: [dato]
-(máximo 3 nodos, solo los que tengan evidencia real en este paciente)
-
-═══ FACTORES PERPETUANTES ═══
-• [factor del estilo de vida/ambiente que mantiene el problema activo] — [cómo contribuye, en 1 línea]
-
-═══ ESTUDIOS SUGERIDOS PARA CONFIRMAR LA CAUSA RAÍZ ═══
-• [estudio específico] — [URGENTE/DESEADO/COMPLEMENTARIO] — [qué nodo o hipótesis confirma]
-(máximo 4 estudios, solo los que realmente cambiarían el manejo de este paciente)
-
-═══ LA HISTORIA DEL PACIENTE (paso "Tell" — para explicársela al paciente) ═══
-[2-4 líneas en lenguaje LLANO, sin tecnicismos, que le devuelvan al paciente el porqué de su propio caso: qué lo predispuso, qué lo disparó y qué lo mantiene, contado como una historia con sentido que él pueda entender y con la que se comprometa. Es lo que el médico le leerá o parafraseará — de esto depende su adherencia al plan.]"""
+REGLAS DE LLENADO (síguelas exactamente):
+- "cadena_causal": frases CORTAS (van en un diagrama de bloques Terreno→Disparador→Motor→Perpetuadores→Síntoma), NO párrafos.
+- "nodos": MÁXIMO 3, ordenados de mayor impacto; cada uno con evidencia REAL del paciente (no teoría).
+- "perpetuantes": los factores de estilo de vida/ambiente que perpetúan; telegráficos.
+- "estudios": MÁXIMO 4, solo los que cambiarían el manejo. "prioridad" es "URGENTE", "DESEADO" o "COMPLEMENTARIO".
+  "confirma" = qué hipótesis/nodo confirma; "impacto" = qué decisión clínica define el resultado.
+- "confianza": es normal NO llegar al 100% sin laboratorios. Si la causa raíz tiene <50% de confianza, refléjalo
+  en el número y dilo en "raiz". No inventes certeza.
+- No agregues campos fuera de los listados. Usa "" o [] cuando algo no aplique."""
 
 
 def get_longevity_diagnosis_prompt(patient_data: dict, functional_diagnosis: str,

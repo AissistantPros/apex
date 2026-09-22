@@ -928,6 +928,26 @@ def extract_structured_header(raw_text: str) -> tuple[dict, str]:
     return metadata, text
 
 
+def _strip_json_fence(raw: str) -> str:
+    """Quita fences ```json ... ``` que a veces mete el modelo, dejando el JSON puro."""
+    t = (raw or "").strip()
+    if t.startswith("```"):
+        t = re.sub(r'^```[a-zA-Z]*\s*', '', t)
+        t = re.sub(r'\s*```$', '', t).strip()
+    return t
+
+
+def _dx_confianza(raw: str) -> int:
+    """Confianza (0-100) de un diagnóstico en JSON (campo 'confianza'). 75 si no se puede leer."""
+    try:
+        data = json.loads(_strip_json_fence(raw))
+        if isinstance(data, dict) and data.get("confianza") is not None:
+            return int(data.get("confianza"))
+    except Exception:
+        pass
+    return 75
+
+
 class PreferenceRequest(BaseModel):
     tipo: str = "sustituir"      # sustituir | preferir | evitar | agregar_siempre
     cuando: str = ""             # contexto donde aplica
@@ -1512,11 +1532,9 @@ async def run_functional_stream(
                 chunks.append(delta)
                 yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
             raw = "".join(chunks)
-            try:
-                metadata, diagnosis = extract_structured_header(raw)
-                conf = metadata.get("confidence", 0)
-            except Exception:
-                diagnosis, conf = raw, 0
+            # El diagnóstico funcional ahora es JSON; se guarda tal cual y la confianza sale del campo.
+            diagnosis = _strip_json_fence(raw)
+            conf = _dx_confianza(diagnosis)
             _safe_update_analysis(visit_id, {"diagnosis_functional": diagnosis})
             validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
                                          visit_id=visit_id, step="validate_functional")
@@ -1528,8 +1546,7 @@ async def run_functional_stream(
             print(f"[ERROR functional/stream] {e}")
             raw = "".join(chunks)
             if raw.strip():
-                try: _m, dx = extract_structured_header(raw); c = _m.get("confidence", 0)
-                except Exception: dx, c = raw, 0
+                dx = _strip_json_fence(raw); c = _dx_confianza(dx)
                 yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'functional', 'diagnosis': dx, 'validation': None, 'confidence': c})}\n\n"
             else:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el diagnóstico funcional. Intenta de nuevo.'})}\n\n"
@@ -1549,7 +1566,8 @@ async def run_functional(
         prompt, attachments = _build_functional_prompt(visit_id, body, doctor_id)
         raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step="functional",
                           thinking=True, web_search="global", attachments=attachments)
-        metadata, diagnosis = extract_structured_header(raw)
+        diagnosis = _strip_json_fence(raw)
+        conf = _dx_confianza(diagnosis)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
 
@@ -1564,7 +1582,7 @@ async def run_functional(
             "step": "functional",
             "diagnosis": diagnosis,
             "validation": validation,
-            "confidence": metadata["confidence"],
+            "confidence": conf,
         }
 
     except HTTPException:
@@ -2579,7 +2597,21 @@ def _estudios_de_diagnostico(raw) -> list:
             for s in (d.get("estudios_doctor") or []):
                 if s:
                     out.append(str(s).strip())
-        # Estudios adicionales globales + fallback a nivel raíz.
+        # Nuevo esquema FUNCIONAL: "estudios" es lista de objetos {estudio, prioridad, confirma, impacto}.
+        # Respeta la selección del médico si viene "estudios_seleccionados" paralelo.
+        est_func = data.get("estudios")
+        if isinstance(est_func, list) and est_func and isinstance(est_func[0], dict):
+            sel = data.get("estudios_seleccionados")
+            for i, e in enumerate(est_func):
+                nombre = (e.get("estudio") or "").strip() if isinstance(e, dict) else str(e).strip()
+                if not nombre:
+                    continue
+                if isinstance(sel, list) and len(sel) == len(est_func):
+                    if sel[i]:
+                        out.append(nombre)
+                else:
+                    out.append(nombre)
+        # Estudios adicionales globales + fallback a nivel raíz (esquema convencional).
         for e in (data.get("estudios_adicionales") or []):
             if e:
                 out.append(str(e).strip())
@@ -2707,11 +2739,21 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
             if nl != -1 and t[:nl].strip().endswith("}"):
                 return t[nl + 1:].strip()
         return t
-    func_txt = _sin_confianza((analysis.get("doctor_functional") or "").strip() or (analysis.get("diagnosis_functional") or "").strip())
     long_txt = _sin_confianza((analysis.get("doctor_longevity") or "").strip() or (analysis.get("diagnosis_longevity") or "").strip())
 
-    # Explicación al paciente (paso "Tell" del método): la historia en lenguaje llano.
-    explicacion_paciente = _seccion_delimitada(func_txt, "HISTORIA DEL PACIENTE")
+    # Funcional ahora es JSON estructurado: sacamos la historia (paso "Tell") y un resumen legible.
+    # (Con fallback al formato de texto viejo por compatibilidad.)
+    func_raw = (analysis.get("doctor_functional") or "").strip() or (analysis.get("diagnosis_functional") or "").strip()
+    try:
+        _fdata = json.loads(_strip_json_fence(func_raw)) if func_raw else None
+    except Exception:
+        _fdata = None
+    if isinstance(_fdata, dict):
+        explicacion_paciente = (_fdata.get("historia_paciente") or "").strip()
+        func_txt = (_fdata.get("raiz") or "").strip()
+    else:
+        func_txt = _sin_confianza(func_raw)
+        explicacion_paciente = _seccion_delimitada(func_txt, "HISTORIA DEL PACIENTE")
 
     # Plan de seguimiento (monitoreo_general del protocolo): próxima revisión, señales de alarma…
     plan = {}

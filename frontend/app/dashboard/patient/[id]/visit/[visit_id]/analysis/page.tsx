@@ -1179,6 +1179,36 @@ interface DiagnosisListData {
   estudios_adicionales?: string[];     // estudios sin diagnóstico específico asociado
 }
 
+// ── Diagnóstico FUNCIONAL estructurado (JSON) — para la vista modular por bloques ──
+type FuncNodo = { nodo?: string; mecanismo?: string; evidencia?: string };
+type FuncPerp = { factor?: string; impacto?: string };
+type FuncEstudio = { estudio?: string; prioridad?: string; confirma?: string; impacto?: string };
+type FuncDx = {
+  confianza?: number; confianza_nota?: string;
+  cadena_causal?: { terreno?: string; disparador?: string; motor?: string; perpetuadores?: string; sintoma?: string };
+  raiz?: string;
+  nodos?: FuncNodo[];
+  perpetuantes?: FuncPerp[];
+  estudios?: FuncEstudio[];
+  estudios_seleccionados?: boolean[];
+  historia_paciente?: string;
+};
+function parseFunctionalJson(text: string): FuncDx | null {
+  if (!text) return null;
+  let t = text.trim();
+  const fence = t.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fence) t = fence[1].trim();
+  if (!t.startsWith('{')) return null;
+  try {
+    const d = JSON.parse(t);
+    if (d && typeof d === 'object' && !Array.isArray(d) && !d.diagnosticos && !d.items
+        && (d.cadena_causal || d.raiz || d.nodos || d.historia_paciente)) {
+      return d as FuncDx;
+    }
+  } catch { /* no es JSON funcional */ }
+  return null;
+}
+
 function parseDiagnosisJson(text: string): DiagnosisListData | null {
   if (!text) return null;
   let raw = text.trim();
@@ -1813,21 +1843,198 @@ function CausalityFlow({ body, color }: { body: string; color: string }) {
   );
 }
 
+// ─── Vista modular del diagnóstico FUNCIONAL (bloques, poca carga cognitiva) ─────
+function FuncCollapsible({ title, icon, color, children }: { title: string; icon: string; color: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-[#1e2d3d] overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#0d1520] transition">
+        <span className="flex items-center gap-2 text-sm font-semibold text-[#dde6ef]"><span>{icon}</span>{title}</span>
+        <span className="text-[#7a95aa] text-xs">{open ? 'ocultar ▲' : 'ver más ▼'}</span>
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
+
+function CausalChain({ cc, color }: { cc: NonNullable<FuncDx['cadena_causal']>; color: string }) {
+  const blocks = [
+    { k: 'Terreno', v: cc.terreno, icon: '🧬' },
+    { k: 'Disparador', v: cc.disparador, icon: '⚡' },
+    { k: 'Motor (causa raíz)', v: cc.motor, icon: '⚙️', hot: true },
+    { k: 'Perpetuadores', v: cc.perpetuadores, icon: '🔁' },
+    { k: 'Síntoma / queja', v: cc.sintoma, icon: '🎯' },
+  ].filter(b => (b.v || '').toString().trim());
+  return (
+    <div className="flex flex-col md:flex-row gap-1.5 items-stretch">
+      {blocks.map((b, i) => (
+        <div key={i} className="flex-1 flex flex-col md:flex-row items-stretch gap-1.5">
+          <div className="flex-1 rounded-xl p-3" style={{ background: b.hot ? `${color}18` : '#0d1520', border: `1px solid ${b.hot ? color : '#1e2d3d'}` }}>
+            <p className="text-[9px] font-mono uppercase tracking-wider mb-1" style={{ color: b.hot ? color : '#7a95aa' }}>{b.icon} {b.k}</p>
+            <p className="text-[12px] text-[#dde6ef] leading-snug">{b.v}</p>
+          </div>
+          {i < blocks.length - 1 && <div className="flex items-center justify-center text-[#3d5870] text-lg md:px-0.5"><span className="md:rotate-0 rotate-90">→</span></div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function _prioColor(p?: string): string {
+  const u = (p || '').toUpperCase();
+  if (u.includes('URGENTE')) return '#f43f5e';
+  if (u.includes('DESEADO')) return '#0ea5e9';
+  return '#7a95aa';
+}
+function _resumenConvencional(dxText?: string): string {
+  if (!dxText) return '';
+  const d = parseDiagnosisJson(dxText);
+  if (d && d.diagnosticos?.length) {
+    return d.diagnosticos.slice(0, 3).map((x: any) => x.nombre).filter(Boolean).join(' · ');
+  }
+  return dxText.replace(/\s+/g, ' ').slice(0, 140);
+}
+function _medsConvencional(protText?: string): string[] {
+  if (!protText) return [];
+  const p = parseProtocolJson(protText);
+  if (!p?.items) return [];
+  const MED = ['fármaco', 'farmaco', 'off-label', 'suplemento', 'vitamina', 'mineral'];
+  return p.items.filter((it: any) => MED.includes((it.tipo || '').toLowerCase()))
+    .map((it: any) => it.nombre_generico).filter(Boolean).slice(0, 8);
+}
+
+function FunctionalStructuredView({ data, color, anchor, onToggleStudy }: {
+  data: FuncDx; color: string;
+  anchor?: { dxText?: string; protText?: string };
+  onToggleStudy: (i: number) => void;
+}) {
+  const cc = data.cadena_causal;
+  const estudios = data.estudios || [];
+  const sel = (data.estudios_seleccionados && data.estudios_seleccionados.length === estudios.length)
+    ? data.estudios_seleccionados : estudios.map(() => true);
+  const nodos = data.nodos || [];
+  const perp = data.perpetuantes || [];
+  const convResumen = _resumenConvencional(anchor?.dxText);
+  const convMeds = _medsConvencional(anchor?.protText);
+
+  return (
+    <div className="space-y-4">
+      {/* PASO 1 — Ancla convencional (la medicina convencional manda; funcional coadyuva) */}
+      {anchor && (convResumen || convMeds.length > 0) && (
+        <div className="rounded-xl p-3.5" style={{ background: 'rgba(14,165,233,.06)', border: '1px solid rgba(14,165,233,.3)' }}>
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded" style={{ background: 'rgba(14,165,233,.15)', color: '#0ea5e9' }}>⚓ BASE CONVENCIONAL — MANDA</span>
+            <span className="text-[10px] text-[#7a95aa]">Funcional coadyuva; no sustituye ni contradice el manejo convencional</span>
+          </div>
+          {convResumen && <p className="text-[12px] text-[#dde6ef]">{convResumen}</p>}
+          {convMeds.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {convMeds.map((m, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#0d1520] border border-[#1e2d3d] text-[#7a95aa]">💊 {m}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PASO 2 — Cadena causal (overview gráfico) */}
+      {cc && (
+        <div>
+          <p className="text-[10px] font-mono tracking-widest mb-2 px-1" style={{ color }}>CADENA CAUSAL — DE LA RAÍZ AL SÍNTOMA</p>
+          <CausalChain cc={cc} color={color} />
+        </div>
+      )}
+      {data.raiz && (
+        <div className="rounded-xl p-3.5" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
+          <p className="text-[10px] font-mono tracking-wider mb-1" style={{ color }}>RAÍZ DEL PROBLEMA{data.confianza_nota ? ` · ${data.confianza_nota}` : ''}</p>
+          <p className="text-[13px] text-[#dde6ef] leading-relaxed">{data.raiz}</p>
+        </div>
+      )}
+
+      {/* Detalle profundo, colapsado por defecto (no llenar la pantalla) */}
+      {nodos.length > 0 && (
+        <FuncCollapsible title={`Nodos desregulados (${nodos.length})`} icon="🕸️" color={color}>
+          <div className="space-y-2">
+            {nodos.map((n, i) => (
+              <div key={i} className="rounded-lg px-3 py-2 bg-[#0d1520] border border-[#1e2d3d]">
+                <p className="text-[13px] font-semibold text-[#dde6ef]">{i + 1}. {n.nodo}</p>
+                {n.mecanismo && <p className="text-[12px] text-[#7a95aa]">{n.mecanismo}</p>}
+                {n.evidencia && <p className="text-[11px] text-[#3d5870] mt-0.5">Evidencia: {n.evidencia}</p>}
+              </div>
+            ))}
+          </div>
+        </FuncCollapsible>
+      )}
+      {perp.length > 0 && (
+        <FuncCollapsible title={`Factores que lo perpetúan (${perp.length})`} icon="🔁" color={color}>
+          <div className="space-y-1.5">
+            {perp.map((p, i) => (
+              <div key={i} className="text-[12px]"><span className="font-semibold text-[#dde6ef]">{p.factor}</span>{p.impacto && <span className="text-[#7a95aa]"> — {p.impacto}</span>}</div>
+            ))}
+          </div>
+        </FuncCollapsible>
+      )}
+
+      {/* PASO 3 — Estudios (accionable: qué confirma / qué decide) */}
+      {estudios.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono tracking-widest mb-1 px-1" style={{ color }}>ESTUDIOS SUGERIDOS</p>
+          <p className="text-[11px] text-[#7a95aa] mb-2 px-1">Marca los que quieres solicitar — el resto no se incluirá.</p>
+          <div className="space-y-2">
+            {estudios.map((e, i) => (
+              <label key={i} className="flex items-start gap-3 rounded-xl px-3 py-2.5 cursor-pointer transition"
+                style={{ background: sel[i] ? `${color}0d` : '#0d1520', border: `1px solid ${sel[i] ? `${color}40` : '#1e2d3d'}` }}>
+                <input type="checkbox" checked={!!sel[i]} onChange={() => onToggleStudy(i)} className="mt-1 accent-[#00e5a0]" />
+                <div className="flex-1">
+                  <p className="text-[13px] font-semibold text-[#dde6ef]">{e.estudio}
+                    {e.prioridad && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full align-middle" style={{ background: _prioColor(e.prioridad) + '22', color: _prioColor(e.prioridad) }}>{e.prioridad}</span>}
+                  </p>
+                  {e.confirma && <p className="text-[11px] text-[#7a95aa] mt-0.5"><span className="text-[#3d5870]">Confirma:</span> {e.confirma}</p>}
+                  {e.impacto && <p className="text-[11px] text-[#7a95aa]"><span className="text-[#3d5870]">Decide:</span> {e.impacto}</p>}
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Historia del paciente (paso "Tell") */}
+      {data.historia_paciente && (
+        <div className="rounded-xl p-4" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
+          <p className="text-[10px] font-mono tracking-widest mb-2 flex items-center gap-1.5" style={{ color }}><span>🗣️</span> LA HISTORIA DEL PACIENTE</p>
+          <p className="text-[13px] text-[#dde6ef] leading-relaxed whitespace-pre-wrap">{data.historia_paciente}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Diagnosis Card ───────────────────────────────────────────────────────────
 function DiagnosisCard({
-  state, color, onEdit, onRestore, editMode, setEditMode, setState,
+  state, color, onEdit, onRestore, editMode, setEditMode, setState, anchor,
 }: {
   state: DiagnosisState; color: string;
   onEdit: () => void; onRestore: () => void;
   editMode: boolean; setEditMode: (v: boolean) => void;
   setState: (fn: (prev: DiagnosisState) => DiagnosisState) => void;
+  anchor?: { dxText?: string; protText?: string };
 }) {
   const protocolData = parseProtocolJson(state.doctor_text);
-  const diagnosisData = !protocolData ? parseDiagnosisJson(state.doctor_text) : null;
+  const funcData = !protocolData ? parseFunctionalJson(state.doctor_text) : null;
+  const diagnosisData = (!protocolData && !funcData) ? parseDiagnosisJson(state.doctor_text) : null;
   const dxData = diagnosisData ? withDxDefaults(diagnosisData) : null;
   const sections = parseSections(state.doctor_text);
   const hasStructure = Object.keys(sections).length > 0;
   const SKIP_SECTIONS: string[] = [];
+
+  // Toggle de selección de estudios en el diagnóstico funcional (se persiste en doctor_text).
+  const handleToggleFuncStudy = (i: number) => setState(prev => {
+    const fd = parseFunctionalJson(prev.doctor_text);
+    if (!fd) return prev;
+    const est = fd.estudios || [];
+    const base = (fd.estudios_seleccionados && fd.estudios_seleccionados.length === est.length)
+      ? fd.estudios_seleccionados : est.map(() => true);
+    const next = { ...fd, estudios_seleccionados: base.map((v, k) => k === i ? !v : v) };
+    return { ...prev, doctor_text: JSON.stringify(next) };
+  });
 
   const approved = protocolData
     ? (state.approved && state.approved.length === protocolData.items.length ? state.approved : protocolData.items.map(() => true))
@@ -2037,6 +2244,9 @@ function DiagnosisCard({
       {protocolData ? (
         <ProtocolStructuredView data={protocolData} color={color}
           approved={approved} onToggle={handleToggleApproved} onAddItem={handleAddProtocolItem} />
+      ) : funcData ? (
+        /* Diagnóstico FUNCIONAL estructurado (JSON) — vista modular por bloques */
+        <FunctionalStructuredView data={funcData} color={color} anchor={anchor} onToggleStudy={handleToggleFuncStudy} />
       ) : dxData ? (
         /* Diagnóstico convencional estructurado (JSON) — nueva vista per-candidato */
         <DiagnosisStructuredView data={dxData} color={color}
@@ -3450,6 +3660,9 @@ export default function AnalysisPage() {
                 editMode={editMode}
                 setEditMode={setEditMode}
                 setState={setState}
+                anchor={(step === 'review_functional' || step === 'review_longevity')
+                  ? { dxText: traditional.doctor_text, protText: protTrad.doctor_text }
+                  : undefined}
               />
 
               {state.validation && !step.startsWith('review_protocol_') && (
