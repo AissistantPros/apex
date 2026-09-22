@@ -35,6 +35,7 @@ from services.system_prompt import (
     get_functional_clarifying_questions_prompt,
     get_longevity_clarifying_questions_prompt,
     get_lean_draft_prompt,
+    get_synthesis_prompt,
     build_patient_context,
     build_visit_context,
 )
@@ -2673,6 +2674,65 @@ def _dx_convencional_legible(raw) -> list:
                 "resumen": str(d.get("resumen_breve") or "").strip(),
             })
     return out
+
+
+def _bloques_para_sintesis(analysis: dict) -> str:
+    """Arma el texto con TODO lo confirmado (dx + protocolo de cada enfoque) para el director."""
+    partes = []
+    for etq, dxc, dxa, protc in (
+        ("MEDICINA CONVENCIONAL", "doctor_traditional", "diagnosis_traditional", "protocol_traditional"),
+        ("MEDICINA FUNCIONAL", "doctor_functional", "diagnosis_functional", "protocol_functional"),
+        ("MEDICINA DE LONGEVIDAD", "doctor_longevity", "diagnosis_longevity", "protocol_longevity"),
+    ):
+        dx = (analysis.get(dxc) or "").strip() or (analysis.get(dxa) or "").strip()
+        prot = (analysis.get(protc) or "").strip()
+        if not dx and not prot:
+            continue
+        partes.append(f"### {etq} ###")
+        if dx:
+            partes.append("Diagnóstico:\n" + dx)
+        if prot:
+            partes.append("Protocolo (tratamiento):\n" + prot)
+    return "\n\n".join(partes)
+
+
+@router.post("/{visit_id}/synthesis")
+async def run_synthesis(visit_id: str, force: bool = False, doctor_id: str = Depends(get_doctor_id)):
+    """Agente DIRECTOR: integra los 3 enfoques en una guía única (plan por fases + receta y
+    estudios sin duplicados + péptidos + explicación al paciente), corrige inconsistencias y la
+    guarda en analyses.synthesis. Idempotente: si ya existe y no se fuerza, devuelve la guardada."""
+    analysis = get_analysis(visit_id)
+    if not analysis:
+        raise HTTPException(404, "Análisis no encontrado")
+    if analysis.get("synthesis") and not force:
+        return {"visit_id": visit_id, "synthesis": analysis["synthesis"], "cached": True}
+    visit = _ensure_labs_extracted(visit_id, get_visit(visit_id) or {})
+    patient_id = analysis.get("patient_id") or visit.get("patient_id")
+    patient = get_patient(patient_id) if patient_id else {}
+    bloques = _bloques_para_sintesis(analysis)
+    if not bloques.strip():
+        raise HTTPException(400, "No hay diagnósticos ni protocolos para sintetizar")
+    prompt = get_synthesis_prompt(patient, visit, bloques)
+    raw = call_claude(prompt, diagnostic=True, fallback_model=MODEL_PROTOCOL, max_tokens=8000,
+                      visit_id=visit_id, step="synthesis")
+    try:
+        data = json.loads(_strip_json_fence(raw))
+    except Exception:
+        m = re.search(r'\{[\s\S]*\}', raw or "")
+        data = json.loads(m.group()) if m else None
+    if not isinstance(data, dict):
+        raise HTTPException(502, "El director no devolvió un plan válido. Intenta de nuevo.")
+    _safe_update_analysis(visit_id, {"synthesis": data, "synthesis_updated_at": datetime.utcnow().isoformat()})
+    return {"visit_id": visit_id, "synthesis": data}
+
+
+@router.get("/{visit_id}/synthesis")
+async def get_synthesis(visit_id: str, authorization: Optional[str] = Header(None)):
+    """Devuelve la síntesis ya generada (sin regenerar)."""
+    from auth import get_actor
+    get_actor(authorization)
+    analysis = get_analysis(visit_id) or {}
+    return {"visit_id": visit_id, "synthesis": analysis.get("synthesis")}
 
 
 @router.get("/{visit_id}/documents")
