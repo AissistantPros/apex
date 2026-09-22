@@ -20,9 +20,18 @@ type Med = {
   para_que_sirve?: string; cofepris?: string; momento?: string;
   // Campos de péptidos / terapias avanzadas
   nombre?: string; para_que?: string; como_se_usa?: string; por_que_encaja?: string; disclaimer?: string;
+  // Campos de la síntesis (receta unificada)
+  como_tomar?: string; cambio?: string; enfoque?: string;
 };
 type Dx = { nombre?: string; confianza?: number; resumen?: string };
-type Plan = { proxima_revision?: string; criterios_exito?: string; senales_alarma?: string; plan_por_fases?: any[] };
+type Est = { estudio?: string; prioridad?: string; para_que?: string };
+type Fase = { fase?: string; objetivo?: string; cuando?: string; tiempo_mejora?: string; acciones?: string[]; estudios?: string[]; metas?: string[] };
+type ExplPac = { que_tengo?: string; por_que?: string; healthspan?: string; plan?: string[]; mis_compromisos?: string[]; que_esperar?: string };
+type Synth = {
+  resumen_medico?: string; inconsistencias?: string[];
+  plan_por_fases?: Fase[]; receta?: Med[]; estudios?: Est[]; peptidos?: Med[];
+  explicacion_paciente?: ExplPac;
+};
 
 const C = { text: '#dde6ef', muted: '#7a95aa', green: '#00e5a0', border: '#1e2d3d', card: '#0d1520' };
 const inp = 'w-full bg-[#111820] border border-[#1e2d3d] rounded-lg px-2.5 py-2 text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0]';
@@ -43,20 +52,42 @@ export default function DocumentosPage() {
   const [incReporte, setIncReporte] = useState(false);
   const [incEstudios, setIncEstudios] = useState(false);
   const [receta, setReceta] = useState<Med[]>([]);
-  const [estudios, setEstudios] = useState<string[]>([]);
+  const [estudios, setEstudios] = useState<Est[]>([]);
   const [indicaciones, setIndicaciones] = useState('');
-  // Reporte del paciente (visual). Se puede editar la nota personal del médico.
   const [notaMedico, setNotaMedico] = useState('');
+  const [synth, setSynth] = useState<Synth | null>(null);
+  const [loadingLabel, setLoadingLabel] = useState('Cargando documentos…');
 
   const load = useCallback(async () => {
     try {
+      // 1) El agente DIRECTOR integra todo (dedup + plan por fases + explicación). Se genera
+      //    si no existe. Es la fuente principal del reporte final.
+      setLoadingLabel('El médico director está integrando el plan final…');
+      let s: Synth | null = null;
+      try {
+        const r = await api(`/analyze/${visit_id}/synthesis`, { method: 'POST' });
+        s = r.synthesis || null;
+      } catch { /* si falla, usamos el ensamblado por enfoque */ }
+      setSynth(s);
+
+      // 2) /documents da membrete, paciente y (como respaldo) receta/estudios por enfoque.
       const d = await api(`/analyze/${visit_id}/documents`);
       setData(d);
-      setReceta(d.receta || []);
-      setEstudios(d.estudios || []);
-      setIncReceta(!!d.disponibles?.receta);
-      setIncReporte(!!d.disponibles?.reporte);
-      setIncEstudios(!!d.disponibles?.estudios);
+
+      // La receta y estudios preferentes salen de la síntesis (sin duplicados).
+      const recetaSrc: Med[] = (s?.receta && s.receta.length ? s.receta : (d.receta || [])) as Med[];
+      setReceta(recetaSrc.map(r => ({
+        ...r,
+        nombre_generico: r.nombre_generico || r.nombre || '',
+        para_que_sirve: r.para_que_sirve || r.para_que,
+      })));
+      const est: Est[] = (s?.estudios && s.estudios.length)
+        ? s.estudios
+        : ((d.estudios || []) as string[]).map((x: string) => ({ estudio: x }));
+      setEstudios(est);
+      setIncReceta((s?.receta?.length || d.disponibles?.receta) ? true : false);
+      setIncReporte(true);
+      setIncEstudios(est.length > 0);
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }, [visit_id]);
   useEffect(() => { load(); }, [load]);
@@ -74,20 +105,26 @@ export default function DocumentosPage() {
   const lh = data?.letterhead || {};
   const pac = data?.patient || {};
   const habitos: Med[] = data?.habitos || [];
-  const avanzados: Med[] = data?.avanzados || [];
+  const avanzados: Med[] = (synth?.peptidos && synth.peptidos.length ? synth.peptidos : (data?.avanzados || [])) as Med[];
   const diagnosticos: Dx[] = data?.diagnosticos || [];
-  const explicacion: string = data?.explicacion_paciente || '';
-  const plan: Plan = data?.plan || {};
+  const explPac: ExplPac | null = synth?.explicacion_paciente || null;
+  const explicacionTxt: string = data?.explicacion_paciente || '';
+  const fases: Fase[] = synth?.plan_por_fases || [];
   const nada = !incReceta && !incReporte && !incEstudios;
 
   const setMed = (i: number, k: keyof Med, v: string) => setReceta(r => r.map((m, j) => j === i ? { ...m, [k]: v } : m));
   const delMed = (i: number) => setReceta(r => r.filter((_, j) => j !== i));
   const addMed = () => setReceta(r => [...r, { nombre_generico: '', presentacion: '', dosis: '', via: 'Oral', frecuencia: '', duracion: '' }]);
-  const setEst = (i: number, v: string) => setEstudios(e => e.map((x, j) => j === i ? v : x));
+  const setEst = (i: number, v: string) => setEstudios(e => e.map((x, j) => j === i ? { ...x, estudio: v } : x));
   const delEst = (i: number) => setEstudios(e => e.filter((_, j) => j !== i));
-  const addEst = () => setEstudios(e => [...e, '']);
+  const addEst = () => setEstudios(e => [...e, { estudio: '' }]);
 
-  if (loading) return <div className="min-h-screen bg-[#070a0e] flex items-center justify-center text-[#7a95aa]">Cargando documentos…</div>;
+  if (loading) return (
+    <div className="min-h-screen bg-[#070a0e] flex flex-col items-center justify-center text-[#7a95aa] gap-3 px-6 text-center">
+      <div className="w-8 h-8 border-2 border-[#00e5a0] border-t-transparent rounded-full animate-spin" />
+      <p>{loadingLabel}</p>
+    </div>
+  );
 
   const pieId = `${pac.nombre || 'Paciente'} · ${lh.clinica || 'APEX'} · ${hoy()}`;
 
@@ -168,7 +205,7 @@ export default function DocumentosPage() {
                 <div className="space-y-1.5">
                   {estudios.map((e, i) => (
                     <div key={i} className="flex gap-1.5">
-                      <input className={inp} value={e} onChange={ev => setEst(i, ev.target.value)} placeholder="Estudio / análisis" />
+                      <input className={inp} value={e.estudio || ''} onChange={ev => setEst(i, ev.target.value)} placeholder="Estudio / análisis" />
                       <button onClick={() => delEst(i)} className="text-[#f43f5e] px-1">×</button>
                     </div>
                   ))}
@@ -196,14 +233,14 @@ export default function DocumentosPage() {
 
             {incReporte && (
               <Hoja lh={lh} pac={pac} titulo="Reporte para el paciente">
-                <ReporteBody diagnosticos={diagnosticos} explicacion={explicacion}
-                  receta={receta} avanzados={avanzados} habitos={habitos} estudios={estudios} plan={plan} nota={notaMedico} />
+                <ReporteBody diagnosticos={diagnosticos} explPac={explPac} explicacionTxt={explicacionTxt}
+                  receta={receta} avanzados={avanzados} habitos={habitos} estudios={estudios} fases={fases} nota={notaMedico} />
               </Hoja>
             )}
 
             {incEstudios && (
               <Hoja lh={lh} pac={pac} titulo="Solicitud de estudios">
-                <EstudiosBody estudios={estudios} />
+                <EstudiosBody estudios={estudios.map(e => e.estudio || '')} />
               </Hoja>
             )}
           </div>
@@ -300,7 +337,7 @@ function RecetaBody({ receta, indicaciones }: { receta: Med[]; indicaciones: str
     <div>
       <p className="text-2xl font-serif mb-4" style={{ color: MED_TEAL }}>℞</p>
       <div className="space-y-4">
-        {receta.filter(m => m.nombre_generico).map((m, i) => (
+        {receta.filter(m => m.nombre_generico || m.nombre).map((m, i) => (
           <div key={i} className="avoid-break flex gap-3">
             <span className="font-bold text-gray-400">{i + 1}.</span>
             <div className="text-[13px]">
@@ -361,16 +398,20 @@ function MedCard({ m }: { m: Med }) {
   const via = (m.via || '').toLowerCase();
   const icon = VIA_ICON[via] || '💊';
   const noAprob = m.cofepris === 'no_aprobado';
+  const nombre = m.nombre_generico || m.nombre || '';
+  const paraQue = m.para_que_sirve || m.para_que;
+  const cambio = m.cambio ? _cambioBadge[m.cambio] : null;
   return (
     <div className="avoid-break rounded-xl border border-gray-200 overflow-hidden mb-3" style={{ boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
       <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: `${MED_TEAL}12` }}>
         <span className="text-xl">{icon}</span>
         <div className="flex-1">
           <p className="font-bold text-[14px]" style={{ color: '#0f172a' }}>
-            {m.nombre_generico}{m.nombre_comercial ? ` (${m.nombre_comercial})` : ''}
+            {nombre}{m.nombre_comercial ? ` (${m.nombre_comercial})` : ''}
           </p>
           {m.presentacion && <p className="text-[11px] text-gray-600">{m.presentacion}</p>}
         </div>
+        {cambio && <span className="text-[8px] px-1.5 py-0.5 rounded-full" style={{ background: cambio.bg, color: cambio.c }}>{cambio.t}</span>}
         {noAprob && <span className="text-[8px] text-amber-700 border border-amber-300 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
       </div>
       <div className="px-4 py-3">
@@ -383,47 +424,140 @@ function MedCard({ m }: { m: Med }) {
               </div>
             ))}
         </div>
-        {m.para_que_sirve && (
-          <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: MED_TEAL }}>¿Para qué sirve? </span>{m.para_que_sirve}</p>
+        {m.como_tomar && <p className="text-[12px] text-gray-700 mb-1"><span className="font-semibold" style={{ color: MED_TEAL }}>Cómo tomarlo: </span>{m.como_tomar}</p>}
+        {paraQue && (
+          <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: MED_TEAL }}>¿Para qué sirve? </span>{paraQue}</p>
         )}
-        {m.indicacion && !m.para_que_sirve && <p className="text-[12px] text-gray-700">{m.indicacion}</p>}
+        {m.indicacion && !paraQue && <p className="text-[12px] text-gray-700">{m.indicacion}</p>}
       </div>
     </div>
   );
 }
 
-function ReporteBody({ diagnosticos, explicacion, receta, avanzados, habitos, estudios, plan, nota }:
-  { diagnosticos: Dx[]; explicacion: string; receta: Med[]; avanzados: Med[]; habitos: Med[]; estudios: string[]; plan: Plan; nota: string }) {
-  const meds = receta.filter(m => m.nombre_generico);
-  const avz = (avanzados || []).filter(m => m.nombre_generico);
+function PhaseTimeline({ fases }: { fases: Fase[] }) {
+  const cols = ['#0d9488', '#0ea5e9', '#7c3aed', '#f59e0b'];
+  return (
+    <div className="avoid-break space-y-0">
+      {fases.map((f, i) => {
+        const c = cols[i % cols.length];
+        return (
+          <div key={i} className="flex gap-3">
+            {/* Riel vertical con nodo */}
+            <div className="flex flex-col items-center">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-black text-white" style={{ background: c }}>{i + 1}</div>
+              {i < fases.length - 1 && <div className="w-0.5 flex-1 my-1" style={{ background: `${c}55` }} />}
+            </div>
+            <div className="flex-1 pb-4">
+              <div className="rounded-xl px-3.5 py-2.5" style={{ background: `${c}0d`, border: `1px solid ${c}33` }}>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <p className="font-bold text-[13px]" style={{ color: c }}>{f.fase || `Fase ${i + 1}`}</p>
+                  {f.cuando && <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: `${c}18`, color: c }}>🗓 {f.cuando}</span>}
+                  {f.tiempo_mejora && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">↗ mejora: {f.tiempo_mejora}</span>}
+                </div>
+                {f.objetivo && <p className="text-[12px] text-gray-700 mb-1.5">{f.objetivo}</p>}
+                {Array.isArray(f.acciones) && f.acciones.length > 0 && (
+                  <ul className="text-[12px] text-gray-800 space-y-0.5 mb-1">
+                    {f.acciones.map((a, k) => <li key={k} className="flex gap-1.5"><span style={{ color: c }}>›</span>{a}</li>)}
+                  </ul>
+                )}
+                {Array.isArray(f.metas) && f.metas.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {f.metas.map((m, k) => <span key={k} className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">🎯 {m}</span>)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const _cambioBadge: Record<string, { t: string; c: string; bg: string }> = {
+  nuevo: { t: 'Nuevo', c: '#0d9488', bg: '#0d948815' },
+  ajuste: { t: 'Ajuste', c: '#f59e0b', bg: '#f59e0b15' },
+  sin_cambio: { t: 'Ya lo tomabas', c: '#64748b', bg: '#64748b15' },
+};
+
+function ReporteBody({ diagnosticos, explPac, explicacionTxt, receta, avanzados, habitos, estudios, fases, nota }:
+  { diagnosticos: Dx[]; explPac: ExplPac | null; explicacionTxt: string; receta: Med[]; avanzados: Med[]; habitos: Med[]; estudios: Est[]; fases: Fase[]; nota: string }) {
+  const meds = receta.filter(m => m.nombre_generico || m.nombre);
+  const avz = (avanzados || []).filter(m => m.nombre_generico || m.nombre);
   const habs = habitos.filter(h => h.nombre_generico);
-  const ests = estudios.filter(Boolean);
-  const fases = Array.isArray(plan.plan_por_fases) ? plan.plan_por_fases : [];
+  const ests = estudios.filter(e => (e.estudio || '').trim());
 
   return (
     <div className="text-[#1a1a1a]">
-      {/* Diagnóstico en lenguaje simple */}
-      {(explicacion || diagnosticos.length > 0) && (
+      {/* Lo que encontramos — explicación estructurada al paciente */}
+      {(explPac || explicacionTxt || diagnosticos.length > 0) && (
         <>
           <SectionTitle icon="🩺" color={MED_TEAL}>Lo que encontramos</SectionTitle>
-          <div className="avoid-break rounded-xl px-4 py-3" style={SECTION('#0ea5e9')}>
-            {explicacion
-              ? <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{explicacion}</p>
-              : (
-                <ul className="space-y-1.5">
-                  {diagnosticos.map((d, i) => (
-                    <li key={i} className="text-[13px]">
-                      <span className="font-semibold">{d.nombre}</span>
-                      {d.resumen ? <span className="text-gray-700"> — {d.resumen}</span> : null}
-                    </li>
-                  ))}
-                </ul>
+          {explPac ? (
+            <div className="space-y-2">
+              {explPac.que_tengo && (
+                <div className="avoid-break rounded-xl px-4 py-3" style={SECTION('#0ea5e9')}>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">Qué tienes</p>
+                  <p className="text-[13px] leading-relaxed">{explPac.que_tengo}</p>
+                </div>
               )}
-          </div>
+              {explPac.por_que && (
+                <div className="avoid-break rounded-xl px-4 py-3" style={SECTION(MED_TEAL)}>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">Por qué te pasa (la raíz)</p>
+                  <p className="text-[13px] leading-relaxed">{explPac.por_que}</p>
+                </div>
+              )}
+              {explPac.healthspan && (
+                <div className="avoid-break rounded-xl px-4 py-3" style={SECTION('#7c3aed')}>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">Tu salud a futuro</p>
+                  <p className="text-[13px] leading-relaxed">{explPac.healthspan}</p>
+                </div>
+              )}
+            </div>
+          ) : explicacionTxt ? (
+            <div className="avoid-break rounded-xl px-4 py-3" style={SECTION('#0ea5e9')}>
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{explicacionTxt}</p>
+            </div>
+          ) : (
+            <div className="avoid-break rounded-xl px-4 py-3" style={SECTION('#0ea5e9')}>
+              <ul className="space-y-1.5">
+                {diagnosticos.map((d, i) => <li key={i} className="text-[13px]"><span className="font-semibold">{d.nombre}</span>{d.resumen ? <span className="text-gray-700"> — {d.resumen}</span> : null}</li>)}
+              </ul>
+            </div>
+          )}
         </>
       )}
 
-      {/* Medicamentos con horario */}
+      {/* Plan por fases (roadmap con línea de tiempo) */}
+      {fases.length > 0 && (
+        <>
+          <SectionTitle icon="🗺️" color={MED_TEAL}>Tu plan por etapas</SectionTitle>
+          <p className="text-[11px] text-gray-500 mb-2 -mt-1">Vamos por partes: primero lo más importante; cuando eso mejore, seguimos con lo demás.</p>
+          <PhaseTimeline fases={fases} />
+        </>
+      )}
+
+      {/* Compromisos + qué esperar */}
+      {explPac && (explPac.plan?.length || explPac.mis_compromisos?.length || explPac.que_esperar) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-1">
+          {(explPac.plan?.length || explPac.mis_compromisos?.length) ? (
+            <div className="avoid-break rounded-xl px-3.5 py-2.5" style={SECTION('#16a34a')}>
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Lo que tú tienes que hacer</p>
+              <ul className="text-[12px] space-y-0.5">
+                {[...(explPac.plan || []), ...(explPac.mis_compromisos || [])].map((x, i) => <li key={i} className="flex gap-1.5"><span className="text-green-600">✓</span>{x}</li>)}
+              </ul>
+            </div>
+          ) : null}
+          {explPac.que_esperar && (
+            <div className="avoid-break rounded-xl px-3.5 py-2.5" style={SECTION('#0ea5e9')}>
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Qué puedes esperar</p>
+              <p className="text-[12px]">{explPac.que_esperar}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Medicamentos con horario (deduplicados por el director) */}
       {meds.length > 0 && (
         <>
           <SectionTitle icon="💊" color={MED_TEAL}>Tu tratamiento — cómo tomarlo</SectionTitle>
@@ -475,54 +609,22 @@ function ReporteBody({ diagnosticos, explicacion, receta, avanzados, habitos, es
         </>
       )}
 
-      {/* Estudios */}
+      {/* Estudios (deduplicados por el director) */}
       {ests.length > 0 && (
         <>
           <SectionTitle icon="🧪" color="#7c3aed">Estudios que necesitas hacerte</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="space-y-1.5">
             {ests.map((e, i) => (
-              <div key={i} className="avoid-break flex items-center gap-2 text-[12px] rounded-lg px-3 py-2" style={SECTION('#7c3aed')}>
-                <span className="inline-block w-3.5 h-3.5 border-2 rounded" style={{ borderColor: '#7c3aed' }} />
-                <span>{e}</span>
+              <div key={i} className="avoid-break rounded-lg px-3 py-2" style={SECTION('#7c3aed')}>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3.5 h-3.5 border-2 rounded flex-shrink-0" style={{ borderColor: '#7c3aed' }} />
+                  <span className="text-[12px] font-semibold">{e.estudio}</span>
+                  {e.prioridad && <span className="text-[8px] px-1.5 py-0.5 rounded-full" style={{ background: '#7c3aed18', color: '#7c3aed' }}>{e.prioridad}</span>}
+                </div>
+                {e.para_que && <p className="text-[11px] text-gray-500 ml-5.5 mt-0.5">{e.para_que}</p>}
               </div>
             ))}
           </div>
-        </>
-      )}
-
-      {/* Plan de seguimiento */}
-      {(plan.proxima_revision || plan.criterios_exito || plan.senales_alarma || fases.length > 0) && (
-        <>
-          <SectionTitle icon="📅" color="#0d9488">Tu plan de seguimiento</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {plan.proxima_revision && (
-              <div className="avoid-break rounded-xl px-3 py-2.5" style={SECTION('#0d9488')}>
-                <p className="text-[9px] uppercase tracking-wide text-gray-500">Próxima revisión</p>
-                <p className="text-[13px] font-semibold">{plan.proxima_revision}</p>
-              </div>
-            )}
-            {plan.criterios_exito && (
-              <div className="avoid-break rounded-xl px-3 py-2.5" style={SECTION('#16a34a')}>
-                <p className="text-[9px] uppercase tracking-wide text-gray-500">Metas / cómo sabremos que va bien</p>
-                <p className="text-[12px]">{plan.criterios_exito}</p>
-              </div>
-            )}
-          </div>
-          {fases.length > 0 && (
-            <div className="avoid-break mt-2 flex flex-wrap gap-1.5">
-              {fases.map((f: any, i: number) => (
-                <span key={i} className="text-[10px] rounded-full px-2.5 py-1" style={{ background: '#0d948815', color: '#0d9488', border: '1px solid #0d948840' }}>
-                  {i + 1}. {f?.fase || ''}{f?.cuando ? ` (${f.cuando})` : ''}
-                </span>
-              ))}
-            </div>
-          )}
-          {plan.senales_alarma && (
-            <div className="avoid-break mt-2 rounded-xl px-3 py-2.5" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-              <p className="text-[11px] font-bold text-red-700">⚠️ Señales de alarma — busca atención de inmediato si presentas:</p>
-              <p className="text-[12px] text-red-800">{plan.senales_alarma}</p>
-            </div>
-          )}
         </>
       )}
 
