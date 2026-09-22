@@ -18,6 +18,8 @@ type Med = {
   tipo?: string; nombre_generico?: string; nombre_comercial?: string; presentacion?: string;
   dosis?: string; via?: string; frecuencia?: string; duracion?: string; indicacion?: string;
   para_que_sirve?: string; cofepris?: string; momento?: string;
+  // Campos de péptidos / terapias avanzadas
+  nombre?: string; para_que?: string; como_se_usa?: string; por_que_encaja?: string; disclaimer?: string;
 };
 type Dx = { nombre?: string; confianza?: number; resumen?: string };
 type Plan = { proxima_revision?: string; criterios_exito?: string; senales_alarma?: string; plan_por_fases?: any[] };
@@ -438,16 +440,19 @@ function ReporteBody({ diagnosticos, explicacion, receta, avanzados, habitos, es
             <div key={i} className="avoid-break rounded-xl border border-gray-200 overflow-hidden mb-2">
               <div className="flex items-center gap-2 px-4 py-2" style={{ background: '#0891b210' }}>
                 <span className="text-lg">🧬</span>
-                <p className="font-bold text-[13px] flex-1">{m.nombre_generico}
-                  <span className="ml-2 text-[9px] font-normal text-gray-500">{m.tipo}</span>
+                <p className="font-bold text-[13px] flex-1">{m.nombre || m.nombre_generico}
+                  {m.tipo && <span className="ml-2 text-[9px] font-normal text-gray-500">{m.tipo}</span>}
                 </p>
                 {m.cofepris === 'no_aprobado' && <span className="text-[8px] text-amber-700 border border-amber-300 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
               </div>
-              <div className="px-4 py-2">
+              <div className="px-4 py-2 space-y-1">
+                {(m.para_que || m.para_que_sirve) && <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: '#0891b2' }}>¿Para qué? </span>{m.para_que || m.para_que_sirve}</p>}
+                {m.por_que_encaja && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Por qué en tu caso: </span>{m.por_que_encaja}</p>}
+                {m.como_se_usa && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Cómo se usa: </span>{m.como_se_usa}</p>}
                 {[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).length > 0 && (
-                  <p className="text-[11px] text-gray-600 mb-1">{[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).join(' · ')}</p>
+                  <p className="text-[11px] text-gray-600">{[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).join(' · ')}</p>
                 )}
-                {m.para_que_sirve && <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: '#0891b2' }}>¿Para qué? </span>{m.para_que_sirve}</p>}
+                {m.disclaimer && <p className="text-[11px] text-amber-700">⚠ {m.disclaimer}</p>}
               </div>
             </div>
           ))}

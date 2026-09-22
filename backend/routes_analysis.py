@@ -2712,7 +2712,12 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
                 if tipo in ("estilo de vida", "ejercicio"):
                     habitos.append(it)
                 elif tipo in _NO_RECETA_TYPES:
+                    # Compatibilidad con datos viejos (péptidos como item con tipo).
                     avanzados.append({**it, "_enfoque": enfoque})
+            # Nuevo: arreglo dedicado "peptidos" (péptidos/PRP/células madre que pudieran ayudar).
+            for p in (data.get("peptidos") or []):
+                if isinstance(p, dict) and (p.get("nombre") or "").strip():
+                    avanzados.append({**p, "_enfoque": enfoque})
 
     # Estudios: se leen del DIAGNÓSTICO de cada enfoque (ahí viven los "estudios_sugeridos"),
     # no del protocolo. Se juntan de los 3 enfoques y se de-duplican.

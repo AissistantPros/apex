@@ -628,8 +628,10 @@ interface ProtocolItem {
   para_que_sirve?: string;
 }
 
+type Peptido = { nombre?: string; para_que?: string; como_se_usa?: string; por_que_encaja?: string; disclaimer?: string; cofepris?: string };
 interface ProtocolData {
   items: ProtocolItem[];
+  peptidos?: Peptido[];
   monitoreo_general?: {
     proxima_revision?: string;
     labs_control?: string;
@@ -965,6 +967,35 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
         </div>
       )}
 
+      {/* Péptidos / terapias avanzadas que pudieran ayudar (NO van en la receta oficial) */}
+      {Array.isArray(data.peptidos) && data.peptidos.filter(p => p && p.nombre).length > 0 && (
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono tracking-widest px-2.5 py-1 rounded-full"
+              style={{ color: '#0891b2', background: 'rgba(8,145,178,.10)', border: '1px solid rgba(8,145,178,.30)' }}>
+              🧬 PÉPTIDOS QUE PUDIERAN AYUDAR
+            </span>
+            <div className="flex-1 h-px bg-[#1a2535]" />
+          </div>
+          <p className="text-[11px] text-[#7a95aa] -mt-1">Opciones avanzadas para tu consideración — no forman parte de la receta oficial (COFEPRIS). Tú decides.</p>
+          {data.peptidos.filter(p => p && p.nombre).map((p, i) => (
+            <div key={i} className="rounded-xl border border-[rgba(8,145,178,.3)] bg-[#07141a] overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: 'rgba(8,145,178,.08)' }}>
+                <span className="text-lg">🧬</span>
+                <p className="font-bold text-[14px] text-[#dde6ef] flex-1">{p.nombre}</p>
+                {p.cofepris === 'no_aprobado' && <span className="text-[8px] text-amber-400 border border-amber-500/40 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
+              </div>
+              <div className="px-4 py-3 space-y-1.5 text-[12px]">
+                {p.para_que && <p className="text-[#dde6ef]"><span className="text-[#0891b2] font-semibold">¿Para qué? </span>{p.para_que}</p>}
+                {p.por_que_encaja && <p className="text-[#7a95aa]"><span className="text-[#3d5870]">Por qué encaja aquí: </span>{p.por_que_encaja}</p>}
+                {p.como_se_usa && <p className="text-[#7a95aa]"><span className="text-[#3d5870]">Cómo se usa: </span>{p.como_se_usa}</p>}
+                {p.disclaimer && <p className="text-amber-400/90 text-[11px]">⚠ {p.disclaimer}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {onAddItem && (
         addingOwn ? (
           <ProtocolItemForm item={ownItem}
@@ -1095,7 +1126,7 @@ function ProtocolEditMode({ data, onSave, onCancel }: {
   const handleSave = () => {
     const kept = data.items.filter((_, i) => keep[i]);
     const cleanOwn = ownItems.filter(it => it.nombre_generico && it.nombre_generico.trim());
-    const finalData: ProtocolData = { items: [...kept, ...cleanOwn], monitoreo_general: data.monitoreo_general };
+    const finalData: ProtocolData = { items: [...kept, ...cleanOwn], peptidos: data.peptidos, monitoreo_general: data.monitoreo_general };
     onSave(JSON.stringify(finalData));
   };
 
@@ -2141,7 +2172,7 @@ function DiagnosisCard({
     setState(prev => {
       const pd = parseProtocolJson(prev.doctor_text);
       if (!pd) return prev;
-      const newData: ProtocolData = { items: [...pd.items, item], monitoreo_general: pd.monitoreo_general };
+      const newData: ProtocolData = { items: [...pd.items, item], peptidos: pd.peptidos, monitoreo_general: pd.monitoreo_general };
       const base = prev.approved && prev.approved.length === pd.items.length ? prev.approved : pd.items.map(() => true);
       return { ...prev, doctor_text: JSON.stringify(newData), approved: [...base, true] };
     });
@@ -3429,7 +3460,7 @@ export default function AnalysisPage() {
         const appr = prev.approved && prev.approved.length === pd.items.length ? prev.approved : pd.items.map(() => true);
         const kept = pd.items.filter((_, i) => appr[i] !== false);
         const mg = notes ? { ...pd.monitoreo_general, nota_doctor: notes } : pd.monitoreo_general;
-        finalText = JSON.stringify({ items: kept, monitoreo_general: mg });
+        finalText = JSON.stringify({ items: kept, peptidos: pd.peptidos, monitoreo_general: mg });
       } else if (notes) {
         finalText = `${finalText}\n\n--- NOTAS DEL DOCTOR ---\n${notes}`;
       }

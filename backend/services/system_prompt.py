@@ -1083,6 +1083,18 @@ profundiza si una respuesta quedó incompleta o vaga Y es realmente relevante pa
 """
 
 
+PREGUNTAS_PROHIBIDAS = """
+FILTRO OBLIGATORIO — antes de incluir CUALQUIER pregunta, pásala por estas comprobaciones y descártala si falla una:
+1. ¿La pregunta TIENE SENTIDO y es respondible? (que no sea obvia/retórica y que ESTE paciente realmente pueda
+   saber la respuesta).
+2. ¿NO ha sido contestada antes, ni siquiera en partes? (en rondas previas o en el interrogatorio dirigido anterior).
+3. ¿NO está ya respondida, de alguna forma, en el formulario inicial / la ficha / el historial?
+4. ¿Tiene VALOR REAL para este caso? (su respuesta cambia el diagnóstico o el plan).
+Solo sobreviven las preguntas que pasan las CUATRO. Si una no aporta, es obvia, o ya está respondida (aunque sea
+parcialmente en otro lado), elimínala.
+"""
+
+
 def get_functional_clarifying_questions_prompt(patient_data: dict, visit_data: dict, doctor_traditional: str, previous_qa: str = "", prior_qa: str = "", es_ultima_ronda: bool = True, all_visits: list = None) -> str:
     """
     Genera el CUESTIONARIO funcional que la IA necesita para tener la información
@@ -1122,7 +1134,7 @@ MENTALIDAD (crítica — el médico se quejó de interrogatorios largos y repeti
 - Antes de escribir una pregunta, ubica el dato en el expediente; si ya está (aunque sea parcial), NO preguntes.
 - Si con lo que YA tienes puedes razonar la causa raíz de forma responsable, devuelve [] y no preguntes nada.
 - Prioriza en CADA ronda lo de mayor valor diagnóstico; deja lo secundario fuera en vez de estirarlo.
-
+{PREGUNTAS_PROHIBIDAS}
 COBERTURA (revisa estos dominios y pregunta SOLO lo que falte y sea relevante para este paciente — no barras todo):
 - Línea de tiempo de salud (modelo ATM) — ESENCIAL, es el corazón de la entrevista funcional, no lo omitas:
   · Antecedentes: embarazo y parto de la madre (complicaciones, prematurez, cesárea), lactancia, primeros años,
@@ -1216,6 +1228,7 @@ MENTALIDAD (crítica — el médico se quejó de interrogatorios largos y repeti
   FUNCIONAL. NO lo vuelvas a preguntar aquí — reutilízalo. Pregunta solo lo específico de longevidad que falte
   (metas de healthspan, historia familiar de longevidad, percepción de edad biológica) y que no esté ya arriba.
 - Si con lo que YA tienes puedes hacer el análisis, devuelve [] y no preguntes nada.
+{PREGUNTAS_PROHIBIDAS}
 
 COBERTURA (revisa estos dominios y pregunta SOLO lo que falte y no se haya cubierto en funcional):
 - Composición corporal y metabolismo: peso estable/cambios, grasa visceral, masa muscular, circunferencia de cintura.
@@ -2073,12 +2086,16 @@ Estructura exacta (mismos nombres de campo siempre, en español, sin acentos en 
       {{"fase": "Atacar lo urgente", "foco": "Estabilizar lo agudo/descompensado de este paciente", "cuando": "Esta visita"}},
       {{"fase": "Dar fuerza", "foco": "Corregir déficits y poner las bases (nutrición, sueño, fundamentos)", "cuando": "1-4 semanas"}}
     ]
-  }}
+  }},
+  "peptidos": [
+    {{"nombre": "BPC-157", "para_que": "reparación de mucosa intestinal/tendón, antiinflamatorio", "como_se_usa": "SC, ciclo típico 4-6 semanas", "por_que_encaja": "por qué le serviría a ESTE paciente en concreto", "disclaimer": "cuándo NO usarlo o qué corroborar antes (ej. descartar antecedente de cáncer por angiogénesis)", "cofepris": "no_aprobado"}}
+  ]
 }}
 
 REGLAS DE LLENADO (síguelas exactamente):
 1. Incluye un objeto en "items" por CADA intervención del protocolo (medicamentos, suplementos, ejercicio, etc. — todos van en la misma lista "items", diferenciados por "tipo").
-2. "tipo" debe ser uno de: "Fármaco", "Off-label", "Suplemento", "Vitamina", "Estilo de vida", "Ejercicio", "Péptido", "PRP", "Células madre". Usa "Péptido"/"PRP"/"Células madre" para esos (NO "Off-label"): definen que NO van en la receta oficial pero sí en el plan. NUNCA uses "Estudio" — los estudios/laboratorios NO se piden aquí, ya se proponen en el paso de diagnóstico.
+2. "tipo" (de cada item) debe ser uno de: "Fármaco", "Off-label", "Suplemento", "Vitamina", "Estilo de vida", "Ejercicio". Los PÉPTIDOS, PRP y CÉLULAS MADRE NO van en "items" — van en el arreglo aparte "peptidos" (ver regla 20). NUNCA uses "Estudio" — los estudios/laboratorios NO se piden aquí, ya se proponen en el paso de diagnóstico.
+20. "peptidos" (OBLIGATORIO analizarlo en protocolo FUNCIONAL y de LONGEVIDAD): revisa el catálogo del ARSENAL AVANZADO y, para ESTE paciente, propón los péptidos (y PRP/células madre si aplican) que PUDIERAN ayudarle — no lo omitas por costumbre. Por cada uno llena: "nombre", "para_que" (para qué sirve, claro), "como_se_usa" (vía/forma/ciclo), "por_que_encaja" (por qué le serviría a ESTE caso en concreto), "disclaimer" (cuándo NO usarlo, qué corroborar antes, o "usar solo si no responde a X") y "cofepris" ("no_aprobado" casi siempre). Elige los de MEJOR forma/evidencia. Si de verdad NINGUNO aporta a este caso, pon [] y explica en "monitoreo_general" por qué no aplica. En protocolo CONVENCIONAL, "peptidos" siempre es [].
 3. "nombre_comercial": usa "" (string vacío) si no aplica — NUNCA inventes un nombre comercial para suplementos genéricos o ejercicio.
 4. "alerta": describe la contraindicación absoluta, interacción grave o riesgo en embarazo más importante para ESTE paciente. Si NO hay ninguna alerta relevante, usa exactamente: "" (string vacío) — el frontend ya muestra un mensaje neutro de "sin contraindicaciones" cuando está vacío, no lo escribas tú.
 5. Si es OFF-LABEL: en "nivel_evidencia" pon "Uso off-label — consenso de expertos" y en "indicacion" aclara que no está aprobado para esta indicación específica pero hay evidencia secundaria.
