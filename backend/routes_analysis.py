@@ -1555,12 +1555,15 @@ def _build_functional_prompt(visit_id: str, body: FunctionalRequest, doctor_id: 
         )
     chat_snippet = _chat_snippet(analysis.get("chat_history", []))
     kb_block = _biblioteca_para_diagnostico("functional", patient_data, visit_record, "")
+    ya_firme = _bloque_ya_en_firme([body.doctor_traditional], [body.protocol_traditional])
 
     prompt = get_functional_medicine_prompt(
         patient_data,
         body.doctor_traditional,
         visit_data=visit_record,
-        extra_context=doctor_context + chat_snippet + ("\n\n" + kb_block if kb_block else ""),
+        extra_context=doctor_context + chat_snippet
+            + (("\n\n" + ya_firme) if ya_firme else "")
+            + ("\n\n" + kb_block if kb_block else ""),
         all_visits=all_visits,
         traditional_treatment=body.protocol_traditional,
     )
@@ -1685,13 +1688,19 @@ def _build_longevity_prompt(visit_id: str, body: LongevityRequest, doctor_id: st
         )
     chat_snippet = _chat_snippet(analysis.get("chat_history", []))
     kb_block = _biblioteca_para_diagnostico("longevity", patient_data, visit_record, "")
+    ya_firme = _bloque_ya_en_firme(
+        [body.doctor_traditional, body.doctor_functional],
+        [body.protocol_traditional, body.protocol_functional],
+    )
 
     prompt = get_longevity_diagnosis_prompt(
         patient_data,
         body.doctor_functional,
         traditional_diagnosis=body.doctor_traditional,
         visit_data=visit_record,
-        extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet + ("\n\n" + kb_block if kb_block else ""),
+        extra_context=ctx_trad + ctx_func + ctx_answers + chat_snippet
+            + (("\n\n" + ya_firme) if ya_firme else "")
+            + ("\n\n" + kb_block if kb_block else ""),
         all_visits=all_visits,
         traditional_treatment=body.protocol_traditional,
         functional_treatment=body.protocol_functional,
@@ -2692,6 +2701,58 @@ def _estudios_de_diagnostico(raw) -> list:
                 if nombre and len(nombre) <= 120:
                     out.append(nombre)
     return out
+
+
+def _meds_de_protocolo(raw) -> list:
+    """Nombres (genérico) de los medicamentos/suplementos de un protocolo, para dedup."""
+    meds, _ = _parse_protocol(raw)
+    out = []
+    for m in meds:
+        n = (m.get("nombre_generico") or m.get("nombre") or "").strip()
+        if n:
+            out.append(n)
+    return out
+
+
+def _bloque_ya_en_firme(diagnosticos_previos: list, protocolos_previos: list) -> str:
+    """Bloque de contexto con los ESTUDIOS y MEDICAMENTOS que el médico YA aceptó en etapas
+    previas de ESTA visita (convencional → funcional → longevidad). El enfoque actual no debe
+    volver a proponerlos como nuevos: si le sirven, los menciona como nota. Evita el ruido
+    visual de re-pedir lo que el médico ya aceptó (los resultados sirven para TODOS los enfoques).
+    """
+    estudios: list = []
+    for r in diagnosticos_previos:
+        for e in _estudios_de_diagnostico(r):
+            if e and e.lower() not in {x.lower() for x in estudios}:
+                estudios.append(e)
+    meds: list = []
+    for r in protocolos_previos:
+        for m in _meds_de_protocolo(r):
+            if m and m.lower() not in {x.lower() for x in meds}:
+                meds.append(m)
+
+    if not estudios and not meds:
+        return ""
+
+    partes = ["══ YA EN FIRME EN ESTA VISITA (aceptado por el médico en etapas previas) ══"]
+    if estudios:
+        partes.append("ESTUDIOS YA SOLICITADOS:\n  - " + "\n  - ".join(estudios))
+    if meds:
+        partes.append("MEDICAMENTOS / SUPLEMENTOS YA RECETADOS:\n  - " + "\n  - ".join(meds))
+    partes.append(
+        "REGLA DE NO DUPLICAR (OBLIGATORIA):\n"
+        "• NO pidas de nuevo un estudio que ya esté en la lista de arriba — ni con otro nombre, "
+        "ni como parte de un panel. Si arriba ya hay un panel que lo contiene (p.ej. 'perfil de "
+        "lípidos' ya incluye colesterol y triglicéridos; 'química sanguínea' ya incluye glucosa), "
+        "ese componente YA está cubierto: no lo pidas suelto.\n"
+        "• Si un estudio que confirmaría TU diagnóstico ya está en firme, NO lo pongas en tus "
+        "'estudios' nuevos. En su lugar agrégalo a 'estudios_ya_cubiertos' con {estudio, "
+        "cubierto_por, para_que} como NOTA — el médico ya lo aceptó y, cuando lleguen los "
+        "resultados, se usan para todos los enfoques.\n"
+        "• Igual con medicamentos/suplementos ya recetados: no los vuelvas a proponer como nuevos; "
+        "si tu enfoque los aprovecha, solo menciónalo (no pidas que el médico los acepte otra vez)."
+    )
+    return "\n\n".join(partes)
 
 
 def _seccion_delimitada(raw: str, keyword: str) -> str:

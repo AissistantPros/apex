@@ -1593,6 +1593,9 @@ CORTO y sin relleno. Nada de párrafos largos.
   "estudios": [
     {{"estudio": "estudio específico", "prioridad": "URGENTE", "confirma": "qué nodo/hipótesis confirma", "impacto": "qué decisión clínica cambia según el resultado"}}
   ],
+  "estudios_ya_cubiertos": [
+    {{"estudio": "estudio que te serviría pero que el médico YA aceptó en una etapa previa", "cubierto_por": "de dónde ya viene (p.ej. 'perfil de lípidos aceptado en convencional')", "para_que": "para qué te sirve a TI en funcional"}}
+  ],
   "historia_paciente": "2-4 líneas en lenguaje LLANO (paso Tell): qué lo predispuso, qué lo disparó y qué lo mantiene, como una historia con sentido para el paciente."
 }}
 
@@ -1600,8 +1603,12 @@ REGLAS DE LLENADO (síguelas exactamente):
 - "cadena_causal": frases CORTAS (van en un diagrama de bloques Terreno→Disparador→Motor→Perpetuadores→Síntoma), NO párrafos.
 - "nodos": MÁXIMO 3, ordenados de mayor impacto; cada uno con evidencia REAL del paciente (no teoría).
 - "perpetuantes": los factores de estilo de vida/ambiente que perpetúan; telegráficos.
-- "estudios": MÁXIMO 4, solo los que cambiarían el manejo. "prioridad" es "URGENTE", "DESEADO" o "COMPLEMENTARIO".
+- "estudios": MÁXIMO 4, solo los que cambiarían el manejo Y que NO estén ya en firme. "prioridad" es "URGENTE", "DESEADO" o "COMPLEMENTARIO".
   "confirma" = qué hipótesis/nodo confirma; "impacto" = qué decisión clínica define el resultado.
+- "estudios_ya_cubiertos": si el bloque "YA EN FIRME EN ESTA VISITA" existe arriba, revisa CADA estudio que
+  ibas a pedir contra esa lista (incluye paneles: si ya está 'perfil de lípidos' NO pidas colesterol ni
+  triglicéridos sueltos; si ya está 'química sanguínea' NO pidas glucosa suelta). Todo estudio que ya esté
+  cubierto va AQUÍ como nota (no en "estudios"). Si no hay nada que quede cubierto, deja [].
 - "confianza": es normal NO llegar al 100% sin laboratorios. Si la causa raíz tiene <50% de confianza, refléjalo
   en el número y dilo en "raiz". No inventes certeza.
 - No agregues campos fuera de los listados. Usa "" o [] cuando algo no aplique."""

@@ -1214,6 +1214,7 @@ interface DiagnosisListData {
 type FuncNodo = { nodo?: string; mecanismo?: string; evidencia?: string };
 type FuncPerp = { factor?: string; impacto?: string };
 type FuncEstudio = { estudio?: string; prioridad?: string; confirma?: string; impacto?: string };
+type FuncEstCubierto = { estudio?: string; cubierto_por?: string; para_que?: string };
 type FuncDx = {
   confianza?: number; confianza_nota?: string;
   cadena_causal?: { terreno?: string; disparador?: string; motor?: string; perpetuadores?: string; sintoma?: string };
@@ -1221,6 +1222,7 @@ type FuncDx = {
   nodos?: FuncNodo[];
   perpetuantes?: FuncPerp[];
   estudios?: FuncEstudio[];
+  estudios_ya_cubiertos?: FuncEstCubierto[];
   estudios_seleccionados?: boolean[];
   historia_paciente?: string;
 };
@@ -2024,6 +2026,22 @@ function FunctionalStructuredView({ data, color, anchor, onToggleStudy }: {
               </label>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Estudios que este enfoque aprovecha pero que el médico YA aceptó antes (no se re-piden) */}
+      {(data.estudios_ya_cubiertos?.length ?? 0) > 0 && (
+        <div className="rounded-xl px-3 py-2.5" style={{ background: '#0d1520', border: '1px dashed #1e2d3d' }}>
+          <p className="text-[10px] font-mono tracking-widest mb-1.5 flex items-center gap-1.5 text-[#7a95aa]"><span>✓</span> YA SOLICITADOS (no hace falta pedirlos de nuevo)</p>
+          <ul className="space-y-1">
+            {data.estudios_ya_cubiertos!.map((e, i) => (
+              <li key={i} className="text-[12px] text-[#9fb2c4] leading-snug">
+                <span className="text-[#dde6ef] font-medium">{e.estudio}</span>
+                {e.cubierto_por && <span className="text-[#3d5870]"> — {e.cubierto_por}</span>}
+                {e.para_que && <span className="text-[#7a95aa]"> · sirve aquí para: {e.para_que}</span>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
