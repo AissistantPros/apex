@@ -23,6 +23,7 @@ from db import (
 from services.knowledge_base import (
     embed_consulta, embeddings_disponibles, formatear_fragmentos,
     consultar_biblioteca as _kb_consultar,
+    consultar_peptidos as _kb_peptidos,
 )
 
 from services.system_prompt import (
@@ -36,6 +37,7 @@ from services.system_prompt import (
     get_longevity_clarifying_questions_prompt,
     get_lean_draft_prompt,
     get_synthesis_prompt,
+    get_peptide_expert_prompt,
     build_patient_context,
     build_visit_context,
 )
@@ -2107,6 +2109,85 @@ def _build_protocol_prompt(visit_id: str, body: ProtocolRequest) -> tuple[str, d
     return prompt, previous_protocols, _visit_file_blocks(visit_record)
 
 
+def _parse_peptidos_json(raw) -> list:
+    """Extrae la lista 'peptidos' del JSON del agente experto (tolerante a prosa/cercas)."""
+    if not raw:
+        return []
+    for cand in (_strip_json_fences(raw), _extract_json_object(raw) or ""):
+        if not cand:
+            continue
+        try:
+            data = json.loads(cand)
+            if isinstance(data, dict) and isinstance(data.get("peptidos"), list):
+                return [p for p in data["peptidos"] if isinstance(p, dict) and p.get("nombre")]
+        except Exception:
+            continue
+    return []
+
+
+def _accepted_meds_ctx(body: ProtocolRequest) -> str:
+    """Lista de medicamentos/suplementos ya aceptados (para dedup y regla GLP-1)."""
+    lineas = []
+    for etiqueta, raw in (("Convencional", body.protocol_traditional),
+                          ("Funcional", body.protocol_functional)):
+        for m in _meds_de_protocolo(raw):
+            lineas.append(f"  • {m} ({etiqueta})")
+    return "\n".join(lineas)
+
+
+def run_peptide_expert(visit_id: str, body: ProtocolRequest, focus: str) -> list:
+    """AGENTE EXPERTO EN PÉPTIDOS — paso propio con RAG apuntado SOLO a los libros de péptidos.
+    Devuelve la lista 'peptidos' bien mapeada y fundamentada (o [] si falla). No lanza."""
+    try:
+        analysis = get_analysis(visit_id) or {}
+        patient_id = analysis.get("patient_id")
+        patient_data = get_patient(patient_id) if patient_id else {}
+        patient_ctx = build_patient_context(patient_data)
+
+        dx_parts = []
+        if body.doctor_traditional and body.doctor_traditional.strip():
+            dx_parts.append(f"Convencional: {body.doctor_traditional}")
+        if body.doctor_functional and body.doctor_functional.strip():
+            dx_parts.append(f"Funcional: {body.doctor_functional}")
+        if body.doctor_longevity and body.doctor_longevity.strip():
+            dx_parts.append(f"Longevidad: {body.doctor_longevity}")
+        diagnoses_ctx = "\n".join(dx_parts)
+        meds_ctx = _accepted_meds_ctx(body)
+
+        seed = ("reparación tisular tendón intestino inflamación mitocondria energía neuro estrés cognición"
+                if focus == "functional" else
+                "longevidad healthspan mitocondria energía inmuno timo telómeros regeneración sueño composición corporal")
+        biblioteca = _kb_peptidos(f"péptidos {seed} — caso: {diagnoses_ctx[:600]}")
+
+        prompt = get_peptide_expert_prompt(patient_ctx, diagnoses_ctx, meds_ctx, focus, biblioteca)
+        raw = call_claude(prompt, diagnostic=True, fallback_model=MODEL_PROTOCOL,
+                          max_tokens=4000, visit_id=visit_id, step=f"peptides_{focus}")
+        peptidos = _parse_peptidos_json(raw)
+        print(f"[PEPTIDOS] {focus}: {len(peptidos)} recomendados (biblioteca={'sí' if biblioteca else 'no'})")
+        return peptidos
+    except Exception as e:
+        print(f"[WARN run_peptide_expert] {type(e).__name__}: {e}")
+        return []
+
+
+def _inject_peptidos_experto(protocol: str, visit_id: str, body: ProtocolRequest) -> str:
+    """Sustituye el arreglo 'peptidos' del protocolo funcional/longevidad con la salida del
+    agente experto. Si el experto no devuelve nada o el protocolo no es JSON, lo deja igual."""
+    if body.protocol_type not in ("functional", "longevity"):
+        return protocol
+    data = parse_protocol_json_safe(protocol)
+    if data is None:
+        return protocol
+    expertos = run_peptide_expert(visit_id, body, body.protocol_type)
+    if not expertos:
+        return protocol
+    data["peptidos"] = expertos
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except Exception:
+        return protocol
+
+
 @router.post("/{visit_id}/protocol/stream")
 async def run_protocol_stream(
     visit_id: str,
@@ -2148,6 +2229,12 @@ async def run_protocol_stream(
                 if parse_protocol_json_safe(validated) is not None:
                     protocol = validated
 
+            # Interconsulta del agente experto en péptidos (funcional/longevidad): sustituye el
+            # arreglo 'peptidos' con opciones bien mapeadas y fundamentadas en la literatura.
+            if body.protocol_type in ("functional", "longevity"):
+                yield f"data: {json.dumps({'type': 'status', 'text': 'Interconsulta: experto en péptidos…'})}\n\n"
+                protocol = _inject_peptidos_experto(protocol, visit_id, body)
+
             _safe_update_analysis(visit_id, {f"protocol_{body.protocol_type}": protocol})
             yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': f'protocol_{body.protocol_type}', 'protocol': protocol, 'banderas': banderas})}\n\n"
         except HTTPException:
@@ -2188,6 +2275,9 @@ async def run_protocol(
             validated = _strip_json_fences(validated)
             if parse_protocol_json_safe(validated) is not None:
                 protocol = validated
+
+        # Interconsulta del agente experto en péptidos (funcional/longevidad).
+        protocol = _inject_peptidos_experto(protocol, visit_id, body)
 
         update_analysis(visit_id, {
             f"protocol_{body.protocol_type}": protocol,

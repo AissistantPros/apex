@@ -20,6 +20,7 @@ type Med = {
   para_que_sirve?: string; cofepris?: string; momento?: string;
   // Campos de péptidos / terapias avanzadas
   nombre?: string; para_que?: string; como_se_usa?: string; por_que_encaja?: string; disclaimer?: string;
+  combo?: string; iniciar_cuando?: string; evidencia?: string;
   // Campos de la síntesis (receta unificada)
   como_tomar?: string; cambio?: string; enfoque?: string;
 };
@@ -580,9 +581,11 @@ function ReporteBody({ diagnosticos, explPac, explicacionTxt, receta, avanzados,
                 {m.cofepris === 'no_aprobado' && <span className="text-[8px] text-amber-700 border border-amber-300 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
               </div>
               <div className="px-4 py-2 space-y-1">
+                {m.combo && <p className="text-[11px]" style={{ color: '#0891b2' }}>🔗 {m.combo}</p>}
                 {(m.para_que || m.para_que_sirve) && <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: '#0891b2' }}>¿Para qué? </span>{m.para_que || m.para_que_sirve}</p>}
                 {m.por_que_encaja && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Por qué en tu caso: </span>{m.por_que_encaja}</p>}
                 {m.como_se_usa && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Cómo se usa: </span>{m.como_se_usa}</p>}
+                {m.iniciar_cuando && m.iniciar_cuando.toLowerCase() !== 'ahora' && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Cuándo iniciar: </span>{m.iniciar_cuando}</p>}
                 {[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).length > 0 && (
                   <p className="text-[11px] text-gray-600">{[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).join(' · ')}</p>
                 )}

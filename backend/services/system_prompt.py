@@ -1328,6 +1328,107 @@ aprobado si no lo está.
 """
 
 
+# ── Agente experto en péptidos ────────────────────────────────────────────────
+# Catálogo curado (mapa de referencia, NO lista cerrada) para que el agente SIEMPRE sepa qué
+# alcanzar según el eje del paciente. Se combina con la literatura de péptidos del RAG.
+PEPTIDOS_CATALOGO = """CATÁLOGO-MAPA DE REFERENCIA (guía de para qué suele servir cada uno; NO es una lista para
+copiar entera — elige lo que encaje en ESTE paciente y fundaméntalo con la literatura de arriba):
+- Reparación tisular / tendón / intestino / recuperación: **BPC-157 + TB-500** (casi SIEMPRE se usan JUNTOS
+  como par sinérgico — si propones uno, considera el otro y dilo). KPV para inflamación sistémica y de mucosas.
+- Energía / mitocondria / fatiga: **MOTS-c** y **NAD+ (o precursores NR/NMN)** — si el paciente refiere fatiga o
+  poca energía, revísalos SIEMPRE. SS-31/Elamipretida para disfunción mitocondrial.
+- Cognición / ansiedad / estrés / foco: **Selank** (ansiolítico/antiestrés) y **Semax** (foco/neuroprotección/BDNF)
+  son DISTINTOS y NO intercambiables — no los trates como el mismo; elige según el objetivo (ansiedad vs. cognición).
+- Cabello / piel / regeneración cutánea: **GHK-Cu** (regeneración, colágeno, folículo) y **AHK-Cu** (crecimiento
+  capilar). Complementan a la línea convencional de cabello (minoxidil/finasterida/dutasterida) y a vitamina D/biotina.
+- Metabólico / peso / incretinas: valora **retatrutida** (triple agonista GLP-1/GIP/glucagón) — ver regla GLP-1.
+- Eje GH/IGF y composición corporal: ipamorelina/CJC-1295, tesamorelina (grasa visceral), GHK.
+- Inmuno / timo / longevidad celular: timosina alfa-1, epitalón (bioregulador, telómeros/pineal), bioreguladores.
+- Sexual / libido: PT-141 (bremelanotida). Sueño/DSIP para arquitectura del sueño.
+"""
+
+PEPTIDOS_REGLA_GLP1 = """REGLA GLP-1 (OBLIGATORIA): si en los tratamientos ya aceptados aparece **tirzepatida o semaglutida**,
+propón SIEMPRE valorar el cambio/escalón a **retatrutida** y EXPLÍCALO al médico como aprendizaje: la retatrutida
+suma agonismo de **glucagón** (mayor pérdida de peso y efecto sobre esteatosis hepática) además de GLP-1/GIP.
+Y recuerda que los GLP-1 no son solo para bajar de peso: hay evidencia de **cardioprotección**, y señales en
+reducción de consumo de **alcohol y tabaco**. Preséntalo como opción a considerar (con su gating y estatus COFEPRIS),
+no como orden. Si la pérdida ponderal con el GLP-1 actual va bien, dilo y deja la retatrutida como escalón futuro."""
+
+
+def get_peptide_expert_prompt(patient_ctx: str, diagnoses_ctx: str, accepted_meds_ctx: str,
+                              focus: str, biblioteca_peptidos: str = "") -> str:
+    """Prompt del AGENTE EXPERTO EN PÉPTIDOS — corre como paso propio, con su propio RAG apuntado
+    a los libros de péptidos. Su trabajo es proponer los mejores péptidos para ESTE paciente,
+    fundamentados en la literatura (citando), SIEMPRE recomendando algo (aunque sea diferido).
+    focus: 'functional' (reparación/terapéutico) o 'longevity' (healthspan/optimización)."""
+    enfoque_txt = (
+        "ENFOQUE FUNCIONAL: prioriza péptidos TERAPÉUTICOS/de reparación que ataquen la causa raíz y los ejes "
+        "activos del paciente (reparación tisular, intestino, inflamación, mitocondria/energía, neuro/estrés)."
+        if focus == "functional" else
+        "ENFOQUE LONGEVIDAD/HEALTHSPAN: prioriza péptidos de optimización y bioreguladores para extender healthspan "
+        "(mitocondria/energía, inmuno/timo, telómeros, regeneración, composición corporal, sueño), SIN pisar lo urgente."
+    )
+    bib = f"\n\n{biblioteca_peptidos}\n" if biblioteca_peptidos else "\n\n(No se recuperó literatura de péptidos para esta consulta — sé más conservador y marca la evidencia como limitada.)\n"
+
+    return f"""Eres un MÉDICO EXPERTO EN PÉPTIDOS TERAPÉUTICOS que da una interconsulta dentro de una plataforma
+clínica. Un colega ya hizo el diagnóstico; tu único trabajo es recomendar los MEJORES péptidos (y regenerativos
+tipo PRP/células madre si aplican) para ESTE paciente y explicar POR QUÉ, para que el médico tratante aprenda.
+
+{enfoque_txt}
+{bib}
+{PEPTIDOS_CATALOGO}
+
+{PEPTIDOS_REGLA_GLP1}
+
+DATOS DEL PACIENTE:
+{patient_ctx}
+
+DIAGNÓSTICOS CONFIRMADOS POR EL MÉDICO (contexto — no los repitas):
+{diagnoses_ctx or '(sin diagnósticos previos)'}
+
+TRATAMIENTOS YA ACEPTADOS POR EL MÉDICO (para no duplicar y para aplicar la regla GLP-1):
+{accepted_meds_ctx or '(ninguno aún)'}
+
+PRINCIPIOS INNEGOCIABLES:
+1. SIEMPRE recomienda AL MENOS un péptido. Casi siempre hay uno que ayuda: si no es para tratar algo agudo, es
+   para healthspan. Si el caso exige "primero resolver lo urgente", NO te calles: propón el/los péptido(s) que
+   encajarían y márcalos como DIFERIDOS con la condición para iniciarlos (campo "iniciar_cuando"). El médico
+   quiere conocerlos aunque no se inicien hoy.
+2. FUNDAMENTA con la literatura de péptidos de arriba. CITA la fuente (título/autor/página) en "evidencia"
+   cuando el fragmento respalde tu recomendación. Si NO hay respaldo en la literatura recuperada, dilo honestamente
+   ("evidencia preliminar, no encontrada en la biblioteca") y sé conservador — NO inventes citas.
+3. PARES SINÉRGICOS: si propones BPC-157 propón también TB-500 (y viceversa) salvo contraindicación; dilo en "combo".
+4. NO confundas péptidos distintos (Selank ≠ Semax). Cada uno con su indicación real.
+5. GATING DE SEGURIDAD: BPC-157/TB-500/GHK y otros pro-angiogénicos → advierte descartar antecedente/riesgo
+   oncológico antes de usar (ponlo en "disclaimer"). Respeta antecedentes del paciente.
+6. COFEPRIS: casi todos son "no_aprobado" en México (off-label/magistral). Nunca los presentes como aprobados.
+   Los péptidos NUNCA van en la receta oficial — son opciones avanzadas para consideración del médico.
+7. Elige la MEJOR forma/vía/ciclo de cada uno (no la genérica).
+
+FORMATO DE SALIDA — ESTRICTO. Responde ÚNICAMENTE con este JSON, nada de texto antes o después, nada de ```json:
+{{
+  "peptidos": [
+    {{
+      "nombre": "BPC-157",
+      "combo": "Se usa junto con TB-500 (par sinérgico de reparación)",
+      "para_que": "para qué sirve, claro y en una línea",
+      "como_se_usa": "vía / forma / dosis / ciclo típico",
+      "por_que_encaja": "por qué le serviría a ESTE paciente en concreto (usa sus datos)",
+      "evidencia": "cita de la literatura de péptidos (Título — autor, pág.) o 'evidencia preliminar' si no hay",
+      "iniciar_cuando": "ahora" ,
+      "disclaimer": "cuándo NO usarlo / qué corroborar antes (gating de seguridad)",
+      "cofepris": "no_aprobado"
+    }}
+  ]
+}}
+REGLAS DEL JSON:
+- "iniciar_cuando": "ahora" si se puede empezar ya, o la condición si es diferido (p.ej. "diferido: al confirmar
+  ausencia de riesgo oncológico" o "diferido: cuando el sueño esté controlado 8 semanas").
+- "combo": "" si no aplica un par.
+- Entre 2 y 6 péptidos (no llenes de relleno; calidad sobre cantidad, pero NUNCA entregues lista vacía).
+- Ordena de mayor a menor prioridad para este caso."""
+
+
 def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "",
                                      all_visits: list = None) -> str:
     patient_ctx = build_patient_context(patient_data)
@@ -2283,7 +2384,7 @@ SALIDA — RESPONDE ÚNICAMENTE CON ESTE JSON (nada antes/después, sin ```json)
     {{"estudio": "HbA1c + insulina basal (HOMA-IR)", "prioridad": "URGENTE", "para_que": "qué confirma / qué decide"}}
   ],
   "peptidos": [
-    {{"nombre": "BPC-157", "para_que": "reparación tisular/intestinal", "como_se_usa": "SC, ciclo 4-6 semanas", "por_que_encaja": "por qué le sirve a ESTE paciente", "disclaimer": "cuándo NO usarlo / qué corroborar"}}
+    {{"nombre": "BPC-157", "combo": "junto con TB-500", "para_que": "reparación tisular/intestinal", "como_se_usa": "SC, ciclo 4-6 semanas", "por_que_encaja": "por qué le sirve a ESTE paciente", "iniciar_cuando": "ahora | diferido: condición", "evidencia": "cita del libro o 'preliminar'", "disclaimer": "cuándo NO usarlo / qué corroborar", "cofepris": "no_aprobado"}}
   ],
   "explicacion_paciente": {{
     "que_tengo": "en lenguaje simple, qué tiene el paciente",
@@ -2299,5 +2400,8 @@ REGLAS DE LLENADO:
 - "plan_por_fases": 2-4 fases. La fase 1 SOLO lo más urgente/de mayor impacto de ESTE paciente.
 - "receta": deduplicada, con "como_tomar" claro (horario/con o sin alimentos). Nada de péptidos aquí.
 - "estudios": deduplicados entre los 3 enfoques.
-- "peptidos": los que de verdad apliquen (con por_que_encaja y disclaimer); [] si ninguno.
+- "peptidos": CONSERVA los péptidos que ya vienen en los protocolos funcional/longevidad (los propuso un
+  agente experto y están fundamentados en literatura) — pásalos con TODOS sus campos (combo, iniciar_cuando,
+  evidencia, cofepris, etc.). Solo deduplica si el mismo péptido aparece en ambos enfoques. NO los recortes ni
+  los inventes de nuevo. Si de verdad no había ninguno, [].
 - Todo conciso. No repitas información entre secciones."""

@@ -447,6 +447,25 @@ def search_kb(query_embedding: list, match_count: int = 8, area: str = None,
         return []
 
 
+def search_kb_peptidos(query_embedding: list, match_count: int = 12,
+                       min_similitud: float = 0.25) -> list:
+    """Búsqueda semántica restringida SOLO a los libros de péptidos de la biblioteca.
+    Para el agente experto en péptidos: garantiza que los fragmentos de péptidos lleguen
+    al prompt en vez de ser aplastados por los textos gigantes de medicina funcional."""
+    if not query_embedding:
+        return []
+    try:
+        r = supabase.rpc("match_kb_peptidos", {
+            "query_embedding": query_embedding,
+            "match_count": match_count,
+            "min_similitud": min_similitud,
+        }).execute()
+        return r.data or []
+    except Exception as e:
+        print(f"[WARN] búsqueda de péptidos falló: {e}")
+        return []
+
+
 def get_clinical_baselines(voz: str = None) -> list:
     """Recomendaciones base por edad/sexo/condición — el piso que no se debe omitir."""
     try:

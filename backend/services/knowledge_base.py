@@ -473,6 +473,34 @@ def consultar_biblioteca(consulta: str, area: str = None, match_count: int = 6) 
         return ""
 
 
+def consultar_peptidos(consulta: str, match_count: int = 12) -> str:
+    """Consulta SOLO los libros de péptidos y devuelve el bloque listo para el prompt del
+    agente experto en péptidos. Umbral de similitud más bajo (0.25) y más fragmentos, porque
+    la consulta es sobre indicaciones/mecanismos de péptidos, no sobre el caso completo."""
+    from db import search_kb_peptidos  # import local para evitar ciclo
+    if not embeddings_disponibles():
+        return ""
+    consulta = (consulta or "").strip()
+    if len(consulta) < 10:
+        return ""
+    try:
+        vector = embed_consulta(consulta[:1400])
+        if not vector:
+            return ""
+        fragmentos = search_kb_peptidos(vector, match_count=match_count)
+        if not fragmentos:
+            return ""
+        bloque = formatear_fragmentos(fragmentos)
+        # Reetiqueta el encabezado para que quede claro que son los libros de péptidos.
+        return bloque.replace(
+            "══ BIBLIOTECA CLÍNICA DEL MÉDICO (fragmentos relevantes de sus propios libros y guías) ══",
+            "══ LITERATURA DE PÉPTIDOS (fragmentos de los libros/manuales de péptidos de la biblioteca — cítalos) ══",
+        )
+    except Exception as e:
+        print(f"[WARN] consulta de péptidos falló: {e}")
+        return ""
+
+
 def formatear_fragmentos(fragmentos: list) -> str:
     """Arma el bloque que se inyecta al prompt, con la fuente de cada fragmento para citar.
     Mismo encuadre anti-anclaje que el vademécum: es material de consulta, no un guion."""
