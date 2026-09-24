@@ -310,23 +310,77 @@ def _strip_json_fences(text: str) -> str:
     return m.group(1).strip() if m else t
 
 
+def _extract_json_object(text: str) -> str | None:
+    """Extrae el primer objeto JSON balanceado ({...}) de un texto que puede traer
+    prosa antes/después (p.ej. DeepSeek a veces antepone una frase o deja texto tras
+    el cierre). Respeta comillas y escapes para no cortar dentro de un string.
+    Devuelve el substring del objeto o None si no encuentra uno cerrado."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
+
+
 def parse_lean_draft_json(text: str) -> dict:
     """
     Parsea la salida del borrador ligero (razonamiento_breve, hipotesis, preguntas).
     Nunca lanza — si no se puede parsear, regresa una estructura vacía y el flujo
     sigue con 0 preguntas en vez de tumbar el análisis.
+
+    Tolerante a que el modelo (sobre todo DeepSeek) devuelva prosa antes/después del
+    JSON o no cierre la cerca: intenta primero el texto crudo sin cercas y, si falla,
+    extrae el primer objeto JSON balanceado del texto.
     """
-    raw = _strip_json_fences(text)
-    try:
-        parsed = json.loads(raw)
+    def _shape(parsed) -> dict | None:
         if isinstance(parsed, dict) and isinstance(parsed.get("hipotesis"), list):
             return {
                 "razonamiento_breve": parsed.get("razonamiento_breve", ""),
                 "hipotesis": parsed["hipotesis"],
                 "preguntas": parsed.get("preguntas") or [],
             }
-    except Exception:
-        pass
+        return None
+
+    candidates = []
+    stripped = _strip_json_fences(text)
+    candidates.append(stripped)
+    obj = _extract_json_object(stripped)
+    if obj and obj != stripped:
+        candidates.append(obj)
+    # Por si las cercas confundieron la extracción, prueba también sobre el texto original
+    obj_raw = _extract_json_object(text)
+    if obj_raw and obj_raw not in candidates:
+        candidates.append(obj_raw)
+
+    for cand in candidates:
+        try:
+            shaped = _shape(json.loads(cand))
+            if shaped is not None:
+                return shaped
+        except Exception:
+            continue
+
+    print(f"[WARN parse_lean_draft_json] no se pudo parsear el borrador; primeros 300 chars: {text[:300]!r}")
     return {"razonamiento_breve": "", "hipotesis": [], "preguntas": []}
 
 

@@ -3095,6 +3095,12 @@ export default function AnalysisPage() {
       const questions: string[] = json.questions || [];
       setClarifyQuestions(questions);
       setClarifyAnswers(new Array(questions.length).fill(''));
+      // Sin preguntas de seguimiento ⇒ el caso ya es claro: continúa directo al
+      // diagnóstico en vez de dejar al médico en una pantalla vacía con un botón
+      // (mismo comportamiento que funcional/longevidad).
+      if (questions.length === 0) {
+        return finalizeFirstDiagnosis([]);
+      }
       setStep('clarifying');
     } catch (e: any) {
       // Si falla el análisis silencioso, no podemos continuar — regresa al selector
