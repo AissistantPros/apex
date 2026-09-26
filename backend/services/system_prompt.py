@@ -123,6 +123,13 @@ def _nota_paciente(patient: dict, key: str, label: str = "Detalle") -> str:
     return f"\n  ↳ {label}: {v}" if v else ""
 
 
+def _nota_visita(visit: dict, key: str, label: str = "Detalle") -> str:
+    """Igual que _nota_paciente pero para un campo de texto de la visita."""
+    v = visit.get(key)
+    v = v.strip() if isinstance(v, str) else ""
+    return f"\n  ↳ {label}: {v}" if v else ""
+
+
 def _fmt_fuentes(patient: dict) -> str:
     fuentes = patient.get("sources_of_contact") or patient.get("source_of_contact") or []
     if isinstance(fuentes, list) and fuentes:
@@ -708,7 +715,7 @@ DATOS DE LA VISITA ACTUAL
   Sedentarismo:
   • Horas sentado al día: {visit.get('sitting_hours') or 'N/D'}
   • Entorno laboral (dónde trabaja / qué hace): {visit.get('work_setting') or 'N/D'}
-  • Tipo de actividad laboral (sedentario/mixto/activo): {visit.get('work_activity_level') or 'N/D'}
+  • Tipo de actividad laboral (sedentario/mixto/activo): {visit.get('work_activity_level') or 'N/D'}{_nota_visita(visit, 'work_notes', 'Detalle del trabajo')}
   Exposición ambiental actual:
   • Agua que consume: {visit.get('water_source') or 'N/D'}
   • Calienta comida en plástico en microondas: {visit.get('plastic_in_microwave') or 'N/D'}

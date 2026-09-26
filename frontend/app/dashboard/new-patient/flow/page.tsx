@@ -304,7 +304,7 @@ function FlowPageInner() {
     circ_cuello: '', circ_biceps: '', circ_muneca: '',
     inbody_grasa: '', inbody_musculo: '', inbody_agua: '', inbody_visceral: '',
     actividad_tipo: '', actividad_frecuencia: '', actividad_intensidad: '',
-    sitting_hours: '', work_activity_level: '', work_setting: '',
+    sitting_hours: '', work_activity_level: '', work_setting: '', work_notes: '',
 
     // FASE 2 — Visita: Pruebas funcionales
     fuerza_mano_der: '', fuerza_mano_izq: '',
@@ -564,6 +564,7 @@ function FlowPageInner() {
               sitting_hours:         str(v.sitting_hours),
               work_activity_level:   str(v.work_activity_level),
               work_setting:          str(v.work_setting),
+              work_notes:            str(v.work_notes),
               // Pruebas funcionales
               fuerza_mano_der:    str(v.fuerza_mano_der),
               fuerza_mano_izq:    str(v.fuerza_mano_izq),
@@ -943,7 +944,7 @@ function FlowPageInner() {
         actividad_tipo: actividades.filter(a => a.tipo.trim()).map(a => a.tipo.trim()).join(', '),
         actividad_frecuencia: actividades.filter(a => a.tipo.trim()).map(a => a.frecuencia).filter(Boolean).join(', '),
         actividad_intensidad: actividades.filter(a => a.tipo.trim()).map(a => a.intensidad).filter(Boolean).join(', '),
-        sitting_hours: f.sitting_hours, work_activity_level: f.work_activity_level, work_setting: f.work_setting,
+        sitting_hours: f.sitting_hours, work_activity_level: f.work_activity_level, work_setting: f.work_setting, work_notes: f.work_notes,
         // Funcional
         fuerza_mano_der: f.fuerza_mano_der, fuerza_mano_izq: f.fuerza_mano_izq,
         marcha_4m: f.marcha_4m, equilibrio_seg: f.equilibrio_seg,
@@ -1986,10 +1987,10 @@ function FlowPageInner() {
                         {actividades.map((act, i) => (
                           <div key={i} className="rounded-xl bg-[#0d1520] border border-[#f97316]/25 p-4 space-y-3">
                             <div className="flex items-center justify-between gap-3">
-                              {act.tipo && !EJERCICIOS.includes(act.tipo)
-                                ? <input className={`${inp} ${fOrng} flex-1`} value={act.tipo}
-                                    onChange={e => setActField(i, 'tipo', e.target.value)} placeholder="Nombre de la actividad" />
-                                : <p className="text-sm font-semibold text-[#f97316] flex-1">{act.tipo || 'Otra actividad'}</p>}
+                              {EJERCICIOS.includes(act.tipo)
+                                ? <p className="text-sm font-semibold text-[#f97316] flex-1">{act.tipo}</p>
+                                : <input className={`${inp} ${fOrng} flex-1`} value={act.tipo} autoFocus={!act.tipo}
+                                    onChange={e => setActField(i, 'tipo', e.target.value)} placeholder="¿Qué actividad? (ej. remo, escalada, box)" />}
                               <button type="button" onClick={() => setActividades(prev => prev.filter((_, j) => j !== i))}
                                 className="text-[#f43f5e] text-lg leading-none hover:opacity-80 flex-shrink-0">×</button>
                             </div>
@@ -2036,21 +2037,30 @@ function FlowPageInner() {
                       <p className="text-xs font-mono text-[#7a95aa] mb-2">HORAS SENTADO AL DÍA</p>
                       <PillGroup options={SENTADO_OPTS} value={f.sitting_hours} onChange={v => set('sitting_hours', v)} accent="#f97316" />
                     </div>
+                    <NoteField value={f.work_notes} onChange={v => set('work_notes', v)}
+                      placeholder="Detalla su trabajo: a qué se dedica, cargas físicas, turnos, exposición a algo, estrés laboral…" />
                   </div>
                 </div>
               </Card>
 
               <Card title="Pruebas funcionales" icon="💪" color={pc.color}>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="FUERZA PRENSIL DER. (kg)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.fuerza_mano_der} onChange={e=>set('fuerza_mano_der',e.target.value)} placeholder="35" /></Field>
-                    <Field label="FUERZA PRENSIL IZQ. (kg)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.fuerza_mano_izq} onChange={e=>set('fuerza_mano_izq',e.target.value)} placeholder="33" /></Field>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <Field label="MARCHA 4m (seg)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.marcha_4m} onChange={e=>set('marcha_4m',e.target.value)} placeholder="3.5" /></Field>
-                    <Field label="EQUILIBRIO (seg)"><input type="number" step="0.1" className={`${inp} ${fOrng}`} value={f.equilibrio_seg} onChange={e=>set('equilibrio_seg',e.target.value)} placeholder="15" /></Field>
-                    <Field label="SENTARSE / LEVANTARSE (×30s)"><input type="number" className={`${inp} ${fOrng}`} value={f.sentarse_levantarse} onChange={e=>set('sentarse_levantarse',e.target.value)} placeholder="14" /></Field>
-                  </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+                  {([
+                    { k: 'fuerza_mano_der',     l: 'Fuerza prensil DER.', u: 'kg',   ph: '35',  step: '0.1' },
+                    { k: 'fuerza_mano_izq',     l: 'Fuerza prensil IZQ.', u: 'kg',   ph: '33',  step: '0.1' },
+                    { k: 'marcha_4m',           l: 'Marcha 4 m',          u: 'seg',  ph: '3.5', step: '0.1' },
+                    { k: 'equilibrio_seg',      l: 'Equilibrio',          u: 'seg',  ph: '15',  step: '0.1' },
+                    { k: 'sentarse_levantarse', l: 'Sentarse/levantarse', u: '×30s', ph: '14',  step: '1' },
+                  ] as const).map(x => (
+                    <div key={x.k} className="rounded-xl bg-[#0d1520] border border-[#1e2d3d] p-3 flex flex-col justify-between" style={{ minHeight: 92 }}>
+                      <p className="text-[10px] font-mono text-[#7a95aa] leading-tight mb-2">
+                        {x.l} <span className="text-[#3d5870]">({x.u})</span>
+                      </p>
+                      <input type="number" step={x.step} inputMode="decimal"
+                        className="w-full bg-[#111820] border border-[#1e2d3d] rounded-lg px-2.5 py-2 text-[#dde6ef] text-center text-lg font-semibold outline-none focus:border-[#f97316] placeholder-[#3d5870]"
+                        value={(f as any)[x.k]} onChange={e => set(x.k as any, e.target.value)} placeholder={x.ph} />
+                    </div>
+                  ))}
                 </div>
               </Card>
 
