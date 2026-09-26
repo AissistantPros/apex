@@ -23,19 +23,19 @@ const FAMILIARES: { key: Familiar; label: string }[] = [
   { key: 'madre', label: 'Madre' },
   { key: 'hermanos', label: 'Hermano(s)' },
 ];
-const ENFERMEDADES: { key: Enfermedad; label: string }[] = [
+const ENFERMEDADES: { key: Enfermedad; label: string; ej?: string }[] = [
   { key: 'diabetes',             label: 'Diabetes' },
   { key: 'hipertension',         label: 'Hipertensión' },
   { key: 'cancer',               label: 'Cáncer' },
   { key: 'cardiopatia',          label: 'Cardiopatía' },
-  { key: 'autoinmune',           label: 'Autoinmune (lupus, AR, Hashimoto, psoriasis, EM, celiaquía, Crohn/colitis)' },
-  { key: 'alergia_alimentaria',  label: 'Alergia / intolerancia alimentaria (gluten, lactosa, frutos secos, mariscos)' },
-  { key: 'neuro_psiquiatrica',   label: 'Neurológica / psiquiátrica (depresión, ansiedad, Alzheimer, Parkinson, TDAH, bipolaridad)' },
-  { key: 'metabolica',           label: 'Trastorno del metabolismo (gota, Wilson, hemocromatosis, hipercolesterolemia familiar)' },
-  { key: 'tiroidea',             label: 'Tiroidea (hipo/hipertiroidismo, Hashimoto, Graves)' },
-  { key: 'intestinal',           label: 'Intestinal (Crohn, colitis ulcerosa, SII, celiaquía)' },
-  { key: 'migrana_fibromialgia', label: 'Migraña o fibromialgia' },
-  { key: 'trombofilia',          label: 'Trombosis / embolias / trombofilia / abortos recurrentes' },
+  { key: 'tiroidea',             label: 'Tiroidea',            ej: 'hipo/hipertiroidismo, Hashimoto, Graves' },
+  { key: 'autoinmune',           label: 'Autoinmune',          ej: 'lupus, AR, psoriasis, EM' },
+  { key: 'neuro_psiquiatrica',   label: 'Neuro / psiquiátrica', ej: 'depresión, ansiedad, Alzheimer, Parkinson, TDAH' },
+  { key: 'metabolica',           label: 'Metabólica',          ej: 'gota, Wilson, hemocromatosis, hipercolesterolemia' },
+  { key: 'intestinal',           label: 'Intestinal',          ej: 'Crohn, colitis, SII, celiaquía' },
+  { key: 'alergia_alimentaria',  label: 'Alergia alimentaria', ej: 'gluten, lactosa, frutos secos, mariscos' },
+  { key: 'migrana_fibromialgia', label: 'Migraña / fibromialgia' },
+  { key: 'trombofilia',          label: 'Trombofilia',         ej: 'trombosis, embolias, abortos recurrentes' },
 ];
 const SOURCES = [
   'Recomendación de paciente','Recomendación de médico','Redes sociales',
@@ -190,14 +190,22 @@ function FlowPageInner() {
   const [isEditMode, setIsEditMode] = useState(false);
 
   // ── Estado heredofamiliar ────────────────────────────────────────────────
-  type FamilyRow = Record<Enfermedad, boolean> & { otra: string; vivo: boolean; causa_muerte: string; edad_muerte: string; };
+  type FamilyRow = Record<Enfermedad, boolean> & { otra: string; vivo: boolean; causa_muerte: string; edad_muerte: string; notas: string; };
   const emptyFamily = (): FamilyRow => ({
     diabetes: false, hipertension: false, cancer: false, cardiopatia: false,
     autoinmune: false, alergia_alimentaria: false, neuro_psiquiatrica: false,
     metabolica: false, tiroidea: false, intestinal: false, migrana_fibromialgia: false, trombofilia: false,
-    otra: '', vivo: true, causa_muerte: '', edad_muerte: '',
+    otra: '', vivo: true, causa_muerte: '', edad_muerte: '', notas: '',
   });
   const [family, setFamily] = useState<Record<Familiar, FamilyRow>>({ padre: emptyFamily(), madre: emptyFamily(), hermanos: emptyFamily() });
+
+  // Otros antecedentes familiares (familia extendida: abuelos, tíos, primos…) — enfermedad +
+  // parentesco + detalle. Importante para cáncer, Alzheimer y enfermedades hereditarias.
+  type FamOtro = { enfermedad: string; parentesco: string; detalle: string };
+  const [famOtros, setFamOtros] = useState<FamOtro[]>([]);
+  const addFamOtro    = () => setFamOtros(p => [...p, { enfermedad: '', parentesco: '', detalle: '' }]);
+  const removeFamOtro = (i: number) => setFamOtros(p => p.filter((_, j) => j !== i));
+  const setFamOtro    = (i: number, k: keyof FamOtro, v: string) => setFamOtros(p => p.map((r, j) => j === i ? { ...r, [k]: v } : r));
 
   // ── Medicamentos ─────────────────────────────────────────────────────────
   const [meds, setMeds] = useState<Array<{ nombre:string; dosis:string; frecuencia:string; adherencia:string; desde:string; }>>([]);
@@ -253,14 +261,14 @@ function FlowPageInner() {
     chronic_diseases: '', surgeries: '', hospitalizations: '',
     fractures: '', transfusions: '', childhood_diseases: '',
     allergies_medications: '', allergies_foods: '', allergies_environmental: '',
-    med_notas: '',
+    med_notas: '', personal_history_notes: '',
 
     // FASE 2 — Enfermería: Antecedentes lejanos (medicina funcional)
     toxic_exposure_occupational: '', dental_amalgams: '',
     tattoos_piercings: '',
-    secondhand_smoke_exposure: '',
-    smoking_status: '', smoking_since: '', smoking_years: '',
-    alcohol_status: '', alcohol_cantidad: '',
+    secondhand_smoke_exposure: '', remote_history_notes: '',
+    smoking_status: '', smoking_since: '', smoking_years: '', smoking_notes: '',
+    alcohol_status: '', alcohol_cantidad: '', alcohol_notes: '',
     actividad_si: false,
 
     // FASE 2 — Visita: Signos vitales
@@ -440,15 +448,19 @@ function FlowPageInner() {
               allergies_foods:                p.allergies_foods               || '',
               allergies_environmental:        p.allergies_environmental       || '',
               med_notas:                      p.med_notas                     || '',
+              personal_history_notes:         p.personal_history_notes        || '',
               toxic_exposure_occupational:    p.toxic_exposure_occupational   || '',
               dental_amalgams:                p.dental_amalgams               || '',
               tattoos_piercings:              p.tattoos_piercings             || '',
               secondhand_smoke_exposure:      p.secondhand_smoke_exposure     || '',
+              remote_history_notes:           p.remote_history_notes          || '',
               smoking_status:                 p.smoking_status                || '',
               smoking_since:                  p.smoking_since                 || '',
               smoking_years:                  p.smoking_years                 || '',
+              smoking_notes:                  p.smoking_notes                 || '',
               alcohol_status:                 p.alcohol_status                || '',
               alcohol_cantidad:               p.alcohol_cantidad              || '',
+              alcohol_notes:                  p.alcohol_notes                 || '',
               // Fase 3 — Médico
               sexo_biologico:                 p.sexo_biologico                || '',
               genero_identidad:               p.genero_identidad              || '',
@@ -483,6 +495,7 @@ function FlowPageInner() {
             if (Array.isArray(p.medications))         setMeds(p.medications);
             if (p.family_history_table && typeof p.family_history_table === 'object')
               setFamily(prev => ({ ...prev, ...p.family_history_table }));
+            if (Array.isArray(p.family_other_history)) setFamOtros(p.family_other_history);
           }
         } catch (_) {}
 
@@ -867,14 +880,16 @@ function FlowPageInner() {
           transfusions: f.transfusions, childhood_diseases: f.childhood_diseases,
           allergies_medications: f.allergies_medications, allergies_foods: f.allergies_foods,
           allergies_environmental: f.allergies_environmental, med_notas: f.med_notas,
+          personal_history_notes: f.personal_history_notes,
           toxic_exposure_occupational: f.toxic_exposure_occupational, dental_amalgams: f.dental_amalgams,
           tattoos_piercings: f.tattoos_piercings,
-          secondhand_smoke_exposure: f.secondhand_smoke_exposure,
+          secondhand_smoke_exposure: f.secondhand_smoke_exposure, remote_history_notes: f.remote_history_notes,
           smoking_status: f.smoking_status,
-          smoking_since: f.smoking_since, smoking_years: f.smoking_years,
+          smoking_since: f.smoking_since, smoking_years: f.smoking_years, smoking_notes: f.smoking_notes,
           alcohol_status: f.alcohol_status, alcohol_tipo: alcoholTipo,
-          alcohol_cantidad: f.alcohol_cantidad,
+          alcohol_cantidad: f.alcohol_cantidad, alcohol_notes: f.alcohol_notes,
           medications: meds, family_history_table: family,
+          family_other_history: famOtros.filter(r => r.enfermedad.trim() || r.parentesco.trim() || r.detalle.trim()),
           // Capa profunda funcional/longevidad (solo si aplica)
           ...(careType === 'funcional_longevidad'
             ? { func_intake: funcIntake, entrevista_funcional_completa: esFuncionalCompleta(funcIntake) }
@@ -1562,21 +1577,25 @@ function FlowPageInner() {
                             })}
                           </div>
                         </div>
-                        {/* Enfermedades como chips grandes tipo toggle (touch-friendly) */}
-                        <div className="flex flex-wrap gap-2.5 mb-4">
+                        {/* Enfermedades en cuadros uniformes (mismo tamaño), título + ejemplos */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                           {ENFERMEDADES.map(e => {
                             const on = row[e.key];
                             return (
                               <button key={e.key} type="button"
                                 onClick={() => toggleFamily(fam.key, e.key)}
-                                className="px-4 py-2.5 rounded-xl text-sm font-medium transition border select-none"
+                                className="text-left rounded-xl border transition select-none flex flex-col px-3 py-2.5"
                                 style={{
-                                  minHeight: '44px',
+                                  minHeight: '70px',
                                   background: on ? 'rgba(249,115,22,.15)' : '#0d1520',
                                   borderColor: on ? '#f97316' : '#1e2d3d',
-                                  color: on ? '#f97316' : '#7a95aa',
                                 }}>
-                                <span className="mr-1.5">{on ? '✓' : '+'}</span>{e.label}
+                                <span className="text-[13px] font-semibold flex items-start gap-1 leading-tight"
+                                  style={{ color: on ? '#f97316' : '#dde6ef' }}>
+                                  <span className="mt-px">{on ? '✓' : '+'}</span><span>{e.label}</span>
+                                </span>
+                                {e.ej && <span className="text-[10px] leading-tight mt-1"
+                                  style={{ color: on ? 'rgba(249,115,22,.75)' : '#3d5870' }}>{e.ej}</span>}
                               </button>
                             );
                           })}
@@ -1594,9 +1613,43 @@ function FlowPageInner() {
                               onChange={e => setFamField(fam.key,'edad_muerte',e.target.value)} />
                           </div>
                         )}
+                        <NoteField value={row.notas} onChange={v => setFamField(fam.key,'notas',v)}
+                          placeholder={`Más sobre la salud de ${fam.label.toLowerCase()}: edad, si controla sus enfermedades, algo relevante que sepan…`} />
                       </div>
                     );
                   })}
+
+                  {/* Otros antecedentes en la familia extendida (cáncer, Alzheimer, hereditarias) */}
+                  <div className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-4 sm:p-5">
+                    <p className="text-base font-semibold text-[#dde6ef] mb-1">Otros antecedentes familiares</p>
+                    <p className="text-xs text-[#7a95aa] mb-4">Cáncer, Alzheimer u otras enfermedades hereditarias en la familia (abuelos, tíos, primos…). Indica el parentesco y explica lo que sepan.</p>
+                    <div className="space-y-3">
+                      {famOtros.map((r, i) => (
+                        <div key={i} className="border-t border-[#1e2d3d] pt-3 first:border-t-0 first:pt-0 space-y-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <input className="px-3.5 py-3 bg-[#0d1520] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] focus:border-[#f97316] outline-none placeholder-[#3d5870]"
+                              value={r.enfermedad} placeholder="Enfermedad (ej. cáncer de mama, Alzheimer)"
+                              onChange={e => setFamOtro(i, 'enfermedad', e.target.value)} />
+                            <div className="flex gap-2">
+                              <input className="flex-1 px-3.5 py-3 bg-[#0d1520] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] focus:border-[#f97316] outline-none placeholder-[#3d5870]"
+                                value={r.parentesco} placeholder="Parentesco (ej. abuela materna, tío paterno)"
+                                onChange={e => setFamOtro(i, 'parentesco', e.target.value)} />
+                              <button type="button" onClick={() => removeFamOtro(i)}
+                                className="w-11 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#1e2d3d] hover:bg-[#f43f5e]/20 text-[#3d5870] hover:text-[#f43f5e] transition text-lg">×</button>
+                            </div>
+                          </div>
+                          <textarea rows={2}
+                            className="w-full px-3.5 py-2.5 bg-[#0d1520] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] focus:border-[#f97316] outline-none resize-none placeholder-[#3d5870]"
+                            value={r.detalle} placeholder="Explica más: edad al diagnóstico, si falleció por eso, cuántos familiares, etc."
+                            onChange={e => setFamOtro(i, 'detalle', e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" onClick={addFamOtro}
+                      className="mt-3 text-[#f97316] border border-[#f97316]/30 rounded-xl hover:bg-[#f97316]/10 transition font-semibold px-4 py-2 text-sm">
+                      + Agregar antecedente familiar
+                    </button>
+                  </div>
                 </div>
               </Card>
 
@@ -1630,6 +1683,8 @@ function FlowPageInner() {
                     <input className={`${inp} ${fOrng}`} value={f.childhood_diseases}
                       onChange={e => set('childhood_diseases', e.target.value)} placeholder="Neumonías o infecciones frecuentes, fiebre reumática, hepatitis, meningitis..." />
                   </Field>
+                  <NoteField value={f.personal_history_notes} onChange={v => set('personal_history_notes', v)}
+                    placeholder="Cualquier otro antecedente relevante o detalle que quieras agregar (evolución, controles, complicaciones)…" />
                 </div>
               </Card>
 
@@ -1655,6 +1710,8 @@ function FlowPageInner() {
                         onChange={e => set('secondhand_smoke_exposure', e.target.value)} placeholder="Exposición pasiva en el pasado..." />
                     </Field>
                   </div>
+                  <NoteField value={f.remote_history_notes} onChange={v => set('remote_history_notes', v)}
+                    placeholder="Otros contactos con tóxicos, mudanzas, agua de pozo, uso de plásticos, o cualquier detalle de exposición ambiental…" />
                 </div>
               </Card>
 
@@ -1728,6 +1785,10 @@ function FlowPageInner() {
                           onChange={e=>set('smoking_years',e.target.value)} placeholder="15" />
                       </Field>
                     )}
+                    {f.smoking_status && f.smoking_status !== 'Nunca fumó' && (
+                      <NoteField value={f.smoking_notes} onChange={v => set('smoking_notes', v)}
+                        placeholder="Cigarros al día, si vapea, intentos por dejarlo, cuándo lo dejó, otras sustancias inhaladas…" />
+                    )}
                   </div>
 
                   {/* Alcohol */}
@@ -1777,6 +1838,8 @@ function FlowPageInner() {
                             })}
                           </div>
                         </div>
+                        <NoteField value={f.alcohol_notes} onChange={v => set('alcohol_notes', v)}
+                          placeholder="Patrón (fin de semana, atracón), si ha querido reducir, episodios de abuso, relación con el estrés…" />
                       </div>
                     )}
                   </div>

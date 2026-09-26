@@ -49,15 +49,21 @@ def _fmt_familia(fam) -> str:
 
     # Puede llegar como dict {padre:{...}, madre:{...}, hermanos:{...}}
     # o como lista [{familiar:..., enfermedades:...}]
+    # Etiquetas legibles de TODAS las enfermedades del cuestionario (antes solo se leían 4,
+    # así que la IA no veía autoinmune/tiroidea/neuro/etc. — bug de mapeo corregido).
+    _ENF_LABELS = {
+        "diabetes": "Diabetes", "hipertension": "Hipertensión", "cancer": "Cáncer",
+        "cardiopatia": "Cardiopatía", "tiroidea": "Tiroidea", "autoinmune": "Autoinmune",
+        "neuro_psiquiatrica": "Neurológica/psiquiátrica", "metabolica": "Metabólica",
+        "intestinal": "Intestinal", "alergia_alimentaria": "Alergia alimentaria",
+        "migrana_fibromialgia": "Migraña/fibromialgia", "trombofilia": "Trombofilia",
+    }
     lines = []
     if isinstance(fam, dict):
         for pariente, datos in fam.items():
             if not isinstance(datos, dict):
                 continue
-            enf = []
-            for e in ["diabetes", "hipertension", "cancer", "cardiopatia"]:
-                if datos.get(e):
-                    enf.append(e.capitalize())
+            enf = [lbl for key, lbl in _ENF_LABELS.items() if datos.get(key)]
             if datos.get("otra"):
                 enf.append(datos["otra"])
             estado = "Vive" if datos.get("vivo", True) else "Falleció"
@@ -74,11 +80,47 @@ def _fmt_familia(fam) -> str:
                 if det:
                     estado += " (" + ", ".join(det) + ")"
             enf_str = ", ".join(enf) if enf else "Sin enfermedades registradas"
-            lines.append(f"  • {pariente.capitalize()}: {enf_str} — {estado}")
+            linea = f"  • {pariente.capitalize()}: {enf_str} — {estado}"
+            nota = str(datos.get("notas", "") or "").strip()
+            if nota:
+                linea += f"\n      Nota del médico: {nota}"
+            lines.append(linea)
     elif isinstance(fam, list):
         for item in fam:
             lines.append(f"  • {item}")
     return "\n".join(lines) if lines else "Sin datos registrados"
+
+
+def _fmt_familia_otros(patient: dict) -> str:
+    """Otros antecedentes familiares (familia extendida: abuelos, tíos, primos) — enfermedad,
+    parentesco y detalle. Importante para cáncer, Alzheimer y enfermedades hereditarias."""
+    otros = patient.get("family_other_history") or []
+    if not isinstance(otros, list) or not otros:
+        return ""
+    lines = []
+    for r in otros:
+        if not isinstance(r, dict):
+            continue
+        enf = str(r.get("enfermedad", "") or "").strip()
+        par = str(r.get("parentesco", "") or "").strip()
+        det = str(r.get("detalle", "") or "").strip()
+        if not (enf or par or det):
+            continue
+        cabeza = " — ".join([x for x in [enf, par] if x]) or "Antecedente familiar"
+        linea = f"  • {cabeza}"
+        if det:
+            linea += f": {det}"
+        lines.append(linea)
+    if not lines:
+        return ""
+    return "\n  Otros antecedentes en la familia extendida (abuelos, tíos, primos):\n" + "\n".join(lines)
+
+
+def _nota_paciente(patient: dict, key: str, label: str = "Detalle") -> str:
+    """Renderiza una nota libre del paciente (campo de texto) como sub-línea, o '' si vacía."""
+    v = patient.get(key)
+    v = v.strip() if isinstance(v, str) else ""
+    return f"\n  ↳ {label}: {v}" if v else ""
 
 
 def _fmt_fuentes(patient: dict) -> str:
@@ -172,7 +214,7 @@ IDENTIFICACIÓN:
 
 ANTECEDENTES HEREDOFAMILIARES
 (enfermedades conocidas en familia directa):
-{_fmt_familia(patient.get('family_history_table') or patient.get('family_history'))}
+{_fmt_familia(patient.get('family_history_table') or patient.get('family_history'))}{_fmt_familia_otros(patient)}
 
 ANTECEDENTES PERSONALES PATOLÓGICOS:
   • Enfermedades crónicas diagnosticadas: {patient.get('chronic_diseases', 'No refiere')}
@@ -180,7 +222,7 @@ ANTECEDENTES PERSONALES PATOLÓGICOS:
   • Hospitalizaciones previas: {patient.get('hospitalizations', 'No refiere')}
   • Fracturas / traumatismos: {patient.get('fractures', 'No refiere')}
   • Transfusiones: {patient.get('transfusions', 'No refiere')}
-  • Enfermedades relevantes de la infancia: {patient.get('childhood_diseases', 'No refiere')}
+  • Enfermedades relevantes de la infancia: {patient.get('childhood_diseases', 'No refiere')}{_nota_paciente(patient, 'personal_history_notes', 'Detalle adicional del médico')}
 
 ALERGIAS CONOCIDAS:
   • Alergias a medicamentos: {patient.get('allergies_medications', 'No refiere')}
@@ -194,8 +236,8 @@ MEDICAMENTOS ACTUALES
   {patient.get('med_notas', 'Ninguna')}
 
 HÁBITOS:
-  • Tabaquismo (opciones: Nunca fumó / Exfumador / Fumador activo): {smoking}{smoking_detail}
-  • Alcohol (opciones: Nunca / Ocasional / Frecuente / Diario): {alcohol}{alcohol_detail}
+  • Tabaquismo (opciones: Nunca fumó / Exfumador / Fumador activo): {smoking}{smoking_detail}{_nota_paciente(patient, 'smoking_notes')}
+  • Alcohol (opciones: Nunca / Ocasional / Frecuente / Diario): {alcohol}{alcohol_detail}{_nota_paciente(patient, 'alcohol_notes')}
   • Sustancias recreativas o de uso regular (confidencial, solo médico):
     {patient.get('sust_recreativas', 'No refiere') or 'No refiere'}
 
@@ -204,7 +246,7 @@ ANTECEDENTES AMBIENTALES Y CARGA TÓXICA
   • Contacto con contaminantes en vivienda o trabajo, presente o pasado: {patient.get('toxic_exposure_occupational', 'No refiere') or 'No refiere'}
   • Amalgamas dentales (mercurio): {patient.get('dental_amalgams', 'No refiere') or 'No refiere'}
   • Tatuajes o piercings: {patient.get('tattoos_piercings', 'No refiere') or 'No refiere'}
-  • Exposición pasada a humo de tabaco de segunda mano: {patient.get('secondhand_smoke_exposure', 'No refiere') or 'No refiere'}
+  • Exposición pasada a humo de tabaco de segunda mano: {patient.get('secondhand_smoke_exposure', 'No refiere') or 'No refiere'}{_nota_paciente(patient, 'remote_history_notes', 'Otros datos de exposición ambiental')}
 
 HISTORIA REPRODUCTIVA Y SEXUAL:
 {repro_str}
