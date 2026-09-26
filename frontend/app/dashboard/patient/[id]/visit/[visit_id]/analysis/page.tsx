@@ -1255,11 +1255,48 @@ function parseFunctionalJson(text: string): FuncDx | null {
   if (!t.startsWith('{')) return null;
   try {
     const d = JSON.parse(t);
+    // Excluir el JSON de longevidad (que también trae historia_paciente) para no colisionar.
     if (d && typeof d === 'object' && !Array.isArray(d) && !d.diagnosticos && !d.items
+        && d.edad_biologica === undefined && !d.riesgos && !d.palancas && !d.estado_vs_optimo
         && (d.cadena_causal || d.raiz || d.nodos || d.historia_paciente)) {
       return d as FuncDx;
     }
   } catch { /* no es JSON funcional */ }
+  return null;
+}
+
+// ── Diagnóstico de LONGEVIDAD estructurado (JSON) — vista modular gráfica ──
+type LongRiesgo = { dominio?: string; nivel?: string; detalle?: string; ventana?: string };
+type LongParam = { parametro?: string; actual?: string; optimo?: string; estado?: string };
+type LongMejora = { meta?: string; cambio?: string; cuando?: string; como?: string };
+type LongPalanca = { pilar?: string; objetivo?: string; acciones?: string[]; nota?: string };
+type LongDx = {
+  confianza?: number; confianza_nota?: string;
+  edad_biologica?: number; edad_cronologica?: number; delta_anios?: number;
+  biomarcadores_clave?: string;
+  estabilidad?: string; estabilidad_nota?: string;
+  riesgos?: LongRiesgo[];
+  estado_vs_optimo?: LongParam[];
+  potencial_mejora?: LongMejora[];
+  palancas?: LongPalanca[];
+  estudios?: FuncEstudio[];
+  estudios_ya_cubiertos?: FuncEstCubierto[];
+  estudios_seleccionados?: boolean[];
+  historia_paciente?: string;
+};
+function parseLongevityJson(text: string): LongDx | null {
+  if (!text) return null;
+  let t = text.trim();
+  const fence = t.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fence) t = fence[1].trim();
+  if (!t.startsWith('{')) return null;
+  try {
+    const d = JSON.parse(t);
+    if (d && typeof d === 'object' && !Array.isArray(d) && !d.diagnosticos && !d.items
+        && (d.edad_biologica !== undefined || d.riesgos || d.palancas || d.estado_vs_optimo)) {
+      return d as LongDx;
+    }
+  } catch { /* no es JSON de longevidad */ }
   return null;
 }
 
@@ -2077,6 +2114,181 @@ function FunctionalStructuredView({ data, color, anchor, onToggleStudy }: {
   );
 }
 
+// ─── Vista modular de LONGEVIDAD (JSON) ───────────────────────────────────────
+function _nivelColor(n?: string): string {
+  const u = (n || '').toUpperCase();
+  if (u.includes('ALTO') || u.includes('ALERTA')) return '#f43f5e';
+  if (u.includes('MODERADO') || u.includes('BAJO ')) return '#f59e0b';
+  if (u === 'BAJO' || u.includes('OK')) return '#00e5a0';
+  return '#7a95aa';
+}
+function LongevityStructuredView({ data, color, onToggleStudy }: {
+  data: LongDx; color: string; onToggleStudy: (i: number) => void;
+}) {
+  const estudios = data.estudios || [];
+  const sel = (data.estudios_seleccionados && data.estudios_seleccionados.length === estudios.length)
+    ? data.estudios_seleccionados : estudios.map(() => true);
+  const riesgos = data.riesgos || [];
+  const estados = data.estado_vs_optimo || [];
+  const mejoras = data.potencial_mejora || [];
+  const palancas = data.palancas || [];
+  const heroBody = data.edad_biologica != null
+    ? `${data.edad_biologica} años (cronológica: ${data.edad_cronologica ?? '?'} años = ${(data.delta_anios ?? 0) >= 0 ? '+' : ''}${data.delta_anios ?? 0} años). Biomarcadores clave: ${data.biomarcadores_clave || ''}`
+    : '';
+
+  return (
+    <div className="space-y-4">
+      {/* Hero de edad biológica */}
+      {heroBody && <LongevityHero body={heroBody} color={color} />}
+
+      {/* Banner de estabilidad (ancla temporal) */}
+      {data.estabilidad === 'agudo' && data.estabilidad_nota && (
+        <div className="rounded-xl p-3.5" style={{ background: 'rgba(244,63,94,.08)', border: '1px solid rgba(244,63,94,.35)' }}>
+          <p className="text-[10px] font-mono tracking-widest mb-1 text-[#f43f5e]">⚠ PRIMERO ESTABILIZAR</p>
+          <p className="text-[12px] text-[#dde6ef] leading-snug">{data.estabilidad_nota}</p>
+        </div>
+      )}
+
+      {/* Riesgos a 5-10 años — tarjetas */}
+      {riesgos.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono tracking-widest mb-2 px-1" style={{ color }}>RIESGOS A 5–10 AÑOS</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {riesgos.map((r, i) => {
+              const c = _nivelColor(r.nivel);
+              return (
+                <div key={i} className="rounded-xl p-3" style={{ background: '#0d1520', borderLeft: `3px solid ${c}`, border: `1px solid ${c}33` }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[13px] font-bold text-[#dde6ef]">{r.dominio}</span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: `${c}22`, color: c }}>{r.nivel}</span>
+                  </div>
+                  {r.detalle && <p className="text-[11px] text-[#9fb2c4] leading-snug">{r.detalle}</p>}
+                  {r.ventana && <p className="text-[10px] mt-1" style={{ color: c }}>⏳ {r.ventana}</p>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Estado actual vs óptimo — tabla */}
+      {estados.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono tracking-widest mb-2 px-1" style={{ color }}>ESTADO ACTUAL vs ÓPTIMO</p>
+          <div className="rounded-xl overflow-hidden border border-[#1e2d3d]">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="bg-[#0d1520] text-[#3d5870] text-[10px] font-mono">
+                  <th className="text-left px-3 py-2">PARÁMETRO</th>
+                  <th className="text-left px-3 py-2">ACTUAL</th>
+                  <th className="text-left px-3 py-2">ÓPTIMO</th>
+                  <th className="text-right px-3 py-2">ESTADO</th>
+                </tr>
+              </thead>
+              <tbody>
+                {estados.map((e, i) => {
+                  const c = _nivelColor(e.estado);
+                  return (
+                    <tr key={i} className="border-t border-[#1e2d3d]">
+                      <td className="px-3 py-2 text-[#dde6ef]">{e.parametro}</td>
+                      <td className="px-3 py-2 text-[#dde6ef] font-semibold">{e.actual}</td>
+                      <td className="px-3 py-2 text-[#7a95aa]">{e.optimo}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: c }}>{e.estado}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Potencial de mejora */}
+      {mejoras.length > 0 && (
+        <div className="rounded-xl p-4" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
+          <p className="text-[10px] font-mono tracking-widest mb-2" style={{ color }}>📈 POTENCIAL DE MEJORA</p>
+          <div className="space-y-1.5">
+            {mejoras.map((m, i) => (
+              <p key={i} className="text-[12px] text-[#dde6ef] leading-snug">
+                <span className="font-semibold">{m.meta}:</span> <span style={{ color: '#00e5a0' }}>{m.cambio}</span>
+                {m.cuando && <span className="text-[#7a95aa]"> · {m.cuando}</span>}
+                {m.como && <span className="text-[#7a95aa]"> — {m.como}</span>}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Palancas priorizadas — bloques colapsables (orden innegociable) */}
+      {palancas.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono tracking-widest mb-2 px-1" style={{ color }}>PALANCAS PRIORIZADAS (orden innegociable)</p>
+          <div className="space-y-2">
+            {palancas.map((p, i) => (
+              <FuncCollapsible key={i} title={p.pilar || `Palanca ${i + 1}`} icon={['🏃','🥗','😴','🧘','🧬'][i] || '•'} color={color}>
+                {p.objetivo && <p className="text-[12px] text-[#dde6ef] mb-2">{p.objetivo}</p>}
+                {(p.acciones?.length ?? 0) > 0 && (
+                  <ul className="space-y-1 mb-2">
+                    {p.acciones!.map((a, k) => <li key={k} className="text-[12px] text-[#9fb2c4] flex gap-2"><span style={{ color }}>›</span>{a}</li>)}
+                  </ul>
+                )}
+                {p.nota && <p className="text-[11px] text-[#7a95aa] italic">{p.nota}</p>}
+              </FuncCollapsible>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Estudios sugeridos (accionable) */}
+      {estudios.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono tracking-widest mb-1 px-1" style={{ color }}>ESTUDIOS SUGERIDOS</p>
+          <p className="text-[11px] text-[#7a95aa] mb-2 px-1">Marca los que quieres solicitar — el resto no se incluirá.</p>
+          <div className="space-y-2">
+            {estudios.map((e, i) => (
+              <label key={i} className="flex items-start gap-3 rounded-xl px-3 py-2.5 cursor-pointer transition"
+                style={{ background: sel[i] ? `${color}0d` : '#0d1520', border: `1px solid ${sel[i] ? `${color}40` : '#1e2d3d'}` }}>
+                <input type="checkbox" checked={!!sel[i]} onChange={() => onToggleStudy(i)} className="mt-1 accent-[#00e5a0]" />
+                <div className="flex-1">
+                  <p className="text-[13px] font-semibold text-[#dde6ef]">{e.estudio}
+                    {e.prioridad && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full align-middle" style={{ background: _prioColor(e.prioridad) + '22', color: _prioColor(e.prioridad) }}>{e.prioridad}</span>}
+                  </p>
+                  {e.confirma && <p className="text-[11px] text-[#7a95aa] mt-0.5"><span className="text-[#3d5870]">Afina:</span> {e.confirma}</p>}
+                  {e.impacto && <p className="text-[11px] text-[#7a95aa]"><span className="text-[#3d5870]">Decide:</span> {e.impacto}</p>}
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Estudios ya cubiertos (no se re-piden) */}
+      {(data.estudios_ya_cubiertos?.length ?? 0) > 0 && (
+        <div className="rounded-xl px-3 py-2.5" style={{ background: '#0d1520', border: '1px dashed #1e2d3d' }}>
+          <p className="text-[10px] font-mono tracking-widest mb-1.5 flex items-center gap-1.5 text-[#7a95aa]"><span>✓</span> YA SOLICITADOS (no hace falta pedirlos de nuevo)</p>
+          <ul className="space-y-1">
+            {data.estudios_ya_cubiertos!.map((e, i) => (
+              <li key={i} className="text-[12px] text-[#9fb2c4] leading-snug">
+                <span className="text-[#dde6ef] font-medium">{e.estudio}</span>
+                {e.cubierto_por && <span className="text-[#3d5870]"> — {e.cubierto_por}</span>}
+                {e.para_que && <span className="text-[#7a95aa]"> · sirve aquí para: {e.para_que}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Historia del paciente */}
+      {data.historia_paciente && (
+        <div className="rounded-xl p-4" style={{ background: `${color}0d`, border: `1px solid ${color}33` }}>
+          <p className="text-[10px] font-mono tracking-widest mb-2 flex items-center gap-1.5" style={{ color }}><span>🗣️</span> LA HISTORIA DEL PACIENTE</p>
+          <p className="text-[13px] text-[#dde6ef] leading-relaxed whitespace-pre-wrap">{data.historia_paciente}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Diagnosis Card ───────────────────────────────────────────────────────────
 function DiagnosisCard({
   state, color, onEdit, onRestore, editMode, setEditMode, setState, anchor,
@@ -2088,23 +2300,27 @@ function DiagnosisCard({
   anchor?: { dxText?: string; protText?: string };
 }) {
   const protocolData = parseProtocolJson(state.doctor_text);
-  const funcData = !protocolData ? parseFunctionalJson(state.doctor_text) : null;
-  const diagnosisData = (!protocolData && !funcData) ? parseDiagnosisJson(state.doctor_text) : null;
+  const longData = !protocolData ? parseLongevityJson(state.doctor_text) : null;
+  const funcData = (!protocolData && !longData) ? parseFunctionalJson(state.doctor_text) : null;
+  const diagnosisData = (!protocolData && !longData && !funcData) ? parseDiagnosisJson(state.doctor_text) : null;
   const dxData = diagnosisData ? withDxDefaults(diagnosisData) : null;
   const sections = parseSections(state.doctor_text);
   const hasStructure = Object.keys(sections).length > 0;
   const SKIP_SECTIONS: string[] = [];
 
-  // Toggle de selección de estudios en el diagnóstico funcional (se persiste en doctor_text).
-  const handleToggleFuncStudy = (i: number) => setState(prev => {
-    const fd = parseFunctionalJson(prev.doctor_text);
-    if (!fd) return prev;
-    const est = fd.estudios || [];
-    const base = (fd.estudios_seleccionados && fd.estudios_seleccionados.length === est.length)
-      ? fd.estudios_seleccionados : est.map(() => true);
-    const next = { ...fd, estudios_seleccionados: base.map((v, k) => k === i ? !v : v) };
-    return { ...prev, doctor_text: JSON.stringify(next) };
-  });
+  // Toggle de selección de estudios en un diagnóstico JSON (funcional o longevidad).
+  const toggleStudyIn = (parse: (t: string) => { estudios?: any[]; estudios_seleccionados?: boolean[] } | null) =>
+    (i: number) => setState(prev => {
+      const fd = parse(prev.doctor_text);
+      if (!fd) return prev;
+      const est = fd.estudios || [];
+      const base = (fd.estudios_seleccionados && fd.estudios_seleccionados.length === est.length)
+        ? fd.estudios_seleccionados : est.map(() => true);
+      const next = { ...fd, estudios_seleccionados: base.map((v, k) => k === i ? !v : v) };
+      return { ...prev, doctor_text: JSON.stringify(next) };
+    });
+  const handleToggleFuncStudy = toggleStudyIn(parseFunctionalJson);
+  const handleToggleLongStudy = toggleStudyIn(parseLongevityJson);
 
   const approved = protocolData
     ? (state.approved && state.approved.length === protocolData.items.length ? state.approved : protocolData.items.map(() => true))
@@ -2314,6 +2530,9 @@ function DiagnosisCard({
       {protocolData ? (
         <ProtocolStructuredView data={protocolData} color={color}
           approved={approved} onToggle={handleToggleApproved} onAddItem={handleAddProtocolItem} />
+      ) : longData ? (
+        /* Diagnóstico de LONGEVIDAD estructurado (JSON) — vista modular gráfica */
+        <LongevityStructuredView data={longData} color={color} onToggleStudy={handleToggleLongStudy} />
       ) : funcData ? (
         /* Diagnóstico FUNCIONAL estructurado (JSON) — vista modular por bloques */
         <FunctionalStructuredView data={funcData} color={color} anchor={anchor} onToggleStudy={handleToggleFuncStudy} />

@@ -1834,25 +1834,58 @@ glucosa muy alta, dolor torácico, arritmia, infección activa, descompensación
 {functional_block}
 {treatments_block}
 {PEPTIDOS_RULE}
-{STRUCTURED_HEADER_INSTRUCTIONS}
 
-FORMATO (después del JSON). Usa EXACTAMENTE estos delimitadores. No uses markdown (**negrita**), solo texto plano:
-═══ EDAD BIOLÓGICA ESTIMADA ═══
-[X] años (cronológica: [Y] años = [+/-Z] años). Biomarcadores clave: [lista con valores del paciente]
+SALIDA — RESPONDE ÚNICAMENTE CON ESTE JSON (nada de texto antes o después, nada de ```json). El sistema lo muestra
+al médico por BLOQUES gráficos (hero de edad biológica, tarjetas de riesgo, tabla estado-vs-óptimo, palancas
+colapsables), así que cada campo debe ser CLARO, CORTO y sin relleno. Nada de párrafos largos ni markdown.
 
-═══ RIESGOS A 5-10 AÑOS ═══
-• Cardiovascular: BAJO/MODERADO/ALTO — [1 línea]
-• Metabólico: BAJO/MODERADO/ALTO — [1 línea]
-• Neurodegenerativo: BAJO/MODERADO/ALTO — [1 línea]
-• Musculoesquelético: BAJO/MODERADO/ALTO — [1 línea]
+{{
+  "confianza": <número 0-100>,
+  "confianza_nota": "1 línea: por qué esa confianza y qué la subiría (ej. 'faltan HOMA-IR, ApoB, hs-CRP')",
+  "edad_biologica": <número entero de años>,
+  "edad_cronologica": <número entero de años>,
+  "delta_anios": <número, positivo si envejece más rápido, negativo si más lento>,
+  "biomarcadores_clave": "1-3 líneas: los valores REALES del paciente que sostienen la estimación (IMC, cintura, glucosa, PA, fuerza, VO2max…). Con cada uno su rango óptimo entre paréntesis.",
+  "estabilidad": "estable" o "agudo",
+  "estabilidad_nota": "si 'agudo': qué hay que estabilizar primero con el manejo convencional/funcional antes de apilar longevidad. Si 'estable': '' o una línea de que se puede proceder.",
+  "riesgos": [
+    {{"dominio": "Cardiovascular", "nivel": "ALTO", "detalle": "1 línea con el porqué (datos del paciente)", "ventana": "p.ej. 'ventana de 8 años para revertir' (opcional, '' si no aplica)"}},
+    {{"dominio": "Metabólico", "nivel": "MODERADO", "detalle": "…", "ventana": ""}},
+    {{"dominio": "Neurodegenerativo", "nivel": "BAJO", "detalle": "…", "ventana": ""}},
+    {{"dominio": "Musculoesquelético", "nivel": "MODERADO", "detalle": "…", "ventana": ""}}
+  ],
+  "estado_vs_optimo": [
+    {{"parametro": "IMC", "actual": "37.2", "optimo": "22-25", "estado": "ALERTA"}}
+  ],
+  "potencial_mejora": [
+    {{"meta": "Edad biológica", "cambio": "-8 a -10 años", "cuando": "18-24 meses", "como": "protocolo completo sostenido"}}
+  ],
+  "palancas": [
+    {{"pilar": "1º Movimiento (fuerza + zona 2)", "objetivo": "1 línea del objetivo para ESTE paciente", "acciones": ["acción concreta 1", "acción concreta 2"], "nota": "por qué es la palanca clave aquí / gating (opcional, '' si no)"}}
+  ],
+  "estudios": [
+    {{"estudio": "estudio específico", "prioridad": "URGENTE", "confirma": "qué afina de la estimación/riesgo", "impacto": "qué decisión cambia"}}
+  ],
+  "estudios_ya_cubiertos": [
+    {{"estudio": "estudio que te serviría pero que el médico YA aceptó antes", "cubierto_por": "de dónde ya viene", "para_que": "para qué te sirve en longevidad"}}
+  ],
+  "historia_paciente": "2-4 líneas en lenguaje LLANO para el paciente: qué está acortando su healthspan y qué puede recuperar, con esperanza realista."
+}}
 
-═══ ESTADO ACTUAL vs ÓPTIMO ═══
-[Parámetro] | [Valor actual] | [Rango óptimo] | [Estado: OK/BAJO/ALTO/ALERTA]
-[máximo 5 filas, los más relevantes para ESTE paciente]
-
-═══ POTENCIAL DE MEJORA ═══
-• Edad biológica: -[X] años estimado con protocolo
-• [2 mejoras concretas y cuantificadas]"""
+REGLAS DE LLENADO (síguelas exactamente):
+- "riesgos": los 4 dominios (Cardiovascular, Metabólico, Neurodegenerativo, Musculoesquelético). "nivel" es BAJO,
+  MODERADO o ALTO. "detalle" = 1 línea con datos REALES del paciente.
+- "estado_vs_optimo": MÁXIMO 5 filas, los parámetros más relevantes para ESTE paciente. "estado" es uno de:
+  OK, BAJO, ALTO, ALERTA.
+- "palancas": el orden INNEGOCIABLE de pilares (1º Movimiento → 2º Nutrición → 3º Sueño → 4º Estrés/conexión →
+  5º Capa avanzada). Son BLOQUES colapsables: "objetivo" corto + "acciones" telegráficas (no párrafos). NO metas
+  aquí péptidos con dosis — eso va en el protocolo; aquí solo la estrategia. Máximo 5 palancas.
+- "estudios": MÁXIMO 4, solo los que afinan la estimación o cambian el manejo Y que NO estén ya en firme.
+- "estudios_ya_cubiertos": si el bloque "YA EN FIRME EN ESTA VISITA" existe arriba, todo estudio ya aceptado
+  (incluye componentes de paneles) va AQUÍ como nota, NO en "estudios". [] si no aplica.
+- SIEMPRE entrega la evaluación (edad biológica + riesgos) aunque el paciente esté 'agudo' y no toque apilar
+  intervenciones nuevas — ese es tu valor irremplazable.
+- No agregues campos fuera de los listados. Usa "" o [] cuando algo no aplique."""
 
 
 PEPTIDOS_OFFLABEL_RULE = """

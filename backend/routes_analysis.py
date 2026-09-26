@@ -1595,7 +1595,7 @@ async def run_functional_stream(
             # El diagnóstico funcional ahora es JSON; se guarda tal cual y la confianza sale del campo.
             diagnosis = _strip_json_fence(raw)
             # Dedup DETERMINISTA: quita estudios ya aceptados en convencional (los mueve a nota).
-            diagnosis = _dedup_estudios_funcional(diagnosis, _estudios_de_diagnostico(body.doctor_traditional))
+            diagnosis = _dedup_estudios_dx(diagnosis, _estudios_de_diagnostico(body.doctor_traditional))
             conf = _dx_confianza(diagnosis)
             _safe_update_analysis(visit_id, {"diagnosis_functional": diagnosis})
             validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
@@ -1629,7 +1629,7 @@ async def run_functional(
         raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step="functional",
                           thinking=True, web_search="global", attachments=attachments)
         diagnosis = _strip_json_fence(raw)
-        diagnosis = _dedup_estudios_funcional(diagnosis, _estudios_de_diagnostico(body.doctor_traditional))
+        diagnosis = _dedup_estudios_dx(diagnosis, _estudios_de_diagnostico(body.doctor_traditional))
         conf = _dx_confianza(diagnosis)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
@@ -1653,6 +1653,11 @@ async def run_functional(
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         raise HTTPException(500, str(e))
+
+
+def _aceptados_prev_longevidad(body: LongevityRequest) -> list:
+    """Estudios ya aceptados por el médico en convencional + funcional (para dedup en longevidad)."""
+    return _estudios_de_diagnostico(body.doctor_traditional) + _estudios_de_diagnostico(body.doctor_functional)
 
 
 def _build_longevity_prompt(visit_id: str, body: LongevityRequest, doctor_id: str) -> tuple[str, list]:
@@ -1732,11 +1737,10 @@ async def run_longevity_stream(
                 chunks.append(delta)
                 yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
             raw = "".join(chunks)
-            try:
-                metadata, diagnosis = extract_structured_header(raw)
-                conf = metadata.get("confidence", 0)
-            except Exception:
-                diagnosis, conf = raw, 0
+            # El diagnóstico de longevidad ahora es JSON (igual que funcional).
+            diagnosis = _strip_json_fence(raw)
+            diagnosis = _dedup_estudios_dx(diagnosis, _aceptados_prev_longevidad(body))
+            conf = _dx_confianza(diagnosis)
             _safe_update_analysis(visit_id, {"diagnosis_longevity": diagnosis})
             validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
                                          visit_id=visit_id, step="validate_longevity")
@@ -1748,8 +1752,7 @@ async def run_longevity_stream(
             print(f"[ERROR longevity/stream] {e}")
             raw = "".join(chunks)
             if raw.strip():
-                try: _m, dx = extract_structured_header(raw); c = _m.get("confidence", 0)
-                except Exception: dx, c = raw, 0
+                dx = _strip_json_fence(raw); c = _dx_confianza(dx)
                 yield f"data: {json.dumps({'type': 'done', 'visit_id': visit_id, 'step': 'longevity', 'diagnosis': dx, 'validation': None, 'confidence': c})}\n\n"
             else:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'No se pudo generar el diagnóstico de longevidad. Intenta de nuevo.'})}\n\n"
@@ -1769,7 +1772,9 @@ async def run_longevity(
         prompt, attachments = _build_longevity_prompt(visit_id, body, doctor_id)
         raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step="longevity",
                           thinking=True, web_search="global", attachments=attachments)
-        metadata, diagnosis = extract_structured_header(raw)
+        diagnosis = _strip_json_fence(raw)
+        diagnosis = _dedup_estudios_dx(diagnosis, _aceptados_prev_longevidad(body))
+        conf = _dx_confianza(diagnosis)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_longevity")
 
@@ -1784,7 +1789,7 @@ async def run_longevity(
             "step": "longevity",
             "diagnosis": diagnosis,
             "validation": validation,
-            "confidence": metadata["confidence"],
+            "confidence": conf,
         }
 
     except HTTPException:
@@ -2906,7 +2911,7 @@ def _ya_cubierto(nombre, aceptados_norm: set, componentes: set) -> bool:
             return True
     return False
 
-def _dedup_estudios_funcional(diagnosis: str, aceptados_prev: list) -> str:
+def _dedup_estudios_dx(diagnosis: str, aceptados_prev: list) -> str:
     """Filtro determinista para el diagnóstico funcional (JSON): mueve de 'estudios' a
     'estudios_ya_cubiertos' cualquier estudio ya aceptado antes. Devuelve el JSON modificado
     (string) o el original si algo falla."""
