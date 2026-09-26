@@ -128,6 +128,11 @@ export default function DocumentosPage() {
   );
 
   const pieId = `${pac.nombre || 'Paciente'} · ${lh.clinica || 'APEX'} · ${hoy()}`;
+  const docsIncluidos = [
+    incReceta && 'Receta médica',
+    incReporte && 'Reporte para el paciente',
+    incEstudios && 'Solicitud de estudios',
+  ].filter(Boolean) as string[];
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
@@ -226,6 +231,9 @@ export default function DocumentosPage() {
           <div className="print-area">
             {nada && <div className="no-print bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-10 text-center text-[#7a95aa]">Selecciona al menos un documento para previsualizar.</div>}
 
+            {!nada && <Portada lh={lh} pac={pac} docs={docsIncluidos} />}
+            {!nada && docsIncluidos.length > 1 && <Indice docs={docsIncluidos} />}
+
             {incReceta && (
               <Hoja lh={lh} pac={pac} titulo="Receta médica">
                 <RecetaBody receta={receta} indicaciones={indicaciones} />
@@ -251,29 +259,40 @@ export default function DocumentosPage() {
       {/* Pie que se repite en CADA página impresa (mantiene relacionadas las hojas). */}
       <div className="print-footer">{pieId}</div>
 
-      {/* Estilos de impresión: tamaño carta, saltos de página, pie repetido.
+      {/* Estilos de impresión: aísla SOLO el reporte (evita que la app oscura se rasterice
+          y salga en blanco), fuerza fondo blanco y colores, y controla la paginación.
           Se usa <style> plano (no styled-jsx) para no arriesgar el scoping de @page. */}
       <style dangerouslySetInnerHTML={{ __html: `
         .print-footer { display: none; }
         @media print {
-          @page { size: letter; margin: 14mm 14mm 18mm; }
-          html, body { background: #fff !important; height: auto !important; }
-          /* Anular alturas de contenedores que impedirían la paginación */
-          .min-h-screen { min-height: 0 !important; }
+          @page { size: letter; margin: 16mm 16mm 18mm; }
+          /* Forzar que TODOS los fondos/colores se impriman (Chrome los omite por defecto). */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          html, body { background: #fff !important; height: auto !important; margin: 0 !important; }
+          .min-h-screen { min-height: 0 !important; background: #fff !important; }
+          /* AISLAMIENTO: oculta toda la app y muestra solo el área imprimible. */
+          body * { visibility: hidden !important; }
+          .print-area, .print-area *, .print-footer, .print-footer * { visibility: visible !important; }
           .no-print { display: none !important; }
-          main, .print-area { margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; }
+          main { margin: 0 !important; padding: 0 !important; }
+          .print-area {
+            position: absolute !important; left: 0; top: 0; width: 100% !important;
+            margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important;
+          }
           .hoja {
             box-shadow: none !important; border: none !important; border-radius: 0 !important;
             width: 100% !important; max-width: none !important; min-height: 0 !important;
-            margin: 0 !important; padding: 0 !important;
+            margin: 0 !important; padding: 0 !important; background: #fff !important;
           }
-          .hoja + .hoja { page-break-before: always; break-before: page; }
+          .hoja + .hoja, .page-break { page-break-before: always; break-before: page; }
           .avoid-break { break-inside: avoid; page-break-inside: avoid; }
           .print-footer {
             display: block; position: fixed; bottom: 4mm; left: 0; right: 0;
-            text-align: center; font-size: 8px; color: #9aa4ad;
+            text-align: center; font-size: 8px; color: #6b7280;
             border-top: 1px solid #e5e7eb; padding-top: 3px;
           }
+          /* Números de página donde el navegador lo soporta (Safari/Firefox). */
+          @page { @bottom-right { content: "Página " counter(page) " de " counter(pages); font-size: 8px; color: #6b7280; } }
         }
       ` }} />
     </div>
@@ -328,6 +347,78 @@ function Hoja({ lh, pac, titulo, children }: { lh: any; pac: any; titulo: string
         {lh.direccion && <p>{lh.direccion} · {lh.ciudad}</p>}
         <p>{[lh.telefono && `Tel. ${lh.telefono}`, lh.whatsapp && `WhatsApp ${lh.whatsapp}`, lh.website, lh.email].filter(Boolean).join('  ·  ')}</p>
       </div>
+    </div>
+  );
+}
+
+// ── Portada del reporte (primera página) ─────────────────────────────────────
+function Portada({ lh, pac, docs }: { lh: any; pac: any; docs: string[] }) {
+  return (
+    <div className="hoja bg-white text-[#1a1a1a] rounded-lg shadow-xl mx-auto mb-6 p-10 flex flex-col"
+      style={{ width: '100%', maxWidth: 816, minHeight: 1000 }}>
+      {/* Membrete del médico / clínica */}
+      <div className="flex items-start justify-between border-b-2 pb-5 mb-auto" style={{ borderColor: MED_TEAL }}>
+        <div className="flex items-center gap-3">
+          {lh.logo_url ? <img src={lh.logo_url} alt="logo" style={{ height: 64 }} /> :
+            <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl" style={{ background: MED_TEAL }}>{(lh.clinica || 'A')[0]}</div>}
+          <div>
+            <p className="font-bold text-xl leading-tight" style={{ color: MED_TEAL }}>{lh.clinica || 'Clínica'}</p>
+            <p className="text-sm font-semibold">{lh.profesional || 'Médico'}</p>
+            <p className="text-xs text-gray-600">{lh.especialidad || ''}</p>
+          </div>
+        </div>
+        <div className="text-right text-[10px] text-gray-600 leading-snug">
+          {lh.cedula_profesional && <p>Céd. Prof. {lh.cedula_profesional}</p>}
+          {lh.cedula_especialidad && <p>Céd. Esp. {lh.cedula_especialidad}</p>}
+        </div>
+      </div>
+
+      {/* Título central */}
+      <div className="text-center my-16">
+        <p className="text-[11px] font-mono tracking-[4px] text-gray-400 mb-4">REPORTE CLÍNICO INTEGRAL</p>
+        <h1 className="text-4xl font-bold mb-3" style={{ color: MED_TEAL }}>Plan de salud personalizado</h1>
+        <p className="text-sm text-gray-500 max-w-md mx-auto">Diagnóstico, tratamiento, estudios y plan de acción preparados para este paciente.</p>
+      </div>
+
+      {/* Datos del paciente */}
+      <div className="mx-auto w-full max-w-md rounded-xl border border-gray-200 p-5 mb-auto">
+        <div className="grid grid-cols-[110px_1fr] gap-y-2 text-[13px]">
+          <span className="text-gray-500">Paciente</span><span className="font-semibold">{pac.nombre || '—'}</span>
+          {pac.edad != null && (<><span className="text-gray-500">Edad</span><span>{pac.edad} años</span></>)}
+          {pac.sexo && (<><span className="text-gray-500">Sexo</span><span>{pac.sexo}</span></>)}
+          <span className="text-gray-500">Fecha</span><span>{hoy()}</span>
+          <span className="text-gray-500">Atendió</span><span>{lh.profesional || 'Médico'}</span>
+          {docs.length > 0 && (<><span className="text-gray-500">Incluye</span><span>{docs.join(' · ')}</span></>)}
+        </div>
+      </div>
+
+      {/* Pie: marca de la plataforma (APEX Pro) — el resto del documento es del médico */}
+      <div className="mt-auto pt-6 border-t border-gray-200 flex items-center justify-between text-[10px] text-gray-400">
+        <span>{[lh.direccion, lh.ciudad].filter(Boolean).join(' · ')}</span>
+        <span className="font-mono tracking-wider">Generado con <b style={{ color: MED_TEAL }}>APEX</b> <span className="border rounded px-1" style={{ borderColor: MED_TEAL, color: MED_TEAL }}>PRO</span></span>
+      </div>
+    </div>
+  );
+}
+
+// ── Índice de documentos ─────────────────────────────────────────────────────
+function Indice({ docs }: { docs: string[] }) {
+  return (
+    <div className="hoja page-break bg-white text-[#1a1a1a] rounded-lg shadow-xl mx-auto mb-6 p-10"
+      style={{ width: '100%', maxWidth: 816 }}>
+      <h2 className="text-base font-bold uppercase tracking-wide mb-5" style={{ color: MED_TEAL }}>Contenido de este reporte</h2>
+      <ol className="space-y-3">
+        {docs.map((d, i) => (
+          <li key={i} className="avoid-break flex items-center gap-3 border-b border-gray-100 pb-3">
+            <span className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: MED_TEAL }}>{i + 1}</span>
+            <span className="text-[14px] font-medium">{d}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="text-[11px] text-gray-500 mt-6 leading-relaxed">
+        Este documento fue preparado por tu médico con apoyo de inteligencia artificial. Cada sección incluye el
+        detalle correspondiente. Guárdalo y llévalo a tus próximas consultas.
+      </p>
     </div>
   );
 }
