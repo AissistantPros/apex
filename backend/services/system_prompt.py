@@ -147,17 +147,25 @@ def build_patient_context(patient: dict) -> str:
     genero_str = f" / Género con que se identifica: {genero}" if genero else ""
 
     smoking = patient.get("smoking_status") or "No registrado"
-    smoking_detail = ""
+    smoking_bits = []
     if smoking in ("Fumador activo", "Exfumador"):
-        since = patient.get("smoking_since") or ""      # año en que empezó
-        years = patient.get("smoking_years") or ""       # años fumando
-        bits = []
+        cpd = patient.get("cigarettes_per_day") or ""    # cigarros por día
+        since = patient.get("smoking_since") or ""        # año en que empezó
+        years = patient.get("smoking_years") or ""        # años fumando
+        if cpd:
+            smoking_bits.append(f"{cpd} cigarros/día")
         if since:
-            bits.append(f"desde {since}")
+            smoking_bits.append(f"desde {since}")
         if years:
-            bits.append(f"{years} años fumando")
-        if bits:
-            smoking_detail = " — " + ", ".join(bits)
+            smoking_bits.append(f"{years} años fumando")
+    if patient.get("vaping") == "Sí":
+        vbits = ["vapea"]
+        if patient.get("vaping_since"):
+            vbits.append(f"desde {patient['vaping_since']}")
+        if patient.get("vaping_nicotine_mg"):
+            vbits.append(f"nicotina {patient['vaping_nicotine_mg']}")
+        smoking_bits.append(" ".join(vbits))
+    smoking_detail = (" — " + ", ".join(smoking_bits)) if smoking_bits else ""
 
     alcohol = patient.get("alcohol_status") or "No registrado"
     alcohol_detail = ""
@@ -171,6 +179,8 @@ def build_patient_context(patient: dict) -> str:
             detail_bits.append(f"tipo: {tipo}")
         if cantidad:
             detail_bits.append(f"cantidad: {cantidad} bebidas/semana")
+        if patient.get("alcohol_since"):
+            detail_bits.append(f"bebe desde hace {patient['alcohol_since']}")
         if detail_bits:
             alcohol_detail = " — " + ", ".join(detail_bits)
 

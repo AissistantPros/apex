@@ -52,6 +52,10 @@ const TRABAJO_LUGAR = [
   'Construcción','Transporte / Chofer','Salud','Docencia','Otro',
 ];
 const TRABAJO_TIPO = ['Sedentario','Mixto','Activo'];
+const CIGARROS_OPTS = ['<5','5–10','11–20','+20'];
+const NICOTINA_MG_OPTS = ['0 mg','3 mg','6 mg','12 mg','20 mg','+30 mg'];
+const ALCOHOL_CANT_OPTS = ['1–5','6–10','11–15','16–20','+20'];
+const DESDE_ANIOS_OPTS = ['<1 año','1–5 años','5–10 años','+10 años'];
 const FREQ_OPTS = ['1×/sem','2×/sem','3×/sem','4×/sem','5×/sem','Diario'];
 const DURACION_OPTS = ['<30 min','30–60 min','1–2 h','+2 h'];
 const INTENSIDAD_OPTS = ['Baja','Moderada','Fuerte'];
@@ -289,7 +293,8 @@ function FlowPageInner() {
     tattoos_piercings: '',
     secondhand_smoke_exposure: '', remote_history_notes: '',
     smoking_status: '', smoking_since: '', smoking_years: '', smoking_notes: '',
-    alcohol_status: '', alcohol_cantidad: '', alcohol_notes: '',
+    cigarettes_per_day: '', vaping: '', vaping_since: '', vaping_nicotine_mg: '',
+    alcohol_status: '', alcohol_cantidad: '', alcohol_notes: '', alcohol_since: '',
     actividad_si: false,
 
     // FASE 2 — Visita: Signos vitales
@@ -479,9 +484,14 @@ function FlowPageInner() {
               smoking_since:                  p.smoking_since                 || '',
               smoking_years:                  p.smoking_years                 || '',
               smoking_notes:                  p.smoking_notes                 || '',
+              cigarettes_per_day:             p.cigarettes_per_day            || '',
+              vaping:                         p.vaping                        || '',
+              vaping_since:                   p.vaping_since                  || '',
+              vaping_nicotine_mg:             p.vaping_nicotine_mg            || '',
               alcohol_status:                 p.alcohol_status                || '',
               alcohol_cantidad:               p.alcohol_cantidad              || '',
               alcohol_notes:                  p.alcohol_notes                 || '',
+              alcohol_since:                  p.alcohol_since                 || '',
               // Fase 3 — Médico
               sexo_biologico:                 p.sexo_biologico                || '',
               genero_identidad:               p.genero_identidad              || '',
@@ -909,8 +919,10 @@ function FlowPageInner() {
           secondhand_smoke_exposure: f.secondhand_smoke_exposure, remote_history_notes: f.remote_history_notes,
           smoking_status: f.smoking_status,
           smoking_since: f.smoking_since, smoking_years: f.smoking_years, smoking_notes: f.smoking_notes,
+          cigarettes_per_day: f.cigarettes_per_day, vaping: f.vaping,
+          vaping_since: f.vaping_since, vaping_nicotine_mg: f.vaping_nicotine_mg,
           alcohol_status: f.alcohol_status, alcohol_tipo: alcoholTipo,
-          alcohol_cantidad: f.alcohol_cantidad, alcohol_notes: f.alcohol_notes,
+          alcohol_cantidad: f.alcohol_cantidad, alcohol_notes: f.alcohol_notes, alcohol_since: f.alcohol_since,
           medications: meds, family_history_table: family,
           family_other_history: famOtros.filter(r => r.enfermedad.trim() || r.parentesco.trim() || r.detalle.trim()),
           // Capa profunda funcional/longevidad (solo si aplica)
@@ -1796,21 +1808,49 @@ function FlowPageInner() {
                       <PillGroup options={['Nunca fumó','Exfumador','Fumador activo']}
                         value={f.smoking_status} onChange={v => set('smoking_status', v)} />
                     </div>
-                    {f.smoking_status==='Fumador activo' && (
-                      <Field label="¿DESDE QUÉ AÑO FUMA?">
-                        <input type="number" className={`${inp} ${fOrng}`} value={f.smoking_since}
-                          onChange={e=>set('smoking_since',e.target.value)} placeholder="2010" />
-                      </Field>
+                    {(f.smoking_status==='Fumador activo' || f.smoking_status==='Exfumador') && (
+                      <div className="space-y-3 mb-3">
+                        <div>
+                          <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">CIGARROS AL DÍA</p>
+                          <PillGroup options={CIGARROS_OPTS} value={f.cigarettes_per_day} onChange={v => set('cigarettes_per_day', v)} accent="#f97316" />
+                        </div>
+                        {f.smoking_status==='Fumador activo' ? (
+                          <Field label="¿DESDE QUÉ AÑO FUMA?">
+                            <input type="number" className={`${inp} ${fOrng}`} value={f.smoking_since}
+                              onChange={e=>set('smoking_since',e.target.value)} placeholder="2010" />
+                          </Field>
+                        ) : (
+                          <Field label="¿CUÁNTOS AÑOS FUMÓ EN TOTAL?">
+                            <input type="number" className={`${inp} ${fOrng}`} value={f.smoking_years}
+                              onChange={e=>set('smoking_years',e.target.value)} placeholder="15" />
+                          </Field>
+                        )}
+                      </div>
                     )}
-                    {f.smoking_status==='Exfumador' && (
-                      <Field label="¿CUÁNTOS AÑOS FUMÓ EN TOTAL?">
-                        <input type="number" className={`${inp} ${fOrng}`} value={f.smoking_years}
-                          onChange={e=>set('smoking_years',e.target.value)} placeholder="15" />
-                      </Field>
+                    {/* Vapeo (independiente del tabaco: alguien puede solo vapear) */}
+                    {f.smoking_status && (
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿VAPEA?</p>
+                          <PillGroup options={['No','Sí']} value={f.vaping} onChange={v => set('vaping', v)} accent="#f97316" />
+                        </div>
+                        {f.vaping==='Sí' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿DESDE HACE CUÁNTO?</p>
+                              <PillGroup options={DESDE_ANIOS_OPTS} value={f.vaping_since} onChange={v => set('vaping_since', v)} accent="#f97316" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">NICOTINA (mg)</p>
+                              <PillGroup options={NICOTINA_MG_OPTS} value={f.vaping_nicotine_mg} onChange={v => set('vaping_nicotine_mg', v)} accent="#f97316" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
-                    {f.smoking_status && f.smoking_status !== 'Nunca fumó' && (
+                    {f.smoking_status && (f.smoking_status !== 'Nunca fumó' || f.vaping === 'Sí') && (
                       <NoteField value={f.smoking_notes} onChange={v => set('smoking_notes', v)}
-                        placeholder="Cigarros al día, si vapea, intentos por dejarlo, cuándo lo dejó, otras sustancias inhaladas…" />
+                        placeholder="Intentos por dejarlo, cuándo lo dejó, otras sustancias inhaladas, tos o síntomas…" />
                     )}
                   </div>
 
@@ -1825,41 +1865,38 @@ function FlowPageInner() {
                       <div className="space-y-4">
                         <div>
                           <p className="text-xs font-mono text-[#7a95aa] mb-2">TIPO DE BEBIDA (puede marcar varias)</p>
-                          <div className="flex flex-wrap gap-2.5">
-                            {['Cerveza','Vino','Destilados (whisky, ron, tequila...)'].map(tipo => {
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {['Cerveza','Vino','Destilados'].map(tipo => {
                               const on = alcoholTipo.includes(tipo);
                               return (
                                 <button key={tipo} type="button"
                                   onClick={() => setAlcoholTipo(p => p.includes(tipo) ? p.filter(x=>x!==tipo) : [...p,tipo])}
-                                  className="px-4 py-2.5 rounded-xl text-sm font-medium transition border select-none"
-                                  style={{ minHeight:'44px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#7a95aa' }}>
-                                  <span className="mr-1.5">{on ? '✓' : '+'}</span>{tipo}
+                                  className="rounded-xl text-[13px] font-medium transition border select-none px-3 py-3 text-center"
+                                  style={{ minHeight:'52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                                  <span className="mr-1">{on ? '✓' : '+'}</span>{tipo}
                                 </button>
                               );
                             })}
                           </div>
                         </div>
                         <div>
-                          <p className="text-xs font-mono text-[#7a95aa] mb-2">CANTIDAD APROXIMADA A LA SEMANA</p>
-                          <div className="flex flex-col gap-2">
-                            {[
-                              { v:'1-5',    l:'1–5 bebidas',            note:'Bajo riesgo' },
-                              { v:'6-10',   l:'6–10 bebidas',           note:'Riesgo moderado' },
-                              { v:'11-15',  l:'11–15 bebidas',          note:'Riesgo elevado' },
-                              { v:'16-20',  l:'16–20 bebidas',          note:'Riesgo alto' },
-                              { v:'20+',    l:'Más de 20 bebidas',      note:'⚠️ Consumo problemático' },
-                            ].map(opt => {
-                              const on = f.alcohol_cantidad === opt.v;
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">BEBIDAS POR SEMANA</p>
+                          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                            {ALCOHOL_CANT_OPTS.map(opt => {
+                              const on = f.alcohol_cantidad === opt;
                               return (
-                                <button key={opt.v} type="button" onClick={() => set('alcohol_cantidad', opt.v)}
-                                  className="flex items-center gap-3 px-4 py-3 rounded-xl border transition text-left select-none"
-                                  style={{ minHeight:'48px', background: on ? 'rgba(249,115,22,.12)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d' }}>
-                                  <span className="text-sm" style={{ color: on ? '#f97316' : '#dde6ef' }}>{opt.l}</span>
-                                  <span className="text-xs text-[#3d5870] ml-auto">{opt.note}</span>
+                                <button key={opt} type="button" onClick={() => set('alcohol_cantidad', opt)}
+                                  className="rounded-xl border transition select-none px-2 py-3 text-center text-[14px] font-semibold"
+                                  style={{ minHeight:'52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                                  {opt}
                                 </button>
                               );
                             })}
                           </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">¿DESDE HACE CUÁNTO BEBE?</p>
+                          <PillGroup options={DESDE_ANIOS_OPTS} value={f.alcohol_since} onChange={v => set('alcohol_since', v)} accent="#f97316" />
                         </div>
                         <NoteField value={f.alcohol_notes} onChange={v => set('alcohol_notes', v)}
                           placeholder="Patrón (fin de semana, atracón), si ha querido reducir, episodios de abuso, relación con el estrés…" />
