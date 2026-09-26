@@ -130,6 +130,28 @@ def _nota_visita(visit: dict, key: str, label: str = "Detalle") -> str:
     return f"\n  ↳ {label}: {v}" if v else ""
 
 
+def _fmt_nutricion(visit: dict) -> str:
+    """Detalle de alimentación (visits.nutrition): horarios, tipo de comida, verduras,
+    proteína, snacks y hambre. Muchos problemas van con la comida y las costumbres."""
+    n = visit.get("nutrition") or {}
+    if not isinstance(n, dict):
+        return ""
+    campos = [
+        ("Horario desayuno", n.get("desayuno")),
+        ("Horario comida", n.get("comida")),
+        ("Horario cena", n.get("cena")),
+        ("Tipo de comida habitual", n.get("tipo")),
+        ("Come verduras/ensalada", n.get("verduras")),
+        ("Proteína suficiente", n.get("proteina")),
+        ("Porciones de proteína/día", n.get("proteina_porciones")),
+        ("Snacks que acostumbra", n.get("snacks")),
+        ("Hora de picar", n.get("snack_hora")),
+        ("Hambre entre comidas", n.get("hambre")),
+    ]
+    lines = [f"  • {lbl}: {str(v).strip()}" for lbl, v in campos if str(v or "").strip()]
+    return ("\n" + "\n".join(lines)) if lines else ""
+
+
 def _fmt_fuentes(patient: dict) -> str:
     fuentes = patient.get("sources_of_contact") or patient.get("source_of_contact") or []
     if isinstance(fuentes, list) and fuentes:
@@ -737,7 +759,7 @@ DATOS DE LA VISITA ACTUAL
   • Aceite que usa para cocinar: {visit.get('cooking_oil') or 'N/D'}
   • Antojos frecuentes: {visit.get('food_cravings') or 'N/D'}
   • Come frente a pantallas: {visit.get('screen_eating') or 'N/D'}
-  • Frecuencia de ultraprocesados: {visit.get('ultraprocessed_frequency') or 'N/D'}
+  • Frecuencia de ultraprocesados: {visit.get('ultraprocessed_frequency') or 'N/D'}{_fmt_nutricion(visit)}{_nota('alimentacion')}
   Piel, cabello y uñas (autorreporte del paciente, distinto del hallazgo clínico):
   • Piel seca o acné: {visit.get('self_skin_issues') or 'N/D'}
   • Caída de cabello: {visit.get('hair_loss') or 'N/D'}

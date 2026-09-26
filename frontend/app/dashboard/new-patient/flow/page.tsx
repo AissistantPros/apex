@@ -349,10 +349,15 @@ function FlowPageInner() {
     self_skin_issues: '', hair_loss: '', brittle_nails: '',
     medication_adherence: '',
 
+    // Alimentación (detalle) — se guarda estructurado en visits.nutrition (jsonb).
+    nutri_desayuno: '', nutri_comida: '', nutri_cena: '',
+    nutri_tipo: '', nutri_verduras: '', nutri_proteina: '', nutri_proteina_porciones: '',
+    nutri_snacks: '', nutri_snack_hora: '', nutri_hambre: '',
+
     // Notas libres por tema (el médico puede explayarse en cada pregunta → menos
     // preguntas de seguimiento de la IA). Se mapean a visits.field_notes (jsonb).
     nota_sueno: '', nota_ronquidos: '', nota_digestion: '', nota_estres: '',
-    nota_energia: '', nota_animo: '',
+    nota_energia: '', nota_animo: '', nota_alimentacion: '',
 
     // FASE 3 — Visita: Exploración clínica (idéntico a visitas posteriores)
     exp_general: '', ecg_interpretacion: '',
@@ -594,6 +599,14 @@ function FlowPageInner() {
               nota_estres:    str(v.field_notes?.estres),
               nota_animo:     str(v.field_notes?.animo),
               nota_digestion: str(v.field_notes?.digestion),
+              nota_alimentacion: str(v.field_notes?.alimentacion),
+              // Alimentación (detalle)
+              nutri_desayuno: str(v.nutrition?.desayuno), nutri_comida: str(v.nutrition?.comida),
+              nutri_cena: str(v.nutrition?.cena), nutri_tipo: str(v.nutrition?.tipo),
+              nutri_verduras: str(v.nutrition?.verduras), nutri_proteina: str(v.nutrition?.proteina),
+              nutri_proteina_porciones: str(v.nutrition?.proteina_porciones),
+              nutri_snacks: str(v.nutrition?.snacks), nutri_snack_hora: str(v.nutrition?.snack_hora),
+              nutri_hambre: str(v.nutrition?.hambre),
               // Fase 3 — Reporte subjetivo
               energia_manana:    num(v.energy_morning),
               energia_mediodia:  num(v.energy_noon),
@@ -1070,6 +1083,14 @@ function FlowPageInner() {
             field_notes: {
               energia: f.nota_energia, sueno: f.nota_sueno, ronquidos: f.nota_ronquidos,
               estres: f.nota_estres, animo: f.nota_animo, digestion: f.nota_digestion,
+              alimentacion: f.nota_alimentacion,
+            },
+            // Alimentación (detalle estructurado)
+            nutrition: {
+              desayuno: f.nutri_desayuno, comida: f.nutri_comida, cena: f.nutri_cena,
+              tipo: f.nutri_tipo, verduras: f.nutri_verduras, proteina: f.nutri_proteina,
+              proteina_porciones: f.nutri_proteina_porciones, snacks: f.nutri_snacks,
+              snack_hora: f.nutri_snack_hora, hambre: f.nutri_hambre,
             },
             // Reporte subjetivo
             energy_morning: f.energia_manana, energy_noon: f.energia_mediodia,
@@ -2575,10 +2596,8 @@ function FlowPageInner() {
                         </div>
                       </div>
                     )}
-                    <NoteField value={f.nota_ronquidos} onChange={v=>set('nota_ronquidos',v)}
-                      placeholder="Ronquidos / pausas al respirar: ¿quién lo notó?, ¿desde cuándo?, ¿empeora boca arriba o con alcohol?, ¿se despierta ahogado o con boca seca?" />
                     <NoteField value={f.nota_sueno} onChange={v=>set('nota_sueno',v)}
-                      placeholder="Sueño en general: ¿cuándo cambió?, ¿le cuesta dormirse o se despierta?, ¿qué lo mejora/empeora?, ¿qué estaba viviendo cuando empezó?" />
+                      placeholder="Sueño en general: ¿cuándo cambió?, ¿le cuesta dormirse o se despierta?, ronquidos/pausas al respirar, ¿qué lo mejora/empeora?, ¿qué estaba viviendo cuando empezó?" />
                   </div>
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
@@ -2625,8 +2644,8 @@ function FlowPageInner() {
                       placeholder="Estrés / ánimo / cognición: ¿qué lo detona?, ¿desde cuándo?, situación de trabajo o familia, si afecta el sueño o la concentración…" />
                   </div>
 
-                  {/* Ánimo + Digestión lado a lado */}
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Ánimo y Digestión — cada uno en su propia fila */}
+                  <div className="space-y-4">
                     <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
                       <p className="text-xs font-mono text-[#a78bfa] mb-3">ÁNIMO ESTA SEMANA</p>
                       <div className="flex flex-wrap gap-2">
@@ -2765,10 +2784,71 @@ function FlowPageInner() {
                     ))}
                   </div>
 
-                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
+                  <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-5">
                     <p className="text-xs font-mono text-[#a78bfa]">ALIMENTACIÓN</p>
+
+                    {/* Horarios de comidas */}
+                    <div>
+                      <p className="text-[10px] font-mono text-[#7a95aa] mb-2">HORARIOS DE COMIDA (aprox.)</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        {([
+                          { k: 'nutri_desayuno' as const, l: 'Desayuno' },
+                          { k: 'nutri_comida' as const,   l: 'Comida' },
+                          { k: 'nutri_cena' as const,     l: 'Cena' },
+                        ]).map(x => (
+                          <div key={x.k}>
+                            <p className="text-[10px] text-[#7a95aa] mb-1">{x.l}</p>
+                            <input type="time" className={`${inp} ${fPurp}`} value={(f as any)[x.k]} onChange={e=>set(x.k as any, e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tipo de comida + verduras */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿QUÉ TIPO DE COMIDA SUELE COMER?</p>
+                        <PillGroup options={['Casera','Fuera / restaurante','Rápida / procesada','Mixta']} value={f.nutri_tipo} onChange={v=>set('nutri_tipo',v)} accent="#a78bfa" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿COME VERDURAS / ENSALADA?</p>
+                        <PillGroup options={['A diario','A veces','Casi nunca']} value={f.nutri_verduras} onChange={v=>set('nutri_verduras',v)} accent="#a78bfa" />
+                      </div>
+                    </div>
+
+                    {/* Proteína */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿COME SUFICIENTE PROTEÍNA?</p>
+                        <PillGroup options={['Suficiente','Regular','Poca']} value={f.nutri_proteina} onChange={v=>set('nutri_proteina',v)} accent="#a78bfa" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">PORCIONES DE PROTEÍNA AL DÍA</p>
+                        <PillGroup options={['0–1','2','3+']} value={f.nutri_proteina_porciones} onChange={v=>set('nutri_proteina_porciones',v)} accent="#a78bfa" />
+                      </div>
+                    </div>
+
+                    {/* Snacks */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <Field label="¿QUÉ SNACKS ACOSTUMBRA?">
+                        <input className={`${inp} ${fPurp}`} placeholder="Fruta, galletas, frituras, nueces, nada..."
+                          value={f.nutri_snacks} onChange={e=>set('nutri_snacks',e.target.value)} />
+                      </Field>
+                      <div>
+                        <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿A QUÉ HORA SUELE PICAR?</p>
+                        <PillGroup options={['Mañana','Tarde','Noche','Todo el día']} value={f.nutri_snack_hora} onChange={v=>set('nutri_snack_hora',v)} accent="#a78bfa" />
+                      </div>
+                    </div>
+
+                    {/* Hambre entre comidas */}
+                    <div>
+                      <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿SUELE TENER HAMBRE ENTRE COMIDAS?</p>
+                      <PillGroup options={['Sí, seguido','A veces','Casi nunca']} value={f.nutri_hambre} onChange={v=>set('nutri_hambre',v)} accent="#a78bfa" />
+                    </div>
+
+                    {/* Cantidades / básicos */}
                     <div className="grid grid-cols-3 gap-3">
-                      <Field label="AGUA QUE BEBE AL DÍA (L)">
+                      <Field label="AGUA AL DÍA (L)">
                         <input type="number" step="0.5" className={`${inp} ${fPurp}`} value={f.water_intake_liters}
                           onChange={e=>set('water_intake_liters',e.target.value)} placeholder="1.5" />
                       </Field>
@@ -2777,37 +2857,27 @@ function FlowPageInner() {
                           onChange={e=>set('meals_per_day',e.target.value)} placeholder="3" />
                       </Field>
                       <Field label="ACEITE PARA COCINAR">
-                        <input className={`${inp} ${fPurp}`} placeholder="Oliva, canola, manteca..."
+                        <input className={`${inp} ${fPurp}`} placeholder="Oliva, manteca..."
                           value={f.cooking_oil} onChange={e=>set('cooking_oil',e.target.value)} />
                       </Field>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <Field label="ANTOJOS FRECUENTES">
                         <input className={`${inp} ${fPurp}`} placeholder="Dulce, sal, harinas..."
                           value={f.food_cravings} onChange={e=>set('food_cravings',e.target.value)} />
                       </Field>
                       <div>
-                        <p className="text-xs font-mono text-[#7a95aa] mb-2">FRECUENCIA DE ULTRAPROCESADOS</p>
-                        <select className={`${inp} ${fPurp}`} value={f.ultraprocessed_frequency}
-                          onChange={e=>set('ultraprocessed_frequency',e.target.value)}>
-                          <option value="">Seleccionar</option>
-                          <option>Nunca</option><option>A veces</option><option>Frecuente</option><option>Diario</option>
-                        </select>
+                        <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">ULTRAPROCESADOS</p>
+                        <PillGroup options={['Nunca','A veces','Frecuente','Diario']} value={f.ultraprocessed_frequency} onChange={v=>set('ultraprocessed_frequency',v)} accent="#a78bfa" />
                       </div>
                     </div>
                     <div>
-                      <p className="text-xs font-mono text-[#7a95aa] mb-2">¿COME FRENTE A PANTALLAS?</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {['Sí','No','A veces'].map(o => (
-                          <label key={o} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
-                            style={{ background: f.screen_eating === o ? '#a78bfa' : '#1e2d3d', borderColor: f.screen_eating === o ? '#a78bfa' : '#2a3a4d', color: f.screen_eating === o ? '#000' : '#dde6ef' }}>
-                            <input type="radio" name="screen_eating" value={o} checked={f.screen_eating === o}
-                              onChange={e=>set('screen_eating', e.target.value)} className="sr-only" />
-                            {o}
-                          </label>
-                        ))}
-                      </div>
+                      <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿COME FRENTE A PANTALLAS?</p>
+                      <PillGroup options={['Sí','No','A veces']} value={f.screen_eating} onChange={v=>set('screen_eating',v)} accent="#a78bfa" />
                     </div>
+
+                    <NoteField value={f.nota_alimentacion} onChange={v=>set('nota_alimentacion',v)}
+                      placeholder="Detalle de la alimentación: costumbres, atracones, saltarse comidas, dietas previas, relación de la comida con el ánimo o el estrés…" />
                   </div>
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
