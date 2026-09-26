@@ -240,12 +240,12 @@ function FlowPageInner() {
   const [morningSx,   setMorningSx]   = useState<string[]>([]);  // síntomas matutinos (SAOS)
   const [apneaTrig,   setApneaTrig]   = useState<string[]>([]);  // desencadenantes de la apnea
   // El paciente puede hacer varias actividades distintas (ej. pádel 3×/sem + gym 2×/sem)
-  type Actividad = { tipo: string; frecuencia: string; intensidad: string; duracion?: string };
+  type Actividad = { tipo: string; frecuencia: string; intensidad: string; duracion?: string; desde?: string };
   const [actividades, setActividades] = useState<Actividad[]>([]);
   const toggleEjercicio = (tipo: string) => setActividades(prev =>
     prev.some(a => a.tipo === tipo)
       ? prev.filter(a => a.tipo !== tipo)
-      : [...prev, { tipo, frecuencia: '', intensidad: '', duracion: '' }]);
+      : [...prev, { tipo, frecuencia: '', intensidad: '', duracion: '', desde: '' }]);
   const setActField = (i: number, k: keyof Actividad, v: string) =>
     setActividades(prev => prev.map((a, j) => j === i ? { ...a, [k]: v } : a));
   // '' = sin contestar, para poder distinguirlo de un "No" explícito
@@ -1990,7 +1990,7 @@ function FlowPageInner() {
                         const si = v === 'Sí';
                         setHaceActividad(si ? 'Sí' : 'No');
                         set('actividad_si', si as any);
-                        if (si && actividades.length === 0) setActividades([{ tipo: '', frecuencia: '', intensidad: '' }]);
+                        // No abrir una actividad en blanco: el médico elige del grid (o "+ Otra").
                         if (!si) setActividades([]);
                       }}
                       accent="#f97316" />
@@ -2012,7 +2012,7 @@ function FlowPageInner() {
                               );
                             })}
                             <button type="button"
-                              onClick={() => setActividades(prev => [...prev, { tipo: '', frecuencia: '', intensidad: '', duracion: '' }])}
+                              onClick={() => setActividades(prev => [...prev, { tipo: '', frecuencia: '', intensidad: '', duracion: '', desde: '' }])}
                               className="rounded-xl border border-dashed transition select-none px-3 py-3 text-[13px] font-medium text-center"
                               style={{ minHeight: '52px', borderColor: '#f9731655', color: '#f97316', background: '#0d1520' }}>
                               + Otra
@@ -2042,6 +2042,10 @@ function FlowPageInner() {
                             <div>
                               <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">INTENSIDAD</p>
                               <PillGroup options={INTENSIDAD_OPTS} value={act.intensidad} onChange={v => setActField(i, 'intensidad', v)} accent="#f97316" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿DESDE HACE CUÁNTO LO PRACTICA?</p>
+                              <PillGroup options={DESDE_ANIOS_OPTS} value={act.desde || ''} onChange={v => setActField(i, 'desde', v)} accent="#f97316" />
                             </div>
                           </div>
                         ))}

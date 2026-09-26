@@ -461,6 +461,8 @@ def build_visit_context(visit: dict) -> str:
                 bits.append(f"{a['duracion']}/sesión")
             if a.get("intensidad"):
                 bits.append(f"intensidad {a['intensidad'].lower()}")
+            if a.get("desde"):
+                bits.append(f"desde hace {a['desde']}")
             _l.append("    - " + " — ".join(bits))
         if _l:
             act_detalle = "\n" + "\n".join(_l)
