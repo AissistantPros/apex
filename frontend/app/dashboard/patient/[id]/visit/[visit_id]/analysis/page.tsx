@@ -632,6 +632,7 @@ type Peptido = { nombre?: string; para_que?: string; como_se_usa?: string; por_q
 interface ProtocolData {
   items: ProtocolItem[];
   peptidos?: Peptido[];
+  meds_ya_indicados?: { nombre?: string; nota?: string }[];
   monitoreo_general?: {
     proxima_revision?: string;
     labs_control?: string;
@@ -968,6 +969,20 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
       )}
 
       {/* Péptidos / terapias avanzadas que pudieran ayudar (NO van en la receta oficial) */}
+      {Array.isArray(data.meds_ya_indicados) && data.meds_ya_indicados.filter(m => m && m.nombre).length > 0 && (
+        <div className="rounded-xl px-3 py-2.5 mt-2" style={{ background: '#0d1520', border: '1px dashed #1e2d3d' }}>
+          <p className="text-[10px] font-mono tracking-widest mb-1.5 flex items-center gap-1.5 text-[#7a95aa]"><span>✓</span> YA INDICADOS ANTES (este enfoque coincide — no se recetan de nuevo)</p>
+          <ul className="space-y-1">
+            {data.meds_ya_indicados.filter(m => m && m.nombre).map((m, i) => (
+              <li key={i} className="text-[12px] text-[#9fb2c4] leading-snug">
+                <span className="text-[#dde6ef] font-medium">{m.nombre}</span>
+                {m.nota && <span className="text-[#7a95aa]"> — {m.nota}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {Array.isArray(data.peptidos) && data.peptidos.filter(p => p && p.nombre).length > 0 && (
         <div className="space-y-3 pt-2">
           <div className="flex items-center gap-3">
@@ -1132,7 +1147,7 @@ function ProtocolEditMode({ data, onSave, onCancel }: {
   const handleSave = () => {
     const kept = data.items.filter((_, i) => keep[i]);
     const cleanOwn = ownItems.filter(it => it.nombre_generico && it.nombre_generico.trim());
-    const finalData: ProtocolData = { items: [...kept, ...cleanOwn], peptidos: data.peptidos, monitoreo_general: data.monitoreo_general };
+    const finalData: ProtocolData = { items: [...kept, ...cleanOwn], peptidos: data.peptidos, meds_ya_indicados: data.meds_ya_indicados, monitoreo_general: data.monitoreo_general };
     onSave(JSON.stringify(finalData));
   };
 
@@ -2196,7 +2211,7 @@ function DiagnosisCard({
     setState(prev => {
       const pd = parseProtocolJson(prev.doctor_text);
       if (!pd) return prev;
-      const newData: ProtocolData = { items: [...pd.items, item], peptidos: pd.peptidos, monitoreo_general: pd.monitoreo_general };
+      const newData: ProtocolData = { items: [...pd.items, item], peptidos: pd.peptidos, meds_ya_indicados: pd.meds_ya_indicados, monitoreo_general: pd.monitoreo_general };
       const base = prev.approved && prev.approved.length === pd.items.length ? prev.approved : pd.items.map(() => true);
       return { ...prev, doctor_text: JSON.stringify(newData), approved: [...base, true] };
     });
@@ -3490,7 +3505,7 @@ export default function AnalysisPage() {
         const appr = prev.approved && prev.approved.length === pd.items.length ? prev.approved : pd.items.map(() => true);
         const kept = pd.items.filter((_, i) => appr[i] !== false);
         const mg = notes ? { ...pd.monitoreo_general, nota_doctor: notes } : pd.monitoreo_general;
-        finalText = JSON.stringify({ items: kept, peptidos: pd.peptidos, monitoreo_general: mg });
+        finalText = JSON.stringify({ items: kept, peptidos: pd.peptidos, meds_ya_indicados: pd.meds_ya_indicados, monitoreo_general: mg });
       } else if (notes) {
         finalText = `${finalText}\n\n--- NOTAS DEL DOCTOR ---\n${notes}`;
       }

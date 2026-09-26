@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-import json, re, time, base64, io, os
+import json, re, time, base64, io, os, unicodedata
 from anthropic import Anthropic
 from db import (
     insert_analysis, get_analysis, update_analysis, get_visit, update_visit, get_patient,
@@ -1594,6 +1594,8 @@ async def run_functional_stream(
             raw = "".join(chunks)
             # El diagnóstico funcional ahora es JSON; se guarda tal cual y la confianza sale del campo.
             diagnosis = _strip_json_fence(raw)
+            # Dedup DETERMINISTA: quita estudios ya aceptados en convencional (los mueve a nota).
+            diagnosis = _dedup_estudios_funcional(diagnosis, _estudios_de_diagnostico(body.doctor_traditional))
             conf = _dx_confianza(diagnosis)
             _safe_update_analysis(visit_id, {"diagnosis_functional": diagnosis})
             validation = maybe_validate(get_secondary_validation_prompt(diagnosis),
@@ -1627,6 +1629,7 @@ async def run_functional(
         raw = call_claude(prompt, diagnostic=True, visit_id=visit_id, step="functional",
                           thinking=True, web_search="global", attachments=attachments)
         diagnosis = _strip_json_fence(raw)
+        diagnosis = _dedup_estudios_funcional(diagnosis, _estudios_de_diagnostico(body.doctor_traditional))
         conf = _dx_confianza(diagnosis)
 
         validation = maybe_validate(get_secondary_validation_prompt(diagnosis), visit_id=visit_id, step="validate_functional")
@@ -2135,6 +2138,17 @@ def _accepted_meds_ctx(body: ProtocolRequest) -> str:
     return "\n".join(lineas)
 
 
+def _meds_previos_para(protocol_type: str, body: ProtocolRequest) -> list:
+    """Medicamentos ya aceptados en pasos previos, según el enfoque actual (para dedup).
+    Convencional no tiene previos; funcional hereda convencional; longevidad hereda ambos."""
+    prev = []
+    if protocol_type in ("functional", "longevity"):
+        prev += _meds_de_protocolo(body.protocol_traditional)
+    if protocol_type == "longevity":
+        prev += _meds_de_protocolo(body.protocol_functional)
+    return prev
+
+
 def run_peptide_expert(visit_id: str, body: ProtocolRequest, focus: str) -> list:
     """AGENTE EXPERTO EN PÉPTIDOS — paso propio con RAG apuntado SOLO a los libros de péptidos.
     Devuelve la lista 'peptidos' bien mapeada y fundamentada (o [] si falla). No lanza."""
@@ -2229,6 +2243,9 @@ async def run_protocol_stream(
                 if parse_protocol_json_safe(validated) is not None:
                     protocol = validated
 
+            # Dedup DETERMINISTA de medicamentos ya aceptados en pasos previos (convencional manda).
+            protocol = _dedup_meds_protocolo(protocol, _meds_previos_para(body.protocol_type, body))
+
             # Interconsulta del agente experto en péptidos (funcional/longevidad): sustituye el
             # arreglo 'peptidos' con opciones bien mapeadas y fundamentadas en la literatura.
             if body.protocol_type in ("functional", "longevity"):
@@ -2276,7 +2293,8 @@ async def run_protocol(
             if parse_protocol_json_safe(validated) is not None:
                 protocol = validated
 
-        # Interconsulta del agente experto en péptidos (funcional/longevidad).
+        # Dedup DETERMINISTA de medicamentos ya aceptados + interconsulta de péptidos.
+        protocol = _dedup_meds_protocolo(protocol, _meds_previos_para(body.protocol_type, body))
         protocol = _inject_peptidos_experto(protocol, visit_id, body)
 
         update_analysis(visit_id, {
@@ -2843,6 +2861,118 @@ def _bloque_ya_en_firme(diagnosticos_previos: list, protocolos_previos: list) ->
         "si tu enfoque los aprovecha, solo menciónalo (no pidas que el médico los acepte otra vez)."
     )
     return "\n\n".join(partes)
+
+
+# ── Dedup DETERMINISTA de estudios y medicamentos ya aceptados ────────────────
+# Las instrucciones de prompt no bastan (el modelo re-propone). Este filtro elimina del
+# output cualquier estudio/medicamento que el médico YA aceptó en un paso previo, y lo
+# mueve a una nota. Convencional SIEMPRE manda; los siguientes enfoques no re-piden.
+def _norm_txt(s) -> str:
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", s.lower()).strip()
+
+# Paneles compuestos: si el médico aceptó el panel, sus componentes YA están cubiertos.
+_PANELES = {
+    "perfil de lipidos": ["colesterol", "colesterol total", "hdl", "ldl", "c-hdl", "c-ldl", "trigliceridos", "vldl"],
+    "perfil lipidico": ["colesterol", "colesterol total", "hdl", "ldl", "trigliceridos", "vldl"],
+    "quimica sanguinea": ["glucosa", "creatinina", "urea", "acido urico", "nitrogeno ureico", "bun"],
+    "biometria hematica": ["hemoglobina", "hematocrito", "leucocitos", "plaquetas", "eritrocitos", "biometria"],
+    "perfil tiroideo": ["tsh", "t4", "t4 libre", "t3", "t3 libre", "tiroides"],
+    "perfil hepatico": ["ast", "alt", "tgo", "tgp", "bilirrubina", "fosfatasa alcalina", "ggt", "transaminasas"],
+    "electrolitos sericos": ["sodio", "potasio", "cloro", "magnesio", "calcio", "fosforo"],
+    "perfil de hierro": ["ferritina", "hierro serico", "transferrina", "saturacion de transferrina"],
+    "examen general de orina": ["ego", "orina", "uroanalisis"],
+}
+
+def _componentes_de_paneles(aceptados_norm: set) -> set:
+    """Expande los paneles aceptados a sus componentes, para dedup por panel compuesto."""
+    comp = set()
+    for a in aceptados_norm:
+        for panel, items in _PANELES.items():
+            if panel in a or a in panel:
+                comp.update(_norm_txt(x) for x in items)
+    return comp
+
+def _ya_cubierto(nombre, aceptados_norm: set, componentes: set) -> bool:
+    """True si 'nombre' ya está cubierto por lo aceptado (match directo, subcadena o panel)."""
+    n = _norm_txt(nombre)
+    if not n:
+        return False
+    for a in aceptados_norm:
+        if a and (n == a or (len(min(n, a, key=len)) >= 5 and (n in a or a in n))):
+            return True
+    for c in componentes:
+        if c and (n == c or (len(min(n, c, key=len)) >= 5 and (n in c or c in n))):
+            return True
+    return False
+
+def _dedup_estudios_funcional(diagnosis: str, aceptados_prev: list) -> str:
+    """Filtro determinista para el diagnóstico funcional (JSON): mueve de 'estudios' a
+    'estudios_ya_cubiertos' cualquier estudio ya aceptado antes. Devuelve el JSON modificado
+    (string) o el original si algo falla."""
+    if not aceptados_prev:
+        return diagnosis
+    try:
+        data = json.loads(diagnosis)
+    except Exception:
+        return diagnosis
+    if not isinstance(data, dict) or not isinstance(data.get("estudios"), list):
+        return diagnosis
+    aceptados_norm = {_norm_txt(a) for a in aceptados_prev if a}
+    componentes = _componentes_de_paneles(aceptados_norm)
+    kept, cubiertos = [], list(data.get("estudios_ya_cubiertos") or [])
+    for e in data["estudios"]:
+        nombre = (e.get("estudio") if isinstance(e, dict) else str(e)) or ""
+        if _ya_cubierto(nombre, aceptados_norm, componentes):
+            cubiertos.append({
+                "estudio": nombre,
+                "cubierto_por": "ya aceptado en un paso previo de esta visita",
+                "para_que": (e.get("confirma") or e.get("impacto") or "") if isinstance(e, dict) else "",
+            })
+        else:
+            kept.append(e)
+    if len(kept) == len(data["estudios"]):
+        return diagnosis  # nada cambió
+    data["estudios"] = kept
+    if cubiertos:
+        data["estudios_ya_cubiertos"] = cubiertos
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except Exception:
+        return diagnosis
+
+def _dedup_meds_protocolo(protocol: str, aceptados_prev: list) -> str:
+    """Filtro determinista para el protocolo (JSON): saca de 'items' los medicamentos ya
+    recetados y aceptados en un paso previo y los mueve a 'meds_ya_indicados' (nota: coinciden,
+    pero convencional ya los mandó). Devuelve el JSON modificado o el original si algo falla."""
+    if not aceptados_prev:
+        return protocol
+    try:
+        data = json.loads(protocol)
+    except Exception:
+        return protocol
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return protocol
+    aceptados_norm = {_norm_txt(a) for a in aceptados_prev if a}
+    kept, ya = [], list(data.get("meds_ya_indicados") or [])
+    for it in data["items"]:
+        nombre = (it.get("nombre_generico") or it.get("nombre") or "") if isinstance(it, dict) else str(it)
+        if nombre and _ya_cubierto(nombre, aceptados_norm, set()):
+            ya.append({
+                "nombre": nombre,
+                "nota": "Ya indicado y aceptado en un paso previo — este enfoque coincide, no se receta de nuevo.",
+            })
+        else:
+            kept.append(it)
+    if len(kept) == len(data["items"]):
+        return protocol
+    data["items"] = kept
+    if ya:
+        data["meds_ya_indicados"] = ya
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except Exception:
+        return protocol
 
 
 def _seccion_delimitada(raw: str, keyword: str) -> str:

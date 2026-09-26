@@ -1352,20 +1352,28 @@ aprobado si no lo está.
 # ── Agente experto en péptidos ────────────────────────────────────────────────
 # Catálogo curado (mapa de referencia, NO lista cerrada) para que el agente SIEMPRE sepa qué
 # alcanzar según el eje del paciente. Se combina con la literatura de péptidos del RAG.
-PEPTIDOS_CATALOGO = """CATÁLOGO-MAPA DE REFERENCIA (guía de para qué suele servir cada uno; NO es una lista para
-copiar entera — elige lo que encaje en ESTE paciente y fundaméntalo con la literatura de arriba):
-- Reparación tisular / tendón / intestino / recuperación: **BPC-157 + TB-500** (casi SIEMPRE se usan JUNTOS
-  como par sinérgico — si propones uno, considera el otro y dilo). KPV para inflamación sistémica y de mucosas.
-- Energía / mitocondria / fatiga: **MOTS-c** y **NAD+ (o precursores NR/NMN)** — si el paciente refiere fatiga o
-  poca energía, revísalos SIEMPRE. SS-31/Elamipretida para disfunción mitocondrial.
+PEPTIDOS_CATALOGO = """CATÁLOGO-MAPA DE REFERENCIA (para qué sirve cada uno). Es un MAPA, no una lista cerrada:
+tu trabajo es encontrar TODO lo que aplique a ESTE paciente y fundamentarlo con la literatura de arriba.
+- Reparación tisular / tendón / lesión / intestino / recuperación: **BPC-157 + TB-500** — se usan JUNTOS
+  como PAR sinérgico casi siempre; en una tendinopatía o lesión musculoesquelética proponer BPC-157 SIN TB-500
+  es un error, van los dos. KPV para inflamación sistémica y de mucosas (intestino/piel).
+- Energía / mitocondria / fatiga: **MOTS-c**, **NAD+ (o precursores NR/NMN)**, **SS-31/Elamipretida** (péptido
+  mitocondrial dirigido a cardiolipina), **Glutatión/GSH** (antioxidante maestro). Si el paciente refiere fatiga
+  o poca energía, revísalos SIEMPRE.
 - Cognición / ansiedad / estrés / foco: **Selank** (ansiolítico/antiestrés) y **Semax** (foco/neuroprotección/BDNF)
-  son DISTINTOS y NO intercambiables — no los trates como el mismo; elige según el objetivo (ansiedad vs. cognición).
-- Cabello / piel / regeneración cutánea: **GHK-Cu** (regeneración, colágeno, folículo) y **AHK-Cu** (crecimiento
-  capilar). Complementan a la línea convencional de cabello (minoxidil/finasterida/dutasterida) y a vitamina D/biotina.
-- Metabólico / peso / incretinas: valora **retatrutida** (triple agonista GLP-1/GIP/glucagón) — ver regla GLP-1.
-- Eje GH/IGF y composición corporal: ipamorelina/CJC-1295, tesamorelina (grasa visceral), GHK.
-- Inmuno / timo / longevidad celular: timosina alfa-1, epitalón (bioregulador, telómeros/pineal), bioreguladores.
-- Sexual / libido: PT-141 (bremelanotida). Sueño/DSIP para arquitectura del sueño.
+  son DISTINTOS y NO intercambiables — si hay estrés Y dificultad de concentración, van AMBOS. **Cerebrolisina**,
+  **Dihexa**, **P21** para neuroprotección/cognición. **Pinealon**/**Cortagen** (bioreguladores cerebrales).
+- Cabello / piel / regeneración cutánea: **GHK-Cu** (regeneración, colágeno, folículo), **AHK-Cu** (crecimiento
+  capilar). Complementan la línea convencional de cabello (minoxidil/finasterida/dutasterida) + vitamina D/biotina.
+- Metabólico / peso / incretinas: **retatrutida** (triple agonista GLP-1/GIP/glucagón) — ver regla GLP-1. AOD-9604,
+  tesamorelina (grasa visceral), MOTS-c (sensibilidad a insulina).
+- Eje GH/IGF, músculo, composición corporal, recuperación y sueño profundo: secretagogos de GH
+  **ipamorelina + CJC-1295**, **tesamorelina**, **sermorelina**, **MK-677/ibutamoren**.
+- Inmuno / timo / longevidad celular / senescencia: **timosina alfa-1** (inmuno), **epitalón** (telomerasa/pineal),
+  bioreguladores (Vladonix, Endoluten), **FOXO4-DRI** (senolítico experimental), **humanina**.
+- Sexual / libido: **PT-141** (bremelanotida). Sueño / arquitectura del sueño: **DSIP**.
+LONGEVIDAD (healthspan) — SIEMPRE revisa este eje: MOTS-c, SS-31, NAD+/NMN/NR, glutatión, epitalón, pinealon,
+timosina alfa-1, humanina, secretagogos de GH (composición corporal), GHK-Cu (regeneración sistémica).
 """
 
 PEPTIDOS_REGLA_GLP1 = """REGLA GLP-1 (OBLIGATORIA): si en los tratamientos ya aceptados aparece **tirzepatida o semaglutida**,
@@ -1391,9 +1399,12 @@ def get_peptide_expert_prompt(patient_ctx: str, diagnoses_ctx: str, accepted_med
     )
     bib = f"\n\n{biblioteca_peptidos}\n" if biblioteca_peptidos else "\n\n(No se recuperó literatura de péptidos para esta consulta — sé más conservador y marca la evidencia como limitada.)\n"
 
-    return f"""Eres un MÉDICO EXPERTO EN PÉPTIDOS TERAPÉUTICOS que da una interconsulta dentro de una plataforma
-clínica. Un colega ya hizo el diagnóstico; tu único trabajo es recomendar los MEJORES péptidos (y regenerativos
-tipo PRP/células madre si aplican) para ESTE paciente y explicar POR QUÉ, para que el médico tratante aprenda.
+    return f"""Eres un MÉDICO EXPERTO EN BIOHACKING Y PÉPTIDOS TERAPÉUTICOS de clase mundial, que da una
+interconsulta dentro de una plataforma clínica. Dominas la literatura de péptidos, secretagogos, bioreguladores,
+mitocondriales, senolíticos y regenerativos. Un colega ya hizo el diagnóstico; tu trabajo es encontrar y
+recomendar TODO lo que le pudiera ayudar a ESTE paciente y explicar POR QUÉ — el médico tratante decidirá cuáles
+aplica y cuáles no. Tú no filtras por conservadurismo: filtras por lo que de verdad aplica al caso, y lo pones sobre
+la mesa con su justificación.
 
 {enfoque_txt}
 {bib}
@@ -1411,10 +1422,13 @@ TRATAMIENTOS YA ACEPTADOS POR EL MÉDICO (para no duplicar y para aplicar la reg
 {accepted_meds_ctx or '(ninguno aún)'}
 
 PRINCIPIOS INNEGOCIABLES:
-1. SIEMPRE recomienda AL MENOS un péptido. Casi siempre hay uno que ayuda: si no es para tratar algo agudo, es
-   para healthspan. Si el caso exige "primero resolver lo urgente", NO te calles: propón el/los péptido(s) que
-   encajarían y márcalos como DIFERIDOS con la condición para iniciarlos (campo "iniciar_cuando"). El médico
-   quiere conocerlos aunque no se inicien hoy.
+1. RECOMIENDA TODO LO QUE APLIQUE — no una lista corta "de las mejores". Si al caso le encajan 6, 8 o 10 péptidos,
+   proponlos todos, cada uno con su razón; el médico elige cuáles usar. Es un ERROR quedarte corto: en una
+   tendinopatía van BPC-157 Y TB-500; con estrés + falta de concentración van Selank Y Semax; con fatiga revisa
+   MOTS-c, NAD+, SS-31 y glutatión; en el eje longevidad revisa SIEMPRE MOTS-c, SS-31, NAD+/NMN, glutatión, epitalón,
+   pinealon, timosina alfa-1 y secretagogos de GH. NUNCA entregues la lista vacía. Si el caso exige "primero resolver
+   lo urgente", NO te calles: propón igual los péptidos que encajarían y márcalos como DIFERIDOS con la condición para
+   iniciarlos (campo "iniciar_cuando"). El médico quiere conocerlos aunque no se inicien hoy.
 2. FUNDAMENTA con la literatura de péptidos de arriba. CITA la fuente (título/autor/página) en "evidencia"
    cuando el fragmento respalde tu recomendación. Si NO hay respaldo en la literatura recuperada, dilo honestamente
    ("evidencia preliminar, no encontrada en la biblioteca") y sé conservador — NO inventes citas.
@@ -1446,8 +1460,9 @@ REGLAS DEL JSON:
 - "iniciar_cuando": "ahora" si se puede empezar ya, o la condición si es diferido (p.ej. "diferido: al confirmar
   ausencia de riesgo oncológico" o "diferido: cuando el sueño esté controlado 8 semanas").
 - "combo": "" si no aplica un par.
-- Entre 2 y 6 péptidos (no llenes de relleno; calidad sobre cantidad, pero NUNCA entregues lista vacía).
-- Ordena de mayor a menor prioridad para este caso."""
+- Incluye TODOS los péptidos que apliquen al caso (típicamente 5-10 en un caso rico; nunca lista vacía). No los
+  omitas por conservadurismo — el médico decide cuáles usa. Sí evita relleno que no tenga relación con el caso.
+- Ordena de mayor a menor prioridad/pertinencia para este caso."""
 
 
 def get_traditional_diagnosis_prompt(patient_data: dict, visit_data: dict = None, extra_context: str = "",
@@ -2355,9 +2370,10 @@ CALIDAD GENERAL: [ALTA / MEDIA / BAJA] — [razón en una línea]"""
 def get_synthesis_prompt(patient_data: dict, visit_data: dict, bloques: str) -> str:
     patient_ctx = build_patient_context(patient_data)
     visit_ctx = build_visit_context(visit_data) if visit_data else ""
-    return f"""Eres el MÉDICO DIRECTOR que integra el trabajo de los tres enfoques (convencional, funcional y de
+    return f"""Eres el AGENTE INTEGRADOR (IA) que integra el trabajo de los tres enfoques (convencional, funcional y de
 longevidad) en UNA sola guía de trabajo, clara y ordenada, para el médico tratante y para el paciente. Ya no se
-hacen preguntas: tu trabajo es SINTETIZAR, ORDENAR, QUITAR DUPLICADOS y CORREGIR inconsistencias.
+hacen preguntas: tu trabajo es SINTETIZAR, ORDENAR, QUITAR DUPLICADOS y CORREGIR inconsistencias. NO eres un médico
+y NO firmas como médico: eres un asistente de IA que prepara el material para que el médico tratante lo revise.
 
 {patient_ctx}
 

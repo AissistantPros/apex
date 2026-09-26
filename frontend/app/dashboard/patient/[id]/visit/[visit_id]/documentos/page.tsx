@@ -63,7 +63,7 @@ export default function DocumentosPage() {
     try {
       // 1) El agente DIRECTOR integra todo (dedup + plan por fases + explicación). Se genera
       //    si no existe. Es la fuente principal del reporte final.
-      setLoadingLabel('El médico director está integrando el plan final…');
+      setLoadingLabel('El sistema está integrando el plan final…');
       let s: Synth | null = null;
       try {
         const r = await api(`/analyze/${visit_id}/synthesis`, { method: 'POST' });
