@@ -41,6 +41,21 @@ const SOURCES = [
   'Recomendación de paciente','Recomendación de médico','Redes sociales',
   'Búsqueda en internet','Página web','Google Maps','Doctoralia','Otro',
 ];
+// Actividades físicas más comunes (para captura rápida con botones).
+const EJERCICIOS = [
+  'Gimnasio / pesas','Caminar','Correr','Ciclismo','Natación','Pádel / Tenis',
+  'Fútbol / Básquet','Yoga / Pilates','Funcional / CrossFit','Deportes de contacto','Baile',
+];
+// Entorno laboral y tipo de actividad en el trabajo.
+const TRABAJO_LUGAR = [
+  'Oficina','Casa / Hogar','Fábrica / Planta','Comercio / Tienda','Campo',
+  'Construcción','Transporte / Chofer','Salud','Docencia','Otro',
+];
+const TRABAJO_TIPO = ['Sedentario','Mixto','Activo'];
+const FREQ_OPTS = ['1×/sem','2×/sem','3×/sem','4×/sem','5×/sem','Diario'];
+const DURACION_OPTS = ['<30 min','30–60 min','1–2 h','+2 h'];
+const INTENSIDAD_OPTS = ['Baja','Moderada','Fuerte'];
+const SENTADO_OPTS = ['<4 h','4–6 h','6–8 h','8–10 h','+10 h'];
 const ANIMO_OPTS     = ['Estable','Ansioso','Irritable','Triste','Sin motivación','Bien','Otro'];
 const DIGESTION_OPTS = ['Sin problemas','Distensión','Estreñimiento','Diarrea','Reflujo','Náuseas','Otro'];
 const ORINA_COLORS   = [
@@ -221,8 +236,14 @@ function FlowPageInner() {
   const [morningSx,   setMorningSx]   = useState<string[]>([]);  // síntomas matutinos (SAOS)
   const [apneaTrig,   setApneaTrig]   = useState<string[]>([]);  // desencadenantes de la apnea
   // El paciente puede hacer varias actividades distintas (ej. pádel 3×/sem + gym 2×/sem)
-  type Actividad = { tipo: string; frecuencia: string; intensidad: string };
+  type Actividad = { tipo: string; frecuencia: string; intensidad: string; duracion?: string };
   const [actividades, setActividades] = useState<Actividad[]>([]);
+  const toggleEjercicio = (tipo: string) => setActividades(prev =>
+    prev.some(a => a.tipo === tipo)
+      ? prev.filter(a => a.tipo !== tipo)
+      : [...prev, { tipo, frecuencia: '', intensidad: '', duracion: '' }]);
+  const setActField = (i: number, k: keyof Actividad, v: string) =>
+    setActividades(prev => prev.map((a, j) => j === i ? { ...a, [k]: v } : a));
   // '' = sin contestar, para poder distinguirlo de un "No" explícito
   const [haceActividad, setHaceActividad] = useState<'' | 'Sí' | 'No'>('');
 
@@ -283,7 +304,7 @@ function FlowPageInner() {
     circ_cuello: '', circ_biceps: '', circ_muneca: '',
     inbody_grasa: '', inbody_musculo: '', inbody_agua: '', inbody_visceral: '',
     actividad_tipo: '', actividad_frecuencia: '', actividad_intensidad: '',
-    sitting_hours: '', work_activity_level: '',
+    sitting_hours: '', work_activity_level: '', work_setting: '',
 
     // FASE 2 — Visita: Pruebas funcionales
     fuerza_mano_der: '', fuerza_mano_izq: '',
@@ -542,6 +563,7 @@ function FlowPageInner() {
               actividad_intensidad:  str(v.actividad_intensidad),
               sitting_hours:         str(v.sitting_hours),
               work_activity_level:   str(v.work_activity_level),
+              work_setting:          str(v.work_setting),
               // Pruebas funcionales
               fuerza_mano_der:    str(v.fuerza_mano_der),
               fuerza_mano_izq:    str(v.fuerza_mano_izq),
@@ -921,7 +943,7 @@ function FlowPageInner() {
         actividad_tipo: actividades.filter(a => a.tipo.trim()).map(a => a.tipo.trim()).join(', '),
         actividad_frecuencia: actividades.filter(a => a.tipo.trim()).map(a => a.frecuencia).filter(Boolean).join(', '),
         actividad_intensidad: actividades.filter(a => a.tipo.trim()).map(a => a.intensidad).filter(Boolean).join(', '),
-        sitting_hours: f.sitting_hours, work_activity_level: f.work_activity_level,
+        sitting_hours: f.sitting_hours, work_activity_level: f.work_activity_level, work_setting: f.work_setting,
         // Funcional
         fuerza_mano_der: f.fuerza_mano_der, fuerza_mano_izq: f.fuerza_mano_izq,
         marcha_4m: f.marcha_4m, equilibrio_seg: f.equilibrio_seg,
@@ -1936,63 +1958,84 @@ function FlowPageInner() {
                       accent="#f97316" />
 
                     {haceActividad === 'Sí' && (
-                      <div className="mt-4 space-y-3">
+                      <div className="mt-4 space-y-4">
+                        {/* Selección rápida de actividades (toca las que apliquen) */}
+                        <div>
+                          <p className="text-xs font-mono text-[#7a95aa] mb-2">¿QUÉ ACTIVIDADES HACE? (toca las que apliquen)</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {EJERCICIOS.map(opt => {
+                              const on = actividades.some(a => a.tipo === opt);
+                              return (
+                                <button key={opt} type="button" onClick={() => toggleEjercicio(opt)}
+                                  className="rounded-xl border transition select-none px-3 py-3 text-[13px] font-medium text-center"
+                                  style={{ minHeight: '52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                                  <span className="mr-1">{on ? '✓' : '+'}</span>{opt}
+                                </button>
+                              );
+                            })}
+                            <button type="button"
+                              onClick={() => setActividades(prev => [...prev, { tipo: '', frecuencia: '', intensidad: '', duracion: '' }])}
+                              className="rounded-xl border border-dashed transition select-none px-3 py-3 text-[13px] font-medium text-center"
+                              style={{ minHeight: '52px', borderColor: '#f9731655', color: '#f97316', background: '#0d1520' }}>
+                              + Otra
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Detalle por actividad seleccionada */}
                         {actividades.map((act, i) => (
                           <div key={i} className="rounded-xl bg-[#0d1520] border border-[#f97316]/25 p-4 space-y-3">
                             <div className="flex items-center justify-between gap-3">
-                              <p className="text-xs font-mono text-[#f97316]">ACTIVIDAD {i + 1}</p>
-                              {actividades.length > 1 && (
-                                <button type="button"
-                                  onClick={() => setActividades(prev => prev.filter((_, j) => j !== i))}
-                                  className="text-[#f43f5e] text-lg leading-none hover:opacity-80">×</button>
-                              )}
+                              {act.tipo && !EJERCICIOS.includes(act.tipo)
+                                ? <input className={`${inp} ${fOrng} flex-1`} value={act.tipo}
+                                    onChange={e => setActField(i, 'tipo', e.target.value)} placeholder="Nombre de la actividad" />
+                                : <p className="text-sm font-semibold text-[#f97316] flex-1">{act.tipo || 'Otra actividad'}</p>}
+                              <button type="button" onClick={() => setActividades(prev => prev.filter((_, j) => j !== i))}
+                                className="text-[#f43f5e] text-lg leading-none hover:opacity-80 flex-shrink-0">×</button>
                             </div>
-
-                            <Field label="TIPO DE EJERCICIO">
-                              <input className={`${inp} ${fOrng}`} value={act.tipo}
-                                onChange={e => setActividades(prev => prev.map((a, j) => j === i ? { ...a, tipo: e.target.value } : a))}
-                                placeholder="Pádel, gym, correr, yoga, natación..." />
-                            </Field>
-
                             <div>
-                              <p className="text-xs font-mono text-[#7a95aa] mb-2">FRECUENCIA</p>
-                              <PillGroup options={['1 vez/semana','2 veces/semana','3 veces/semana','4 veces/semana','5 veces/semana','Diario']}
-                                value={act.frecuencia}
-                                onChange={v => setActividades(prev => prev.map((a, j) => j === i ? { ...a, frecuencia: v } : a))}
-                                accent="#f97316" />
+                              <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">FRECUENCIA</p>
+                              <PillGroup options={FREQ_OPTS} value={act.frecuencia} onChange={v => setActField(i, 'frecuencia', v)} accent="#f97316" />
                             </div>
-
                             <div>
-                              <p className="text-xs font-mono text-[#7a95aa] mb-2">INTENSIDAD</p>
-                              <PillGroup options={['Baja','Moderada','Fuerte / Intensa']}
-                                value={act.intensidad}
-                                onChange={v => setActividades(prev => prev.map((a, j) => j === i ? { ...a, intensidad: v } : a))}
-                                accent="#f97316" />
+                              <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">TIEMPO POR SESIÓN</p>
+                              <PillGroup options={DURACION_OPTS} value={act.duracion || ''} onChange={v => setActField(i, 'duracion', v)} accent="#f97316" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">INTENSIDAD</p>
+                              <PillGroup options={INTENSIDAD_OPTS} value={act.intensidad} onChange={v => setActField(i, 'intensidad', v)} accent="#f97316" />
                             </div>
                           </div>
                         ))}
-
-                        <button type="button"
-                          onClick={() => setActividades(prev => [...prev, { tipo: '', frecuencia: '', intensidad: '' }])}
-                          className="w-full py-3 rounded-xl border-2 border-dashed text-sm font-semibold transition"
-                          style={{ borderColor: '#f9731655', color: '#f97316' }}>
-                          + Agregar otra actividad
-                        </button>
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="HORAS SENTADO AL DÍA">
-                      <input type="number" step="0.5" className={`${inp} ${fOrng}`} value={f.sitting_hours}
-                        onChange={e=>set('sitting_hours',e.target.value)} placeholder="8" />
-                    </Field>
-                    <Field label="TIPO DE ACTIVIDAD LABORAL">
-                      <select className={`${inp} ${fOrng}`} value={f.work_activity_level}
-                        onChange={e=>set('work_activity_level',e.target.value)}>
-                        <option value="">Seleccionar</option>
-                        <option>Sedentario</option><option>Mixto</option><option>Activo</option>
-                      </select>
-                    </Field>
+
+                  {/* Trabajo / actividad laboral — todo con botones (tablet-friendly) */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs font-mono text-[#7a95aa] mb-2">¿DÓNDE TRABAJA / QUÉ HACE?</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {TRABAJO_LUGAR.map(opt => {
+                          const on = f.work_setting === opt;
+                          return (
+                            <button key={opt} type="button" onClick={() => set('work_setting', opt)}
+                              className="rounded-xl border transition select-none px-3 py-3 text-[13px] font-medium text-center"
+                              style={{ minHeight: '52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                              {opt}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-mono text-[#7a95aa] mb-2">TIPO DE ACTIVIDAD EN EL TRABAJO</p>
+                      <PillGroup options={TRABAJO_TIPO} value={f.work_activity_level} onChange={v => set('work_activity_level', v)} accent="#f97316" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-mono text-[#7a95aa] mb-2">HORAS SENTADO AL DÍA</p>
+                      <PillGroup options={SENTADO_OPTS} value={f.sitting_hours} onChange={v => set('sitting_hours', v)} accent="#f97316" />
+                    </div>
                   </div>
                 </div>
               </Card>

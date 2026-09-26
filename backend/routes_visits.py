@@ -30,7 +30,8 @@ NUMERIC_VISIT_FIELDS = {
     "discomfort_intensity",
     # medicina funcional — situación actual
     "bristol_scale","bowel_movements_per_day","stress_level",
-    "sitting_hours","water_intake_liters","meals_per_day",
+    "water_intake_liters","meals_per_day",
+    # sitting_hours ya NO es numérico: se captura por rangos con botones ("6–8 h").
 }
 
 def clean_visit_data(data: dict) -> dict:

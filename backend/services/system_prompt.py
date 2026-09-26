@@ -440,6 +440,8 @@ def build_visit_context(visit: dict) -> str:
             bits = [a["tipo"].strip()]
             if a.get("frecuencia"):
                 bits.append(a["frecuencia"])
+            if a.get("duracion"):
+                bits.append(f"{a['duracion']}/sesión")
             if a.get("intensidad"):
                 bits.append(f"intensidad {a['intensidad'].lower()}")
             _l.append("    - " + " — ".join(bits))
@@ -705,7 +707,8 @@ DATOS DE LA VISITA ACTUAL
   • Síntomas cognitivos autorreportados (neblina mental / dificultad para recordar / dificultad para concentrarse): {cognitive_str or 'Ninguno reportado'}
   Sedentarismo:
   • Horas sentado al día: {visit.get('sitting_hours') or 'N/D'}
-  • Tipo de actividad laboral: {visit.get('work_activity_level') or 'N/D'}
+  • Entorno laboral (dónde trabaja / qué hace): {visit.get('work_setting') or 'N/D'}
+  • Tipo de actividad laboral (sedentario/mixto/activo): {visit.get('work_activity_level') or 'N/D'}
   Exposición ambiental actual:
   • Agua que consume: {visit.get('water_source') or 'N/D'}
   • Calienta comida en plástico en microondas: {visit.get('plastic_in_microwave') or 'N/D'}
