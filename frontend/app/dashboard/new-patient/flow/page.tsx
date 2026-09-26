@@ -71,6 +71,20 @@ const Field = ({ label, required = false, hint, children }: {
   </div>
 );
 
+// Campo de nota libre (opcional) — permite al médico explayarse en cualquier pregunta,
+// para dar contexto desde el inicio y evitar preguntas de seguimiento de la IA.
+const NoteField = ({ value, onChange, placeholder }: {
+  value: string; onChange: (v: string) => void; placeholder?: string;
+}) => (
+  <div className="mt-2">
+    <label className="text-[10px] font-mono text-[#3d5870] mb-1 block">MÁS DETALLE (opcional)</label>
+    <textarea rows={2}
+      className="w-full bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#a78bfa] resize-none placeholder-[#2a3a4d] transition"
+      value={value} onChange={e => onChange(e.target.value)}
+      placeholder={placeholder || 'Cualquier contexto que ayude a entender mejor este punto…'} />
+  </div>
+);
+
 // Grupo de opciones tipo "pill" — grande y táctil (reemplaza radios diminutos).
 const PillGroup = ({ options, value, onChange, accent = '#f97316' }: {
   options: string[]; value: string; onChange: (v: string) => void; accent?: string;
@@ -301,6 +315,11 @@ function FlowPageInner() {
     self_skin_issues: '', hair_loss: '', brittle_nails: '',
     medication_adherence: '',
 
+    // Notas libres por tema (el médico puede explayarse en cada pregunta → menos
+    // preguntas de seguimiento de la IA). Se mapean a visits.field_notes (jsonb).
+    nota_sueno: '', nota_ronquidos: '', nota_digestion: '', nota_estres: '',
+    nota_energia: '', nota_animo: '',
+
     // FASE 3 — Visita: Exploración clínica (idéntico a visitas posteriores)
     exp_general: '', ecg_interpretacion: '',
     exp_piel: '', exp_ojos: '', exp_boca: '',
@@ -320,6 +339,16 @@ function FlowPageInner() {
   const removeDolor = (i: number) => setDolores(prev => prev.filter((_, j) => j !== i));
   const updateDolor = (i: number, field: keyof Dolor, value: string | number) =>
     setDolores(prev => prev.map((d, j) => j === i ? { ...d, [field]: value } : d));
+
+  // Síntomas / motivo de consulta — el médico REDACTA cada síntoma con todo el detalle
+  // (cuándo empezó, patrón, qué lo mejora/empeora, contexto). Puede sumar los que necesite.
+  // Entre mejor los redacte, menos preguntas de seguimiento hará la IA después.
+  type Sintoma = { descripcion: string; intensidad: number };
+  const [sintomas, setSintomas] = useState<Sintoma[]>([{ descripcion: '', intensidad: 5 }]);
+  const addSintoma    = () => setSintomas(prev => [...prev, { descripcion: '', intensidad: 5 }]);
+  const removeSintoma = (i: number) => setSintomas(prev => prev.length <= 1 ? prev : prev.filter((_, j) => j !== i));
+  const updateSintoma = (i: number, field: keyof Sintoma, value: string | number) =>
+    setSintomas(prev => prev.map((s, j) => j === i ? { ...s, [field]: value } : s));
 
   const set = (field: string, value: any) => setF(prev => ({ ...prev, [field]: value }));
 
@@ -512,6 +541,13 @@ function FlowPageInner() {
               motivo_desde:       str(v.symptom_since),
               motivo_primera_vez: str(v.first_time),
               cambios_meds:       str(v.medication_changes),
+              // Notas libres por tema (visits.field_notes)
+              nota_energia:   str(v.field_notes?.energia),
+              nota_sueno:     str(v.field_notes?.sueno),
+              nota_ronquidos: str(v.field_notes?.ronquidos),
+              nota_estres:    str(v.field_notes?.estres),
+              nota_animo:     str(v.field_notes?.animo),
+              nota_digestion: str(v.field_notes?.digestion),
               // Fase 3 — Reporte subjetivo
               energia_manana:    num(v.energy_morning),
               energia_mediodia:  num(v.energy_noon),
@@ -591,6 +627,13 @@ function FlowPageInner() {
               setActividades([{ tipo: str(v.actividad_tipo), frecuencia: str(v.actividad_frecuencia), intensidad: str(v.actividad_intensidad) }]);
             }
             if (Array.isArray(v.pains) && v.pains.length > 0) setDolores(v.pains);
+            // Síntomas redactados (multi-entrada). Compat: si la visita es vieja y solo tiene
+            // visit_reason, lo cargamos como el primer síntoma para no perder el texto.
+            if (Array.isArray(v.symptoms) && v.symptoms.length > 0) {
+              setSintomas(v.symptoms.map((s: any) => ({ descripcion: str(s.descripcion), intensidad: num(s.intensidad) || 5 })));
+            } else if (v.visit_reason && str(v.visit_reason).trim()) {
+              setSintomas([{ descripcion: str(v.visit_reason), intensidad: num(v.discomfort_intensity) || 5 }]);
+            }
             if (Array.isArray(v.labs_files)) setLabFiles(v.labs_files);
           }
         } catch (_) {}
@@ -967,13 +1010,17 @@ function FlowPageInner() {
           method: 'PUT',
           headers: authH3,
           body: JSON.stringify({
-            // Motivo de consulta
-            visit_reason: f.motivo_visita, discomfort_intensity: f.motivo_intensidad,
-            symptom_since: f.motivo_desde, first_time: f.motivo_primera_vez,
-            medication_changes: f.cambios_meds,
-            pain_today: dolores.length > 0,
-            pain_location: dolores[0]?.ubicacion || '', pain_intensity: dolores[0]?.intensidad ?? null,
-            pains: dolores,
+            // Motivo de consulta — síntomas redactados por el médico (multi-entrada)
+            symptoms: sintomas.filter(s => (s.descripcion || '').trim()),
+            visit_reason: sintomas.filter(s => (s.descripcion || '').trim())
+              .map((s, i) => (sintomas.filter(x => (x.descripcion || '').trim()).length > 1 ? `Síntoma ${i + 1}: ` : '')
+                + s.descripcion.trim() + ` (intensidad ${s.intensidad}/10)`).join('\n\n'),
+            discomfort_intensity: sintomas.reduce((m, s) => Math.max(m, s.intensidad || 0), 0),
+            // Notas libres por tema (el médico se explaya → menos preguntas de la IA)
+            field_notes: {
+              energia: f.nota_energia, sueno: f.nota_sueno, ronquidos: f.nota_ronquidos,
+              estres: f.nota_estres, animo: f.nota_animo, digestion: f.nota_digestion,
+            },
             // Reporte subjetivo
             energy_morning: f.energia_manana, energy_noon: f.energia_mediodia,
             energy_evening: f.energia_tarde, sleep_quality: f.sueno_calidad,
@@ -2131,74 +2178,35 @@ function FlowPageInner() {
 
               <Card title="Motivo de consulta" icon="📋" color={pc.color}>
                 <div className="space-y-4">
-                  <Field label="¿A QUÉ VIENE HOY?">
-                    <textarea rows={4} className={`${inp} ${fPurp} resize-none`} value={f.motivo_visita}
-                      onChange={e=>set('motivo_visita',e.target.value)} placeholder="Describe con las palabras del paciente el motivo de consulta..." />
-                  </Field>
-                  <Slider label="INTENSIDAD DEL MALESTAR PRINCIPAL" value={f.motivo_intensidad}
-                    onChange={v=>set('motivo_intensidad',v)} color="#a78bfa" />
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="¿DESDE CUÁNDO?">
-                      <input className={`${inp} ${fPurp}`} placeholder="3 días, 2 semanas, 1 mes..."
-                        value={f.motivo_desde} onChange={e=>set('motivo_desde',e.target.value)} />
-                    </Field>
-                    <Field label="CAMBIOS DE MEDICAMENTOS RECIENTES">
-                      <input className={`${inp} ${fPurp}`} placeholder="Inició metformina, suspendió..."
-                        value={f.cambios_meds} onChange={e=>set('cambios_meds',e.target.value)} />
-                    </Field>
-                  </div>
-                  <div>
-                    <p className="text-xs font-mono text-[#7a95aa] mb-2">¿ES LA PRIMERA VEZ?</p>
-                    <div className="flex gap-3 flex-wrap">
-                      {[
-                        { val: 'si',        label: 'Sí, primera vez' },
-                        { val: 'no',        label: 'No, recurrente' },
-                        { val: 'episodios', label: 'Ha tenido episodios antes' },
-                      ].map(({ val, label }) => (
-                        <label key={val} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
-                          style={{ background: f.motivo_primera_vez === val ? '#a78bfa' : '#1e2d3d', borderColor: f.motivo_primera_vez === val ? '#a78bfa' : '#2a3a4d', color: f.motivo_primera_vez === val ? '#000' : '#dde6ef' }}>
-                          <input type="radio" name="primera_vez" value={val}
-                            checked={f.motivo_primera_vez === val}
-                            onChange={e=>set('motivo_primera_vez', e.target.value)} className="sr-only" />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+                  <p className="text-[11px] text-[#7a95aa] leading-relaxed bg-[#111820] border border-[#1e2d3d] rounded-xl p-3">
+                    Redacta cada síntoma o motivo con el detalle que puedas. <span className="text-[#a78bfa]">Tips para preguntar al paciente:</span> ¿cuándo empezó?, ¿es continuo o va y viene?, ¿con qué mejora?, ¿con qué empeora?, ¿qué estaba viviendo cuando empezó (trabajo, familia, un evento)? Entre mejor lo describas aquí, menos preguntas de seguimiento hará la IA después.
+                  </p>
 
-                  {/* Dolor — parte del motivo de consulta. Puede haber varias dolencias a la vez */}
-                  <div className="bg-[#111820] border border-[#f43f5e]/20 rounded-xl p-4 space-y-4">
-                    <label className="flex items-center gap-3 cursor-pointer text-sm">
-                      <input type="checkbox" checked={dolores.length > 0}
-                        onChange={e => setDolores(e.target.checked ? [{ ubicacion: '', intensidad: 5 }] : [])}
-                        className="w-4 h-4 accent-[#f43f5e] flex-shrink-0" />
-                      <span className="text-[#dde6ef] font-semibold">Tiene dolor hoy</span>
-                    </label>
-                    {dolores.map((d, i) => (
-                      <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-[#1e2d3d] pt-4 first:border-t-0 first:pt-0">
-                        <Field label={`DÓNDE DUELE${dolores.length > 1 ? ` #${i+1}` : ''}`}>
-                          <div className="flex gap-2">
-                            <input className={`${inp} ${fPurp} flex-1`} placeholder="Cabeza, espalda, articulaciones..."
-                              value={d.ubicacion} onChange={e => updateDolor(i, 'ubicacion', e.target.value)} />
-                            {dolores.length > 1 && (
-                              <button type="button" onClick={() => removeDolor(i)}
-                                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#1e2d3d] hover:bg-[#f43f5e]/20 text-[#3d5870] hover:text-[#f43f5e] transition text-lg">
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        </Field>
-                        <Slider label="INTENSIDAD DEL DOLOR" value={d.intensidad}
-                          onChange={v => updateDolor(i, 'intensidad', v)} color="#f43f5e" />
+                  {sintomas.map((s, i) => (
+                    <div key={i} className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-mono text-[#a78bfa]">
+                          {sintomas.length > 1 ? `SÍNTOMA #${i + 1}` : 'DESCRIBA SÍNTOMA'}
+                        </p>
+                        {sintomas.length > 1 && (
+                          <button type="button" onClick={() => removeSintoma(i)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#1e2d3d] hover:bg-[#f43f5e]/20 text-[#3d5870] hover:text-[#f43f5e] transition text-lg">
+                            ×
+                          </button>
+                        )}
                       </div>
-                    ))}
-                    {dolores.length > 0 && (
-                      <button type="button" onClick={addDolor}
-                        className="text-[#f43f5e] border border-[#f43f5e]/30 rounded-xl hover:bg-[#f43f5e]/10 transition font-semibold px-3 py-2 text-xs">
-                        + Agregar otra dolencia
-                      </button>
-                    )}
-                  </div>
+                      <textarea rows={4} className={`${inp} ${fPurp} resize-none`} value={s.descripcion}
+                        onChange={e => updateSintoma(i, 'descripcion', e.target.value)}
+                        placeholder="Ej.: Dolor de cabeza opresivo desde hace 3 semanas, casi diario por las tardes. Mejora al descansar en oscuridad, empeora con pantallas y estrés. Empezó cuando cambió de trabajo y duerme mal…" />
+                      <Slider label="INTENSIDAD DE ESTE SÍNTOMA (0 = nada, 10 = insoportable)" value={s.intensidad}
+                        onChange={v => updateSintoma(i, 'intensidad', v)} color="#a78bfa" />
+                    </div>
+                  ))}
+
+                  <button type="button" onClick={addSintoma}
+                    className="text-[#a78bfa] border border-[#a78bfa]/30 rounded-xl hover:bg-[#a78bfa]/10 transition font-semibold px-4 py-2 text-sm">
+                    + Agregar síntoma
+                  </button>
                 </div>
               </Card>
 
@@ -2209,6 +2217,8 @@ function FlowPageInner() {
                     <Slider label="AL DESPERTAR"     value={f.energia_manana}   onChange={v=>set('energia_manana',v)}   color="#a78bfa" />
                     <Slider label="A MEDIODÍA"        value={f.energia_mediodia} onChange={v=>set('energia_mediodia',v)} color="#a78bfa" />
                     <Slider label="AL FINAL DEL DÍA"  value={f.energia_tarde}    onChange={v=>set('energia_tarde',v)}    color="#a78bfa" />
+                    <NoteField value={f.nota_energia} onChange={v=>set('nota_energia',v)}
+                      placeholder="¿Desde cuándo el cambio de energía? ¿Se relaciona con algo (sueño, estrés, comidas, algún evento)?" />
                   </div>
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-3">
@@ -2408,6 +2418,10 @@ function FlowPageInner() {
                         </div>
                       </div>
                     )}
+                    <NoteField value={f.nota_ronquidos} onChange={v=>set('nota_ronquidos',v)}
+                      placeholder="Ronquidos / pausas al respirar: ¿quién lo notó?, ¿desde cuándo?, ¿empeora boca arriba o con alcohol?, ¿se despierta ahogado o con boca seca?" />
+                    <NoteField value={f.nota_sueno} onChange={v=>set('nota_sueno',v)}
+                      placeholder="Sueño en general: ¿cuándo cambió?, ¿le cuesta dormirse o se despierta?, ¿qué lo mejora/empeora?, ¿qué estaba viviendo cuando empezó?" />
                   </div>
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
@@ -2450,6 +2464,8 @@ function FlowPageInner() {
                         ))}
                       </div>
                     </div>
+                    <NoteField value={f.nota_estres} onChange={v=>set('nota_estres',v)}
+                      placeholder="Estrés / ánimo / cognición: ¿qué lo detona?, ¿desde cuándo?, situación de trabajo o familia, si afecta el sueño o la concentración…" />
                   </div>
 
                   {/* Ánimo + Digestión lado a lado */}
@@ -2465,6 +2481,8 @@ function FlowPageInner() {
                           </button>
                         ))}
                       </div>
+                      <NoteField value={f.nota_animo} onChange={v=>set('nota_animo',v)}
+                        placeholder="Ánimo: ¿desde cuándo?, ¿relacionado con algo?, ¿afecta su vida diaria?" />
                     </div>
                     <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4">
                       <p className="text-xs font-mono text-[#a78bfa] mb-3">DIGESTIÓN</p>
@@ -2554,6 +2572,8 @@ function FlowPageInner() {
                           </div>
                         ))}
                       </div>
+                      <NoteField value={f.nota_digestion} onChange={v=>set('nota_digestion',v)}
+                        placeholder="Digestión / deposiciones: ¿desde cuándo?, ¿continuo o intermitente?, ¿qué lo mejora/empeora (alimentos, estrés)?, cambios recientes de dieta o medicamentos…" />
                     </div>
                   </div>
 

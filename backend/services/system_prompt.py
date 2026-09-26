@@ -491,6 +491,30 @@ def build_visit_context(visit: dict) -> str:
         if notas_cog:
             cog_str += f", notas: {notas_cog}"
 
+    # Síntomas redactados por el médico (multi-entrada) — fuente principal del motivo.
+    _sintomas = visit.get("symptoms") or []
+    _lineas_sx = []
+    if isinstance(_sintomas, list):
+        for _i, _s in enumerate(_sintomas, 1):
+            if not isinstance(_s, dict):
+                continue
+            _desc = (_s.get("descripcion") or "").strip()
+            if not _desc:
+                continue
+            _inten = _s.get("intensidad")
+            _inten_txt = f" (intensidad declarada {_inten}/10)" if _inten not in (None, "") else ""
+            _lineas_sx.append(f"    {_i}. {_desc}{_inten_txt}")
+    sintomas_str = "\n".join(_lineas_sx)
+
+    # Notas libres por tema que el médico agregó en el registro (contexto extra directo del paciente).
+    _fn = visit.get("field_notes") or {}
+    if not isinstance(_fn, dict):
+        _fn = {}
+    def _nota(clave: str) -> str:
+        _v = _fn.get(clave)
+        _v = _v.strip() if isinstance(_v, str) else ""
+        return f"\n    ↳ Detalle que agregó el médico: {_v}" if _v else ""
+
     # Motivo
     primera_vez = visit.get("first_time") or visit.get("motivo_primera_vez") or "N/D"
     # opciones: 'si' = primera vez, 'no' = ya había presentado esto, 'episodios' = recurrente
@@ -546,11 +570,8 @@ DATOS DE LA VISITA ACTUAL
     (crúzala con la ciudad/estado del paciente para inferir estación y clima —p. ej. verano caluroso y húmedo en la costa, temporada de lluvias, frío de altiplano— cuando sea clínicamente relevante.)
 
 ── MOTIVO DE CONSULTA ──
-  • Motivo principal de la visita (texto libre del médico): {visit.get('visit_reason') or visit.get('motivo_visita') or 'No especificado'}
+{("  • Síntomas / molestias que trae hoy (redactados por el médico con el detalle que dio el paciente — cada uno ya incluye, cuando el médico lo describió, cuándo empezó, si es continuo o intermitente, qué lo mejora/empeora y el contexto de vida):" + chr(10) + sintomas_str) if sintomas_str else ("  • Motivo principal de la visita (texto libre del médico): " + str(visit.get('visit_reason') or visit.get('motivo_visita') or 'No especificado'))}
   • Intensidad del malestar que trae hoy (escala 1–10, autoevaluado por el paciente): {visit.get('discomfort_intensity') or visit.get('motivo_intensidad') or 'N/D'}/10
-  • ¿Desde cuándo tiene este problema / síntoma?: {visit.get('symptom_since') or visit.get('motivo_desde') or 'N/D'}
-  • ¿Es la primera vez que presenta esto?: {primera_vez_label}
-  • Cambios en medicamentos recientes (antes de esta visita): {visit.get('medication_changes') or visit.get('cambios_meds') or 'Ninguno'}
   • Metas u objetivos del paciente para esta consulta: {visit.get('patient_goals') or visit.get('metas_paciente') or 'No especificado'}
 
 ── SIGNOS VITALES ──
@@ -598,19 +619,19 @@ DATOS DE LA VISITA ACTUAL
   • Pregunta hecha al paciente: "En los últimos 5 días, ¿cómo calificarías tu energía A MEDIODÍA?" (escala 1–10)
     Respuesta: {visit.get('energy_noon') or visit.get('energia_mediodia') or 'N/D'}/10
   • Pregunta hecha al paciente: "En los últimos 5 días, ¿cómo calificarías tu energía AL FINAL DEL DÍA?" (escala 1–10)
-    Respuesta: {visit.get('energy_evening') or visit.get('energia_tarde') or 'N/D'}/10
+    Respuesta: {visit.get('energy_evening') or visit.get('energia_tarde') or 'N/D'}/10{_nota('energia')}
   • Pregunta hecha al paciente: "¿Cómo calificarías la calidad de tu sueño?" (escala 1–10)
     Respuesta: {visit.get('sleep_quality') or visit.get('sueno_calidad') or 'N/D'}/10
   • Pregunta hecha al paciente: "¿Cuántas horas duermes por noche?"
     Respuesta: {visit.get('sleep_hours') or visit.get('sueno_horas') or 'N/D'} h
   • Pregunta hecha al paciente: "¿Te despiertas descansado?" (opciones: Siempre / A veces / Rara vez / Nunca)
-    Respuesta: {visit.get('wakes_rested') or visit.get('sueno_reparador') or 'N/D'}
+    Respuesta: {visit.get('wakes_rested') or visit.get('sueno_reparador') or 'N/D'}{_nota('sueno')}
   • Pregunta hecha al paciente: "¿Cómo describirías tu estado de ánimo esta semana?" (múltiple selección, opciones: Estable / Ansioso / Irritable / Triste / Sin motivación / Bien / Otro)
-    Respuesta: {animo_str or 'No especificado'}
+    Respuesta: {animo_str or 'No especificado'}{_nota('animo')}
   • Pregunta hecha al paciente: "En los últimos días, ¿cómo calificarías tu libido?" (escala 1–10)
     Respuesta: {visit.get('libido') or visit.get('libido_hoy') or 'N/D'}/10{f" — comparado con lo normal: {visit.get('libido_tendencia')}" if visit.get('libido_tendencia') else ""}
   • Pregunta hecha al paciente: "¿Cómo ha estado tu digestión?" (múltiple selección, opciones: Sin problemas / Distensión / Estreñimiento / Diarrea / Reflujo / Náuseas / Otro)
-    Respuesta: {digestion_str or 'No especificado'}
+    Respuesta: {digestion_str or 'No especificado'}{_nota('digestion')}
   • Pregunta hecha al paciente: "¿De qué color es tu orina?" (escala visual, del más pálido al más oscuro)
     Respuesta (mañana): {orina}{f" — (tarde): {orina_tarde}" if orina_tarde else ""}
     (muy pálido = bien hidratado; naranja oscuro = deshidratación severa / revisar hematuria)
@@ -629,7 +650,7 @@ DATOS DE LA VISITA ACTUAL
   Sueño:
   • Hora de acostarse / despertar: {visit.get('bedtime') or 'N/D'} / {visit.get('wake_time') or 'N/D'}
   • Despertares nocturnos: {visit.get('night_awakenings') or 'N/D'}
-  • Ronca: {visit.get('snoring') or 'N/D'}{f" — intensidad (¿se escucha a través de la pared?): {visit.get('snoring_intensity')}" if visit.get('snoring_intensity') else ""}{f" — frecuencia: {visit.get('snoring_frequency')}" if visit.get('snoring_frequency') else ""}
+  • Ronca: {visit.get('snoring') or 'N/D'}{f" — intensidad (¿se escucha a través de la pared?): {visit.get('snoring_intensity')}" if visit.get('snoring_intensity') else ""}{f" — frecuencia: {visit.get('snoring_frequency')}" if visit.get('snoring_frequency') else ""}{_nota('ronquidos')}
   • Pausas de respiración al dormir (apnea observada): {visit.get('apnea_observed') or 'N/D'}{f" — frecuencia: {visit.get('apnea_frequency')}" if visit.get('apnea_frequency') else ""}{f" — duración de las pausas: {visit.get('apnea_duration')}" if visit.get('apnea_duration') else ""}{f" — patrón: {visit.get('apnea_pattern')}" if visit.get('apnea_pattern') else ""}
 {saos_block}
   • Siesta durante el día: {visit.get('daytime_nap') or 'N/D'}
@@ -638,7 +659,7 @@ DATOS DE LA VISITA ACTUAL
   • Mente acelerada: {visit.get('racing_mind') or 'N/D'}
   • Ansiedad / pánico: {visit.get('anxiety_panic') or 'N/D'}
   • Cómo maneja el estrés: {visit.get('stress_coping') or 'N/D'}
-  • ¿Puede relajarse?: {visit.get('can_relax') or 'N/D'}
+  • ¿Puede relajarse?: {visit.get('can_relax') or 'N/D'}{_nota('estres')}
   • Síntomas cognitivos autorreportados (neblina mental / dificultad para recordar / dificultad para concentrarse): {cognitive_str or 'Ninguno reportado'}
   Sedentarismo:
   • Horas sentado al día: {visit.get('sitting_hours') or 'N/D'}
