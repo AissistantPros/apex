@@ -20,7 +20,7 @@ type Med = {
   para_que_sirve?: string; cofepris?: string; momento?: string;
   // Campos de péptidos / terapias avanzadas
   nombre?: string; para_que?: string; como_se_usa?: string; por_que_encaja?: string; disclaimer?: string;
-  combo?: string; iniciar_cuando?: string; evidencia?: string;
+  combo?: string; iniciar_cuando?: string; evidencia?: string; aprobado?: boolean;
   // Campos de la síntesis (receta unificada)
   como_tomar?: string; cambio?: string; enfoque?: string;
 };
@@ -52,6 +52,8 @@ export default function DocumentosPage() {
   const [incReceta, setIncReceta] = useState(false);
   const [incReporte, setIncReporte] = useState(false);
   const [incEstudios, setIncEstudios] = useState(false);
+  const [incPeptidos, setIncPeptidos] = useState(true);
+  const [pepSel, setPepSel] = useState<boolean[]>([]);      // qué péptidos incluir en la hoja
   const [receta, setReceta] = useState<Med[]>([]);
   const [estudios, setEstudios] = useState<Est[]>([]);
   const [indicaciones, setIndicaciones] = useState('');
@@ -107,11 +109,16 @@ export default function DocumentosPage() {
   const pac = data?.patient || {};
   const habitos: Med[] = data?.habitos || [];
   const avanzados: Med[] = (synth?.peptidos && synth.peptidos.length ? synth.peptidos : (data?.avanzados || [])) as Med[];
+  const avz = avanzados.filter(m => m.nombre_generico || m.nombre);
+  // Selección inicial de péptidos: incluir los que no fueron omitidos por el médico.
+  useEffect(() => { setPepSel(avz.map(m => m.aprobado !== false)); /* eslint-disable-next-line */ }, [avz.length]);
+  const pepsSel = avz.filter((_, i) => pepSel[i] !== false);
+  const hayPeptidos = incPeptidos && pepsSel.length > 0;
   const diagnosticos: Dx[] = data?.diagnosticos || [];
   const explPac: ExplPac | null = synth?.explicacion_paciente || null;
   const explicacionTxt: string = data?.explicacion_paciente || '';
   const fases: Fase[] = synth?.plan_por_fases || [];
-  const nada = !incReceta && !incReporte && !incEstudios;
+  const nada = !incReceta && !incReporte && !incEstudios && !hayPeptidos;
 
   const setMed = (i: number, k: keyof Med, v: string) => setReceta(r => r.map((m, j) => j === i ? { ...m, [k]: v } : m));
   const delMed = (i: number) => setReceta(r => r.filter((_, j) => j !== i));
@@ -132,6 +139,7 @@ export default function DocumentosPage() {
     incReceta && 'Receta médica',
     incReporte && 'Reporte para el paciente',
     incEstudios && 'Solicitud de estudios',
+    hayPeptidos && 'Terapias avanzadas (péptidos)',
   ].filter(Boolean) as string[];
 
   return (
@@ -158,6 +166,7 @@ export default function DocumentosPage() {
                 ['Receta médica', incReceta, setIncReceta, data?.disponibles?.receta, `${receta.length} medicamento(s)`],
                 ['Reporte al paciente', incReporte, setIncReporte, true, 'Visual: diagnóstico, cómo tomar el tratamiento, hábitos, plan'],
                 ['Solicitud de estudios', incEstudios, setIncEstudios, true, `${estudios.length} estudio(s)`],
+                ...(avz.length > 0 ? [['Hoja de péptidos', incPeptidos, setIncPeptidos, true, `${pepsSel.length} de ${avz.length} seleccionado(s) — hoja aparte, fuera de la receta`]] : []),
               ].map(([label, val, set, avail, sub]: any, i) => (
                 <label key={i} className="flex items-start gap-3 py-2 cursor-pointer">
                   <input type="checkbox" checked={val} onChange={e => set(e.target.checked)} className="mt-1" />
@@ -220,6 +229,29 @@ export default function DocumentosPage() {
               </div>
             )}
 
+            {/* Selección de péptidos para la hoja aparte */}
+            {incPeptidos && avz.length > 0 && (
+              <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4">
+                <p className="text-xs font-mono text-[#0891b2] tracking-wider mb-1">PÉPTIDOS A ENTREGAR</p>
+                <p className="text-[11px] text-[#7a95aa] mb-3">Van en una hoja aparte, NO en la receta (salvo los aprobados por COFEPRIS). Elige cuáles incluir.</p>
+                <div className="space-y-1.5">
+                  {avz.map((m, i) => (
+                    <label key={i} className="flex items-start gap-2.5 py-1 cursor-pointer">
+                      <input type="checkbox" checked={pepSel[i] !== false}
+                        onChange={e => setPepSel(prev => { const n = [...prev]; while (n.length < avz.length) n.push(true); n[i] = e.target.checked; return n; })}
+                        className="mt-1 accent-[#0891b2]" />
+                      <div>
+                        <p className="text-[13px] text-[#dde6ef]">🧬 {m.nombre || m.nombre_generico}
+                          {m.cofepris === 'aprobado' && <span className="ml-1.5 text-[8px] text-emerald-400 border border-emerald-500/40 rounded px-1">COFEPRIS ✓</span>}
+                        </p>
+                        {(m.para_que || m.para_que_sirve) && <p className="text-[10px] text-[#7a95aa]">{m.para_que || m.para_que_sirve}</p>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <button onClick={terminarVisita} disabled={finishing}
               className="w-full px-4 py-3 rounded-2xl text-sm font-bold transition disabled:opacity-40"
               style={{ background: '#0d9488', color: '#fff' }}>
@@ -250,6 +282,12 @@ export default function DocumentosPage() {
             {incEstudios && (
               <Hoja lh={lh} pac={pac} titulo="Solicitud de estudios">
                 <EstudiosBody estudios={estudios.map(e => e.estudio || '')} />
+              </Hoja>
+            )}
+
+            {hayPeptidos && (
+              <Hoja lh={lh} pac={pac} titulo="Terapias avanzadas — péptidos">
+                <PeptidosBody peptidos={pepsSel} />
               </Hoja>
             )}
           </div>
@@ -423,6 +461,45 @@ function Indice({ docs }: { docs: string[] }) {
   );
 }
 
+// ── Hoja de péptidos / terapias avanzadas (aparte, NO es la receta) ──────────
+function PeptidosBody({ peptidos }: { peptidos: Med[] }) {
+  const items = peptidos.filter(m => m.nombre || m.nombre_generico);
+  if (!items.length) return <p className="text-[13px] text-gray-500">Sin terapias avanzadas seleccionadas.</p>;
+  return (
+    <div>
+      <div className="avoid-break rounded-lg px-4 py-3 mb-4" style={{ background: '#0891b210', border: '1px solid #0891b230' }}>
+        <p className="text-[12px] text-gray-700 leading-relaxed">
+          Estas son <b>opciones avanzadas</b> que tu médico consideró para tu caso. <b>No forman parte de la receta
+          oficial</b> (salvo las que estén aprobadas por COFEPRIS). Cada una explica para qué sirve y por qué se
+          sugiere; tú y tu médico deciden si las usas.
+        </p>
+      </div>
+      <div className="space-y-3">
+        {items.map((m, i) => (
+          <div key={i} className="avoid-break rounded-xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2" style={{ background: '#0891b210' }}>
+              <span className="text-lg">🧬</span>
+              <p className="font-bold text-[14px] flex-1">{m.nombre || m.nombre_generico}</p>
+              {m.cofepris === 'aprobado'
+                ? <span className="text-[8px] text-emerald-700 border border-emerald-300 rounded px-1 py-0.5">aprobado COFEPRIS</span>
+                : <span className="text-[8px] text-amber-700 border border-amber-300 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
+            </div>
+            <div className="px-4 py-2.5 space-y-1">
+              {m.combo && <p className="text-[11px]" style={{ color: '#0891b2' }}>🔗 {m.combo}</p>}
+              {(m.para_que || m.para_que_sirve) && <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: '#0891b2' }}>¿Para qué? </span>{m.para_que || m.para_que_sirve}</p>}
+              {m.por_que_encaja && <p className="text-[12px] text-gray-600"><span className="text-gray-400">Por qué en tu caso: </span>{m.por_que_encaja}</p>}
+              {m.como_se_usa && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Cómo se usa: </span>{m.como_se_usa}</p>}
+              {m.iniciar_cuando && m.iniciar_cuando.toLowerCase() !== 'ahora' && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Cuándo iniciar: </span>{m.iniciar_cuando}</p>}
+              {m.evidencia && <p className="text-[10px] text-gray-500 italic"><span className="text-gray-400">Evidencia: </span>{m.evidencia}</p>}
+              {m.disclaimer && <p className="text-[11px] text-amber-700">⚠ {m.disclaimer}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Receta clínica (para el médico/farmacia) ─────────────────────────────────
 function RecetaBody({ receta, indicaciones }: { receta: Med[]; indicaciones: string }) {
   return (
@@ -575,7 +652,6 @@ const _cambioBadge: Record<string, { t: string; c: string; bg: string }> = {
 function ReporteBody({ diagnosticos, explPac, explicacionTxt, receta, avanzados, habitos, estudios, fases, nota }:
   { diagnosticos: Dx[]; explPac: ExplPac | null; explicacionTxt: string; receta: Med[]; avanzados: Med[]; habitos: Med[]; estudios: Est[]; fases: Fase[]; nota: string }) {
   const meds = receta.filter(m => m.nombre_generico || m.nombre);
-  const avz = (avanzados || []).filter(m => m.nombre_generico || m.nombre);
   const habs = habitos.filter(h => h.nombre_generico);
   const ests = estudios.filter(e => (e.estudio || '').trim());
 
@@ -657,35 +733,7 @@ function ReporteBody({ diagnosticos, explPac, explicacionTxt, receta, avanzados,
         </>
       )}
 
-      {/* Terapias avanzadas sugeridas (péptidos / PRP / células madre) — NO van en receta */}
-      {avz.length > 0 && (
-        <>
-          <SectionTitle icon="🧬" color="#0891b2">Terapias avanzadas sugeridas (opcionales)</SectionTitle>
-          <p className="text-[11px] text-gray-500 mb-2 -mt-1">Estas opciones NO forman parte de la receta oficial; el médico las comenta contigo y tú decides.</p>
-          {avz.map((m, i) => (
-            <div key={i} className="avoid-break rounded-xl border border-gray-200 overflow-hidden mb-2">
-              <div className="flex items-center gap-2 px-4 py-2" style={{ background: '#0891b210' }}>
-                <span className="text-lg">🧬</span>
-                <p className="font-bold text-[13px] flex-1">{m.nombre || m.nombre_generico}
-                  {m.tipo && <span className="ml-2 text-[9px] font-normal text-gray-500">{m.tipo}</span>}
-                </p>
-                {m.cofepris === 'no_aprobado' && <span className="text-[8px] text-amber-700 border border-amber-300 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
-              </div>
-              <div className="px-4 py-2 space-y-1">
-                {m.combo && <p className="text-[11px]" style={{ color: '#0891b2' }}>🔗 {m.combo}</p>}
-                {(m.para_que || m.para_que_sirve) && <p className="text-[12px] text-gray-700"><span className="font-semibold" style={{ color: '#0891b2' }}>¿Para qué? </span>{m.para_que || m.para_que_sirve}</p>}
-                {m.por_que_encaja && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Por qué en tu caso: </span>{m.por_que_encaja}</p>}
-                {m.como_se_usa && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Cómo se usa: </span>{m.como_se_usa}</p>}
-                {m.iniciar_cuando && m.iniciar_cuando.toLowerCase() !== 'ahora' && <p className="text-[11px] text-gray-600"><span className="text-gray-400">Cuándo iniciar: </span>{m.iniciar_cuando}</p>}
-                {[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).length > 0 && (
-                  <p className="text-[11px] text-gray-600">{[m.presentacion, m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).join(' · ')}</p>
-                )}
-                {m.disclaimer && <p className="text-[11px] text-amber-700">⚠ {m.disclaimer}</p>}
-              </div>
-            </div>
-          ))}
-        </>
-      )}
+      {/* Los péptidos / terapias avanzadas van en su HOJA APARTE, no en el reporte del paciente. */}
 
       {/* Hábitos / estilo de vida */}
       {habs.length > 0 && (

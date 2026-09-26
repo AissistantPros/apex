@@ -628,7 +628,7 @@ interface ProtocolItem {
   para_que_sirve?: string;
 }
 
-type Peptido = { nombre?: string; para_que?: string; como_se_usa?: string; por_que_encaja?: string; disclaimer?: string; cofepris?: string; combo?: string; iniciar_cuando?: string; evidencia?: string };
+type Peptido = { nombre?: string; para_que?: string; como_se_usa?: string; por_que_encaja?: string; disclaimer?: string; cofepris?: string; combo?: string; iniciar_cuando?: string; evidencia?: string; aprobado?: boolean };
 interface ProtocolData {
   items: ProtocolItem[];
   peptidos?: Peptido[];
@@ -895,9 +895,40 @@ function splitByMomento(items: ProtocolItem[]): { ahora: number[]; pendiente: nu
   return { ahora, pendiente };
 }
 
-function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: {
+// Modal "conocer más" — la justificación completa del experto en péptidos/biohacking.
+function PeptidoModal({ p, onClose }: { p: Peptido; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.6)' }} onClick={onClose}>
+      <div className="bg-[#0a1622] border border-[rgba(8,145,178,.4)] rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-5 py-4 sticky top-0" style={{ background: 'rgba(8,145,178,.12)', backdropFilter: 'blur(4px)' }}>
+          <span className="text-xl">🧬</span>
+          <p className="font-bold text-[16px] text-[#dde6ef] flex-1">{p.nombre}</p>
+          <button onClick={onClose} className="text-[#7a95aa] hover:text-white text-xl leading-none">×</button>
+        </div>
+        <div className="px-5 py-4 space-y-3 text-[13px]">
+          <p className="text-[10px] font-mono tracking-widest text-[#0891b2]">EXPERTO EN PÉPTIDOS / BIOHACKING</p>
+          {p.combo && <div><span className="text-cyan-300/90 text-[12px]">🔗 {p.combo}</span></div>}
+          {p.para_que && <div><p className="text-[#0891b2] font-semibold text-[11px] mb-0.5">¿Para qué sirve?</p><p className="text-[#dde6ef]">{p.para_que}</p></div>}
+          {p.por_que_encaja && <div><p className="text-[#3d5870] text-[11px] mb-0.5">Por qué encaja en este caso</p><p className="text-[#c3d1de]">{p.por_que_encaja}</p></div>}
+          {p.como_se_usa && <div><p className="text-[#3d5870] text-[11px] mb-0.5">Cómo se usa</p><p className="text-[#c3d1de]">{p.como_se_usa}</p></div>}
+          {p.iniciar_cuando && <div><p className="text-[#3d5870] text-[11px] mb-0.5">Cuándo iniciar</p><p className="text-[#c3d1de]">{p.iniciar_cuando}</p></div>}
+          {p.evidencia && <div><p className="text-[#3d5870] text-[11px] mb-0.5">Evidencia / referencia</p><p className="text-[#8fa8bd] italic">{p.evidencia}</p></div>}
+          {p.disclaimer && <div className="rounded-lg p-3" style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)' }}><p className="text-amber-400/90 text-[12px]">⚠ {p.disclaimer}</p></div>}
+          <div className="text-[10px] text-[#5a7fa0] border-t border-[#1e2d3d] pt-3">
+            {p.cofepris === 'aprobado'
+              ? 'Aprobado por COFEPRIS: puede incluirse en la receta oficial.'
+              : 'No aprobado por COFEPRIS: uso off-label / magistral. Va en la hoja de terapias avanzadas, no en la receta oficial.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem, onSetPeptido }: {
   data: ProtocolData; color: string;
   approved?: boolean[]; onToggle?: (i: number) => void; onAddItem?: (item: ProtocolItem) => void;
+  onSetPeptido?: (i: number, aprobado: boolean) => void;
 }) {
   const mg = data.monitoreo_general;
   const hasFases = !!(mg && Array.isArray(mg.plan_por_fases) && mg.plan_por_fases.some(f => f && (f.fase || f.foco)));
@@ -905,6 +936,7 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
   const groups = groupProtocolItems(data.items);
   const [addingOwn, setAddingOwn] = useState(false);
   const [ownItem, setOwnItem] = useState<ProtocolItem>({ nombre_generico: '' });
+  const [pepModal, setPepModal] = useState<Peptido | null>(null);
 
   const submitOwn = () => {
     if (!ownItem.nombre_generico.trim() || !onAddItem) return;
@@ -992,30 +1024,63 @@ function ProtocolStructuredView({ data, color, approved, onToggle, onAddItem }: 
             </span>
             <div className="flex-1 h-px bg-[#1a2535]" />
           </div>
-          <p className="text-[11px] text-[#7a95aa] -mt-1">Opciones avanzadas para tu consideración — no forman parte de la receta oficial (COFEPRIS). Tú decides.</p>
-          {data.peptidos.filter(p => p && p.nombre).map((p, i) => (
-            <div key={i} className="rounded-xl border border-[rgba(8,145,178,.3)] bg-[#07141a] overflow-hidden">
+          <p className="text-[11px] text-[#7a95aa] -mt-1">Sugerencias del experto en péptidos/biohacking. NO van en la receta oficial (salvo los aprobados por COFEPRIS): van en una hoja aparte. <span className="text-[#0891b2]">Aprueba los que quieras entregar</span> — tú decides.</p>
+          {data.peptidos.map((p, i) => {
+            if (!p || !p.nombre) return null;
+            const estado = p.aprobado; // true=aprobado, false=omitido, undefined=pendiente
+            const borderCol = estado === true ? 'rgba(0,229,160,.45)' : estado === false ? '#1e2d3d' : 'rgba(8,145,178,.3)';
+            return (
+            <div key={i} className={`rounded-xl border overflow-hidden ${estado === false ? 'opacity-50' : ''}`} style={{ borderColor: borderCol, background: '#07141a' }}>
               <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap" style={{ background: 'rgba(8,145,178,.08)' }}>
                 <span className="text-lg">🧬</span>
                 <p className="font-bold text-[14px] text-[#dde6ef] flex-1">{p.nombre}</p>
+                {estado === true && <span className="text-[8px] text-[#00e5a0] border border-[#00e5a0]/50 rounded px-1 py-0.5">✓ aprobado</span>}
                 {p.iniciar_cuando && p.iniciar_cuando.toLowerCase() !== 'ahora' && (
                   <span className="text-[8px] text-sky-300 border border-sky-500/40 rounded px-1 py-0.5">diferido</span>
                 )}
-                {p.cofepris === 'no_aprobado' && <span className="text-[8px] text-amber-400 border border-amber-500/40 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
+                {p.cofepris === 'aprobado'
+                  ? <span className="text-[8px] text-emerald-400 border border-emerald-500/40 rounded px-1 py-0.5">COFEPRIS ✓</span>
+                  : <span className="text-[8px] text-amber-400 border border-amber-500/40 rounded px-1 py-0.5">no aprobado COFEPRIS</span>}
               </div>
               <div className="px-4 py-3 space-y-1.5 text-[12px]">
                 {p.combo && <p className="text-cyan-300/90 text-[11px]">🔗 {p.combo}</p>}
                 {p.para_que && <p className="text-[#dde6ef]"><span className="text-[#0891b2] font-semibold">¿Para qué? </span>{p.para_que}</p>}
                 {p.por_que_encaja && <p className="text-[#7a95aa]"><span className="text-[#3d5870]">Por qué encaja aquí: </span>{p.por_que_encaja}</p>}
-                {p.como_se_usa && <p className="text-[#7a95aa]"><span className="text-[#3d5870]">Cómo se usa: </span>{p.como_se_usa}</p>}
                 {p.iniciar_cuando && p.iniciar_cuando.toLowerCase() !== 'ahora' && <p className="text-sky-300/90"><span className="text-[#3d5870]">Cuándo iniciar: </span>{p.iniciar_cuando}</p>}
-                {p.evidencia && <p className="text-[#5a7fa0] text-[11px] italic"><span className="text-[#3d5870]">Evidencia: </span>{p.evidencia}</p>}
-                {p.disclaimer && <p className="text-amber-400/90 text-[11px]">⚠ {p.disclaimer}</p>}
+                {/* Acciones del médico */}
+                <div className="flex items-center gap-2 pt-2 flex-wrap">
+                  {onSetPeptido && (
+                    <>
+                      <button type="button" onClick={() => onSetPeptido(i, true)}
+                        className="text-[11px] font-semibold px-3 py-1.5 rounded-lg transition"
+                        style={estado === true
+                          ? { background: '#00e5a0', color: '#000' }
+                          : { background: 'rgba(0,229,160,.12)', color: '#00e5a0', border: '1px solid rgba(0,229,160,.3)' }}>
+                        {estado === true ? '✓ Se entregará' : '＋ Aprobar'}
+                      </button>
+                      <button type="button" onClick={() => onSetPeptido(i, false)}
+                        className="text-[11px] px-3 py-1.5 rounded-lg transition"
+                        style={estado === false
+                          ? { background: '#1e2d3d', color: '#7a95aa' }
+                          : { color: '#7a95aa', border: '1px solid #1e2d3d' }}>
+                        {estado === false ? 'Omitido' : 'Omitir'}
+                      </button>
+                    </>
+                  )}
+                  <button type="button" onClick={() => setPepModal(p)}
+                    className="text-[11px] px-3 py-1.5 rounded-lg text-[#0891b2] border border-[#0891b2]/30 hover:bg-[#0891b2]/10 transition">
+                    Conocer más ↗
+                  </button>
+                </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {/* Modal "conocer más" del experto en péptidos */}
+      {pepModal && <PeptidoModal p={pepModal} onClose={() => setPepModal(null)} />}
 
       {onAddItem && (
         addingOwn ? (
@@ -2433,6 +2498,16 @@ function DiagnosisCard({
     });
   };
 
+  // Aprobar / omitir un péptido sugerido (se persiste en el protocolo → se refleja en el reporte).
+  const handleSetPeptido = (i: number, aprobado: boolean) => {
+    setState(prev => {
+      const pd = parseProtocolJson(prev.doctor_text);
+      if (!pd || !Array.isArray(pd.peptidos)) return prev;
+      const peptidos = pd.peptidos.map((p, j) => j === i ? { ...p, aprobado } : p);
+      return { ...prev, doctor_text: JSON.stringify({ ...pd, peptidos }) };
+    });
+  };
+
   const handleToggleSelect = (rawLine: string) => {
     setState(prev => {
       const lines = prev.doctor_text.split('\n');
@@ -2529,7 +2604,8 @@ function DiagnosisCard({
       {/* Protocolo estructurado (JSON) — prioridad */}
       {protocolData ? (
         <ProtocolStructuredView data={protocolData} color={color}
-          approved={approved} onToggle={handleToggleApproved} onAddItem={handleAddProtocolItem} />
+          approved={approved} onToggle={handleToggleApproved} onAddItem={handleAddProtocolItem}
+          onSetPeptido={handleSetPeptido} />
       ) : longData ? (
         /* Diagnóstico de LONGEVIDAD estructurado (JSON) — vista modular gráfica */
         <LongevityStructuredView data={longData} color={color} onToggleStudy={handleToggleLongStudy} />
