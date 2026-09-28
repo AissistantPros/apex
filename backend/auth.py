@@ -80,8 +80,10 @@ def get_actor(authorization: Optional[str]) -> dict:
     """
     user_id = _resolve_user_id(authorization)
     try:
-        from db import get_doctor_profile
-        prof = get_doctor_profile(user_id) or {}
+        # Perfil ligero (sin foto/logo base64): get_actor corre en CADA request, así que
+        # traer las imágenes aquí dispararía el egress de Supabase.
+        from db import get_doctor_identity
+        prof = get_doctor_identity(user_id) or {}
     except Exception:
         prof = {}
     role = prof.get("role") or "doctor"

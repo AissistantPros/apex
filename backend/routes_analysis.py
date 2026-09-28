@@ -19,6 +19,7 @@ from db import (
     log_prescriptions, get_prescription_stats,
     get_vademecum_by_voice, get_clinical_baselines, search_kb,
     get_doctor_profile,
+    get_doctor_identity,
 )
 from services.knowledge_base import (
     embed_consulta, embeddings_disponibles, formatear_fragmentos,
@@ -583,7 +584,7 @@ def _clinic_from_doctor(doctor_id: str):
     if not doctor_id:
         return None
     try:
-        p = get_doctor_profile(doctor_id) or {}
+        p = get_doctor_identity(doctor_id) or {}  # solo clinic_id — evita traer la foto base64
         return p.get("clinic_id") or doctor_id
     except Exception:
         return doctor_id

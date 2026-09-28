@@ -83,6 +83,16 @@ def get_doctor_profile(doctor_id: str) -> dict:
     result = supabase.table("doctor_profiles").select("*").eq("id", doctor_id).execute()
     return result.data[0] if result.data else None
 
+# Columnas ligeras para identidad/permisos — NO trae photo_url ni clinic_logo_url (base64
+# de imágenes, decenas/cientos de KB) que inflarían el egress al leerse en CADA request.
+_IDENTITY_COLS = "id, role, parent_doctor_id, clinic_id, is_local_admin, username, email, display_name, permissions"
+
+def get_doctor_identity(doctor_id: str) -> dict:
+    """Perfil MÍNIMO para autenticación/autorización (sin imágenes base64). Se usa en el
+    hot path (get_actor corre en cada request), así que evita traer photo_url/clinic_logo_url."""
+    result = supabase.table("doctor_profiles").select(_IDENTITY_COLS).eq("id", doctor_id).execute()
+    return result.data[0] if result.data else None
+
 def upsert_doctor_profile(doctor_id: str, data: dict) -> dict:
     data["id"] = doctor_id
     data["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
