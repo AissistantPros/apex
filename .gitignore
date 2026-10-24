@@ -43,3 +43,8 @@ out/
 
 # Entorno local de Marker (modelos pesados, no va al repo)
 .venv-marker/
+
+# Libros y material de investigacion pesados
+Libros/
+libros-y-borradores/
+Peptidos/
