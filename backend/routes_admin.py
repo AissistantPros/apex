@@ -53,6 +53,8 @@ class ClinicIn(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    # Marca del consultorio (colores, tipografías, datos para documentos). Ver services/branding.py
+    brand: Optional[dict] = None
 
 class LocationIn(BaseModel):
     name: str
@@ -91,7 +93,7 @@ async def create_clinic(body: ClinicIn, authorization: Optional[str] = Header(No
     actor = _require_admin(authorization)
     if not body.name.strip():
         raise HTTPException(400, "El nombre de la clínica es requerido")
-    row = {**body.dict(), "name": body.name.strip(), "created_by": actor["user_id"]}
+    row = {**body.dict(exclude_unset=True), "name": body.name.strip(), "created_by": actor["user_id"]}
     r = supabase.table("clinics").insert(row).execute()
     return r.data[0] if r.data else {}
 
@@ -123,7 +125,8 @@ async def clinic_detail(clinic_id: str, authorization: Optional[str] = Header(No
 @router.put("/clinics/{clinic_id}")
 async def update_clinic(clinic_id: str, body: ClinicIn, authorization: Optional[str] = Header(None)):
     _require_admin(authorization)
-    supabase.table("clinics").update({**body.dict(), "name": body.name.strip()})\
+    # exclude_unset: lo que el formulario no manda (p. ej. brand) no se borra.
+    supabase.table("clinics").update({**body.dict(exclude_unset=True), "name": body.name.strip()})\
         .eq("id", clinic_id).execute()
     return {"ok": True}
 

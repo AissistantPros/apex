@@ -312,6 +312,12 @@ async def whoami(authorization: Optional[str] = Header(None)):
         actor["entitlements"] = get_entitlements(actor.get("clinic_id"))
     except Exception:
         actor["entitlements"] = None
+    # Marca del consultorio (nombre, logo, colores) para personalizar la interfaz y los documentos
+    try:
+        from services.branding import get_clinic_branding
+        actor["clinic_brand"] = get_clinic_branding(actor.get("clinic_id"))
+    except Exception:
+        actor["clinic_brand"] = None
     return actor
 
 

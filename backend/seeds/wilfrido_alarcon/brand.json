@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "fuente": "Imagen del proyecto en Mkt101 (propuesta pendiente de aprobación del doctor)",
+  "colors": {
+    "primary": "#042C64",
+    "accent": "#E4040C",
+    "accent_text": "#CC040C",
+    "dark": "#0B1626",
+    "secondary": "#1F4E9C",
+    "surface": "#EAF1F9",
+    "muted": "#44566C",
+    "success": "#168A5C",
+    "white": "#FFFFFF"
+  },
+  "palette": [
+    {"nombre": "Azul Marino Alarcón", "hex": "#042C64", "uso": "Del logotipo (la W y el nombre). Color principal: títulos, encabezados, fondos de marca y botones principales."},
+    {"nombre": "Rojo Latido", "hex": "#E4040C", "uso": "Del logotipo (corazón y línea de latido). Acento: avisos de urgencia y pequeños detalles. Poco y en poca cantidad."},
+    {"nombre": "Rojo Eslogan", "hex": "#CC040C", "uso": "Del logotipo (eslogan). Rojo para texto sobre fondo claro: contrasta mejor que el Rojo Latido."},
+    {"nombre": "Azul Medianoche", "hex": "#0B1626", "uso": "Fondo oscuro de secciones destacadas. Sobre este fondo el logotipo va en su versión blanca."},
+    {"nombre": "Azul Acero", "hex": "#1F4E9C", "uso": "Azul intermedio para enlaces, botones secundarios, iconos y gráficas."},
+    {"nombre": "Azul Hielo", "hex": "#EAF1F9", "uso": "Fondo claro de secciones y tarjetas."},
+    {"nombre": "Gris Pizarra", "hex": "#44566C", "uso": "Texto de apoyo y datos secundarios. Contraste sobre blanco superior a 7 a 1."},
+    {"nombre": "Verde Salud", "hex": "#168A5C", "uso": "Solo confirmaciones e indicadores positivos. No es color de marca."},
+    {"nombre": "Blanco", "hex": "#FFFFFF", "uso": "Fondo base y texto sobre azul marino o azul medianoche."}
+  ],
+  "fonts": {
+    "heading": "Alegreya Sans",
+    "heading_weight": 800,
+    "body": "Lato",
+    "google_css": "https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700;800&family=Lato:ital,wght@0,400;0,700;1,400&display=swap"
+  },
+  "tagline": "Cardiólogo Intervencionista",
+  "doctor": {
+    "nombre": "Dr. Wilfrido Alarcón García",
+    "nombre_corto": "Dr. Wilfrido Alarcón G.",
+    "titulo": "Cardiólogo clínico, hemodinamista e intervencionista cardiovascular",
+    "cedulas": [
+      {"numero": "7849116", "especialidad": "Médico Cirujano", "institucion": "Universidad Anáhuac Mayab", "anio": "2012"},
+      {"numero": "11079560", "especialidad": "Cardiología", "institucion": "UMAE #34 IMSS Monterrey, avalada por la UDEM", "anio": "2018"}
+    ],
+    "especialidades": ["Cardiología clínica", "Hemodinamia", "Intervencionismo cardiovascular"]
+  },
+  "contacto": {
+    "tel_citas": "998 403 5057",
+    "urgencias": "Urgencias 24 h · Amerimed",
+    "web": "cardiologoalarcon.com",
+    "direccion": "Consultorio 1 · Torre Médica Amerimed, Av. Tulum Sur 260, planta baja, Cancún, Quintana Roo",
+    "horario": "Lunes a sábado, 8:30 a 14:00 h"
+  },
+  "reglas_logo": "Usar siempre el archivo original; no deformar, rotar, cambiar colores ni agregar sombras. Tamaño mínimo 2.5 cm impreso; abajo de eso, solo el símbolo. Versión blanca solo sobre fondos oscuros (pendiente de aprobación del doctor)."
+}

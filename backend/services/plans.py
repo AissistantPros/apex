@@ -34,7 +34,12 @@ FEATURE_LABELS = {
 _BASE = {"agenda", "pacientes", "consulta", "contabilidad", "documentos", "chat_equipo",
          "ia_reportes", "ia_consulta", "marketing"}
 
+# Lite = solo control del consultorio: pacientes, agenda, visitas, cobros/gastos y documentos.
+# Sin IA (ni diagnóstico, ni reportes, ni chat), sin marketing y sin chat de equipo.
+_LITE = {"agenda", "pacientes", "consulta", "contabilidad", "documentos"}
+
 PLAN_PRESETS = {
+    "apex_lite":       set(_LITE),
     "apex":            set(_BASE),
     "apex_funcional":  _BASE | {"biblioteca", "sala_espera", "ia_funcional"},
     "apex_longevidad": _BASE | {"biblioteca", "sala_espera", "ia_longevidad"},
@@ -42,6 +47,7 @@ PLAN_PRESETS = {
 }
 
 PLAN_LABELS = {
+    "apex_lite": "Apex Lite (control de consultorio)",
     "apex": "Apex (administración)",
     "apex_funcional": "Apex Pro · Funcional",
     "apex_longevidad": "Apex Pro · Longevidad",
@@ -49,6 +55,7 @@ PLAN_LABELS = {
 }
 
 DEFAULT_LIMITS = {
+    "apex_lite":       {"max_users": 3,  "max_locations": 1},
     "apex":            {"max_users": 5,  "max_locations": 1},
     "apex_funcional":  {"max_users": 10, "max_locations": 3},
     "apex_longevidad": {"max_users": 10, "max_locations": 3},
