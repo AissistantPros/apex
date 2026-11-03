@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { getSession } from '@/app/lib/auth';
 
 export interface Note {
   id: string;
@@ -51,6 +52,14 @@ function absoluteTime(isoDate: string): string {
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
+// El backend exige sesión válida para crear/borrar notas (antes no la validaba).
+async function authHeaders(json = false): Promise<Record<string, string>> {
+  const session = await getSession();
+  const h: Record<string, string> = json ? { 'Content-Type': 'application/json' } : {};
+  if (session?.access_token) h.Authorization = `Bearer ${session.access_token}`;
+  return h;
+}
+
 export default function NoteThread({
   patientId, visitId, notes, onNoteAdded, onNoteDeleted,
   defaultRole = 'doctor', compact = false,
@@ -69,7 +78,7 @@ export default function NoteThread({
     try {
       const res = await fetch(`${BACKEND()}/patients/${patientId}/notes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(true),
         body: JSON.stringify({
           content: text.trim(),
           author_role: role,
@@ -93,7 +102,10 @@ export default function NoteThread({
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar esta nota?')) return;
     try {
-      await fetch(`${BACKEND()}/patients/${patientId}/notes/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${BACKEND()}/patients/${patientId}/notes/${id}`, {
+        method: 'DELETE', headers: await authHeaders(),
+      });
+      if (!res.ok) throw new Error();
       onNoteDeleted(id);
     } catch {
       alert('Error al eliminar');

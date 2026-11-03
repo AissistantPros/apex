@@ -26,7 +26,8 @@ def check_duplicate_patients(first_name: str, last_name: str, date_of_birth: str
     fn = first_name.strip().lower()
     ln = last_name.strip().lower()
     result = supabase.table("patients").select(
-        "id, full_name, first_name, last_name, date_of_birth, birth_date, registration_phase, created_at"
+        "id, full_name, first_name, last_name, date_of_birth, birth_date, registration_phase, created_at, "
+        "clinic_id, doctor_id"
     ).ilike("first_name", fn).ilike("last_name", ln).execute()
     if not result.data:
         return []
@@ -122,9 +123,13 @@ def get_patient_notes(patient_id: str) -> list:
     result = supabase.table("patient_notes").select("*").eq("patient_id", patient_id).order("created_at", desc=False).execute()
     return result.data if result.data else []
 
-def delete_patient_note(note_id: str) -> bool:
-    """Elimina una nota por ID"""
-    supabase.table("patient_notes").delete().eq("id", note_id).execute()
+def delete_patient_note(note_id: str, patient_id: str | None = None) -> bool:
+    """Elimina una nota por ID. Con `patient_id` solo borra si la nota es de ese paciente
+    (evita borrar notas de otra clínica pasando un note_id ajeno bajo un paciente propio)."""
+    q = supabase.table("patient_notes").delete().eq("id", note_id)
+    if patient_id:
+        q = q.eq("patient_id", patient_id)
+    q.execute()
     return True
 
 def insert_analysis(analysis_data: dict) -> dict:

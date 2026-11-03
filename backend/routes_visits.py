@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from typing import Optional
 from uuid import uuid4
 from datetime import datetime
 import traceback
-from auth import get_doctor_id_from_token
+from auth import get_doctor_id_from_token, get_actor
+from tenant import enforce_tenant, assert_patient, strip_protected
 from db import (
     insert_visit,
     get_visit,
@@ -11,7 +12,7 @@ from db import (
     list_patient_visits as db_list_patient_visits,
 )
 
-router = APIRouter(prefix="/visits", tags=["visits"])
+router = APIRouter(prefix="/visits", tags=["visits"], dependencies=[Depends(enforce_tenant)])
 
 # Campos numéricos de la tabla visits — strings vacíos se convierten a None
 NUMERIC_VISIT_FIELDS = {
@@ -73,6 +74,8 @@ async def create_visit_root(
     patient_id = visit_data.get("patient_id")
     if not patient_id:
         raise HTTPException(400, "patient_id requerido")
+    # El id viene en el cuerpo (no en la ruta): se valida aquí que sea de tu clínica.
+    assert_patient(get_actor(authorization), patient_id)
     # Pasar doctor_id ya resuelto para evitar bug de FieldInfo en llamada directa
     doctor_id = get_doctor_id_from_token(authorization)
     return await create_visit(patient_id, visit_data, doctor_id=doctor_id)
@@ -95,13 +98,15 @@ async def create_visit(
 
         visit_id = str(uuid4())
 
+        # Lo que manda el cliente va primero; las anclas van después para que NO puedan
+        # sobrescribirse (antes un patient_id/doctor_id en el cuerpo ganaba).
         raw_data = {
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            **strip_protected(visit_data),
             "id": visit_id,
             "patient_id": patient_id,
             "doctor_id": doctor_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-            **visit_data,
         }
         save_data = clean_visit_data(raw_data)
 
@@ -152,7 +157,7 @@ async def update_visit_data(
     """Actualizar datos de una visita (Fase 3: exploración médica)"""
     try:
         data["updated_at"] = datetime.utcnow().isoformat()
-        data = clean_visit_data(data)
+        data = clean_visit_data(strip_protected(data))   # no se mueve una visita de paciente/clínica
         result = update_visit(visit_id, data)
         if not result:
             raise HTTPException(404, "Visita no encontrada")

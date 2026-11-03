@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from typing import Optional
 from datetime import datetime
 from auth import get_doctor_id_from_token
+from tenant import enforce_tenant, patient_belongs, strip_protected
 from db import (
     insert_patient,
     get_patient,
@@ -16,7 +17,7 @@ from db import (
     check_duplicate_patients,
 )
 
-router = APIRouter(prefix="/patients", tags=["patients"])
+router = APIRouter(prefix="/patients", tags=["patients"], dependencies=[Depends(enforce_tenant)])
 
 # Campos de tipo date en patients — strings vacíos causan error
 DATE_PATIENT_FIELDS = {"date_of_birth", "birth_date"}
@@ -68,7 +69,14 @@ async def check_duplicate(
 ):
     """Verifica si ya existe un paciente con el mismo nombre y fecha de nacimiento"""
     try:
-        matches = check_duplicate_patients(first_name, last_name, date_of_birth)
+        from auth import get_actor
+        actor = get_actor(authorization)
+        # Solo duplicados dentro de la clínica de quien pregunta (y sin exponer las anclas).
+        matches = [
+            {k: v for k, v in m.items() if k not in ("clinic_id", "doctor_id")}
+            for m in check_duplicate_patients(first_name, last_name, date_of_birth)
+            if patient_belongs(actor, m)
+        ]
         return {"duplicates": matches, "count": len(matches)}
     except HTTPException:
         raise
@@ -179,7 +187,8 @@ async def update_patient_data(
         from auth import get_actor
         from access import filter_write
         actor = get_actor(authorization)
-        data = filter_write(data, actor["role"])
+        # El ancla (id, clinic_id, doctor_id) no se reasigna desde el cliente.
+        data = strip_protected(filter_write(data, actor["role"]))
         if not data:
             raise HTTPException(403, "Tu rol no puede editar estos campos")
         data["updated_at"] = datetime.utcnow().isoformat()
@@ -254,7 +263,7 @@ async def create_note(patient_id: str, data: dict, authorization: Optional[str] 
 async def remove_note(patient_id: str, note_id: str, authorization: Optional[str] = Header(None)):
     """Eliminar una nota"""
     try:
-        delete_patient_note(note_id)
+        delete_patient_note(note_id, patient_id)
         return {"deleted": True, "id": note_id}
     except HTTPException:
         raise

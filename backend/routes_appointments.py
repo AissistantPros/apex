@@ -8,13 +8,15 @@ El admin proveedor no participa (no es parte de una clínica).
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 
 from auth import get_actor
 from db import supabase
 
-router = APIRouter(prefix="/appointments", tags=["agenda"])
+from tenant import enforce_tenant, assert_patient, patient_belongs
+
+router = APIRouter(prefix="/appointments", tags=["agenda"], dependencies=[Depends(enforce_tenant)])
 
 ROLES_AGENDA = {"doctor", "receptionist", "nurse"}
 ESTADOS = {"scheduled", "confirmed", "arrived", "done", "cancelled", "no_show"}
@@ -140,7 +142,7 @@ async def patient_search(q: str, authorization: Optional[str] = Header(None)):
         .ilike("full_name", f"%{q}%").limit(20).execute().data or []
     # Solo pacientes de esta clínica
     out = [{"id": r["id"], "full_name": r.get("full_name"), "phone": r.get("phone"), "email": r.get("email")}
-           for r in rows if r.get("clinic_id") == clinic or r.get("doctor_id") == clinic][:8]
+           for r in rows if patient_belongs(actor, r)][:8]
     return {"results": out}
 
 
@@ -272,8 +274,8 @@ async def patient_brief(pid: str, authorization: Optional[str] = Header(None)):
     if not pr:
         raise HTTPException(404, "Paciente no encontrado")
     p = pr[0]
-    if p.get("clinic_id") not in (clinic, None) and p.get("doctor_id") != clinic:
-        raise HTTPException(403, "Ese paciente no pertenece a tu clínica")
+    if not patient_belongs(actor, p):
+        raise HTTPException(404, "Paciente no encontrado")
     from services.plans import require_ai
     require_ai(clinic, "sala_espera")   # servicio contratado + créditos
     visits = supabase.table("visits").select("*").eq("patient_id", pid)\
@@ -421,6 +423,8 @@ async def create_appointment(body: ApptIn, authorization: Optional[str] = Header
     if not (body.patient_name or body.patient_id):
         raise HTTPException(400, "Indica el paciente")
     clinic = _clinic_of(actor)
+    if body.patient_id:
+        assert_patient(actor, body.patient_id)   # no se agenda a un paciente de otra clínica
     choque = _conflict(clinic, body.starts_at, body.ends_at, body.location_id, body.doctor_id)
     if choque:
         raise HTTPException(409, choque)
@@ -499,6 +503,8 @@ async def update_appointment(appt_id: str, body: dict, authorization: Optional[s
               "patient_phone", "patient_email", "reason", "notes", "status",
               "notify_email", "notify_whatsapp"}
     patch = {k: v for k, v in (body or {}).items() if k in campos}
+    if patch.get("patient_id"):
+        assert_patient(actor, patch["patient_id"])
     if "status" in patch and patch["status"] not in ESTADOS:
         patch.pop("status")
     # Si cambia el horario/lugar y no es cancelación, revalida choques.

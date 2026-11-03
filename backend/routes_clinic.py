@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
+from tenant import assert_patient, assert_visit
 from pydantic import BaseModel
 
 from auth import get_actor
@@ -175,6 +176,10 @@ async def pending_charges(authorization: Optional[str] = Header(None)):
 @router.post("/sales")
 async def create_sale(body: SaleIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
+    if body.patient_id:
+        assert_patient(actor, body.patient_id)   # el cobro solo se liga a pacientes de la clínica
+    if body.visit_id:
+        assert_visit(actor, body.visit_id)
     items = [i.model_dump() for i in body.items]
     if not items:
         raise HTTPException(400, "La venta no tiene conceptos")

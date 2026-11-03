@@ -12,13 +12,14 @@ Por ley el expediente debe conservarse, así que no se borra a la ligera:
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 
 from auth import get_actor
 from db import supabase
+from tenant import enforce_tenant, patient_belongs
 
-router = APIRouter(prefix="/deletions", tags=["bajas-expediente"])
+router = APIRouter(prefix="/deletions", tags=["bajas-expediente"], dependencies=[Depends(enforce_tenant)])
 
 ROLES_SOLICITAN = {"doctor", "receptionist", "nurse"}
 
@@ -63,8 +64,8 @@ async def request_deletion(body: RequestIn, authorization: Optional[str] = Heade
     if not pat:
         raise HTTPException(404, "Paciente no encontrado")
     p = pat[0]
-    if p.get("clinic_id") not in (clinic, None) and p.get("doctor_id") != clinic:
-        raise HTTPException(403, "Ese paciente no pertenece a tu clínica")
+    if not patient_belongs(actor, p):
+        raise HTTPException(404, "Paciente no encontrado")
     # Evita solicitudes duplicadas
     dup = supabase.table("deletion_requests").select("id")\
         .eq("patient_id", body.patient_id).eq("status", "pending").execute().data

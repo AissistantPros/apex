@@ -6,6 +6,7 @@ Cada paso recibe la versión CONFIRMADA por el médico del paso anterior.
 
 from fastapi import APIRouter, HTTPException, Depends, Header, BackgroundTasks
 from fastapi.responses import StreamingResponse
+from tenant import enforce_tenant
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -43,7 +44,7 @@ from services.system_prompt import (
     build_visit_context,
 )
 
-router = APIRouter(prefix="/analyze", tags=["analysis"])
+router = APIRouter(prefix="/analyze", tags=["analysis"], dependencies=[Depends(enforce_tenant)])
 client = Anthropic()
 
 # ── DeepSeek para los 3 pasos de diagnóstico caros (opcional, con fallback a Opus) ──
