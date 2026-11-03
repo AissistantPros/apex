@@ -7,6 +7,7 @@ import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useRevealScroll } from '@/app/lib/useRevealScroll';
 import PhotoCropModal from '@/app/components/PhotoCropModal';
 import { getRole } from '@/app/lib/role';
+import { usaConsultaLite } from '@/app/lib/consultaLite';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -71,6 +72,19 @@ export default function PatientPage() {
   };
 
   useEffect(() => { setRole(getRole()); }, []);
+
+  // Consultorios Lite (IA de consulta apagada) capturan la consulta con el formulario básico.
+  const [lite, setLite] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await getSession();
+        if (!s?.access_token) return;
+        const r = await fetch(`${BACKEND()}/staff/entitlements`, { headers: { Authorization: `Bearer ${s.access_token}` } });
+        if (r.ok) setLite(usaConsultaLite((await r.json()).features));
+      } catch { /* sin datos del plan: se usa el flujo normal */ }
+    })();
+  }, []);
 
   useEffect(() => {
     getUser().then(async u => {
@@ -190,7 +204,7 @@ export default function PatientPage() {
             {/* Botones acción */}
             <div className="flex gap-2 flex-shrink-0">
               <button
-                onClick={() => router.push(`/dashboard/patient/${patientId}/new-visit`)}
+                onClick={() => router.push(`/dashboard/patient/${patientId}/${lite ? 'consulta' : 'new-visit'}`)}
                 className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
               >
                 + Nueva Visita
@@ -415,6 +429,21 @@ export default function PatientPage() {
                       </div>
                     );
                   })}
+                </div>
+              </Section>
+            )}
+
+            {/* Heredofamiliares capturados en la consulta (familiar · enfermedad · edad) */}
+            {Array.isArray(patient.family_other_history) && patient.family_other_history.length > 0 && (
+              <Section title="Heredofamiliares registrados" icon="🧬">
+                <div className="space-y-2">
+                  {patient.family_other_history.map((r: any, i: number) => (
+                    <div key={i} className="bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-sm text-[#dde6ef]">
+                      <span className="font-semibold">{r.parentesco}</span>
+                      <span className="text-[#7a95aa]"> · {r.enfermedad}</span>
+                      {r.detalle && <span className="text-[#7a95aa]"> · {r.detalle}</span>}
+                    </div>
+                  ))}
                 </div>
               </Section>
             )}
@@ -949,6 +978,27 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
               )}
             </VisitSection>
           )}
+
+          {/* Consulta Lite: cierre y seguimiento */}
+          {v.dynamic_answers?.lite && (() => {
+            const L = v.dynamic_answers.lite;
+            const c = L.cierre || {};
+            const sg = L.seguimiento || {};
+            const hf = L.heredofamiliar || {};
+            if (!(c.plan || c.evolucion || c.estudios_solicitados || c.proxima_cita || sg.efectos_adversos || sg.pa_domicilio || sg.hospitalizado_desde || hf.cardiopatia_precoz)) return null;
+            return (
+              <VisitSection title={L.kind === 'follow_up' ? 'Seguimiento' : 'Plan'} icon="📋">
+                {hf.cardiopatia_precoz && <Info label="Heredofamiliar" value="Familiar con cardiopatía precoz" />}
+                {sg.hospitalizado_desde && <Info label="Hospitalización o urgencias" value={sg.hospitalizado_desde} />}
+                {sg.efectos_adversos && <Info label="Efectos adversos" value={sg.efectos_adversos} />}
+                {sg.pa_domicilio && <Info label="Presión en casa" value={sg.pa_domicilio} />}
+                {c.evolucion && <Info label="Evolución" value={c.evolucion} />}
+                {c.plan && <Info label="Plan e indicaciones" value={c.plan} />}
+                {c.estudios_solicitados && <Info label="Estudios solicitados" value={c.estudios_solicitados} />}
+                {c.proxima_cita && <Info label="Próxima cita" value={new Date(c.proxima_cita + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })} />}
+              </VisitSection>
+            );
+          })()}
 
         </div>
       )}
