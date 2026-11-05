@@ -25,9 +25,9 @@ type Overview = {
 
 // Paleta del tema
 const C = {
-  bg: '#070a0e', card: '#0d1520', border: '#1e2d3d', text: '#dde6ef',
-  muted: '#7a95aa', faint: '#3d5870',
-  green: '#00e5a0', blue: '#0ea5e9', purple: '#a78bfa', amber: '#f59e0b', pink: '#f472b6',
+  bg: 'var(--c-bg)', card: 'var(--c-card)', border: 'var(--c-border)', text: 'var(--c-text)',
+  muted: 'var(--c-text-2)', faint: 'var(--c-text-3)',
+  green: 'var(--c-green)', blue: 'var(--c-blue)', purple: 'var(--c-violet)', amber: 'var(--c-amber)', pink: 'var(--c-pink)',
 };
 const CAT = [C.green, C.blue, C.purple, C.amber, C.pink]; // colores categóricos
 
@@ -113,7 +113,7 @@ function Dona({ data }: { data: Punto[] }) {
   return (
     <div className="flex items-center gap-5">
       <svg width="140" height="140" viewBox="0 0 140 140" className="shrink-0">
-        <circle cx={cx} cy={cy} r={R} fill="none" stroke="#111820" strokeWidth={R - r} />
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--c-subtle)" strokeWidth={R - r} />
         {segs.map((s, i) => (
           <circle key={i} cx={cx} cy={cy} r={R} fill="none" stroke={s.color} strokeWidth={R - r}
             strokeDasharray={`${s.dash} ${C2 - s.dash}`} strokeDashoffset={-s.offset}

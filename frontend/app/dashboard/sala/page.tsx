@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
+import { mix } from '@/app/lib/ui';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -30,8 +31,8 @@ async function api(path: string, opts: RequestInit = {}) {
 }
 
 const STAGE: Record<string, { label: string; color: string; phase: number }> = {
-  nursing: { label: 'Espera enfermería', color: '#f97316', phase: 2 },
-  doctor:  { label: 'Espera doctor',     color: '#a78bfa', phase: 3 },
+  nursing: { label: 'Espera enfermería', color: 'var(--c-orange)', phase: 2 },
+  doctor:  { label: 'Espera doctor',     color: 'var(--c-violet)', phase: 3 },
 };
 
 const espera = (iso?: string) => {
@@ -82,15 +83,15 @@ export default function SalaPage() {
     <div className="min-h-screen bg-[#070a0e]">
       <main className="page-content pt-16 px-4 sm:px-6 py-8 max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-1">
-          <h1 className="text-2xl font-serif font-semibold text-[#dde6ef]">🛎️ Sala de espera</h1>
+          <h1 className="text-2xl font-serif font-semibold text-[#dde6ef]"> Sala de espera</h1>
           {waiting.length > 0 && (
-            <span className="text-xs font-mono px-2.5 py-1 rounded-full" style={{ color: '#00e5a0', background: 'rgba(0,229,160,.10)', border: '1px solid rgba(0,229,160,.30)' }}>
+            <span className="text-xs font-mono px-2.5 py-1 rounded-full" style={{ color: 'var(--c-green)', background: 'var(--c-green-10)', border: '1px solid var(--c-green-30)' }}>
               {waiting.length} esperando
             </span>
           )}
         </div>
         <p className="text-sm text-[#7a95aa] mb-5">Pacientes en atención ahora mismo, en orden de llegada. La lista se actualiza sola.</p>
-        {msg && <div className="mb-4 text-sm px-4 py-2.5 rounded-xl bg-[rgba(244,63,94,.1)] border border-[#f43f5e44] text-[#f43f5e]">{msg}</div>}
+        {msg && <div className="mb-4 text-sm px-4 py-2.5 rounded-xl bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-[#f43f5e]">{msg}</div>}
 
         {loading ? <p className="text-[#7a95aa] text-sm">Cargando…</p> : waiting.length === 0 ? (
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-8 text-center text-[#7a95aa]">
@@ -99,31 +100,31 @@ export default function SalaPage() {
         ) : (
           <div className="space-y-2.5">
             {waiting.map((p, i) => {
-              const st = STAGE[p.stage] || { label: p.stage, color: '#7a95aa', phase: 2 };
+              const st = STAGE[p.stage] || { label: p.stage, color: 'var(--c-text-2)', phase: 2 };
               return (
                 <div key={p.id} className="bg-[#0d1520] border rounded-2xl p-4 flex items-center gap-4"
-                  style={{ borderColor: i === 0 ? '#00e5a0' : '#1e2d3d' }}>
+                  style={{ borderColor: i === 0 ? 'var(--c-green)' : 'var(--c-border)' }}>
                   <div className="text-center shrink-0 w-9">
-                    <p className="text-lg font-bold" style={{ color: i === 0 ? '#00e5a0' : '#dde6ef' }}>{i + 1}</p>
+                    <p className="text-lg font-bold" style={{ color: i === 0 ? 'var(--c-green)' : 'var(--c-text)' }}>{i + 1}</p>
                     {i === 0 && <p className="text-[9px] font-mono text-[#00e5a0]">SIGUE</p>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-[#dde6ef] truncate">{p.full_name || 'Paciente'}</p>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full" style={{ color: st.color, background: `${st.color}1a` }}>{st.label}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full" style={{ color: st.color, background: mix(st.color, 10) }}>{st.label}</span>
                       {p.care_type === 'funcional_longevidad' && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full text-[#a78bfa] bg-[#a78bfa]/15">Funcional/Longevidad</span>}
                     </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[#7a95aa] mt-0.5">
                       {p.edad != null && <span>{p.edad} años</span>}
                       <span>{espera(p.esperando_desde)}</span>
-                      {p.alergias && <span className="text-[#f43f5e]">⚠ Alergias: {p.alergias}</span>}
+                      {p.alergias && <span className="text-[#f43f5e]"> Alergias: {p.alergias}</span>}
                     </div>
                     {p.nota_recepcion && (
                       <p className="text-[11px] text-[#7a95aa] mt-1 line-clamp-2"><span className="text-[#0ea5e9]">Recepción:</span> {p.nota_recepcion}</p>
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5 shrink-0">
-                    <button onClick={() => atender(p)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#00e5a0', color: '#000' }}>Atender</button>
+                    <button onClick={() => atender(p)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>Atender</button>
                     {isDoctor && p.stage === 'doctor' && (
                       <button onClick={() => verResumen(p)} className="px-3 py-1.5 rounded-lg text-xs text-[#a78bfa] border border-[#a78bfa]/40">Ver resumen</button>
                     )}
@@ -140,7 +141,7 @@ export default function SalaPage() {
         <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4" onClick={() => setBrief(null)}>
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             {brief.loading || briefLoading ? (
-              <p className="text-[#7a95aa] text-sm py-8 text-center">🧠 Generando resumen con IA…</p>
+              <p className="text-[#7a95aa] text-sm py-8 text-center"> Generando resumen con IA…</p>
             ) : (
               <>
                 <div className="flex items-baseline gap-2 mb-3">
@@ -157,7 +158,7 @@ export default function SalaPage() {
                 </div>
                 <div className="flex gap-2 mt-4">
                   <div className="flex-1" />
-                  <button onClick={() => setBrief(null)} className="px-4 py-2 rounded-lg text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>Cerrar</button>
+                  <button onClick={() => setBrief(null)} className="px-4 py-2 rounded-lg text-sm font-bold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>Cerrar</button>
                 </div>
               </>
             )}

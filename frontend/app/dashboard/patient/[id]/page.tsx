@@ -7,7 +7,7 @@ import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useRevealScroll } from '@/app/lib/useRevealScroll';
 import PhotoCropModal from '@/app/components/PhotoCropModal';
 import { getRole } from '@/app/lib/role';
-import { usaConsultaLite } from '@/app/lib/consultaLite';
+import { useEntitlements } from '@/app/lib/useEntitlements';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -74,17 +74,7 @@ export default function PatientPage() {
   useEffect(() => { setRole(getRole()); }, []);
 
   // Consultorios Lite (IA de consulta apagada) capturan la consulta con el formulario básico.
-  const [lite, setLite] = useState(false);
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await getSession();
-        if (!s?.access_token) return;
-        const r = await fetch(`${BACKEND()}/staff/entitlements`, { headers: { Authorization: `Bearer ${s.access_token}` } });
-        if (r.ok) setLite(usaConsultaLite((await r.json()).features));
-      } catch { /* sin datos del plan: se usa el flujo normal */ }
-    })();
-  }, []);
+  const { lite } = useEntitlements();
 
   useEffect(() => {
     getUser().then(async u => {
@@ -187,13 +177,13 @@ export default function PatientPage() {
                 <img src={patient.photo_url} alt="foto"
                   className="w-20 h-20 rounded-2xl object-cover border-2 border-[#1e2d3d] group-hover:border-[#00e5a0] transition" />
               ) : (
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-2xl font-black text-white group-hover:opacity-80 transition">
-                  {uploadingPhoto ? '⏳' : (initials || '?')}
+                <div className="w-20 h-20 rounded-2xl bg-[#1e2d3d] text-[#7a95aa] flex items-center justify-center text-2xl font-semibold group-hover:opacity-80 transition">
+                  {uploadingPhoto ? '…' : (initials || '?')}
                 </div>
               )}
               <div className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                 <span className="text-white text-xs font-bold text-center leading-tight px-1">
-                  {uploadingPhoto ? 'Subiendo...' : '📷 Cambiar'}
+                  {uploadingPhoto ? 'Subiendo…' : 'Cambiar foto'}
                 </span>
               </div>
             </div>
@@ -207,13 +197,13 @@ export default function PatientPage() {
                 onClick={() => router.push(`/dashboard/patient/${patientId}/${lite ? 'consulta' : 'new-visit'}`)}
                 className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
               >
-                + Nueva Visita
+                {lite ? 'Nueva consulta' : 'Nueva visita'}
               </button>
               <button
                 onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=1`)}
                 className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition"
               >
-                ✏️ Editar
+                Editar
               </button>
               <button
                 onClick={async () => {
@@ -233,27 +223,27 @@ export default function PatientPage() {
                 className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition whitespace-nowrap"
                 title="Envía al paciente la última prescripción del médico"
               >
-                ✉️ Enviar prescripción
+                Enviar prescripción
               </button>
             </div>
           </div>
           {/* Datos rápidos — fila completa, repartida con etiquetas */}
           <div className="flex flex-wrap gap-2.5 mt-5 pt-5 border-t border-[#1e2d3d]">
-            {age !== null && <Chip icon="🎂" label="Edad" text={`${age} años`} />}
-            {dob        && <Chip icon="📅" label="Nacimiento" text={new Date(dob+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'})} />}
-            {patient.sexo_biologico && <Chip icon="🧬" label="Sexo" text={patient.sexo_biologico} color={patient.sexo_biologico==='Masculino'?'#0ea5e9':'#ec4899'} />}
-            {patient.occupation    && <Chip icon="💼" label="Ocupación" text={patient.occupation} />}
-            {patient.city          && <Chip icon="📍" label="Ciudad" text={patient.city} />}
+            {age !== null && <Chip icon="" label="Edad" text={`${age} años`} />}
+            {dob        && <Chip icon="" label="Nacimiento" text={new Date(dob+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'})} />}
+            {patient.sexo_biologico && <Chip icon="" label="Sexo" text={patient.sexo_biologico} color={patient.sexo_biologico==='Masculino'?'var(--c-blue)':'var(--c-pink)'} />}
+            {patient.occupation    && <Chip icon="" label="Ocupación" text={patient.occupation} />}
+            {patient.city          && <Chip icon="" label="Ciudad" text={patient.city} />}
             {patient.registration_phase === 'complete'
-              ? <Chip icon="✅" label="Estado" text="Registro completo" color="#00e5a0" />
-              : <Chip icon="⏳" label="Estado" text="Registro incompleto" color="#f59e0b" />}
+              ? <Chip icon="" label="Estado" text="Registro completo" color="var(--c-green)" />
+              : <Chip icon="" label="Estado" text="Registro incompleto" color="var(--c-amber)" />}
           </div>
         </div>
 
         {/* ── Banner registro pendiente ── */}
         {patient.registration_phase && patient.registration_phase !== 'complete' && (
           <div className="mb-6 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-2xl px-5 py-4 flex items-center gap-4">
-            <span className="text-2xl">⏳</span>
+            <span className="text-2xl"></span>
             <div className="flex-1">
               <p className="text-sm font-semibold text-[#f59e0b]">Registro pendiente</p>
               <p className="text-xs text-[#7a95aa] mt-0.5">
@@ -272,15 +262,15 @@ export default function PatientPage() {
         )}
 
         {/* ── Tabs ── */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-6 mb-6" style={{ borderBottom: '1px solid var(--c-border)' }}>
           {[
-            { key: 'ficha',   label: role === 'receptionist' ? '📋 Ficha' : '📋 Ficha clínica' },
+            { key: 'ficha',   label: role === 'receptionist' ? ' Ficha' : ' Ficha clínica' },
             // Las visitas son clínicas: recepción no las ve
-            ...(role !== 'receptionist' ? [{ key: 'visitas', label: `🗓 Visitas (${visits.length})` }] : []),
+            ...(role !== 'receptionist' ? [{ key: 'visitas', label: ` Visitas (${visits.length})` }] : []),
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key as any)}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold transition"
-              style={{ background: tab===t.key?'#0ea5e9':'#0d1520', color: tab===t.key?'#000':'#7a95aa', border: `1px solid ${tab===t.key?'#0ea5e9':'#1e2d3d'}` }}>
+              className="px-1 pb-3 -mb-px text-[15px] font-medium transition"
+              style={{ color: tab===t.key ? 'var(--c-primary)' : 'var(--c-text-2)', borderBottom: `2px solid ${tab===t.key ? 'var(--c-primary)' : 'transparent'}` }}>
               {t.label}
             </button>
           ))}
@@ -293,7 +283,7 @@ export default function PatientPage() {
           <div className="space-y-5">
 
             {/* Datos generales */}
-            <Section title="Datos generales" icon="👤">
+            <Section title="Datos generales" icon="">
               <Grid>
                 <Info label="Nombre completo"   value={patient.full_name} />
                 <Info label="Fecha de nacimiento" value={dob ? new Date(dob+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'}) : undefined} />
@@ -306,7 +296,7 @@ export default function PatientPage() {
             {/* Contacto y captación: NO los ve enfermería */}
             {role !== 'nurse' && <>
             {/* Contacto */}
-            <Section title="Contacto" icon="📱">
+            <Section title="Contacto" icon="">
               <Grid>
                 <Info label="Correo"       value={patient.email} />
                 <Info label="Celular"      value={patient.phone} />
@@ -327,7 +317,7 @@ export default function PatientPage() {
 
             {/* Cómo nos conoció */}
             {(patient.sources_of_contact?.length > 0 || patient.referred_other || patient.social_network || patient.prev_redes || patient.prev_web || patient.prev_gmaps) && (
-              <Section title="¿Cómo nos conoció? / ¿Revisó antes?" icon="🔍">
+              <Section title="¿Cómo nos conoció? / ¿Revisó antes?" icon="">
                 {Array.isArray(patient.sources_of_contact) && patient.sources_of_contact.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
                     {patient.sources_of_contact.map((s: string) => (
@@ -343,9 +333,9 @@ export default function PatientPage() {
                   <div className="mt-3">
                     <p className="text-xs font-mono text-[#3d5870] mb-2 uppercase tracking-wider">Revisó antes de venir</p>
                     <div className="flex flex-wrap gap-2">
-                      {patient.prev_redes && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]">📲 Redes sociales</span>}
-                      {patient.prev_web   && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]">🌐 Página web</span>}
-                      {patient.prev_gmaps && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]">📍 Google Maps</span>}
+                      {patient.prev_redes && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]"> Redes sociales</span>}
+                      {patient.prev_web   && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]"> Página web</span>}
+                      {patient.prev_gmaps && <span className="px-3 py-1 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full text-xs text-[#6366f1]"> Google Maps</span>}
                     </div>
                   </div>
                 )}
@@ -356,7 +346,7 @@ export default function PatientPage() {
             {/* Todo el bloque clínico: NO lo ve recepción */}
             {role !== 'receptionist' && <>
             {/* Antecedentes médicos */}
-            <Section title="Antecedentes médicos" icon="🏥">
+            <Section title="Antecedentes médicos" icon="">
               <Grid>
                 <Info label="Enfermedades crónicas"    value={patient.chronic_diseases} />
                 <Info label="Cirugías"                 value={patient.surgeries} />
@@ -377,7 +367,7 @@ export default function PatientPage() {
 
             {/* Medicamentos actuales */}
             {Array.isArray(patient.medications) && patient.medications.length > 0 && (
-              <Section title="Medicamentos actuales" icon="💊">
+              <Section title="Medicamentos actuales" icon="">
                 <div className="space-y-3">
                   {patient.medications.map((m: any, i: number) => (
                     <div key={i} className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-3">
@@ -396,7 +386,7 @@ export default function PatientPage() {
 
             {/* Historia familiar */}
             {patient.family_history_table && (
-              <Section title="Historia heredofamiliar" icon="🧬">
+              <Section title="Historia heredofamiliar" icon="">
                 <div className="space-y-3">
                   {(['padre','madre','hermanos'] as const).map(fam => {
                     const row = patient.family_history_table[fam];
@@ -435,7 +425,7 @@ export default function PatientPage() {
 
             {/* Heredofamiliares capturados en la consulta (familiar · enfermedad · edad) */}
             {Array.isArray(patient.family_other_history) && patient.family_other_history.length > 0 && (
-              <Section title="Heredofamiliares registrados" icon="🧬">
+              <Section title="Heredofamiliares registrados" icon="">
                 <div className="space-y-2">
                   {patient.family_other_history.map((r: any, i: number) => (
                     <div key={i} className="bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-sm text-[#dde6ef]">
@@ -449,7 +439,7 @@ export default function PatientPage() {
             )}
 
             {/* Hábitos */}
-            <Section title="Hábitos" icon="🌿">
+            <Section title="Hábitos" icon="">
               <Grid>
                 <Info label="Tabaquismo"       value={patient.smoking_status} />
                 {patient.smoking_status && patient.smoking_status !== 'Nunca' && <>
@@ -474,7 +464,7 @@ export default function PatientPage() {
             {/* Historia clínica privada — MÉDICO */}
             <div className="bg-[#0d1520] border border-[#a78bfa]/30 rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-[#dde6ef] mb-4 flex items-center gap-2">
-                🔒 Historia clínica privada
+                 Historia clínica privada
                 <span className="text-xs font-normal text-[#a78bfa] bg-[#a78bfa]/10 px-2 py-0.5 rounded-full border border-[#a78bfa]/20">Solo médico</span>
               </h3>
               <div className="space-y-5">
@@ -488,7 +478,7 @@ export default function PatientPage() {
                 {/* Reproductiva femenina */}
                 {patient.sexo_biologico === 'Femenino' && (
                   <div>
-                    <p className="text-xs font-mono text-[#ec4899] mb-2 uppercase tracking-wider">🌸 Historia gineco-obstétrica</p>
+                    <p className="text-xs font-mono text-[#ec4899] mb-2 uppercase tracking-wider"> Historia gineco-obstétrica</p>
                     <Grid>
                       <Info label="Menarca (edad)"       value={patient.menarca_age} />
                       <Info label="Ciclos menstruales"   value={patient.ciclos_regulares} />
@@ -508,7 +498,7 @@ export default function PatientPage() {
                 {/* Reproductiva masculina */}
                 {patient.sexo_biologico === 'Masculino' && (
                   <div>
-                    <p className="text-xs font-mono text-[#0ea5e9] mb-2 uppercase tracking-wider">♂ Historia reproductiva masculina</p>
+                    <p className="text-xs font-mono text-[#0ea5e9] mb-2 uppercase tracking-wider"> Historia reproductiva masculina</p>
                     <Grid>
                       <Info label="Disfunción eréctil"       value={patient.erectile_dysfunction} />
                       <Info label="Uso de testosterona"       value={patient.testosterone_use} />
@@ -522,7 +512,7 @@ export default function PatientPage() {
 
                 {/* Salud sexual */}
                 <div>
-                  <p className="text-xs font-mono text-[#a78bfa] mb-2 uppercase tracking-wider">💛 Salud sexual</p>
+                  <p className="text-xs font-mono text-[#a78bfa] mb-2 uppercase tracking-wider"> Salud sexual</p>
                   <Grid>
                     <Info label="Libido basal"  value={patient.libido_basal ? `${patient.libido_basal}/10` : undefined} />
                   </Grid>
@@ -531,7 +521,7 @@ export default function PatientPage() {
 
                 {/* Salud mental */}
                 <div>
-                  <p className="text-xs font-mono text-[#a78bfa] mb-2 uppercase tracking-wider">🧠 Salud mental</p>
+                  <p className="text-xs font-mono text-[#a78bfa] mb-2 uppercase tracking-wider"> Salud mental</p>
                   <Grid>
                     <Info label="Diagnósticos psiquiátricos"   value={patient.dx_psiquiatrico} />
                     <Info label="Medicamentos psiquiátricos"   value={patient.med_psiquiatrica} />
@@ -542,7 +532,7 @@ export default function PatientPage() {
                 {/* Sustancias recreativas */}
                 {patient.sust_recreativas && (
                   <div>
-                    <p className="text-xs font-mono text-[#a78bfa] mb-2 uppercase tracking-wider">🌿 Sustancias recreativas</p>
+                    <p className="text-xs font-mono text-[#a78bfa] mb-2 uppercase tracking-wider"> Sustancias recreativas</p>
                     <p className="text-sm text-[#dde6ef]">{patient.sust_recreativas}</p>
                   </div>
                 )}
@@ -553,7 +543,7 @@ export default function PatientPage() {
             {/* Notas del equipo */}
             <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-[#dde6ef] flex items-center gap-2 mb-4">
-                📝 Notas del equipo
+                 Notas del equipo
                 {patientNotes.length > 0 && (
                   <span className="text-xs font-mono text-[#3d5870] font-normal">{patientNotes.length} nota{patientNotes.length>1?'s':''}</span>
                 )}
@@ -570,13 +560,13 @@ export default function PatientPage() {
             <div className="mt-2 border border-[#f43f5e]/20 rounded-2xl p-5 bg-[#f43f5e]/5">
               <button onClick={() => setShowDanger(!showDanger)}
                 className="flex items-center gap-2 text-[#f43f5e] font-semibold text-sm hover:opacity-80 transition">
-                ⚠️ Baja de expediente {showDanger ? '▲' : '▼'}
+                 Baja de expediente {showDanger ? '▲' : '▼'}
               </button>
               {showDanger && (
                 <div ref={dangerRevealRef} className="mt-4 space-y-3">
                   {pendingDel ? (
                     <div className="bg-[#f59e0b]/10 border border-[#f59e0b]/40 rounded-xl p-4">
-                      <p className="text-sm font-bold text-[#f59e0b]">⏳ Baja pendiente de aprobación del doctor</p>
+                      <p className="text-sm font-bold text-[#f59e0b]"> Baja pendiente de aprobación del doctor</p>
                       <p className="text-xs text-[#7a95aa] mt-1">Ya se solicitó la baja de este expediente. Solo el doctor puede aprobarla desde su plataforma. Nadie más puede borrarlo.</p>
                       {pendingDel.reason && <p className="text-xs text-[#7a95aa] mt-1">Motivo: <span className="text-[#dde6ef]">{pendingDel.reason}</span></p>}
                     </div>
@@ -589,7 +579,7 @@ export default function PatientPage() {
                       {!confirmDelete ? (
                         <button onClick={() => setConfirmDelete(true)}
                           className="px-5 py-2.5 bg-[#f43f5e]/20 text-[#f43f5e] border border-[#f43f5e]/40 text-sm font-bold rounded-xl hover:bg-[#f43f5e]/30 transition">
-                          🗑 Solicitar baja de expediente
+                           Solicitar baja de expediente
                         </button>
                       ) : (
                         <div ref={confirmRevealRef} className="bg-[#f43f5e]/10 border border-[#f43f5e]/50 rounded-xl p-4 space-y-3">
@@ -624,7 +614,7 @@ export default function PatientPage() {
           <div className="space-y-4">
             {visitsError && (
               <div className="text-center py-6 bg-[rgba(244,63,94,.08)] border border-[#f43f5e]/40 rounded-2xl">
-                <p className="text-[#f43f5e] font-medium">⚠ No se pudieron cargar las visitas: {visitsError}</p>
+                <p className="text-[#f43f5e] font-medium"> No se pudieron cargar las visitas: {visitsError}</p>
                 <button onClick={() => loadData()}
                   className="mt-3 px-4 py-2 border border-[#f43f5e]/40 text-[#f43f5e] text-sm rounded-lg hover:bg-[#f43f5e]/10 transition">
                   Reintentar
@@ -633,7 +623,7 @@ export default function PatientPage() {
             )}
             {visits.length === 0 && !visitsError ? (
               <div className="text-center py-16 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl">
-                <p className="text-4xl mb-3">🗓</p>
+                <p className="text-4xl mb-3"></p>
                 <p className="text-[#7a95aa] text-lg font-medium">No hay visitas registradas</p>
                 <button onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=2`)}
                   className="mt-4 px-6 py-3 bg-[#00e5a0] text-black font-bold rounded-xl hover:opacity-90 transition">
@@ -668,17 +658,17 @@ export default function PatientPage() {
 
 // ─── Sub-componentes ───────────────────────────────────────────────────────
 
-const Chip = ({ icon, label, text, color }: { icon: string; label: string; text: string; color?: string }) => (
-  <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#111820] border border-[#1e2d3d] rounded-full text-sm">
-    <span>{icon}</span>
-    <span className="text-[#3d5870] text-xs uppercase tracking-wide">{label}</span>
-    <span style={{ color: color || '#dde6ef' }}>{text}</span>
+const CHIP_TONO: Record<string, string> = { 'var(--c-green)': 'var(--c-success)', 'var(--c-amber)': 'var(--c-warn)' };
+const Chip = ({ label, text, color }: { icon?: string; label: string; text: string; color?: string }) => (
+  <span className="inline-flex items-baseline gap-2 px-3 py-1.5 bg-[#111820] border border-[#1e2d3d] rounded-lg text-sm">
+    <span className="text-[#3d5870] text-xs">{label}</span>
+    <span style={{ color: (color && CHIP_TONO[color]) || 'var(--c-text)', fontWeight: 500 }}>{text}</span>
   </span>
 );
 
-const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
+const Section = ({ title, children }: { title: string; icon?: string; children: React.ReactNode }) => (
   <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
-    <h3 className="text-sm font-semibold text-[#dde6ef] mb-4 flex items-center gap-2">{icon} {title}</h3>
+    <h3 className="text-[15px] font-semibold text-[#dde6ef] mb-4">{title}</h3>
     {children}
   </div>
 );
@@ -755,7 +745,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
             <span className="text-xs font-mono bg-[#0ea5e9]/10 text-[#0ea5e9] border border-[#0ea5e9]/20 px-2.5 py-1 rounded-full">
               Visita #{index}
             </span>
-            <span className="text-xs text-[#3d5870] capitalize">{date}</span>
+            <span className="text-xs text-[#3d5870]">{date.charAt(0).toUpperCase() + date.slice(1)}</span>
           </div>
           <span className="text-[#3d5870] text-lg ml-4">{expanded ? '▲' : '▼'}</span>
         </div>
@@ -777,7 +767,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
           {/* Signos vitales */}
           {(v.pa_der_sistolica || fc || temp || v.spo2 || glucosa) && (
-            <VisitSection title="Signos vitales" icon="❤️">
+            <VisitSection title="Signos vitales" icon="">
               <Grid>
                 {v.pa_der_sistolica && <Info label="PA Derecha"       value={`${v.pa_der_sistolica}/${v.pa_der_diastolica} mmHg`} />}
                 {v.pa_izq_sistolica && <Info label="PA Izquierda"     value={`${v.pa_izq_sistolica}/${v.pa_izq_diastolica} mmHg`} />}
@@ -822,7 +812,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
           {/* Actividad física */}
           {v.actividad_si !== undefined && v.actividad_si !== null && (
-            <VisitSection title="Actividad física" icon="🏃">
+            <VisitSection title="Actividad física" icon="">
               <p className="text-sm text-[#dde6ef] mb-2">{v.actividad_si ? 'Sí realiza actividad física regularmente' : 'No realiza actividad física regular'}</p>
               {v.actividad_si && (
                 <Grid>
@@ -836,7 +826,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
           {/* Pruebas funcionales */}
           {(v.fuerza_mano_der || v.marcha_4m || v.equilibrio_seg || v.sentarse_levantarse) && (
-            <VisitSection title="Pruebas funcionales" icon="💪">
+            <VisitSection title="Pruebas funcionales" icon="">
               <Grid>
                 <Info label="Fuerza prensil Der." value={v.fuerza_mano_der  ? `${v.fuerza_mano_der} kg`  : undefined} />
                 <Info label="Fuerza prensil Izq." value={v.fuerza_mano_izq  ? `${v.fuerza_mano_izq} kg`  : undefined} />
@@ -849,7 +839,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
           {/* Reporte subjetivo */}
           {(v.energia_despertar || v.sueno_calidad || v.metas) && (
-            <VisitSection title="Reporte subjetivo del paciente" icon="🧠">
+            <VisitSection title="Reporte subjetivo del paciente" icon="">
               <Grid>
                 <Info label="Energía al despertar" value={v.energia_despertar ? `${v.energia_despertar}/10` : undefined} />
                 <Info label="Energía por la tarde" value={v.energia_tarde     ? `${v.energia_tarde}/10`     : undefined} />
@@ -906,7 +896,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
           {/* Exploración física */}
           {(v.exploracion_general || v.exploracion_piel || v.exploracion_abdomen) && (
-            <VisitSection title="Exploración física" icon="🔬">
+            <VisitSection title="Exploración física" icon="">
               <Grid>
                 <Info label="Aspecto general"       value={v.exploracion_general} />
                 <Info label="Piel / Faneras"         value={v.exploracion_piel} />
@@ -926,17 +916,17 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
           {/* Diagnóstico y protocolo autorizados por el doctor */}
           {analysisLoading && (
-            <VisitSection title="Diagnóstico y protocolo" icon="🩺">
+            <VisitSection title="Diagnóstico y protocolo" icon="">
               <p className="text-sm text-[#3d5870]">Cargando…</p>
             </VisitSection>
           )}
           {!analysisLoading && analysis?.status === 'closed' && (
-            <VisitSection title="Diagnóstico y protocolo (autorizado por el doctor)" icon="🩺">
+            <VisitSection title="Diagnóstico y protocolo (autorizado por el doctor)" icon="">
               <div className="space-y-4">
                 {[
-                  { label: 'Diagnóstico convencional', dx: analysis.doctor_traditional, proto: analysis.protocol_traditional, color: '#0ea5e9' },
-                  { label: 'Diagnóstico funcional',     dx: analysis.doctor_functional,  proto: analysis.protocol_functional,  color: '#00e5a0' },
-                  { label: 'Diagnóstico de longevidad',  dx: analysis.doctor_longevity,   proto: analysis.protocol_longevity,   color: '#a78bfa' },
+                  { label: 'Diagnóstico convencional', dx: analysis.doctor_traditional, proto: analysis.protocol_traditional, color: 'var(--c-blue)' },
+                  { label: 'Diagnóstico funcional',     dx: analysis.doctor_functional,  proto: analysis.protocol_functional,  color: 'var(--c-green)' },
+                  { label: 'Diagnóstico de longevidad',  dx: analysis.doctor_longevity,   proto: analysis.protocol_longevity,   color: 'var(--c-violet)' },
                 ].filter(s => (s.dx && s.dx.trim()) || (s.proto && s.proto.trim())).map(s => (
                   <div key={s.label} className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-4">
                     <p className="text-xs font-mono uppercase tracking-wider mb-2" style={{ color: s.color }}>{s.label}</p>
@@ -954,7 +944,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
 
           {/* Laboratorios */}
           {(v.labs_notas || v.dx_presuntivo || (Array.isArray(v.labs_files) && v.labs_files.length > 0)) && (
-            <VisitSection title="Laboratorios y diagnóstico" icon="🧪">
+            <VisitSection title="Laboratorios y diagnóstico" icon="">
               {v.labs_notas && <Info label="Notas de laboratorio" value={v.labs_notas} />}
               {v.dx_presuntivo && (
                 <div className="mt-3 p-3 bg-[#a78bfa]/10 border border-[#a78bfa]/20 rounded-xl">
@@ -968,7 +958,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
                   <div className="space-y-1.5">
                     {v.labs_files.map((f: any, i: number) => (
                       <div key={i} className="flex items-center gap-2 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2">
-                        <span>{f.type?.includes('pdf') ? '📄' : f.type?.startsWith('image') ? '🖼️' : '📝'}</span>
+                        <span>{f.type?.includes('pdf') ? '' : f.type?.startsWith('image') ? '' : ''}</span>
                         <span className="text-xs text-[#dde6ef] flex-1 truncate">{f.name}</span>
                         <span className="text-xs text-[#3d5870]">{f.size ? `${(f.size/1024).toFixed(0)} KB` : ''}</span>
                       </div>
@@ -987,7 +977,7 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
             const hf = L.heredofamiliar || {};
             if (!(c.plan || c.evolucion || c.estudios_solicitados || c.proxima_cita || sg.efectos_adversos || sg.pa_domicilio || sg.hospitalizado_desde || hf.cardiopatia_precoz)) return null;
             return (
-              <VisitSection title={L.kind === 'follow_up' ? 'Seguimiento' : 'Plan'} icon="📋">
+              <VisitSection title={L.kind === 'follow_up' ? 'Seguimiento' : 'Plan'} icon="">
                 {hf.cardiopatia_precoz && <Info label="Heredofamiliar" value="Familiar con cardiopatía precoz" />}
                 {sg.hospitalizado_desde && <Info label="Hospitalización o urgencias" value={sg.hospitalizado_desde} />}
                 {sg.efectos_adversos && <Info label="Efectos adversos" value={sg.efectos_adversos} />}
@@ -1045,11 +1035,9 @@ const ProtocolMiniList = ({ rawText }: { rawText: string }) => {
   );
 };
 
-const VisitSection = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
+const VisitSection = ({ title, children }: { title: string; icon?: string; children: React.ReactNode }) => (
   <div>
-    <p className="text-xs font-mono text-[#3d5870] uppercase tracking-wider mb-3 flex items-center gap-1.5">
-      <span>{icon}</span>{title}
-    </p>
+    <p className="text-[13px] font-semibold text-[#7a95aa] mb-3">{title}</p>
     {children}
   </div>
 );

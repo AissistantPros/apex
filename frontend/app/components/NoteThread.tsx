@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getSession } from '@/app/lib/auth';
+import { mix } from '@/app/lib/ui';
 
 export interface Note {
   id: string;
@@ -23,9 +24,9 @@ interface Props {
 }
 
 const ROLES = [
-  { key: 'receptionist', label: 'Recepción',  color: '#0ea5e9', bg: 'rgba(14,165,233,.12)', icon: '🟦' },
-  { key: 'nurse',        label: 'Enfermería', color: '#f97316', bg: 'rgba(249,115,22,.12)',  icon: '🟨' },
-  { key: 'doctor',       label: 'Médico',     color: '#a78bfa', bg: 'rgba(167,139,250,.12)', icon: '🟣' },
+  { key: 'receptionist', label: 'Recepción',  color: 'var(--c-blue)', bg: 'rgba(14,165,233,.12)', icon: '' },
+  { key: 'nurse',        label: 'Enfermería', color: 'var(--c-orange)', bg: 'rgba(249,115,22,.12)',  icon: '' },
+  { key: 'doctor',       label: 'Médico',     color: 'var(--c-violet)', bg: 'rgba(167,139,250,.12)', icon: '' },
 ];
 
 function roleConfig(key: string) {
@@ -121,7 +122,7 @@ export default function NoteThread({
       {notes.length === 0 ? (
         !compact && (
           <div className="text-center py-6 text-[#3d5870] text-sm">
-            <p className="text-2xl mb-1">📝</p>
+            <p className="text-2xl mb-1"></p>
             <p>Sin notas aún</p>
           </div>
         )
@@ -135,14 +136,14 @@ export default function NoteThread({
                 onMouseEnter={() => setHoverId(n.id)}
                 onMouseLeave={() => setHoverId(null)}
                 className="relative rounded-xl p-4 transition"
-                style={{ background: rc2.bg, border: `1px solid ${rc2.color}33` }}
+                style={{ background: rc2.bg, border: `1px solid ${mix(rc2.color, 20)}` }}
               >
                 {/* Header */}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className="text-xs font-bold px-2 py-0.5 rounded-full"
-                      style={{ color: rc2.color, background: `${rc2.color}22` }}
+                      style={{ color: rc2.color, background: mix(rc2.color, 13) }}
                     >
                       {rc2.icon} {rc2.label}
                     </span>
@@ -198,8 +199,8 @@ export default function NoteThread({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
                 style={{
                   background: role === r.key ? r.bg : 'transparent',
-                  color: role === r.key ? r.color : '#7a95aa',
-                  border: `1px solid ${role === r.key ? r.color + '66' : '#1e2d3d'}`,
+                  color: role === r.key ? r.color : 'var(--c-text-2)',
+                  border: `1px solid ${role === r.key ? mix(r.color, 40) : 'var(--c-border)'}`,
                 }}
               >
                 {r.icon} {r.label}
@@ -222,7 +223,7 @@ export default function NoteThread({
             onChange={e => setText(e.target.value)}
             placeholder="Escribe tu nota aquí..."
             className="w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-lg text-sm text-[#dde6ef] placeholder-[#3d5870] outline-none resize-none"
-            style={{ borderColor: text ? rc.color + '66' : undefined }}
+            style={{ borderColor: text ? mix(rc.color, 40) : undefined }}
             autoFocus
           />
 
@@ -232,7 +233,7 @@ export default function NoteThread({
             {([['general', 'Todos'], ['nurse', 'Enfermería'], ['doctor', 'Médico']] as const).map(([v, l]) => (
               <button key={v} type="button" onClick={() => setAudiencia(v)}
                 className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition"
-                style={{ background: audiencia === v ? '#00e5a0' : '#111820', color: audiencia === v ? '#000' : '#7a95aa' }}>{l}</button>
+                style={{ background: audiencia === v ? 'var(--c-green)' : 'var(--c-subtle)', color: audiencia === v ? 'var(--c-primary-fg)' : 'var(--c-text-2)' }}>{l}</button>
             ))}
           </div>
 
@@ -248,7 +249,7 @@ export default function NoteThread({
               onClick={handleAdd}
               disabled={!text.trim() || saving}
               className="px-4 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-40"
-              style={{ background: rc.color, color: '#000' }}
+              style={{ background: rc.color, color: 'var(--c-primary-fg)' }}
             >
               {saving ? 'Guardando...' : 'Guardar nota'}
             </button>

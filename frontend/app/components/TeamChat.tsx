@@ -89,7 +89,17 @@ export default function TeamChat() {
   useEffect(() => {
     const r = getRole();
     setRoleState(r);
-    setEnabled(['admin', 'doctor', 'receptionist', 'nurse'].includes(r));
+    const elegible = ['admin', 'doctor', 'receptionist', 'nurse'].includes(r);
+    setEnabled(elegible);
+    // Si el consultorio no tiene chat de equipo contratado (p. ej. Apex Lite), no se muestra.
+    if (elegible && r !== 'admin') {
+      (async () => {
+        try {
+          const rs = await fetch(`${B()}/staff/entitlements`, { headers: await authHeaders() });
+          if (rs.ok && (await rs.json()).features?.chat_equipo === false) setEnabled(false);
+        } catch { /* sin datos del plan: se deja como estaba */ }
+      })();
+    }
     // Permiso de notificaciones (para avisar de mensajes nuevos)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});

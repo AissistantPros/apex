@@ -7,13 +7,13 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
-        serif: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
-        mono: ['"SF Mono"', 'ui-monospace', 'Menlo', 'Consolas', 'monospace'],
+        sans: ['"IBM Plex Sans"', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        serif: ['"IBM Plex Sans"', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        mono: ['"IBM Plex Sans"', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
       },
       fontSize: {
-        xs:   ['16px', { lineHeight: '1.5' }],
-        sm:   ['16px', { lineHeight: '1.5' }],
+        xs:   ['13px', { lineHeight: '1.45' }],
+        sm:   ['15px', { lineHeight: '1.5' }],
         base: ['16px', { lineHeight: '1.6' }],
         lg:   ['18px', { lineHeight: '1.6' }],
         xl:   ['20px', { lineHeight: '1.5' }],

@@ -40,7 +40,7 @@ const Lab = ({ t, children, hint }: { t: string; children: React.ReactNode; hint
   </div>
 );
 
-function Pills<T extends string>({ options, value, onChange, labels, accent = '#0ea5e9' }: {
+function Pills<T extends string>({ options, value, onChange, labels, accent = 'var(--c-blue)' }: {
   options: readonly T[]; value: T | ''; onChange: (v: T | '') => void;
   labels?: Record<string, string>; accent?: string;
 }) {
@@ -51,7 +51,7 @@ function Pills<T extends string>({ options, value, onChange, labels, accent = '#
         return (
           <button key={o} type="button" onClick={() => onChange(on ? '' : o)}
             className="px-4 min-h-[44px] rounded-full border text-sm font-semibold transition"
-            style={{ background: on ? accent : '#111820', borderColor: on ? accent : '#1e2d3d', color: on ? '#000' : '#dde6ef' }}>
+            style={{ background: on ? accent : 'var(--c-subtle)', borderColor: on ? accent : 'var(--c-border)', color: on ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
             {labels?.[o] ?? o}
           </button>
         );
@@ -171,7 +171,7 @@ export default function ConsultaLitePage() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Pills options={['first_visit', 'follow_up'] as const} value={kind}
-              onChange={v => v && setKind(v)} labels={KIND_LABEL} accent="#00e5a0" />
+              onChange={v => v && setKind(v)} labels={KIND_LABEL} accent="var(--c-green)" />
             <span className="text-xs text-[#7a95aa]">
               {first ? 'Historia clínica completa' : 'Nota de evolución: solo lo que cambió'}
             </span>
@@ -256,7 +256,7 @@ export default function ConsultaLitePage() {
                 return (
                   <button key={k} type="button" onClick={() => set(k as any, !on as any)}
                     className="px-4 min-h-[44px] rounded-full border text-sm font-semibold transition"
-                    style={{ background: on ? '#f59e0b' : '#111820', borderColor: on ? '#f59e0b' : '#1e2d3d', color: on ? '#000' : '#dde6ef' }}>{label}</button>
+                    style={{ background: on ? 'var(--c-amber)' : 'var(--c-subtle)', borderColor: on ? 'var(--c-amber)' : 'var(--c-border)', color: on ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>{label}</button>
                 );
               })}
             </div>
@@ -296,7 +296,7 @@ export default function ConsultaLitePage() {
                   return (
                     <button key={c} type="button" onClick={() => set('condiciones', on ? f.condiciones.filter(x => x !== c) : [...f.condiciones, c])}
                       className="px-4 min-h-[44px] rounded-full border text-sm font-semibold transition"
-                      style={{ background: on ? '#0ea5e9' : '#111820', borderColor: on ? '#0ea5e9' : '#1e2d3d', color: on ? '#000' : '#dde6ef' }}>{c}</button>
+                      style={{ background: on ? 'var(--c-blue)' : 'var(--c-subtle)', borderColor: on ? 'var(--c-blue)' : 'var(--c-border)', color: on ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>{c}</button>
                   );
                 })}
               </div>

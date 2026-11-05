@@ -3,9 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
+import Icon from '@/app/components/Icon';
+import { useEntitlements } from '@/app/lib/useEntitlements';
 
 export default function PatientsPage() {
   const router = useRouter();
+  const { lite } = useEntitlements();
   const [user, setUser] = useState<any>(null);
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -50,9 +53,7 @@ export default function PatientsPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-serif font-semibold text-[#dde6ef]">
-              👥 Mis Pacientes
-            </h1>
+            <h1 className="text-[#dde6ef]">Pacientes</h1>
             <p className="text-[#7a95aa] text-sm mt-1">
               {patients.length} paciente{patients.length !== 1 ? 's' : ''} registrado{patients.length !== 1 ? 's' : ''}
             </p>
@@ -62,13 +63,13 @@ export default function PatientsPage() {
             className="px-5 py-2.5 text-sm font-bold rounded-xl hover:opacity-90 transition"
             style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}
           >
-            + Nuevo Paciente
+            Nuevo paciente
           </button>
         </div>
 
         {/* Buscador */}
         <div className="relative mb-6">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#3d5870]"><Icon name="search" size={20} /></span>
           <input
             type="text"
             placeholder="Buscar por nombre, ID, correo o teléfono..."
@@ -89,7 +90,6 @@ export default function PatientsPage() {
           <div className="text-center py-20 text-[#7a95aa]">Cargando pacientes...</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-5xl mb-4">{search ? '🔍' : '🏥'}</p>
             <p className="text-[#7a95aa] text-lg font-medium">
               {search ? 'Sin resultados para tu búsqueda' : 'Aún no tienes pacientes registrados'}
             </p>
@@ -122,7 +122,7 @@ export default function PatientsPage() {
                   <div key={p.id} className="grid grid-cols-12 gap-4 px-5 py-4 items-center hover:bg-[#111820] transition">
                     {/* Nombre */}
                     <div className="col-span-5 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-[#1e2d3d] text-[#7a95aa] flex items-center justify-center text-sm font-semibold flex-shrink-0">
                         {initials || '?'}
                       </div>
                       <div className="min-w-0">
@@ -144,18 +144,18 @@ export default function PatientsPage() {
                     {/* Acciones */}
                     <div className="col-span-2 flex justify-end gap-2">
                       <button
-                        onClick={() => router.push(`/dashboard/patient/${p.id}/new-visit`)}
-                        className="px-3 py-1.5 text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
-                        style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}
+                        onClick={() => router.push(`/dashboard/patient/${p.id}/${lite ? 'consulta' : 'new-visit'}`)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                        style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
                       >
-                        + Visita
+                        Nueva consulta
                       </button>
                       <button
                         onClick={() => router.push(`/dashboard/patient/${p.id}`)}
-                        className="px-3 py-1.5 text-xs font-bold rounded-lg hover:opacity-90 transition whitespace-nowrap"
-                        style={{ background: 'var(--c-blue)', color: 'var(--c-blue-fg)' }}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg transition whitespace-nowrap hover:bg-[var(--c-subtle-2)]"
+                        style={{ color: 'var(--c-text)', border: '1px solid var(--c-border-2)' }}
                       >
-                        Ver ficha
+                        Expediente
                       </button>
                     </div>
                   </div>

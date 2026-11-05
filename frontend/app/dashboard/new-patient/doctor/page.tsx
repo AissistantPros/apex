@@ -71,7 +71,7 @@ export default function DoctorPage() {
       <header className="fixed top-0 left-0 right-0 h-14 z-50 bg-[rgba(7,10,14,.97)] border-b border-[#1e2d3d] backdrop-blur-2xl flex items-center px-6">
         <button onClick={handleBack} className="text-[#00e5a0]">← Volver</button>
         <div className="flex-1" />
-        <div className="text-sm font-mono text-[#7a95aa]">🟥 FASE 3 - DOCTOR</div>
+        <div className="text-sm font-mono text-[#7a95aa]"> FASE 3 - DOCTOR</div>
       </header>
 
       {/* Main Content */}
@@ -98,7 +98,7 @@ export default function DoctorPage() {
           {step === 1 && (
             <div className="space-y-6 mb-8">
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🚬 Tabaquismo</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Tabaquismo</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-3 block">ESTATUS</label>
@@ -140,7 +140,7 @@ export default function DoctorPage() {
               </div>
 
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🍷 Consumo de alcohol</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Consumo de alcohol</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-3 block">FRECUENCIA</label>
@@ -175,7 +175,7 @@ export default function DoctorPage() {
               </div>
 
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🌿 Otras sustancias</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Otras sustancias</h2>
                 <p className="text-xs text-[#7a95aa] mb-4">Confidencial - solo visible para el médico</p>
                 <input
                   type="text"
@@ -187,7 +187,7 @@ export default function DoctorPage() {
               </div>
 
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">💪 Actividad física y estrés</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Actividad física y estrés</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-2 block">TIPO Y FRECUENCIA</label>
@@ -242,7 +242,7 @@ export default function DoctorPage() {
 
               {formData.sex === 'Femenino' && (
                 <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                  <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🌸 Historia gineco-obstétrica</h2>
+                  <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Historia gineco-obstétrica</h2>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <input type="number" placeholder="Edad menarca" value={formData.menarca_age} onChange={(e) => handleInputChange('menarca_age', e.target.value)} className="px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded text-[#dde6ef] text-sm focus:border-[#a78bfa] outline-none" />
@@ -270,7 +270,7 @@ export default function DoctorPage() {
 
               {formData.sex === 'Masculino' && (
                 <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                  <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">💪 Historia reproductiva masculina</h2>
+                  <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Historia reproductiva masculina</h2>
                   <div className="space-y-4">
                     <div>
                       <label className="text-xs font-mono text-[#7a95aa] mb-3 block">DISFUNCIÓN ERÉCTIL</label>

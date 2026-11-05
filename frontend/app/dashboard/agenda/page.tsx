@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSession } from '@/app/lib/auth';
+import { mix } from '@/app/lib/ui';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 const HOUR_PX = 54, SNAP = 5;
@@ -9,12 +10,12 @@ const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const DIAS_LARGO = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 const ESTADO: Record<string, { label: string; color: string }> = {
-  scheduled: { label: 'Agendada', color: '#0ea5e9' },
-  confirmed: { label: 'Confirmada', color: '#00e5a0' },
-  arrived:   { label: 'En sala', color: '#f59e0b' },
-  done:      { label: 'Atendida', color: '#7a95aa' },
-  cancelled: { label: 'Cancelada', color: '#f43f5e' },
-  no_show:   { label: 'No asistió', color: '#f43f5e' },
+  scheduled: { label: 'Agendada', color: 'var(--c-blue)' },
+  confirmed: { label: 'Confirmada', color: 'var(--c-green)' },
+  arrived:   { label: 'En sala', color: 'var(--c-amber)' },
+  done:      { label: 'Atendida', color: 'var(--c-text-2)' },
+  cancelled: { label: 'Cancelada', color: 'var(--c-red)' },
+  no_show:   { label: 'No asistió', color: 'var(--c-red)' },
 };
 const inp = 'w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0] transition placeholder-[#3d5870]';
 
@@ -169,7 +170,7 @@ export default function AgendaPage() {
     } catch (e: any) { setConfirmMove(null); flash(e.message); }
   };
 
-  const locColor = (id?: string) => ctx?.locations.find(l => l.id === id)?.color || '#0ea5e9';
+  const locColor = (id?: string) => ctx?.locations.find(l => l.id === id)?.color || 'var(--c-blue)';
   const docName = (id?: string) => ctx?.doctors.find(d => d.id === id)?.display_name || '';
   const yToMin = (col: HTMLElement, clientY: number) => {
     const rect = col.getBoundingClientRect();
@@ -296,7 +297,7 @@ export default function AgendaPage() {
     <div className="min-h-screen bg-[#070a0e]" onMouseUp={onUp} onMouseMove={onMove}>
       <main className="page-content pt-16 px-4 sm:px-6 py-6 max-w-[1100px] mx-auto">
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <h1 className="text-2xl font-serif font-semibold text-[#dde6ef]">📅 Agenda</h1>
+          <h1 className="text-2xl font-serif font-semibold text-[#dde6ef]"> Agenda</h1>
           <div className="flex items-center gap-1">
             <button onClick={() => setWkStart(w => { const x = new Date(w); x.setDate(x.getDate() - 7); return x; })} className="px-2.5 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef]">‹</button>
             <button onClick={() => setWkStart(monday(new Date()))} className="px-3 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#00e5a0] text-sm">Hoy</button>
@@ -319,13 +320,13 @@ export default function AgendaPage() {
           {ctx?.can_manage && (
             <>
               <button onClick={() => setBlockMode(v => !v)} className="px-3 py-1.5 rounded-lg text-sm font-semibold border transition"
-                style={{ background: blockMode ? '#f43f5e' : '#0d1520', borderColor: blockMode ? '#f43f5e' : '#1e2d3d', color: blockMode ? '#fff' : '#f43f5e' }}>
+                style={{ background: blockMode ? 'var(--c-red)' : 'var(--c-card)', borderColor: blockMode ? 'var(--c-red)' : 'var(--c-border)', color: blockMode ? '#fff' : 'var(--c-red)' }}>
                 {blockMode ? '● Modo bloqueo ON' : 'Bloquear horarios'}
               </button>
-              <button onClick={() => setHoursModal(true)} className="px-3 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#7a95aa] text-sm">⚙ Horario</button>
+              <button onClick={() => setHoursModal(true)} className="px-3 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#7a95aa] text-sm">Horario</button>
             </>
           )}
-          <button onClick={() => openCreateRange(new Date(), new Date(Date.now() + 20 * 60000))} className="px-4 py-1.5 rounded-lg text-sm font-semibold" style={{ background: '#00e5a0', color: '#000' }}>+ Cita</button>
+          <button onClick={() => openCreateRange(new Date(), new Date(Date.now() + 20 * 60000))} className="px-4 py-1.5 rounded-lg text-sm font-semibold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>+ Cita</button>
         </div>
 
         {/* Leyenda de sedes */}
@@ -333,18 +334,18 @@ export default function AgendaPage() {
           <div className="flex flex-wrap gap-3 mb-3">
             {ctx.locations.map(l => (
               <span key={l.id} className="flex items-center gap-1.5 text-[11px] text-[#7a95aa]">
-                <span className="w-3 h-3 rounded-full" style={{ background: l.color || '#0ea5e9' }} />{l.name}
+                <span className="w-3 h-3 rounded-full" style={{ background: l.color || 'var(--c-blue)' }} />{l.name}
               </span>
             ))}
           </div>
         )}
         {blockMode && <p className="text-[12px] text-[#f43f5e] mb-2">Modo bloqueo: arrastra sobre un horario para bloquearlo, o toca el encabezado de un día para bloquearlo completo.</p>}
-        {msg && <div className="mb-3 text-sm px-4 py-2 rounded-lg bg-[rgba(244,63,94,.1)] border border-[#f43f5e44] text-[#f43f5e]">{msg}</div>}
+        {msg && <div className="mb-3 text-sm px-4 py-2 rounded-lg bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-[#f43f5e]">{msg}</div>}
 
         {days.length === 0 ? (
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-8 text-center text-[#7a95aa]">
             No hay horario de consultas configurado para esta semana.
-            {ctx?.can_manage && <button onClick={() => setHoursModal(true)} className="block mx-auto mt-3 px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: '#00e5a0', color: '#000' }}>Configurar horario</button>}
+            {ctx?.can_manage && <button onClick={() => setHoursModal(true)} className="block mx-auto mt-3 px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>Configurar horario</button>}
           </div>
         ) : (
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-x-auto select-none">
@@ -356,7 +357,7 @@ export default function AgendaPage() {
                   <div key={i} onClick={() => blockMode && blockWholeDay(d)}
                     className={`border-b border-r border-[#1e2d3d] px-2 py-2 text-center ${blockMode ? 'cursor-pointer hover:bg-[#f43f5e]/10' : ''}`}>
                     <p className="text-[11px] text-[#7a95aa]">{DIAS[wdOf(d)]}</p>
-                    <p className="text-sm font-semibold" style={{ color: ymd(d) === today ? '#00e5a0' : '#dde6ef' }}>{d.getDate()}</p>
+                    <p className="text-sm font-semibold" style={{ color: ymd(d) === today ? 'var(--c-green)' : 'var(--c-text)' }}>{d.getDate()}</p>
                   </div>
                 ))}
               </div>
@@ -375,7 +376,7 @@ export default function AgendaPage() {
                       {/* selección en curso */}
                       {sel && sel.day === ymd(day) && (
                         <div className="absolute left-0.5 right-0.5 rounded-md pointer-events-none"
-                          style={{ top: (sel.a - minH * 60) / 60 * HOUR_PX, height: Math.max(6, (sel.b - sel.a) / 60 * HOUR_PX), background: blockMode ? 'rgba(244,63,94,.35)' : 'rgba(0,229,160,.3)', border: `1px dashed ${blockMode ? '#f43f5e' : '#00e5a0'}` }} />
+                          style={{ top: (sel.a - minH * 60) / 60 * HOUR_PX, height: Math.max(6, (sel.b - sel.a) / 60 * HOUR_PX), background: blockMode ? mix('var(--c-red)', 30) : mix('var(--c-green)', 22), border: `1px dashed ${blockMode ? 'var(--c-red)' : 'var(--c-green)'}` }} />
                       )}
                       {/* bloqueos */}
                       {blocks.filter(b => ymd(new Date(b.starts_at)) === ymd(day)).map(b => {
@@ -387,7 +388,7 @@ export default function AgendaPage() {
                             title={ctx?.can_manage ? 'Clic para quitar el bloqueo' : ''}
                             className="absolute left-0.5 right-0.5 rounded-md overflow-hidden cursor-pointer"
                             style={{ top: Math.max(0, top), height, background: 'repeating-linear-gradient(45deg,#f43f5e22,#f43f5e22 6px,#0d152080 6px,#0d152080 12px)', border: '1px solid #f43f5e55' }}>
-                            <p className="text-[9px] text-[#f43f5e] px-1 pt-0.5 truncate">🚫 {b.reason || 'Bloqueado'}</p>
+                            <p className="text-[9px] text-[#f43f5e] px-1 pt-0.5 truncate"> {b.reason || 'Bloqueado'}</p>
                           </div>
                         );
                       })}
@@ -403,7 +404,7 @@ export default function AgendaPage() {
                             onMouseDown={e => { e.stopPropagation(); startMoveAppt(a, e); }}
                             onClick={e => { e.stopPropagation(); if (apptMovedRef.current) { apptMovedRef.current = false; return; } openEdit(a); }}
                             className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-0.5 text-left overflow-hidden"
-                            style={{ top, height, background: col + '2e', borderLeft: `3px solid ${col}`, opacity: move?.appt.id === a.id ? 0.35 : 1, cursor: 'grab' }}>
+                            style={{ top, height, background: mix(col, 18), borderLeft: `3px solid ${col}`, opacity: move?.appt.id === a.id ? 0.35 : 1, cursor: 'grab' }}>
                             <p className="text-[10px] font-semibold text-[#dde6ef] truncate leading-tight">{hm(s)} {a.patient_name}</p>
                             {height > 28 && <p className="text-[9px] text-[#7a95aa] truncate">{docName(a.doctor_id) || a.reason || ''}</p>}
                           </button>
@@ -414,10 +415,10 @@ export default function AgendaPage() {
                         const dur = apptDur(move.appt);
                         const top = (preview.startMin - minH * 60) / 60 * HOUR_PX;
                         const h = Math.max(18, dur / 60 * HOUR_PX - 2);
-                        const col = preview.ok ? '#00e5a0' : '#f43f5e';
+                        const col = preview.ok ? 'var(--c-green)' : 'var(--c-red)';
                         return (
                           <div className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-0.5 pointer-events-none z-10"
-                            style={{ top, height: h, background: col + '33', border: `1.5px solid ${col}` }}>
+                            style={{ top, height: h, background: mix(col, 20), border: `1.5px solid ${col}` }}>
                             <p className="text-[10px] font-semibold truncate leading-tight" style={{ color: col }}>
                               {minToHM(preview.startMin)} {move.appt.patient_name}
                             </p>
@@ -443,7 +444,7 @@ export default function AgendaPage() {
         return (
           <div className="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" onClick={() => setConfirmMove(null)}>
             <div className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-              <p className="text-3xl text-center mb-2">🔄</p>
+              <p className="text-3xl text-center mb-2"></p>
               <p className="text-center text-[#dde6ef] text-sm leading-relaxed">
                 ¿Quieres cambiar la cita de <b>{confirmMove.appt.patient_name}</b><br />
                 del <span className="text-[#7a95aa]">{fmt(oldD)}</span><br />
@@ -451,7 +452,7 @@ export default function AgendaPage() {
               </p>
               <div className="flex gap-2 mt-5">
                 <button onClick={() => setConfirmMove(null)} className="flex-1 py-2.5 rounded-lg text-sm text-[#7a95aa] border border-[#1e2d3d]">No, dejar igual</button>
-                <button onClick={doMove} className="flex-1 py-2.5 rounded-lg text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>Sí, cambiar</button>
+                <button onClick={doMove} className="flex-1 py-2.5 rounded-lg text-sm font-bold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>Sí, cambiar</button>
               </div>
             </div>
           </div>
@@ -474,7 +475,7 @@ function ClosedOverlays({ minH, maxH, intervals }: { minH: number; maxH: number;
   if (!intervals.length) segs.length = 0, segs.push([minH * 60, maxH * 60]);
   return (<>{segs.map(([a, b], i) => (
     <div key={i} className="absolute left-0 right-0 pointer-events-none"
-      style={{ top: (a - minH * 60) / 60 * HOUR_PX, height: (b - a) / 60 * HOUR_PX, background: 'rgba(7,10,14,.55)' }} />
+      style={{ top: (a - minH * 60) / 60 * HOUR_PX, height: (b - a) / 60 * HOUR_PX, background: 'color-mix(in srgb, var(--c-text-3) 18%, transparent)' }} />
   ))}</>);
 }
 
@@ -528,7 +529,7 @@ function ApptModal({ ctx, modal, setModal, onSave, onCancel }: { ctx: Ctx | null
               {[15, 20, 25, 30].map(d => (
                 <button key={d} onClick={() => setModal({ ...modal, dur: d, error: '' })}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
-                  style={{ background: modal.dur === d ? '#00e5a0' : '#111820', borderColor: modal.dur === d ? '#00e5a0' : '#2a3a4d', color: modal.dur === d ? '#000' : '#dde6ef' }}>{d}m</button>
+                  style={{ background: modal.dur === d ? 'var(--c-green)' : 'var(--c-subtle)', borderColor: modal.dur === d ? 'var(--c-green)' : 'var(--c-border-2)', color: modal.dur === d ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>{d}m</button>
               ))}
               <input type="number" min={5} step={5} value={modal.dur} onChange={e => setModal({ ...modal, dur: Math.max(5, +e.target.value || 20), error: '' })}
                 className="w-20 px-2 py-1.5 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-xs" />
@@ -561,17 +562,17 @@ function ApptModal({ ctx, modal, setModal, onSave, onCancel }: { ctx: Ctx | null
               <div className="flex flex-wrap gap-1.5 mt-1">
                 {Object.entries(ESTADO).map(([k, v]) => (
                   <button key={k} onClick={() => setModal({ ...modal, status: k })} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition"
-                    style={{ background: modal.status === k ? v.color : '#111820', borderColor: modal.status === k ? v.color : '#2a3a4d', color: modal.status === k ? '#000' : '#dde6ef' }}>{v.label}</button>
+                    style={{ background: modal.status === k ? v.color : 'var(--c-subtle)', borderColor: modal.status === k ? v.color : 'var(--c-border-2)', color: modal.status === k ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>{v.label}</button>
                 ))}
               </div></div>
           )}
-          {modal.error && <p className="text-[13px] text-[#f43f5e] bg-[#f43f5e]/10 border border-[#f43f5e]/30 rounded-lg px-3 py-2">⚠️ {modal.error}</p>}
+          {modal.error && <p className="text-[13px] text-[#f43f5e] bg-[#f43f5e]/10 border border-[#f43f5e]/30 rounded-lg px-3 py-2"> {modal.error}</p>}
         </div>
         <div className="flex gap-2 mt-4">
           {modal.mode === 'edit' && <button onClick={onCancel} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#f43f5e] border border-[#f43f5e]/40">Cancelar cita</button>}
           <div className="flex-1" />
           <button onClick={() => setModal(null)} className="px-4 py-2.5 rounded-lg text-sm text-[#7a95aa]">Cerrar</button>
-          <button onClick={onSave} className="px-5 py-2.5 rounded-lg text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>Guardar</button>
+          <button onClick={onSave} className="px-5 py-2.5 rounded-lg text-sm font-bold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>Guardar</button>
         </div>
       </div>
     </div>
@@ -610,7 +611,7 @@ function HoursModal({ ctx, onClose, onSaved, flash }: { ctx: Ctx; onClose: () =>
   return (
     <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <p className="font-semibold text-[#dde6ef] mb-1">⚙ Horario de consultas</p>
+        <p className="font-semibold text-[#dde6ef] mb-1">Horario de consultas</p>
         <p className="text-[11px] text-[#7a95aa] mb-3">El calendario solo muestra los días y horas que definas aquí.</p>
         {ctx.locations.length > 1 && (
           <select value={locId} onChange={e => setLocId(e.target.value)} className={`${inp} mb-3`}>
@@ -639,7 +640,7 @@ function HoursModal({ ctx, onClose, onSaved, flash }: { ctx: Ctx; onClose: () =>
         </div>
         <div className="flex gap-2 mt-4 justify-end">
           <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm text-[#7a95aa]">Cerrar</button>
-          <button onClick={save} className="px-5 py-2.5 rounded-lg text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>Guardar horario</button>
+          <button onClick={save} className="px-5 py-2.5 rounded-lg text-sm font-bold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>Guardar horario</button>
         </div>
       </div>
     </div>

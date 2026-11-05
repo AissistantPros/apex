@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSession } from '@/app/lib/auth';
 import { ROLE_LABELS, ROLE_COLORS, AREA_LABELS, UserRole, Area, PermLevel } from '@/app/lib/role';
+import { mix } from '@/app/lib/ui';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -16,7 +17,7 @@ async function api(path: string, opts: RequestInit = {}) {
   return res.json();
 }
 
-const C = { text: '#dde6ef', muted: '#7a95aa', faint: '#3d5870', green: '#00e5a0', red: '#f43f5e' };
+const C = { text: 'var(--c-text)', muted: 'var(--c-text-2)', faint: 'var(--c-text-3)', green: 'var(--c-green)', red: 'var(--c-red)' };
 const inp = 'w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-[#dde6ef] outline-none focus:border-[#00e5a0] transition placeholder-[#3d5870] text-sm';
 const btn = 'px-4 py-2.5 rounded-xl text-sm font-bold transition disabled:opacity-40';
 
@@ -37,7 +38,7 @@ function LevelPicker({ value, onChange }: { value: PermLevel; onChange: (v: Perm
     <div className="flex gap-1">
       {LEVELS.map(({ v, l }) => (
         <button key={v} onClick={() => onChange(v)} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition"
-          style={{ background: value === v ? (v === 'none' ? '#2a3a4d' : v === 'edit' ? C.green : '#0ea5e9') : '#111820', color: value === v ? (v === 'none' ? C.muted : '#000') : C.faint }}>{l}</button>
+          style={{ background: value === v ? (v === 'none' ? 'var(--c-border-2)' : v === 'edit' ? C.green : 'var(--c-blue)') : 'var(--c-subtle)', color: value === v ? (v === 'none' ? C.muted : 'var(--c-primary-fg)') : C.faint }}>{l}</button>
       ))}
     </div>
   );
@@ -58,11 +59,11 @@ function ScopeConfig({ scope, onChange }: { scope: any; onChange: (s: any) => vo
         <p className="text-[11px] text-[#7a95aa] mb-1">Métodos de pago visibles</p>
         <div className="flex gap-1.5 flex-wrap">
           <button onClick={() => onChange({ ...scope, metodos: 'todos' })} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
-            style={{ background: todos ? C.green : '#0d1520', color: todos ? '#000' : C.muted }}>Todos</button>
+            style={{ background: todos ? C.green : 'var(--c-card)', color: todos ? 'var(--c-primary-fg)' : C.muted }}>Todos</button>
           {METODOS.map(m => {
             const on = !todos && metodos.includes(m);
             return <button key={m} onClick={() => { const base = todos ? [] : [...metodos]; const nx = on ? base.filter(x => x !== m) : [...base, m]; onChange({ ...scope, metodos: nx.length ? nx : 'todos' }); }}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize" style={{ background: on ? '#0ea5e9' : '#0d1520', color: on ? '#000' : C.muted }}>{m}</button>;
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize" style={{ background: on ? 'var(--c-blue)' : 'var(--c-card)', color: on ? 'var(--c-primary-fg)' : C.muted }}>{m}</button>;
           })}
         </div>
       </div>
@@ -78,17 +79,17 @@ function CredModal({ cred, onClose }: { cred: { usuario: string; password: strin
     <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <p className="text-lg font-semibold text-[#dde6ef] mb-1">{cred.regen ? 'Nueva contraseña' : 'Acceso creado'}{cred.nombre ? ` — ${cred.nombre}` : ''}</p>
-        <p className="text-xs text-[#f59e0b] mb-4">⚠ Guárdala ahora. Por seguridad no se puede volver a ver; solo se puede generar una nueva.</p>
+        <p className="text-xs text-[#f59e0b] mb-4"> Guárdala ahora. Por seguridad no se puede volver a ver; solo se puede generar una nueva.</p>
         {[['Usuario', cred.usuario, 'u'], ['Contraseña', cred.password, 'p']].map(([label, val, k]) => (
           <div key={k} className="mb-3">
             <p className="text-[10px] font-mono text-[#7a95aa] mb-1">{label}</p>
             <div className="flex items-center gap-2">
               <code className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] font-mono break-all">{val}</code>
-              <button onClick={() => copy(val as string, k as string)} className="px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: copied === k ? C.green : '#1e2d3d', color: copied === k ? '#000' : C.text }}>{copied === k ? '✓' : 'Copiar'}</button>
+              <button onClick={() => copy(val as string, k as string)} className="px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: copied === k ? C.green : 'var(--c-border)', color: copied === k ? 'var(--c-primary-fg)' : C.text }}>{copied === k ? '✓' : 'Copiar'}</button>
             </div>
           </div>
         ))}
-        <button onClick={onClose} className={`${btn} w-full mt-2`} style={{ background: C.green, color: '#000' }}>Listo, la guardé</button>
+        <button onClick={onClose} className={`${btn} w-full mt-2`} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>Listo, la guardé</button>
       </div>
     </div>
   );
@@ -154,7 +155,7 @@ export default function StaffPage() {
   if (denied) return (
     <div className="min-h-screen bg-[#070a0e]"><main className="page-content pt-16 px-6 py-10">
       <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-10 text-center max-w-md mx-auto">
-        <p className="text-4xl mb-3">🔒</p><p className="text-[#dde6ef] font-semibold mb-1">Solo el médico gestiona al equipo</p>
+        <p className="text-4xl mb-3"></p><p className="text-[#dde6ef] font-semibold mb-1">Solo el médico gestiona al equipo</p>
         <p className="text-sm text-[#7a95aa]">Tu cuenta no tiene permiso para administrar al personal.</p>
       </div></main></div>
   );
@@ -162,10 +163,10 @@ export default function StaffPage() {
   return (
     <div className="min-h-screen bg-[#070a0e]">
       <main className="page-content pt-16 px-4 sm:px-6 py-10 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-serif font-semibold text-[#dde6ef] mb-1">🩺 Gestión de equipo</h1>
+        <h1 className="text-2xl font-serif font-semibold text-[#dde6ef] mb-1"> Gestión de equipo</h1>
         <p className="text-[#7a95aa] mb-6 text-sm">Da de alta a tu personal con acceso propio y define qué puede ver y editar cada quien.</p>
 
-        {msg && <div className="mb-4 text-sm px-4 py-2.5 rounded-xl" style={{ background: 'rgba(0,229,160,.1)', border: `1px solid ${C.green}44`, color: C.green }}>{msg}</div>}
+        {msg && <div className="mb-4 text-sm px-4 py-2.5 rounded-xl" style={{ background: mix(C.green, 10), border: `1px solid ${mix(C.green, 27)}`, color: C.green }}>{msg}</div>}
 
         <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 mb-6">
           <p className="text-xs font-mono text-[#00e5a0] tracking-wider mb-3">DAR DE ALTA UN MIEMBRO</p>
@@ -179,7 +180,7 @@ export default function StaffPage() {
           <div className="flex flex-wrap gap-2 mb-1">
             {ASSIGNABLE.map(r => (
               <button key={r} onClick={() => setRol(r)} className="px-3.5 py-2 rounded-xl text-xs font-semibold border transition"
-                style={{ background: rol === r ? ROLE_COLORS[r] : '#111820', borderColor: rol === r ? ROLE_COLORS[r] : '#2a3a4d', color: rol === r ? '#000' : C.text }}>{ROLE_LABELS[r]}</button>
+                style={{ background: rol === r ? ROLE_COLORS[r] : 'var(--c-subtle)', borderColor: rol === r ? ROLE_COLORS[r] : 'var(--c-border-2)', color: rol === r ? 'var(--c-primary-fg)' : C.text }}>{ROLE_LABELS[r]}</button>
             ))}
           </div>
           <p className="text-[11px] text-[#7a95aa] mb-4">{ROLE_DESC[rol]}</p>
@@ -194,13 +195,13 @@ export default function StaffPage() {
             ))}
           </div>
           {rol === 'accounting' && <ScopeConfig scope={scope} onChange={setScope} />}
-          <button onClick={crear} disabled={busy} className={`${btn} mt-4`} style={{ background: C.green, color: '#000' }}>{busy ? 'Creando…' : 'Crear acceso'}</button>
+          <button onClick={crear} disabled={busy} className={`${btn} mt-4`} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>{busy ? 'Creando…' : 'Crear acceso'}</button>
         </div>
 
         <p className="text-xs font-mono text-[#3d5870] tracking-wider mb-3">EQUIPO</p>
         {loading ? <p className="text-sm text-[#7a95aa]">Cargando…</p> :
           staff.filter(m => m.role !== 'doctor').length === 0 ? (
-            <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-8 text-center"><p className="text-3xl mb-2">👥</p><p className="text-sm text-[#7a95aa]">Aún no has dado de alta a nadie.</p></div>
+            <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-xl p-8 text-center"><p className="text-3xl mb-2"></p><p className="text-sm text-[#7a95aa]">Aún no has dado de alta a nadie.</p></div>
           ) : (
             <div className="space-y-3">
               {staff.filter(m => m.role !== 'doctor').map(m => <StaffCard key={m.id} m={m} areas={areas} locations={locations} onSave={savePerms} onRegen={regen} onDelete={del} onSaveData={saveData} />)}
@@ -220,7 +221,7 @@ function StaffCard({ m, areas, locations, onSave, onRegen, onDelete, onSaveData 
   const [perms, setPerms] = useState<Record<string, PermLevel>>(m.permissions || {});
   const initData = { display_name: m.display_name || '', email: m.email || '', phone: m.phone || '', username: m.username || '', role: m.role, is_local_admin: !!m.is_local_admin, location_ids: (m.location_ids || []) as string[] };
   const [data, setData] = useState<any>(initData);
-  const color = ROLE_COLORS[m.role as UserRole] || '#7a95aa';
+  const color = ROLE_COLORS[m.role as UserRole] || 'var(--c-text-2)';
   const dirty = JSON.stringify(perms) !== JSON.stringify(m.permissions || {});
   const dataDirty = JSON.stringify(data) !== JSON.stringify(initData);
   const di = 'w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-sm outline-none focus:border-[#00e5a0]';
@@ -234,7 +235,7 @@ function StaffCard({ m, areas, locations, onSave, onRegen, onDelete, onSaveData 
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: color + '1a', color }}>{ROLE_LABELS[m.role as UserRole] || m.role}</span>
-          <button onClick={() => onRegen(m)} className="text-xs text-[#f59e0b] px-1" title="Generar nueva contraseña">🔑</button>
+          <button onClick={() => onRegen(m)} className="text-xs text-[#f59e0b] px-1" title="Generar nueva contraseña"></button>
           <button onClick={() => setTab(t => t === 'data' ? '' : 'data')} className="text-xs text-[#00e5a0] px-2">{tab === 'data' ? 'Cerrar' : 'Datos'}</button>
           <button onClick={() => setTab(t => t === 'perms' ? '' : 'perms')} className="text-xs text-[#0ea5e9] px-2">{tab === 'perms' ? 'Cerrar' : 'Permisos'}</button>
           <button onClick={() => onDelete(m)} className="text-[#f43f5e] text-lg leading-none px-1">×</button>
@@ -255,7 +256,7 @@ function StaffCard({ m, areas, locations, onSave, onRegen, onDelete, onSaveData 
             <div className="flex flex-wrap gap-1.5">
               {ASSIGN_ROLES.map(r => (
                 <button key={r} onClick={() => setData({ ...data, role: r })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
-                  style={{ background: data.role === r ? ROLE_COLORS[r] : '#111820', borderColor: data.role === r ? ROLE_COLORS[r] : '#2a3a4d', color: data.role === r ? '#000' : '#dde6ef' }}>
+                  style={{ background: data.role === r ? ROLE_COLORS[r] : 'var(--c-subtle)', borderColor: data.role === r ? ROLE_COLORS[r] : 'var(--c-border-2)', color: data.role === r ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                   {ROLE_LABELS[r]}
                 </button>
               ))}
@@ -275,7 +276,7 @@ function StaffCard({ m, areas, locations, onSave, onRegen, onDelete, onSaveData 
                   const on = data.location_ids.includes(l.id);
                   return (
                     <button key={l.id} onClick={() => toggleLoc(l.id)} className="px-3 py-1.5 rounded-lg text-xs border transition"
-                      style={{ background: on ? C.green : '#111820', borderColor: on ? C.green : '#2a3a4d', color: on ? '#000' : '#dde6ef' }}>
+                      style={{ background: on ? C.green : 'var(--c-subtle)', borderColor: on ? C.green : 'var(--c-border-2)', color: on ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                       {l.name}
                     </button>
                   );
@@ -284,7 +285,7 @@ function StaffCard({ m, areas, locations, onSave, onRegen, onDelete, onSaveData 
             </div>
           )}
 
-          {dataDirty && <div className="flex justify-end pt-1"><button onClick={() => onSaveData(m, data)} className={btn} style={{ background: C.green, color: '#000' }}>Guardar datos</button></div>}
+          {dataDirty && <div className="flex justify-end pt-1"><button onClick={() => onSaveData(m, data)} className={btn} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>Guardar datos</button></div>}
         </div>
       )}
 
@@ -296,7 +297,7 @@ function StaffCard({ m, areas, locations, onSave, onRegen, onDelete, onSaveData 
               <LevelPicker value={perms[a] || 'none'} onChange={v => setPerms(p => ({ ...p, [a]: v }))} />
             </div>
           ))}
-          {dirty && <div className="flex justify-end pt-1"><button onClick={() => onSave(m, perms)} className={btn} style={{ background: C.green, color: '#000' }}>Guardar permisos</button></div>}
+          {dirty && <div className="flex justify-end pt-1"><button onClick={() => onSave(m, perms)} className={btn} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>Guardar permisos</button></div>}
         </div>
       )}
     </div>

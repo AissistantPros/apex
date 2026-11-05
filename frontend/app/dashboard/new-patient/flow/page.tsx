@@ -8,6 +8,7 @@ import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 import { esFuncionalCompleta } from '../DeepFunctionalIntake';
 import { getRole } from '@/app/lib/role';
 import DynamicQuestions, { DynAnswer } from '@/app/components/DynamicQuestions';
+import { mix } from '@/app/lib/ui';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -105,7 +106,7 @@ const NoteField = ({ value, onChange, placeholder }: {
 );
 
 // Grupo de opciones tipo "pill" — grande y táctil (reemplaza radios diminutos).
-const PillGroup = ({ options, value, onChange, accent = '#f97316' }: {
+const PillGroup = ({ options, value, onChange, accent = 'var(--c-orange)' }: {
   options: string[]; value: string; onChange: (v: string) => void; accent?: string;
 }) => (
   <div className="flex flex-wrap gap-2.5">
@@ -116,9 +117,9 @@ const PillGroup = ({ options, value, onChange, accent = '#f97316' }: {
           className="px-4 py-2.5 rounded-xl text-sm font-medium transition border select-none"
           style={{
             minHeight: '44px',
-            background: on ? `${accent}22` : '#0d1520',
-            borderColor: on ? accent : '#1e2d3d',
-            color: on ? accent : '#7a95aa',
+            background: on ? mix(accent, 13) : 'var(--c-card)',
+            borderColor: on ? accent : 'var(--c-border)',
+            color: on ? accent : 'var(--c-text-2)',
           }}>
           {o}
         </button>
@@ -130,7 +131,7 @@ const PillGroup = ({ options, value, onChange, accent = '#f97316' }: {
 const Card = ({ title, icon, color, children }: {
   title: string; icon: string; color: string; children: React.ReactNode;
 }) => (
-  <div className="bg-[#0d1520] rounded-xl p-6 mb-4" style={{ border: `1px solid ${color}33` }}>
+  <div className="bg-[#0d1520] rounded-xl p-6 mb-4" style={{ border: `1px solid ${mix(color, 20)}` }}>
     <h2 className="text-base font-semibold text-[#dde6ef] mb-5 flex items-center gap-2">
       <span>{icon}</span>{title}
     </h2>
@@ -138,7 +139,7 @@ const Card = ({ title, icon, color, children }: {
   </div>
 );
 
-const Slider = ({ label, value, onChange, color = '#00e5a0' }: {
+const Slider = ({ label, value, onChange, color = 'var(--c-green)' }: {
   label: string; value: number; onChange: (v: number) => void; color?: string;
 }) => (
   <div>
@@ -165,9 +166,9 @@ const calcAge = (dob: string) => {
 
 // ─── FASES CONFIG ────────────────────────────────────────────────────────────
 const PHASE_CONFIG = {
-  1: { color: '#0ea5e9', label: '🟦 RECEPCIÓN',   title: 'Datos generales del paciente', roleKey: 'receptionist' },
-  2: { color: '#f97316', label: '🟨 ENFERMERÍA',  title: 'Historia clínica + Primera visita', roleKey: 'nurse' },
-  3: { color: '#a78bfa', label: '🟣 MÉDICO',      title: 'Historia clínica privada + Cierre de visita', roleKey: 'doctor' },
+  1: { color: 'var(--c-blue)', label: ' RECEPCIÓN',   title: 'Datos generales del paciente', roleKey: 'receptionist' },
+  2: { color: 'var(--c-orange)', label: ' ENFERMERÍA',  title: 'Historia clínica + Primera visita', roleKey: 'nurse' },
+  3: { color: 'var(--c-violet)', label: ' MÉDICO',      title: 'Historia clínica privada + Cierre de visita', roleKey: 'doctor' },
 };
 
 // Qué fases puede ver/editar cada rol. Recepción solo la suya; enfermería la suya;
@@ -1208,7 +1209,7 @@ function FlowPageInner() {
         <div className="fixed inset-0 z-[110] bg-[#070a0e]/95 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-6">
             <div className="text-center mb-4">
-              <div className="text-4xl mb-2">✅</div>
+              <div className="text-4xl mb-2"></div>
               <p className="text-lg font-semibold text-[#dde6ef]">{handoff.titulo}</p>
               <p className="text-sm text-[#7a95aa] mt-1">{handoff.sub}</p>
             </div>
@@ -1220,10 +1221,10 @@ function FlowPageInner() {
               {([['general', 'General'], ['nurse', 'A enfermería'], ['doctor', 'Al médico']] as const).map(([v, l]) => (
                 <button key={v} type="button" onClick={() => setHandoffAud(v)}
                   className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-                  style={{ background: handoffAud === v ? '#00e5a0' : '#111820', color: handoffAud === v ? '#000' : '#7a95aa' }}>{l}</button>
+                  style={{ background: handoffAud === v ? 'var(--c-green)' : 'var(--c-subtle)', color: handoffAud === v ? 'var(--c-primary-fg)' : 'var(--c-text-2)' }}>{l}</button>
               ))}
             </div>
-            <button onClick={terminarHandoff} className="w-full py-3 rounded-xl text-sm font-bold" style={{ background: '#00e5a0', color: '#000' }}>
+            <button onClick={terminarHandoff} className="w-full py-3 rounded-xl text-sm font-bold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>
               {handoff?.next === 'bifurcation'
                 ? (handoffNote.trim() ? 'Guardar nota y continuar →' : 'Continuar →')
                 : (handoffNote.trim() ? 'Enviar nota y terminar' : 'Terminar')}
@@ -1244,7 +1245,7 @@ function FlowPageInner() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button onClick={() => elegirCareType('comun')}
                 className="text-left bg-[#0d1520] border border-[#1e2d3d] hover:border-[#0ea5e9] rounded-2xl p-6 transition group">
-                <div className="text-4xl mb-3">🩺</div>
+                <div className="text-4xl mb-3"></div>
                 <p className="text-lg font-semibold text-[#dde6ef] mb-1">Consulta común</p>
                 <p className="text-sm text-[#7a95aa] leading-relaxed">
                   Motivo de consulta puntual. Historia clínica completa de médico general, con un plus
@@ -1255,7 +1256,7 @@ function FlowPageInner() {
               <button onClick={() => elegirCareType('funcional_longevidad')}
                 className="text-left bg-[#0d1520] border border-[#00e5a0]/40 hover:border-[#00e5a0] rounded-2xl p-6 transition group"
                 style={{ boxShadow: '0 0 0 1px rgba(0,229,160,.08)' }}>
-                <div className="text-4xl mb-3">🧬</div>
+                <div className="text-4xl mb-3"></div>
                 <p className="text-lg font-semibold text-[#dde6ef] mb-1">Medicina Funcional y Longevidad</p>
                 <p className="text-sm text-[#7a95aa] leading-relaxed">
                   El paquete completo: las 5 palancas a detalle, línea de tiempo de salud, microbioma,
@@ -1284,9 +1285,9 @@ function FlowPageInner() {
                   disabled={!canClick}
                   className="flex-1 py-2.5 rounded-lg text-xs font-bold transition-all disabled:cursor-not-allowed"
                   style={{
-                    background: active ? cfg.color : (done || isEditMode) ? cfg.color + '44' : '#1e2d3d',
-                    color: active || done || isEditMode ? '#000' : '#7a95aa',
-                    opacity: !canClick ? 0.4 : 1,
+                    background: active ? cfg.color : (done || isEditMode) ? mix(cfg.color, 27) : 'var(--c-border)',
+                    color: active || done || isEditMode ? 'var(--c-primary-fg)' : 'var(--c-text-2)',
+                    opacity: !canClick && !active ? 0.4 : 1,
                   }}>
                   {done ? '✓ ' : ''}{p === 1 ? 'Recepción' : p === 2 ? 'Enfermería' : 'Médico'}
                 </button>
@@ -1300,7 +1301,7 @@ function FlowPageInner() {
           ═══════════════════════════════════════════ */}
           {phase === 1 && allowedPhases.includes(1) && (
             <>
-              <Card title="Datos personales" icon="👤" color={pc.color}>
+              <Card title="Datos personales" icon="" color={pc.color}>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="NOMBRE(S)" required>
@@ -1340,7 +1341,7 @@ function FlowPageInner() {
               {dupCandidates.length > 0 && !dupDismissed && (
                 <div className="bg-[#f59e0b]/10 border-2 border-[#f59e0b]/60 rounded-xl p-4 mb-4">
                   <div className="flex items-start gap-3">
-                    <span className="text-2xl flex-shrink-0">⚠️</span>
+                    <span className="text-2xl flex-shrink-0"></span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-[#f59e0b] mb-1">
                         Paciente ya registrado con estos datos
@@ -1352,9 +1353,9 @@ function FlowPageInner() {
                         {dupCandidates.map((d: any) => {
                           const dobD = d.date_of_birth || d.birth_date;
                           const ageD = dobD ? Math.floor((Date.now() - new Date(dobD).getTime()) / (1000*60*60*24*365.25)) : null;
-                          const phase_label = d.registration_phase === 'complete' ? '✅ Completo'
-                            : d.registration_phase === 'nursing' ? '🟨 Pendiente médico'
-                            : '🟦 Pendiente enfermería';
+                          const phase_label = d.registration_phase === 'complete' ? ' Completo'
+                            : d.registration_phase === 'nursing' ? ' Pendiente médico'
+                            : ' Pendiente enfermería';
                           return (
                             <div key={d.id} className="bg-[#111820] border border-[#f59e0b]/30 rounded-lg px-3 py-2.5 flex items-center gap-3">
                               <div className="flex-1 min-w-0">
@@ -1383,7 +1384,7 @@ function FlowPageInner() {
                 </div>
               )}
 
-              <Card title="Contacto" icon="📱" color={pc.color}>
+              <Card title="Contacto" icon="" color={pc.color}>
                 <div className="space-y-4">
                   <Field label="CORREO ELECTRÓNICO">
                     <input type="email" className={`${inp} ${fBlue}`} value={f.email}
@@ -1425,7 +1426,7 @@ function FlowPageInner() {
                 </div>
               </Card>
 
-              <Card title="Datos de facturación" icon="🧾" color={pc.color}>
+              <Card title="Datos de facturación" icon="" color={pc.color}>
                 <label className="flex items-center gap-2 text-sm text-[#dde6ef] mb-3 cursor-pointer">
                   <input type="checkbox" checked={f.factura_requiere} onChange={e => set('factura_requiere', e.target.checked)} />
                   El paciente solicita factura
@@ -1479,7 +1480,7 @@ function FlowPageInner() {
                 )}
               </Card>
 
-              <Card title="¿Cómo nos conoció?" icon="📍" color={pc.color}>
+              <Card title="¿Cómo nos conoció?" icon="" color={pc.color}>
                 {/* Botones principales — Recomendación es exclusiva entre sí */}
                 <div className="flex flex-wrap gap-2 mb-4">
                   {SOURCES.map(s => {
@@ -1490,11 +1491,11 @@ function FlowPageInner() {
                         className="px-4 py-2 rounded-xl text-sm font-medium transition border"
                         style={{
                           background: active ? 'rgba(14,165,233,.18)' : 'transparent',
-                          color:      active ? '#0ea5e9' : '#7a95aa',
-                          borderColor: active ? '#0ea5e9' : '#1e2d3d',
+                          color:      active ? 'var(--c-blue)' : 'var(--c-text-2)',
+                          borderColor: active ? 'var(--c-blue)' : 'var(--c-border)',
                         }}>
-                        {s === 'Recomendación de paciente' ? '👤 Paciente' :
-                         s === 'Recomendación de médico'   ? '🩺 Médico colega' : s}
+                        {s === 'Recomendación de paciente' ? ' Paciente' :
+                         s === 'Recomendación de médico'   ? ' Médico colega' : s}
                       </button>
                     );
                   })}
@@ -1511,10 +1512,10 @@ function FlowPageInner() {
                           className="px-4 py-2 rounded-xl text-sm font-medium transition border"
                           style={{
                             background: f.social_network === red ? 'rgba(14,165,233,.18)' : 'transparent',
-                            color:      f.social_network === red ? '#0ea5e9' : '#7a95aa',
-                            borderColor: f.social_network === red ? '#0ea5e9' : '#1e2d3d',
+                            color:      f.social_network === red ? 'var(--c-blue)' : 'var(--c-text-2)',
+                            borderColor: f.social_network === red ? 'var(--c-blue)' : 'var(--c-border)',
                           }}>
-                          {red === 'Instagram' ? '📸' : red === 'Facebook' ? '📘' : red === 'YouTube' ? '▶️' : '🎵'} {red}
+                          {red === 'Instagram' ? '' : red === 'Facebook' ? '' : red === 'YouTube' ? '▶️' : ''} {red}
                         </button>
                       ))}
                     </div>
@@ -1561,8 +1562,8 @@ function FlowPageInner() {
                         className="px-4 py-2 rounded-xl text-sm font-medium transition border"
                         style={{
                           background: (f[k as keyof typeof f] as boolean) ? 'rgba(14,165,233,.18)' : 'transparent',
-                          color:      (f[k as keyof typeof f] as boolean) ? '#0ea5e9' : '#7a95aa',
-                          borderColor:(f[k as keyof typeof f] as boolean) ? '#0ea5e9' : '#1e2d3d',
+                          color:      (f[k as keyof typeof f] as boolean) ? 'var(--c-blue)' : 'var(--c-text-2)',
+                          borderColor:(f[k as keyof typeof f] as boolean) ? 'var(--c-blue)' : 'var(--c-border)',
                         }}>
                         {l}
                       </button>
@@ -1572,7 +1573,7 @@ function FlowPageInner() {
               </Card>
 
               {/* Nota de recepción — siempre visible */}
-              <Card title="Nota de Recepción" icon="📝" color={pc.color}>
+              <Card title="Nota de Recepción" icon="" color={pc.color}>
                 {patientId ? (
                   <>
                     <p className="text-xs text-[#3d5870] mb-3">Agrega observaciones. Quedan registradas con timestamp.</p>
@@ -1604,10 +1605,10 @@ function FlowPageInner() {
 
               {/* Banco de preguntas configurable — bloque Convencional (lo captura enfermería) */}
               <DynamicQuestions block="convencional" accent={pc.color} tablet={false}
-                title="📋 CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
+                title=" CUESTIONARIO CONVENCIONAL" onChange={setDynConvencional} />
 
               {/* — Antecedentes heredofamiliares — */}
-              <Card title="Antecedentes heredofamiliares" icon="🧬" color={pc.color}>
+              <Card title="Antecedentes heredofamiliares" icon="" color={pc.color}>
                 <div className="space-y-4">
                   {FAMILIARES.map(fam => {
                     const row = family[fam.key];
@@ -1624,8 +1625,8 @@ function FlowPageInner() {
                                   onClick={() => setFamField(fam.key,'vivo',o.val)}
                                   className="px-5 py-2.5 text-sm font-semibold transition min-w-[92px]"
                                   style={{
-                                    background: active ? (o.val ? '#00e5a0' : '#f43f5e') : 'transparent',
-                                    color: active ? '#000' : '#7a95aa',
+                                    background: active ? (o.val ? 'var(--c-green)' : 'var(--c-red)') : 'transparent',
+                                    color: active ? 'var(--c-primary-fg)' : 'var(--c-text-2)',
                                   }}>
                                   {o.l}
                                 </button>
@@ -1643,15 +1644,15 @@ function FlowPageInner() {
                                 className="text-left rounded-xl border transition select-none flex flex-col px-3 py-2.5"
                                 style={{
                                   minHeight: '70px',
-                                  background: on ? 'rgba(249,115,22,.15)' : '#0d1520',
-                                  borderColor: on ? '#f97316' : '#1e2d3d',
+                                  background: on ? 'rgba(249,115,22,.15)' : 'var(--c-card)',
+                                  borderColor: on ? 'var(--c-orange)' : 'var(--c-border)',
                                 }}>
                                 <span className="text-[13px] font-semibold flex items-start gap-1 leading-tight"
-                                  style={{ color: on ? '#f97316' : '#dde6ef' }}>
+                                  style={{ color: on ? 'var(--c-orange)' : 'var(--c-text)' }}>
                                   <span className="mt-px">{on ? '✓' : '+'}</span><span>{e.label}</span>
                                 </span>
                                 {e.ej && <span className="text-[10px] leading-tight mt-1"
-                                  style={{ color: on ? 'rgba(249,115,22,.75)' : '#3d5870' }}>{e.ej}</span>}
+                                  style={{ color: on ? 'rgba(249,115,22,.75)' : 'var(--c-text-3)' }}>{e.ej}</span>}
                               </button>
                             );
                           })}
@@ -1710,7 +1711,7 @@ function FlowPageInner() {
               </Card>
 
               {/* — Antecedentes personales — */}
-              <Card title="Antecedentes personales patológicos" icon="🏥" color={pc.color}>
+              <Card title="Antecedentes personales patológicos" icon="" color={pc.color}>
                 <div className="space-y-4">
                   <Field label="ENFERMEDADES CRÓNICAS">
                     <textarea rows={3} className={`${inp} ${fOrng}`} value={f.chronic_diseases}
@@ -1745,7 +1746,7 @@ function FlowPageInner() {
               </Card>
 
               {/* — Antecedentes lejanos (medicina funcional) — */}
-              <Card title="Antecedentes lejanos" icon="🔎" color={pc.color}>
+              <Card title="Antecedentes lejanos" icon="" color={pc.color}>
                 <p className="text-xs text-[#7a95aa] mb-4">Útiles para medicina funcional — buscan el origen, no solo el diagnóstico. Opcionales.</p>
                 <div className="space-y-4">
                   <Field label="CONTACTO CON CONTAMINANTES (vivienda o trabajo, hoy o en el pasado)">
@@ -1772,7 +1773,7 @@ function FlowPageInner() {
               </Card>
 
               {/* — Alergias — */}
-              <Card title="Alergias conocidas" icon="⚠️" color={pc.color}>
+              <Card title="Alergias conocidas" icon="" color={pc.color}>
                 <Field label="ALERGIAS (medicamentos, alimentos, ambientales)">
                   <textarea rows={3} className={`${inp} ${fOrng}`} value={f.allergies_medications}
                     onChange={e => set('allergies_medications', e.target.value)}
@@ -1781,7 +1782,7 @@ function FlowPageInner() {
               </Card>
 
               {/* — Medicamentos actuales — */}
-              <Card title="Medicamentos que toma actualmente" icon="💊" color={pc.color}>
+              <Card title="Medicamentos que toma actualmente" icon="" color={pc.color}>
                 <p className="text-xs text-[#7a95aa] mb-4">Los que realmente toma, no los que debería tomar.</p>
                 <div className="space-y-3">
                   {meds.map((m, i) => (
@@ -1820,7 +1821,7 @@ function FlowPageInner() {
               </Card>
 
               {/* — Hábitos — */}
-              <Card title="Hábitos" icon="🚬" color={pc.color}>
+              <Card title="Hábitos" icon="" color={pc.color}>
                 <div className="space-y-6">
                   {/* Tabaquismo */}
                   <div>
@@ -1833,7 +1834,7 @@ function FlowPageInner() {
                       <div className="space-y-3 mb-3">
                         <div>
                           <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">CIGARROS AL DÍA</p>
-                          <PillGroup options={CIGARROS_OPTS} value={f.cigarettes_per_day} onChange={v => set('cigarettes_per_day', v)} accent="#f97316" />
+                          <PillGroup options={CIGARROS_OPTS} value={f.cigarettes_per_day} onChange={v => set('cigarettes_per_day', v)} accent="var(--c-orange)" />
                         </div>
                         {f.smoking_status==='Fumador activo' ? (
                           <Field label="¿DESDE QUÉ AÑO FUMA?">
@@ -1853,17 +1854,17 @@ function FlowPageInner() {
                       <div className="space-y-3">
                         <div>
                           <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿VAPEA?</p>
-                          <PillGroup options={['No','Sí']} value={f.vaping} onChange={v => set('vaping', v)} accent="#f97316" />
+                          <PillGroup options={['No','Sí']} value={f.vaping} onChange={v => set('vaping', v)} accent="var(--c-orange)" />
                         </div>
                         {f.vaping==='Sí' && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                               <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿DESDE HACE CUÁNTO?</p>
-                              <PillGroup options={DESDE_ANIOS_OPTS} value={f.vaping_since} onChange={v => set('vaping_since', v)} accent="#f97316" />
+                              <PillGroup options={DESDE_ANIOS_OPTS} value={f.vaping_since} onChange={v => set('vaping_since', v)} accent="var(--c-orange)" />
                             </div>
                             <div>
                               <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">NICOTINA (mg)</p>
-                              <PillGroup options={NICOTINA_MG_OPTS} value={f.vaping_nicotine_mg} onChange={v => set('vaping_nicotine_mg', v)} accent="#f97316" />
+                              <PillGroup options={NICOTINA_MG_OPTS} value={f.vaping_nicotine_mg} onChange={v => set('vaping_nicotine_mg', v)} accent="var(--c-orange)" />
                             </div>
                           </div>
                         )}
@@ -1893,7 +1894,7 @@ function FlowPageInner() {
                                 <button key={tipo} type="button"
                                   onClick={() => setAlcoholTipo(p => p.includes(tipo) ? p.filter(x=>x!==tipo) : [...p,tipo])}
                                   className="rounded-xl text-[13px] font-medium transition border select-none px-3 py-3 text-center"
-                                  style={{ minHeight:'52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                                  style={{ minHeight:'52px', background: on ? 'rgba(249,115,22,.15)' : 'var(--c-card)', borderColor: on ? 'var(--c-orange)' : 'var(--c-border)', color: on ? 'var(--c-orange)' : 'var(--c-text)' }}>
                                   <span className="mr-1">{on ? '✓' : '+'}</span>{tipo}
                                 </button>
                               );
@@ -1908,7 +1909,7 @@ function FlowPageInner() {
                               return (
                                 <button key={opt} type="button" onClick={() => set('alcohol_cantidad', opt)}
                                   className="rounded-xl border transition select-none px-2 py-3 text-center text-[14px] font-semibold"
-                                  style={{ minHeight:'52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                                  style={{ minHeight:'52px', background: on ? 'rgba(249,115,22,.15)' : 'var(--c-card)', borderColor: on ? 'var(--c-orange)' : 'var(--c-border)', color: on ? 'var(--c-orange)' : 'var(--c-text)' }}>
                                   {opt}
                                 </button>
                               );
@@ -1917,7 +1918,7 @@ function FlowPageInner() {
                         </div>
                         <div>
                           <p className="text-xs font-mono text-[#7a95aa] mb-2">¿DESDE HACE CUÁNTO BEBE?</p>
-                          <PillGroup options={DESDE_ANIOS_OPTS} value={f.alcohol_since} onChange={v => set('alcohol_since', v)} accent="#f97316" />
+                          <PillGroup options={DESDE_ANIOS_OPTS} value={f.alcohol_since} onChange={v => set('alcohol_since', v)} accent="var(--c-orange)" />
                         </div>
                         <NoteField value={f.alcohol_notes} onChange={v => set('alcohol_notes', v)}
                           placeholder="Patrón (fin de semana, atracón), si ha querido reducir, episodios de abuso, relación con el estrés…" />
@@ -1931,12 +1932,12 @@ function FlowPageInner() {
               <div className="my-6 flex items-center gap-3">
                 <div className="flex-1 h-px bg-[#1e2d3d]" />
                 <span className="text-xs font-mono text-[#f97316] bg-[#f97316]/10 px-3 py-1 rounded-full border border-[#f97316]/30">
-                  📋 PRIMERA VISITA — Datos de hoy
+                   PRIMERA VISITA — Datos de hoy
                 </span>
                 <div className="flex-1 h-px bg-[#1e2d3d]" />
               </div>
 
-              <Card title="Signos vitales" icon="❤️" color={pc.color}>
+              <Card title="Signos vitales" icon="" color={pc.color}>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1980,7 +1981,7 @@ function FlowPageInner() {
                     <Field label="TALLA (cm)"><input type="number" className={`${inp} ${fOrng}`} value={f.talla} onChange={e=>set('talla',e.target.value)} placeholder="170" /></Field>
                     <Field label="IMC">
                       <div className="px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded font-mono text-sm"
-                        style={{ color: imc ? (parseFloat(imc)<18.5||parseFloat(imc)>30 ? '#f43f5e' : parseFloat(imc)>25 ? '#f59e0b' : '#00e5a0') : '#3d5870' }}>
+                        style={{ color: imc ? (parseFloat(imc)<18.5||parseFloat(imc)>30 ? 'var(--c-red)' : parseFloat(imc)>25 ? 'var(--c-amber)' : 'var(--c-green)') : 'var(--c-text-3)' }}>
                         {imc || '—'}
                       </div>
                     </Field>
@@ -2014,7 +2015,7 @@ function FlowPageInner() {
                         // No abrir una actividad en blanco: el médico elige del grid (o "+ Otra").
                         if (!si) setActividades([]);
                       }}
-                      accent="#f97316" />
+                      accent="var(--c-orange)" />
 
                     {haceActividad === 'Sí' && (
                       <div className="mt-4 space-y-4">
@@ -2027,7 +2028,7 @@ function FlowPageInner() {
                               return (
                                 <button key={opt} type="button" onClick={() => toggleEjercicio(opt)}
                                   className="rounded-xl border transition select-none px-3 py-3 text-[13px] font-medium text-center"
-                                  style={{ minHeight: '52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                                  style={{ minHeight: '52px', background: on ? 'rgba(249,115,22,.15)' : 'var(--c-card)', borderColor: on ? 'var(--c-orange)' : 'var(--c-border)', color: on ? 'var(--c-orange)' : 'var(--c-text)' }}>
                                   <span className="mr-1">{on ? '✓' : '+'}</span>{opt}
                                 </button>
                               );
@@ -2035,7 +2036,7 @@ function FlowPageInner() {
                             <button type="button"
                               onClick={() => setActividades(prev => [...prev, { tipo: '', frecuencia: '', intensidad: '', duracion: '', desde: '' }])}
                               className="rounded-xl border border-dashed transition select-none px-3 py-3 text-[13px] font-medium text-center"
-                              style={{ minHeight: '52px', borderColor: '#f9731655', color: '#f97316', background: '#0d1520' }}>
+                              style={{ minHeight: '52px', borderColor: '#f9731655', color: 'var(--c-orange)', background: 'var(--c-card)' }}>
                               + Otra
                             </button>
                           </div>
@@ -2054,19 +2055,19 @@ function FlowPageInner() {
                             </div>
                             <div>
                               <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">FRECUENCIA</p>
-                              <PillGroup options={FREQ_OPTS} value={act.frecuencia} onChange={v => setActField(i, 'frecuencia', v)} accent="#f97316" />
+                              <PillGroup options={FREQ_OPTS} value={act.frecuencia} onChange={v => setActField(i, 'frecuencia', v)} accent="var(--c-orange)" />
                             </div>
                             <div>
                               <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">TIEMPO POR SESIÓN</p>
-                              <PillGroup options={DURACION_OPTS} value={act.duracion || ''} onChange={v => setActField(i, 'duracion', v)} accent="#f97316" />
+                              <PillGroup options={DURACION_OPTS} value={act.duracion || ''} onChange={v => setActField(i, 'duracion', v)} accent="var(--c-orange)" />
                             </div>
                             <div>
                               <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">INTENSIDAD</p>
-                              <PillGroup options={INTENSIDAD_OPTS} value={act.intensidad} onChange={v => setActField(i, 'intensidad', v)} accent="#f97316" />
+                              <PillGroup options={INTENSIDAD_OPTS} value={act.intensidad} onChange={v => setActField(i, 'intensidad', v)} accent="var(--c-orange)" />
                             </div>
                             <div>
                               <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿DESDE HACE CUÁNTO LO PRACTICA?</p>
-                              <PillGroup options={DESDE_ANIOS_OPTS} value={act.desde || ''} onChange={v => setActField(i, 'desde', v)} accent="#f97316" />
+                              <PillGroup options={DESDE_ANIOS_OPTS} value={act.desde || ''} onChange={v => setActField(i, 'desde', v)} accent="var(--c-orange)" />
                             </div>
                           </div>
                         ))}
@@ -2084,7 +2085,7 @@ function FlowPageInner() {
                           return (
                             <button key={opt} type="button" onClick={() => set('work_setting', opt)}
                               className="rounded-xl border transition select-none px-3 py-3 text-[13px] font-medium text-center"
-                              style={{ minHeight: '52px', background: on ? 'rgba(249,115,22,.15)' : '#0d1520', borderColor: on ? '#f97316' : '#1e2d3d', color: on ? '#f97316' : '#dde6ef' }}>
+                              style={{ minHeight: '52px', background: on ? 'rgba(249,115,22,.15)' : 'var(--c-card)', borderColor: on ? 'var(--c-orange)' : 'var(--c-border)', color: on ? 'var(--c-orange)' : 'var(--c-text)' }}>
                               {opt}
                             </button>
                           );
@@ -2093,11 +2094,11 @@ function FlowPageInner() {
                     </div>
                     <div>
                       <p className="text-xs font-mono text-[#7a95aa] mb-2">TIPO DE ACTIVIDAD EN EL TRABAJO</p>
-                      <PillGroup options={TRABAJO_TIPO} value={f.work_activity_level} onChange={v => set('work_activity_level', v)} accent="#f97316" />
+                      <PillGroup options={TRABAJO_TIPO} value={f.work_activity_level} onChange={v => set('work_activity_level', v)} accent="var(--c-orange)" />
                     </div>
                     <div>
                       <p className="text-xs font-mono text-[#7a95aa] mb-2">HORAS SENTADO AL DÍA</p>
-                      <PillGroup options={SENTADO_OPTS} value={f.sitting_hours} onChange={v => set('sitting_hours', v)} accent="#f97316" />
+                      <PillGroup options={SENTADO_OPTS} value={f.sitting_hours} onChange={v => set('sitting_hours', v)} accent="var(--c-orange)" />
                     </div>
                     <NoteField value={f.work_notes} onChange={v => set('work_notes', v)}
                       placeholder="Detalla su trabajo: a qué se dedica, cargas físicas, turnos, exposición a algo, estrés laboral…" />
@@ -2105,7 +2106,7 @@ function FlowPageInner() {
                 </div>
               </Card>
 
-              <Card title="Pruebas funcionales" icon="💪" color={pc.color}>
+              <Card title="Pruebas funcionales" icon="" color={pc.color}>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
                   {([
                     { k: 'fuerza_mano_der',     l: 'Fuerza prensil DER.', u: 'kg',   ph: '35',  step: '0.1' },
@@ -2128,7 +2129,7 @@ function FlowPageInner() {
 
               {/* — Laboratorios y estudios (aquí para que la IA empiece a transcribirlos
                     en segundo plano mientras se llena la fase del médico) — */}
-              <Card title="Laboratorios y estudios" icon="🧪" color={pc.color}>
+              <Card title="Laboratorios y estudios" icon="" color={pc.color}>
                 <div className="space-y-4">
 
                   {/* Notas de labs */}
@@ -2145,7 +2146,7 @@ function FlowPageInner() {
                     </label>
                     <div
                       className="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition"
-                      style={{ borderColor: labFiles.length ? '#f9731655' : '#1e2d3d' }}
+                      style={{ borderColor: labFiles.length ? '#f9731655' : 'var(--c-border)' }}
                       onClick={() => labFileInputRef.current?.click()}
                       onDragOver={e => { e.preventDefault(); }}
                       onDrop={e => {
@@ -2162,7 +2163,7 @@ function FlowPageInner() {
                         className="hidden"
                         onChange={handleLabFiles}
                       />
-                      <p className="text-2xl mb-1">📎</p>
+                      <p className="text-2xl mb-1"></p>
                       <p className="text-sm text-[#7a95aa] font-medium">Arrastra archivos aquí o haz clic para seleccionar</p>
                       <p className="text-xs text-[#3d5870] mt-1">PDF · Imágenes · Word · Excel — la IA los analiza directamente</p>
                     </div>
@@ -2172,7 +2173,7 @@ function FlowPageInner() {
                         {labFiles.map((lf, i) => (
                           <div key={i} className="flex items-center gap-3 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2">
                             <span className="text-xl flex-shrink-0">
-                              {lf.type.includes('pdf') ? '📄' : lf.type.startsWith('image') ? '🖼️' : '📝'}
+                              {lf.type.includes('pdf') ? '' : lf.type.startsWith('image') ? '' : ''}
                             </span>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs text-[#dde6ef] truncate font-medium">{lf.name}</p>
@@ -2194,7 +2195,7 @@ function FlowPageInner() {
 
               {/* — Nota de enfermería — */}
               {patientId && (
-                <Card title="Nota de Enfermería" icon="📝" color={pc.color}>
+                <Card title="Nota de Enfermería" icon="" color={pc.color}>
                   <NoteThread patientId={patientId} notes={notes} defaultRole="nurse"
                     onNoteAdded={n => setNotes(prev => [...prev, n])}
                     onNoteDeleted={id => setNotes(prev => prev.filter(n => n.id !== id))} />
@@ -2217,15 +2218,15 @@ function FlowPageInner() {
               {/* SEXO BIOLÓGICO — requerido */}
               <div className="bg-[#0d1520] border-2 border-[#a78bfa] rounded-xl p-6 mb-4">
                 <h2 className="text-base font-semibold text-[#dde6ef] mb-1 flex items-center gap-2">
-                  🧬 Sexo biológico de nacimiento
+                   Sexo biológico de nacimiento
                   <span className="text-[#f43f5e] text-xs font-mono ml-1">REQUERIDO</span>
                 </h2>
                 <p className="text-xs text-[#7a95aa] mb-4">El médico puede observarlo o preguntarlo. Necesario para análisis de la IA.</p>
                 <div className="flex gap-4">
-                  {[{v:'Masculino',icon:'♂'},{v:'Femenino',icon:'♀'}].map(({v:s,icon}) => (
+                  {[{v:'Masculino',icon:''},{v:'Femenino',icon:''}].map(({v:s,icon}) => (
                     <button key={s} type="button" onClick={()=>set('sexo_biologico',s)}
                       className="flex-1 py-3 rounded-xl text-base font-bold border transition"
-                      style={{ background: f.sexo_biologico===s?'rgba(167,139,250,.2)':'transparent', color: f.sexo_biologico===s?'#a78bfa':'#7a95aa', borderColor: f.sexo_biologico===s?'#a78bfa':'#1e2d3d' }}>
+                      style={{ background: f.sexo_biologico===s?'rgba(167,139,250,.2)':'transparent', color: f.sexo_biologico===s?'var(--c-violet)':'var(--c-text-2)', borderColor: f.sexo_biologico===s?'var(--c-violet)':'var(--c-border)' }}>
                       {icon} {s}
                     </button>
                   ))}
@@ -2240,7 +2241,7 @@ function FlowPageInner() {
 
               {/* Historia reproductiva FEMENINA */}
               {f.sexo_biologico === 'Femenino' && (
-                <Card title="Historia gineco-obstétrica" icon="🌸" color={pc.color}>
+                <Card title="Historia gineco-obstétrica" icon="" color={pc.color}>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <Field label="EDAD DE MENARCA"><input type="number" className={`${inp} ${fPurp}`} value={f.menarca_age} onChange={e=>set('menarca_age',e.target.value)} placeholder="12" /></Field>
@@ -2279,17 +2280,17 @@ function FlowPageInner() {
 
               {/* Historia reproductiva MASCULINA */}
               {f.sexo_biologico === 'Masculino' && (
-                <Card title="Historia reproductiva masculina" icon="💪" color={pc.color}>
+                <Card title="Historia reproductiva masculina" icon="" color={pc.color}>
                   <div className="space-y-5">
                     <div>
                       <p className="text-xs font-mono text-[#7a95aa] mb-3">DISFUNCIÓN ERÉCTIL</p>
                       <PillGroup options={['No refiere','Ocasional','Frecuente','Siempre']}
-                        value={f.erectile_dysfunction} onChange={v => set('erectile_dysfunction', v)} accent="#a78bfa" />
+                        value={f.erectile_dysfunction} onChange={v => set('erectile_dysfunction', v)} accent="var(--c-violet)" />
                     </div>
                     <div>
                       <p className="text-xs font-mono text-[#7a95aa] mb-3">USO DE TESTOSTERONA EXÓGENA</p>
                       <PillGroup options={['No','En el pasado','Actualmente']}
-                        value={f.testosterone_use} onChange={v => set('testosterone_use', v)} accent="#a78bfa" />
+                        value={f.testosterone_use} onChange={v => set('testosterone_use', v)} accent="var(--c-violet)" />
                       {(f.testosterone_use==='En el pasado'||f.testosterone_use==='Actualmente') && (
                         <textarea rows={2} className={`${inp} ${fPurp} mt-3`} value={f.testosterone_detalle}
                           onChange={e=>set('testosterone_detalle',e.target.value)} placeholder="Cuándo, cuánto tiempo, tipo de compuesto..." />
@@ -2306,7 +2307,7 @@ function FlowPageInner() {
 
               {/* Salud sexual */}
               {f.sexo_biologico && (
-                <Card title="Salud sexual" icon="💛" color={pc.color}>
+                <Card title="Salud sexual" icon="" color={pc.color}>
                   <p className="text-xs text-[#7a95aa] mb-4">Confidencial — solo visible para el médico tratante.</p>
                   <div className="space-y-4">
                     <Field label="NOTAS DE SALUD SEXUAL">
@@ -2319,7 +2320,7 @@ function FlowPageInner() {
               )}
 
               {/* Salud mental */}
-              <Card title="Salud mental" icon="🧠" color={pc.color}>
+              <Card title="Salud mental" icon="" color={pc.color}>
                 <p className="text-xs text-[#7a95aa] mb-4">Confidencial — solo visible para el médico tratante.</p>
                 <div className="space-y-4">
                   <Field label="DIAGNÓSTICOS PSIQUIÁTRICOS PREVIOS O ACTUALES">
@@ -2338,7 +2339,7 @@ function FlowPageInner() {
               </Card>
 
               {/* Sustancias recreativas */}
-              <Card title="Sustancias recreativas o de uso regular" icon="🌿" color={pc.color}>
+              <Card title="Sustancias recreativas o de uso regular" icon="" color={pc.color}>
                 <p className="text-xs text-[#7a95aa] mb-3">Confidencial — visible solo para el médico tratante.</p>
                 <textarea rows={3} className={`${inp} ${fPurp}`} value={f.sust_recreativas}
                   onChange={e=>set('sust_recreativas',e.target.value)}
@@ -2349,12 +2350,12 @@ function FlowPageInner() {
               <div className="my-6 flex items-center gap-3">
                 <div className="flex-1 h-px bg-[#1e2d3d]" />
                 <span className="text-xs font-mono text-[#a78bfa] bg-[#a78bfa]/10 px-3 py-1 rounded-full border border-[#a78bfa]/30">
-                  🔬 VISITA — Exploración médica
+                   VISITA — Exploración médica
                 </span>
                 <div className="flex-1 h-px bg-[#1e2d3d]" />
               </div>
 
-              <Card title="Motivo de consulta" icon="📋" color={pc.color}>
+              <Card title="Motivo de consulta" icon="" color={pc.color}>
                 <div className="space-y-4">
                   <p className="text-[11px] text-[#7a95aa] leading-relaxed bg-[#111820] border border-[#1e2d3d] rounded-xl p-3">
                     Redacta cada síntoma o motivo con el detalle que puedas. <span className="text-[#a78bfa]">Tips para preguntar al paciente:</span> ¿cuándo empezó?, ¿es continuo o va y viene?, ¿con qué mejora?, ¿con qué empeora?, ¿qué estaba viviendo cuando empezó (trabajo, familia, un evento)? Entre mejor lo describas aquí, menos preguntas de seguimiento hará la IA después.
@@ -2377,7 +2378,7 @@ function FlowPageInner() {
                         onChange={e => updateSintoma(i, 'descripcion', e.target.value)}
                         placeholder="Ej.: Dolor de cabeza opresivo desde hace 3 semanas, casi diario por las tardes. Mejora al descansar en oscuridad, empeora con pantallas y estrés. Empezó cuando cambió de trabajo y duerme mal…" />
                       <Slider label="INTENSIDAD DE ESTE SÍNTOMA (0 = nada, 10 = insoportable)" value={s.intensidad}
-                        onChange={v => updateSintoma(i, 'intensidad', v)} color="#a78bfa" />
+                        onChange={v => updateSintoma(i, 'intensidad', v)} color="var(--c-violet)" />
                     </div>
                   ))}
 
@@ -2388,20 +2389,20 @@ function FlowPageInner() {
                 </div>
               </Card>
 
-              <Card title="Reporte Subjetivo" icon="🧠" color={pc.color}>
+              <Card title="Reporte Subjetivo" icon="" color={pc.color}>
                 <div className="space-y-5">
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
                     <p className="text-xs font-mono text-[#a78bfa]">ENERGÍA EN LOS ÚLTIMOS 5 DÍAS</p>
-                    <Slider label="AL DESPERTAR"     value={f.energia_manana}   onChange={v=>set('energia_manana',v)}   color="#a78bfa" />
-                    <Slider label="A MEDIODÍA"        value={f.energia_mediodia} onChange={v=>set('energia_mediodia',v)} color="#a78bfa" />
-                    <Slider label="AL FINAL DEL DÍA"  value={f.energia_tarde}    onChange={v=>set('energia_tarde',v)}    color="#a78bfa" />
+                    <Slider label="AL DESPERTAR"     value={f.energia_manana}   onChange={v=>set('energia_manana',v)}   color="var(--c-violet)" />
+                    <Slider label="A MEDIODÍA"        value={f.energia_mediodia} onChange={v=>set('energia_mediodia',v)} color="var(--c-violet)" />
+                    <Slider label="AL FINAL DEL DÍA"  value={f.energia_tarde}    onChange={v=>set('energia_tarde',v)}    color="var(--c-violet)" />
                     <NoteField value={f.nota_energia} onChange={v=>set('nota_energia',v)}
                       placeholder="¿Desde cuándo el cambio de energía? ¿Se relaciona con algo (sueño, estrés, comidas, algún evento)?" />
                   </div>
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-3">
                     <p className="text-xs font-mono text-[#a78bfa]">SUEÑO</p>
-                    <Slider label="CALIDAD DEL SUEÑO" value={f.sueno_calidad} onChange={v=>set('sueno_calidad',v)} color="#a78bfa" />
+                    <Slider label="CALIDAD DEL SUEÑO" value={f.sueno_calidad} onChange={v=>set('sueno_calidad',v)} color="var(--c-violet)" />
                     <div className="grid grid-cols-2 gap-4">
                       <Field label="HORAS POR NOCHE">
                         <input type="number" step="0.5" className={`${inp} ${fPurp}`} value={f.sueno_horas}
@@ -2412,7 +2413,7 @@ function FlowPageInner() {
                         <div className="flex gap-2 flex-wrap">
                           {['Sí','No','A veces'].map(o => (
                             <label key={o} className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border transition text-sm"
-                              style={{ background: f.sueno_reparador === o ? '#a78bfa' : '#1e2d3d', borderColor: f.sueno_reparador === o ? '#a78bfa' : '#2a3a4d', color: f.sueno_reparador === o ? '#000' : '#dde6ef' }}>
+                              style={{ background: f.sueno_reparador === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.sueno_reparador === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.sueno_reparador === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                               <input type="radio" name="sueno_rep" value={o} checked={f.sueno_reparador === o}
                                 onChange={e=>set('sueno_reparador', e.target.value)} className="sr-only" />
                               {o}
@@ -2440,7 +2441,7 @@ function FlowPageInner() {
                           <div className="flex gap-2 flex-wrap">
                             {opts.map(o => (
                               <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                                style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                style={{ background: f[key] === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f[key] === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f[key] === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                 <input type="radio" name={key} value={o} checked={f[key] === o}
                                   onChange={e=>set(key, e.target.value)} className="sr-only" />
                                 {o}
@@ -2458,7 +2459,7 @@ function FlowPageInner() {
                         <div className="flex gap-2 flex-wrap">
                           {(['Sí','No','A veces'] as const).map(o => (
                             <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                              style={{ background: f.snoring === o ? '#a78bfa' : '#1e2d3d', borderColor: f.snoring === o ? '#a78bfa' : '#2a3a4d', color: f.snoring === o ? '#000' : '#dde6ef' }}>
+                              style={{ background: f.snoring === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.snoring === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.snoring === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                               <input type="radio" name="snoring" value={o} checked={f.snoring === o}
                                 onChange={e=>set('snoring', e.target.value)} className="sr-only" />
                               {o}
@@ -2473,7 +2474,7 @@ function FlowPageInner() {
                             <div className="flex gap-2 flex-wrap">
                               {(['Sí','No','A veces'] as const).map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                                  style={{ background: f.snoring_intensity === o ? '#a78bfa' : '#1e2d3d', borderColor: f.snoring_intensity === o ? '#a78bfa' : '#2a3a4d', color: f.snoring_intensity === o ? '#000' : '#dde6ef' }}>
+                                  style={{ background: f.snoring_intensity === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.snoring_intensity === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.snoring_intensity === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                   <input type="radio" name="snoring_intensity" value={o} checked={f.snoring_intensity === o}
                                     onChange={e=>set('snoring_intensity', e.target.value)} className="sr-only" />
                                   {o}
@@ -2486,7 +2487,7 @@ function FlowPageInner() {
                             <div className="flex gap-2 flex-wrap">
                               {(['Casi siempre','Frecuentemente','A veces'] as const).map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                                  style={{ background: f.snoring_frequency === o ? '#a78bfa' : '#1e2d3d', borderColor: f.snoring_frequency === o ? '#a78bfa' : '#2a3a4d', color: f.snoring_frequency === o ? '#000' : '#dde6ef' }}>
+                                  style={{ background: f.snoring_frequency === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.snoring_frequency === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.snoring_frequency === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                   <input type="radio" name="snoring_frequency" value={o} checked={f.snoring_frequency === o}
                                     onChange={e=>set('snoring_frequency', e.target.value)} className="sr-only" />
                                   {o}
@@ -2505,7 +2506,7 @@ function FlowPageInner() {
                         <div className="flex gap-2 flex-wrap">
                           {(['Sí','No','No sé'] as const).map(o => (
                             <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                              style={{ background: f.apnea_observed === o ? '#a78bfa' : '#1e2d3d', borderColor: f.apnea_observed === o ? '#a78bfa' : '#2a3a4d', color: f.apnea_observed === o ? '#000' : '#dde6ef' }}>
+                              style={{ background: f.apnea_observed === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.apnea_observed === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.apnea_observed === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                               <input type="radio" name="apnea_observed" value={o} checked={f.apnea_observed === o}
                                 onChange={e=>set('apnea_observed', e.target.value)} className="sr-only" />
                               {o}
@@ -2520,7 +2521,7 @@ function FlowPageInner() {
                             <div className="flex gap-2 flex-wrap">
                               {(['<1/sem','1-2/sem','3+/sem'] as const).map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                                  style={{ background: f.apnea_frequency === o ? '#a78bfa' : '#1e2d3d', borderColor: f.apnea_frequency === o ? '#a78bfa' : '#2a3a4d', color: f.apnea_frequency === o ? '#000' : '#dde6ef' }}>
+                                  style={{ background: f.apnea_frequency === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.apnea_frequency === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.apnea_frequency === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                   <input type="radio" name="apnea_frequency" value={o} checked={f.apnea_frequency === o}
                                     onChange={e=>set('apnea_frequency', e.target.value)} className="sr-only" />
                                   {o}
@@ -2533,7 +2534,7 @@ function FlowPageInner() {
                             <div className="flex gap-2 flex-wrap">
                               {(['<10 seg','10-20 seg','20-30 seg','Más de 30 seg','No sabe'] as const).map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                                  style={{ background: f.apnea_duration === o ? '#a78bfa' : '#1e2d3d', borderColor: f.apnea_duration === o ? '#a78bfa' : '#2a3a4d', color: f.apnea_duration === o ? '#000' : '#dde6ef' }}>
+                                  style={{ background: f.apnea_duration === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.apnea_duration === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.apnea_duration === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                   <input type="radio" name="apnea_duration" value={o} checked={f.apnea_duration === o}
                                     onChange={e=>set('apnea_duration', e.target.value)} className="sr-only" />
                                   {o}
@@ -2544,7 +2545,7 @@ function FlowPageInner() {
                           <div className="col-span-2">
                             <p className="text-xs font-mono text-[#7a95aa] mb-2">¿PASA TODA LA NOCHE O EN SITUACIONES PUNTUALES?</p>
                             <PillGroup options={['Toda la noche','Solo por ratos','Solo algunas noches','No sabe']}
-                              value={f.apnea_pattern} onChange={v => set('apnea_pattern', v)} accent="#a78bfa" />
+                              value={f.apnea_pattern} onChange={v => set('apnea_pattern', v)} accent="var(--c-violet)" />
                           </div>
                         </div>
                       )}
@@ -2560,13 +2561,13 @@ function FlowPageInner() {
                         <div>
                           <p className="text-xs font-mono text-[#7a95aa] mb-2">¿SE SIENTE CANSADO, FATIGADO O SOMNOLIENTO DURANTE EL DÍA?</p>
                           <PillGroup options={['Sí, casi diario','A veces','Rara vez','No']}
-                            value={f.daytime_sleepiness} onChange={v => set('daytime_sleepiness', v)} accent="#a78bfa" />
+                            value={f.daytime_sleepiness} onChange={v => set('daytime_sleepiness', v)} accent="var(--c-violet)" />
                         </div>
 
                         <div>
                           <p className="text-xs font-mono text-[#7a95aa] mb-2">¿SE QUEDA DORMIDO VIENDO TELE, LEYENDO O EN REPOSO DURANTE EL DÍA?</p>
                           <PillGroup options={['Frecuentemente','A veces','Nunca']}
-                            value={f.doze_off} onChange={v => set('doze_off', v)} accent="#a78bfa" />
+                            value={f.doze_off} onChange={v => set('doze_off', v)} accent="var(--c-violet)" />
                         </div>
 
                         <div>
@@ -2575,7 +2576,7 @@ function FlowPageInner() {
                             {['Dolor de cabeza matutino','Problemas de concentración','Irritabilidad','Cambios de humor','Boca seca al despertar','Ninguno'].map(o => (
                               <button key={o} type="button" onClick={() => toggleMulti(morningSx, setMorningSx, o)}
                                 className="px-3 py-2 rounded-xl text-xs font-semibold transition border"
-                                style={{ background: morningSx.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: morningSx.includes(o) ? '#a78bfa' : '#2a3a4d', color: morningSx.includes(o) ? '#000' : '#dde6ef' }}>
+                                style={{ background: morningSx.includes(o) ? 'var(--c-violet)' : 'var(--c-border)', borderColor: morningSx.includes(o) ? 'var(--c-violet)' : 'var(--c-border-2)', color: morningSx.includes(o) ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                 {o}
                               </button>
                             ))}
@@ -2588,7 +2589,7 @@ function FlowPageInner() {
                             {['Alcohol','Sedantes o pastillas para dormir','Cena pesada o tardía','Dormir boca arriba','Congestión nasal','Nada en particular'].map(o => (
                               <button key={o} type="button" onClick={() => toggleMulti(apneaTrig, setApneaTrig, o)}
                                 className="px-3 py-2 rounded-xl text-xs font-semibold transition border"
-                                style={{ background: apneaTrig.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: apneaTrig.includes(o) ? '#a78bfa' : '#2a3a4d', color: apneaTrig.includes(o) ? '#000' : '#dde6ef' }}>
+                                style={{ background: apneaTrig.includes(o) ? 'var(--c-violet)' : 'var(--c-border)', borderColor: apneaTrig.includes(o) ? 'var(--c-violet)' : 'var(--c-border-2)', color: apneaTrig.includes(o) ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                 {o}
                               </button>
                             ))}
@@ -2602,7 +2603,7 @@ function FlowPageInner() {
 
                   <div className="bg-[#111820] border border-[#a78bfa]/20 rounded-xl p-4 space-y-4">
                     <p className="text-xs font-mono text-[#a78bfa]">ESTRÉS</p>
-                    <Slider label="NIVEL DE ESTRÉS PERCIBIDO" value={f.stress_level} onChange={v=>set('stress_level',v)} color="#a78bfa" />
+                    <Slider label="NIVEL DE ESTRÉS PERCIBIDO" value={f.stress_level} onChange={v=>set('stress_level',v)} color="var(--c-violet)" />
                     <div className="grid grid-cols-3 gap-3">
                       {([
                         { key: 'racing_mind' as const,   label: '¿MENTE ACELERADA?', opts: ['Sí','No'] },
@@ -2614,7 +2615,7 @@ function FlowPageInner() {
                           <div className="flex gap-2 flex-wrap">
                             {opts.map(o => (
                               <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border transition text-xs"
-                                style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                style={{ background: f[key] === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f[key] === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f[key] === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                 <input type="radio" name={key} value={o} checked={f[key] === o}
                                   onChange={e=>set(key, e.target.value)} className="sr-only" />
                                 {o}
@@ -2634,7 +2635,7 @@ function FlowPageInner() {
                         {['Neblina mental','Le cuesta recordar cosas','Le cuesta concentrarse'].map(o => (
                           <button key={o} type="button" onClick={() => toggleMulti(cognitive, setCognitive, o)}
                             className="px-3 py-2 rounded-xl text-xs font-semibold transition border"
-                            style={{ background: cognitive.includes(o) ? '#a78bfa' : '#1e2d3d', borderColor: cognitive.includes(o) ? '#a78bfa' : '#2a3a4d', color: cognitive.includes(o) ? '#000' : '#dde6ef' }}>
+                            style={{ background: cognitive.includes(o) ? 'var(--c-violet)' : 'var(--c-border)', borderColor: cognitive.includes(o) ? 'var(--c-violet)' : 'var(--c-border-2)', color: cognitive.includes(o) ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                             {o}
                           </button>
                         ))}
@@ -2652,7 +2653,7 @@ function FlowPageInner() {
                         {ANIMO_OPTS.map(o => (
                           <button key={o} type="button" onClick={() => toggleMulti(animo, setAnimo, o)}
                             className="px-3 py-1.5 rounded-full text-xs font-semibold transition"
-                            style={{ background: animo.includes(o) ? '#a78bfa' : '#1e2d3d', color: animo.includes(o) ? '#000' : '#7a95aa' }}>
+                            style={{ background: animo.includes(o) ? 'var(--c-violet)' : 'var(--c-border)', color: animo.includes(o) ? 'var(--c-primary-fg)' : 'var(--c-text-2)' }}>
                             {o}
                           </button>
                         ))}
@@ -2666,7 +2667,7 @@ function FlowPageInner() {
                         {DIGESTION_OPTS.map(o => (
                           <button key={o} type="button" onClick={() => toggleMulti(digestion, setDigestion, o)}
                             className="px-3 py-1.5 rounded-full text-xs font-semibold transition"
-                            style={{ background: digestion.includes(o) ? '#a78bfa' : '#1e2d3d', color: digestion.includes(o) ? '#000' : '#7a95aa' }}>
+                            style={{ background: digestion.includes(o) ? 'var(--c-violet)' : 'var(--c-border)', color: digestion.includes(o) ? 'var(--c-primary-fg)' : 'var(--c-text-2)' }}>
                             {o}
                           </button>
                         ))}
@@ -2690,7 +2691,7 @@ function FlowPageInner() {
                             <div className="flex gap-2 flex-wrap">
                               {(['Días','1-2 semanas','1 mes o más','Crónico (meses/años)'] as const).map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
-                                  style={{ background: f.digestion_onset === o ? '#a78bfa' : '#1e2d3d', borderColor: f.digestion_onset === o ? '#a78bfa' : '#2a3a4d', color: f.digestion_onset === o ? '#000' : '#dde6ef' }}>
+                                  style={{ background: f.digestion_onset === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.digestion_onset === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.digestion_onset === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                   <input type="radio" name="digestion_onset" value={o} checked={f.digestion_onset === o}
                                     onChange={e=>set('digestion_onset', e.target.value)} className="sr-only" />
                                   {o}
@@ -2703,7 +2704,7 @@ function FlowPageInner() {
                             <div className="flex gap-2 flex-wrap">
                               {(['Continuo','Intermitente','Solo después de comer','Variable'] as const).map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
-                                  style={{ background: f.digestion_pattern === o ? '#a78bfa' : '#1e2d3d', borderColor: f.digestion_pattern === o ? '#a78bfa' : '#2a3a4d', color: f.digestion_pattern === o ? '#000' : '#dde6ef' }}>
+                                  style={{ background: f.digestion_pattern === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.digestion_pattern === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.digestion_pattern === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                   <input type="radio" name="digestion_pattern" value={o} checked={f.digestion_pattern === o}
                                     onChange={e=>set('digestion_pattern', e.target.value)} className="sr-only" />
                                   {o}
@@ -2717,7 +2718,7 @@ function FlowPageInner() {
                               <div className="flex gap-2 flex-wrap">
                                 {(['Sí — sangre','Sí — moco','No','No sé'] as const).map(o => (
                                   <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
-                                    style={{ background: f.digestion_blood === o ? '#a78bfa' : '#1e2d3d', borderColor: f.digestion_blood === o ? '#a78bfa' : '#2a3a4d', color: f.digestion_blood === o ? '#000' : '#dde6ef' }}>
+                                    style={{ background: f.digestion_blood === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.digestion_blood === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.digestion_blood === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                     <input type="radio" name="digestion_blood" value={o} checked={f.digestion_blood === o}
                                       onChange={e=>set('digestion_blood', e.target.value)} className="sr-only" />
                                     {o}
@@ -2738,7 +2739,7 @@ function FlowPageInner() {
                             <div className="flex gap-2 flex-wrap">
                               {['Sí','No'].map(o => (
                                 <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
-                                  style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                  style={{ background: f[key] === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f[key] === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f[key] === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                   <input type="radio" name={key} value={o} checked={f[key] === o}
                                     onChange={e=>set(key, e.target.value)} className="sr-only" />
                                   {o}
@@ -2754,11 +2755,11 @@ function FlowPageInner() {
                   </div>
 
                   <div className="space-y-3">
-                    <Slider label="LIBIDO ÚLTIMAMENTE (1-10)" value={f.libido_hoy} onChange={v=>set('libido_hoy',v)} color="#a78bfa" />
+                    <Slider label="LIBIDO ÚLTIMAMENTE (1-10)" value={f.libido_hoy} onChange={v=>set('libido_hoy',v)} color="var(--c-violet)" />
                     <div>
                       <p className="text-xs font-mono text-[#7a95aa] mb-2">COMPARADO CON LO NORMAL</p>
                       <PillGroup options={['Normal','Más alto de lo normal','Más bajo de lo normal']}
-                        value={f.libido_tendencia} onChange={v => set('libido_tendencia', v)} accent="#a78bfa" />
+                        value={f.libido_tendencia} onChange={v => set('libido_tendencia', v)} accent="var(--c-violet)" />
                     </div>
                   </div>
 
@@ -2774,7 +2775,7 @@ function FlowPageInner() {
                           {ORINA_COLORS.map(c => (
                             <button key={c.hex} type="button" onClick={() => set(field, c.label)}
                               className="flex flex-col items-center gap-1 rounded-xl border-2 transition p-2"
-                              style={{ borderColor: f[field] === c.label ? '#a78bfa' : '#1e2d3d', background: f[field] === c.label ? '#a78bfa11' : 'transparent' }}>
+                              style={{ borderColor: f[field] === c.label ? 'var(--c-violet)' : 'var(--c-border)', background: f[field] === c.label ? '#a78bfa11' : 'transparent' }}>
                               <div className="w-8 h-8 rounded-full border border-[#1e2d3d]" style={{ background: c.hex }} />
                               <span className="text-[10px] text-[#7a95aa] text-center max-w-[60px] leading-tight">{c.text}</span>
                             </button>
@@ -2808,11 +2809,11 @@ function FlowPageInner() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿QUÉ TIPO DE COMIDA SUELE COMER?</p>
-                        <PillGroup options={['Casera','Fuera / restaurante','Rápida / procesada','Mixta']} value={f.nutri_tipo} onChange={v=>set('nutri_tipo',v)} accent="#a78bfa" />
+                        <PillGroup options={['Casera','Fuera / restaurante','Rápida / procesada','Mixta']} value={f.nutri_tipo} onChange={v=>set('nutri_tipo',v)} accent="var(--c-violet)" />
                       </div>
                       <div>
                         <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿COME VERDURAS / ENSALADA?</p>
-                        <PillGroup options={['A diario','A veces','Casi nunca']} value={f.nutri_verduras} onChange={v=>set('nutri_verduras',v)} accent="#a78bfa" />
+                        <PillGroup options={['A diario','A veces','Casi nunca']} value={f.nutri_verduras} onChange={v=>set('nutri_verduras',v)} accent="var(--c-violet)" />
                       </div>
                     </div>
 
@@ -2820,11 +2821,11 @@ function FlowPageInner() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿COME SUFICIENTE PROTEÍNA?</p>
-                        <PillGroup options={['Suficiente','Regular','Poca']} value={f.nutri_proteina} onChange={v=>set('nutri_proteina',v)} accent="#a78bfa" />
+                        <PillGroup options={['Suficiente','Regular','Poca']} value={f.nutri_proteina} onChange={v=>set('nutri_proteina',v)} accent="var(--c-violet)" />
                       </div>
                       <div>
                         <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">PORCIONES DE PROTEÍNA AL DÍA</p>
-                        <PillGroup options={['0–1','2','3+']} value={f.nutri_proteina_porciones} onChange={v=>set('nutri_proteina_porciones',v)} accent="#a78bfa" />
+                        <PillGroup options={['0–1','2','3+']} value={f.nutri_proteina_porciones} onChange={v=>set('nutri_proteina_porciones',v)} accent="var(--c-violet)" />
                       </div>
                     </div>
 
@@ -2836,14 +2837,14 @@ function FlowPageInner() {
                       </Field>
                       <div>
                         <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿A QUÉ HORA SUELE PICAR?</p>
-                        <PillGroup options={['Mañana','Tarde','Noche','Todo el día']} value={f.nutri_snack_hora} onChange={v=>set('nutri_snack_hora',v)} accent="#a78bfa" />
+                        <PillGroup options={['Mañana','Tarde','Noche','Todo el día']} value={f.nutri_snack_hora} onChange={v=>set('nutri_snack_hora',v)} accent="var(--c-violet)" />
                       </div>
                     </div>
 
                     {/* Hambre entre comidas */}
                     <div>
                       <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿SUELE TENER HAMBRE ENTRE COMIDAS?</p>
-                      <PillGroup options={['Sí, seguido','A veces','Casi nunca']} value={f.nutri_hambre} onChange={v=>set('nutri_hambre',v)} accent="#a78bfa" />
+                      <PillGroup options={['Sí, seguido','A veces','Casi nunca']} value={f.nutri_hambre} onChange={v=>set('nutri_hambre',v)} accent="var(--c-violet)" />
                     </div>
 
                     {/* Cantidades / básicos */}
@@ -2868,12 +2869,12 @@ function FlowPageInner() {
                       </Field>
                       <div>
                         <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">ULTRAPROCESADOS</p>
-                        <PillGroup options={['Nunca','A veces','Frecuente','Diario']} value={f.ultraprocessed_frequency} onChange={v=>set('ultraprocessed_frequency',v)} accent="#a78bfa" />
+                        <PillGroup options={['Nunca','A veces','Frecuente','Diario']} value={f.ultraprocessed_frequency} onChange={v=>set('ultraprocessed_frequency',v)} accent="var(--c-violet)" />
                       </div>
                     </div>
                     <div>
                       <p className="text-[10px] font-mono text-[#7a95aa] mb-1.5">¿COME FRENTE A PANTALLAS?</p>
-                      <PillGroup options={['Sí','No','A veces']} value={f.screen_eating} onChange={v=>set('screen_eating',v)} accent="#a78bfa" />
+                      <PillGroup options={['Sí','No','A veces']} value={f.screen_eating} onChange={v=>set('screen_eating',v)} accent="var(--c-violet)" />
                     </div>
 
                     <NoteField value={f.nota_alimentacion} onChange={v=>set('nota_alimentacion',v)}
@@ -2894,7 +2895,7 @@ function FlowPageInner() {
                       <div>
                         <p className="text-xs font-mono text-[#7a95aa] mb-2">¿CALIENTA COMIDA EN PLÁSTICO EN MICROONDAS?</p>
                         <PillGroup options={['Sí','No']} value={f.plastic_in_microwave}
-                          onChange={v => set('plastic_in_microwave', v)} accent="#a78bfa" />
+                          onChange={v => set('plastic_in_microwave', v)} accent="var(--c-violet)" />
                       </div>
                     </div>
                   </div>
@@ -2912,7 +2913,7 @@ function FlowPageInner() {
                           <div className="flex gap-2 flex-wrap">
                             {['Sí','No'].map(o => (
                               <label key={o} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-xl border transition text-xs"
-                                style={{ background: f[key] === o ? '#a78bfa' : '#1e2d3d', borderColor: f[key] === o ? '#a78bfa' : '#2a3a4d', color: f[key] === o ? '#000' : '#dde6ef' }}>
+                                style={{ background: f[key] === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f[key] === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f[key] === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                                 <input type="radio" name={key} value={o} checked={f[key] === o}
                                   onChange={e=>set(key, e.target.value)} className="sr-only" />
                                 {o}
@@ -2938,7 +2939,7 @@ function FlowPageInner() {
                 </div>
               </Card>
 
-              <Card title="Exploración Clínica" icon="🔬" color={pc.color}>
+              <Card title="Exploración Clínica" icon="" color={pc.color}>
                 <p className="text-xs text-[#7a95aa] mb-3">Redáctala con tus propias palabras. Escribe solo lo relevante.</p>
                 <div className="space-y-3">
                   <Field label="EXPLORACIÓN CLÍNICA (redacción libre)"
@@ -2984,7 +2985,7 @@ function FlowPageInner() {
                         <div className="flex gap-2">
                           {['Sí','No','Parcial'].map(o => (
                             <label key={o} className="flex items-center justify-center cursor-pointer flex-1 rounded-lg border transition py-2 text-xs"
-                              style={{ background: f.cognitivo_reloj === o ? '#a78bfa' : '#1e2d3d', borderColor: f.cognitivo_reloj === o ? '#a78bfa' : '#2a3a4d', color: f.cognitivo_reloj === o ? '#000' : '#dde6ef' }}>
+                              style={{ background: f.cognitivo_reloj === o ? 'var(--c-violet)' : 'var(--c-border)', borderColor: f.cognitivo_reloj === o ? 'var(--c-violet)' : 'var(--c-border-2)', color: f.cognitivo_reloj === o ? 'var(--c-primary-fg)' : 'var(--c-text)' }}>
                               <input type="radio" name="reloj" value={o} checked={f.cognitivo_reloj === o}
                                 onChange={e=>set('cognitivo_reloj', e.target.value)} className="sr-only" />
                               {o}
@@ -3003,11 +3004,11 @@ function FlowPageInner() {
 
               {/* Banco de preguntas configurable — bloque Consulta */}
               <DynamicQuestions block="consulta" accent={pc.color} tablet={false}
-                title="📋 CUESTIONARIO DE CONSULTA" onChange={setDynConsulta} />
+                title=" CUESTIONARIO DE CONSULTA" onChange={setDynConsulta} />
 
               {/* — Nota del médico — */}
               {patientId && (
-                <Card title="Nota Médica" icon="📝" color={pc.color}>
+                <Card title="Nota Médica" icon="" color={pc.color}>
                   <NoteThread patientId={patientId} visitId={visitId || undefined} notes={notes} defaultRole="doctor"
                     onNoteAdded={n => setNotes(prev => [...prev, n])}
                     onNoteDeleted={id => setNotes(prev => prev.filter(n => n.id !== id))} />
@@ -3017,7 +3018,7 @@ function FlowPageInner() {
               {/* Aviso si falta sexo biológico */}
               {!f.sexo_biologico && (
                 <div className="bg-[#f43f5e]/10 border border-[#f43f5e]/30 rounded-xl p-4 mb-4">
-                  <p className="text-sm text-[#f43f5e]">⚠️ El campo <strong>Sexo biológico</strong> es requerido para completar el alta.</p>
+                  <p className="text-sm text-[#f43f5e]"> El campo <strong>Sexo biológico</strong> es requerido para completar el alta.</p>
                 </div>
               )}
             </>
@@ -3035,7 +3036,7 @@ function FlowPageInner() {
               {phase === 1 && (
                 <button onClick={savePhase1} disabled={saving || !f.first_name || !f.last_name || !f.date_of_birth}
                   className="px-6 py-2.5 text-sm font-bold rounded-xl disabled:opacity-40 transition"
-                  style={{ background: '#0ea5e9', color: '#000' }}>
+                  style={{ background: 'var(--c-blue)', color: 'var(--c-primary-fg)' }}>
                   {saving ? 'Guardando...'
                     : isEditMode ? 'Guardar cambios'
                     : 'Guardar y pasar a Enfermería →'}
@@ -3045,7 +3046,7 @@ function FlowPageInner() {
               {phase === 2 && (
                 <button onClick={savePhase2} disabled={saving}
                   className="px-6 py-2.5 text-sm font-bold rounded-xl disabled:opacity-40 transition"
-                  style={{ background: '#f97316', color: '#000' }}>
+                  style={{ background: 'var(--c-orange)', color: 'var(--c-primary-fg)' }}>
                   {saving ? 'Guardando...' : 'Guardar y pasar al Médico →'}
                 </button>
               )}
@@ -3053,7 +3054,7 @@ function FlowPageInner() {
               {phase === 3 && (
                 <button onClick={savePhase3} disabled={saving || !f.sexo_biologico}
                   className="px-6 py-2.5 text-sm font-bold rounded-xl disabled:opacity-40 transition"
-                  style={{ background: f.sexo_biologico ? '#00e5a0' : '#3d5870', color: f.sexo_biologico ? '#000' : '#7a95aa' }}>
+                  style={{ background: f.sexo_biologico ? 'var(--c-green)' : 'var(--c-text-3)', color: f.sexo_biologico ? 'var(--c-primary-fg)' : 'var(--c-text-2)' }}>
                   {saving ? 'Guardando...' : 'Completar registro ✓'}
                 </button>
               )}

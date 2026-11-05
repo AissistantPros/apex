@@ -2,7 +2,10 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from '@/app/lib/auth';
-import { getRole, setRole, setPerms, clearRoleCache, ROLE_LABELS, ROLE_COLORS, UserRole } from '@/app/lib/role';
+import { getRole, setRole, setPerms, clearRoleCache, ROLE_LABELS, UserRole } from '@/app/lib/role';
+import { applyBrand, clearBrandCache, readCachedBrand, type ClinicBrand } from '@/app/lib/brand';
+import Icon, { type IconName } from '@/app/components/Icon';
+import { clearEntitlementsCache } from '@/app/lib/useEntitlements';
 import { useEffect, useRef, useState } from 'react';
 
 interface TopNavProps {
@@ -11,48 +14,48 @@ interface TopNavProps {
 }
 
 // primary: se muestra siempre en la barra. El resto se agrupa en el menú "Más".
-const ALL_LINKS = [
-  { href: '/dashboard',          icon: '🏠', label: 'Inicio',     roles: ['admin','doctor','nurse','receptionist','accounting','marketing'], primary: true },
-  { href: '/dashboard/patients', icon: '👥', label: 'Pacientes',  roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes', primary: true },
-  { href: '/dashboard/agenda',   icon: '📅', label: 'Agenda',     roles: ['doctor','nurse','receptionist'], feature: 'agenda', primary: true },
-  { href: '/dashboard/sala',     icon: '🛎️', label: 'Sala',       roles: ['doctor','nurse'], primary: true },
-  { href: '/dashboard/proximos', icon: '🔜', label: 'Próximos',   roles: ['doctor'], feature: 'sala_espera', primary: true },
-  { href: '/dashboard/clinic',   icon: '💳', label: 'Cobros',     roles: ['receptionist'], feature: 'contabilidad', primary: true },
-  { href: '/dashboard/clinic',   icon: '🏥', label: 'Mi Clínica', roles: ['admin','doctor','accounting'], feature: 'contabilidad' },
-  { href: '/dashboard/marketing', icon: '📣', label: 'Marketing',  roles: ['admin','doctor','marketing'], feature: 'marketing' },
-  { href: '/dashboard/biblioteca', icon: '📚', label: 'Biblioteca', roles: ['admin'] },
-  { href: '/dashboard/staff',    icon: '🩺', label: 'Staff',      roles: ['admin','doctor'] },
-  { href: '/dashboard/aprobaciones', icon: '✅', label: 'Aprobaciones', roles: ['doctor'] },
-  { href: '/dashboard/soporte',  icon: '💬', label: 'Soporte',    roles: ['doctor'] },
+const ALL_LINKS: Array<{ href: string; icon: IconName; label: string; roles: string[]; feature?: string; primary?: boolean }> = [
+  { href: '/dashboard',            icon: 'home',      label: 'Inicio',      roles: ['admin','doctor','nurse','receptionist','accounting','marketing'], primary: true },
+  { href: '/dashboard/patients',   icon: 'users',     label: 'Pacientes',   roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes', primary: true },
+  { href: '/dashboard/agenda',     icon: 'calendar',  label: 'Agenda',      roles: ['doctor','nurse','receptionist'], feature: 'agenda', primary: true },
+  { href: '/dashboard/sala',       icon: 'bell',      label: 'Sala',        roles: ['doctor','nurse'], primary: true },
+  { href: '/dashboard/proximos',   icon: 'clock',     label: 'Próximos',    roles: ['doctor'], feature: 'sala_espera', primary: true },
+  { href: '/dashboard/clinic',     icon: 'wallet',    label: 'Cobros',      roles: ['receptionist'], feature: 'contabilidad', primary: true },
+  { href: '/dashboard/clinic',     icon: 'building',  label: 'Mi consultorio', roles: ['admin','doctor','accounting'], feature: 'contabilidad' },
+  { href: '/dashboard/marketing',  icon: 'megaphone', label: 'Marketing',   roles: ['admin','doctor','marketing'], feature: 'marketing' },
+  { href: '/dashboard/biblioteca', icon: 'book',      label: 'Biblioteca',  roles: ['admin'] },
+  { href: '/dashboard/staff',      icon: 'team',      label: 'Equipo',      roles: ['admin','doctor'] },
+  { href: '/dashboard/aprobaciones', icon: 'check',   label: 'Aprobaciones', roles: ['doctor'] },
+  { href: '/dashboard/stats',      icon: 'activity',  label: 'Estadísticas', roles: ['doctor'] },
+  { href: '/dashboard/help',       icon: 'book',      label: 'Ayuda',       roles: ['doctor','nurse','receptionist','accounting'] },
+  { href: '/dashboard/soporte',    icon: 'message',   label: 'Soporte',     roles: ['doctor'] },
 ];
 
 // ── Helpers de tema ──────────────────────────────────────────────────────────
 function getTheme(): 'dark' | 'light' {
-  if (typeof window === 'undefined') return 'dark';
-  return (localStorage.getItem('apex-theme') as 'dark' | 'light') || 'dark';
+  if (typeof window === 'undefined') return 'light';
+  return (localStorage.getItem('apex-theme') as 'dark' | 'light') || 'light';
 }
 function applyTheme(theme: 'dark' | 'light') {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('apex-theme', theme);
 }
 
-// ── Script de hidratación temprana (evita flash) ─────────────────────────────
-// Se inyecta en el <head> via layout.tsx — exportado por separado
-export const themeScript = `
-(function(){
-  var t = localStorage.getItem('apex-theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', t);
-})();
-`;
+const Badge = ({ n, tone = 'accent' }: { n: number; tone?: 'accent' | 'danger' }) => (
+  <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold flex items-center justify-center text-white"
+    style={{ background: tone === 'danger' ? 'var(--c-danger)' : 'var(--c-accent)' }}>{n}</span>
+);
 
 export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const router   = useRouter();
   const pathname = usePathname();
   const [role, setRoleState]     = useState<UserRole>('doctor');
-  const [theme, setThemeState]   = useState<'dark' | 'light'>('dark');
+  const [theme, setThemeState]   = useState<'dark' | 'light'>('light');
   const [aprobCount, setAprobCount] = useState(0);
   const [waitCount, setWaitCount] = useState(0);  // sala de espera en vivo
   const [feats, setFeats] = useState<Record<string, boolean> | null>(null);  // servicios contratados
+  const [plan, setPlan] = useState<string | null>(null);
+  const [brand, setBrand] = useState<ClinicBrand | null>(null);
   const [credits, setCredits] = useState<{ remaining: number; low: boolean; empty: boolean } | null>(null);
   const [rechargeSent, setRechargeSent] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -62,6 +65,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     const saved = getTheme();
     setThemeState(saved);
     applyTheme(saved);
+    setBrand(readCachedBrand());           // sin parpadeo: lo último que se conocía
     // Sincroniza el rol REAL desde el backend según la cuenta autenticada.
     // Sin sesión válida no se cambia nada (el usuario será enviado al login por la página).
     (async () => {
@@ -79,12 +83,22 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         if (who?.permissions) setPerms(who.permissions);
         if (who?.entitlements?.features) setFeats(who.entitlements.features);
         const ent = who?.entitlements;
+        if (ent?.plan) {
+          setPlan(ent.plan);
+          // Apex Lite es siempre claro: el tema oscuro es de Pro.
+          if (ent.plan === 'apex_lite') { setThemeState('light'); applyTheme('light'); }
+        }
         if (ent && typeof ent.ai_credits_remaining === 'number') {
           setCredits({ remaining: ent.ai_credits_remaining, low: !!ent.ai_credits_low, empty: !!ent.ai_credits_empty });
         }
+        if (who?.clinic_brand) { setBrand(who.clinic_brand); applyBrand(who.clinic_brand); }
+        else { setBrand(null); clearBrandCache(); }
       } catch { /* silencioso */ }
     })();
   }, []);
+
+  const isLite = plan === 'apex_lite';
+  const hasAI = !!feats && Object.entries(feats).some(([k, v]) => k.startsWith('ia_') && v);
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
@@ -155,9 +169,9 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
 
   // Se muestran solo los módulos del rol Y de los servicios contratados (si ya se cargaron)
   const links = ALL_LINKS.filter(l =>
-    l.roles.includes(role) && (!('feature' in l) || !feats || feats[(l as any).feature] !== false));
-  const primaryLinks = links.filter(l => (l as any).primary);
-  const overflowLinks = links.filter(l => !(l as any).primary);
+    l.roles.includes(role) && (!l.feature || !feats || feats[l.feature] !== false));
+  const primaryLinks = links.filter(l => l.primary);
+  const overflowLinks = links.filter(l => !l.primary);
   const overflowBadge = overflowLinks.some(l => l.href === '/dashboard/aprobaciones') ? aprobCount : 0;
 
   // Cerrar el menú "Más" al hacer clic fuera o con Escape
@@ -174,79 +188,68 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
 
-  const roleColor = ROLE_COLORS[role];
-
-  const isDark = theme === 'dark';
+  const planLabel = isLite ? 'Lite' : 'Pro';
+  const clinicLabel = brand?.name || null;
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 h-16 z-50 backdrop-blur-2xl flex items-center px-6 gap-4"
-      style={{
-        background:  isDark ? 'rgba(7,10,14,0.98)'    : 'rgba(255,255,255,0.98)',
-        borderBottom: `1px solid ${isDark ? '#1e2d3d' : '#cddae6'}`,
-      }}
+      className="fixed top-0 left-0 right-0 h-16 z-50 flex items-center px-4 md:px-6 gap-3"
+      style={{ background: 'var(--c-nav)', borderBottom: '1px solid var(--c-border)', borderTop: '3px solid var(--c-accent)' }}
     >
-
-      {/* Logo */}
-      <div className="flex items-center gap-2 mr-2 flex-shrink-0">
-        <span className="text-xl font-black tracking-widest" style={{ color: 'var(--c-green)' }}>APEX</span>
-        <span className="font-mono text-xs px-1.5 py-0.5 rounded"
-          style={{ color: 'var(--c-blue)', background: 'var(--c-blue-10)', border: '1px solid var(--c-blue-25)' }}>
-          PRO
+      {/* Identidad: logo del consultorio (o el nombre de Apex) y el plan */}
+      <button onClick={() => router.push('/dashboard')} className="flex items-center gap-3 mr-2 flex-shrink-0" aria-label="Ir al inicio">
+        {brand?.logo_url ? (
+          <img src={brand.logo_url} alt={clinicLabel || 'Consultorio'} className="h-9 w-auto max-w-[170px] object-contain" />
+        ) : (
+          <span className="text-lg font-semibold tracking-tight" style={{ color: 'var(--c-primary)' }}>
+            {clinicLabel || 'Apex'}
+          </span>
+        )}
+        <span className="hidden lg:flex items-center gap-3">
+          <span className="w-px h-5" style={{ background: 'var(--c-border-2)' }} />
+          <span className="text-[13px] font-medium" style={{ color: 'var(--c-text-2)' }}>Apex {planLabel}</span>
         </span>
-      </div>
+      </button>
 
-      {/* Nav links — primarios visibles + menú "Más" para lo secundario */}
-      <nav className="flex items-center gap-1">
-        {primaryLinks.map(({ href, icon, label }) => (
-          <button key={href} onClick={() => router.push(href)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all"
-            style={{
-              background:  isActive(href) ? 'var(--c-green-10)' : 'transparent',
-              color:       isActive(href) ? 'var(--c-green)'    : 'var(--c-text-2)',
-              border:      isActive(href) ? '1px solid var(--c-green-20)' : '1px solid transparent',
-            }}>
-            <span>{icon}</span>
-            <span className="hidden md:inline">{label}</span>
-            {href === '/dashboard/aprobaciones' && aprobCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{aprobCount}</span>
-            )}
-            {href === '/dashboard/sala' && waitCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#00e5a0] text-black text-[10px] font-bold flex items-center justify-center">{waitCount}</span>
-            )}
-          </button>
-        ))}
+      {/* Navegación: el módulo activo se marca con una línea, sin cápsulas ni brillos */}
+      <nav className="flex items-stretch gap-0.5 self-stretch" aria-label="Principal">
+        {primaryLinks.map(({ href, icon, label }) => {
+          const active = isActive(href);
+          return (
+            <button key={href + label} onClick={() => router.push(href)} title={label} aria-label={label}
+              aria-current={active ? 'page' : undefined}
+              className="relative flex items-center gap-2 px-3 text-[14px] font-medium transition-colors"
+              style={{ color: active ? 'var(--c-primary)' : 'var(--c-text-2)' }}>
+              <Icon name={icon} size={18} />
+              <span className="hidden md:inline">{label}</span>
+              {href === '/dashboard/sala' && waitCount > 0 && <Badge n={waitCount} />}
+              {active && <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-full" style={{ background: 'var(--c-primary)' }} />}
+            </button>
+          );
+        })}
 
         {overflowLinks.length > 0 && (
-          <div className="relative" ref={moreRef}>
+          <div className="relative flex items-stretch" ref={moreRef}>
             <button onClick={() => setMoreOpen(o => !o)} aria-haspopup="menu" aria-expanded={moreOpen}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                background: moreOpen ? 'var(--c-green-10)' : 'transparent',
-                color:      moreOpen ? 'var(--c-green)' : 'var(--c-text-2)',
-                border:     moreOpen ? '1px solid var(--c-green-20)' : '1px solid transparent',
-              }}>
-              <span>⋯</span>
+              className="flex items-center gap-1.5 px-3 text-[14px] font-medium transition-colors"
+              style={{ color: moreOpen ? 'var(--c-primary)' : 'var(--c-text-2)' }}>
+              <Icon name="more" size={18} />
               <span className="hidden md:inline">Más</span>
-              <span aria-hidden className="text-[10px]">▾</span>
-              {!moreOpen && overflowBadge > 0 && (
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{overflowBadge}</span>
-              )}
+              <Icon name="chevron" size={14} />
+              {!moreOpen && overflowBadge > 0 && <Badge n={overflowBadge} tone="danger" />}
             </button>
 
             {moreOpen && (
               <div role="menu"
-                className="absolute left-0 top-full mt-2 min-w-[210px] rounded-xl overflow-hidden shadow-2xl py-1 z-50"
-                style={{ background: isDark ? '#0d1520' : '#ffffff', border: `1px solid ${isDark ? '#1e2d3d' : '#cddae6'}` }}>
+                className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg py-1 z-50"
+                style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 8px 24px rgba(16,24,40,.12)' }}>
                 {overflowLinks.map(({ href, icon, label }) => (
                   <button key={href + label} role="menuitem" onClick={() => { setMoreOpen(false); router.push(href); }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-left transition-colors hover:bg-[var(--c-green-10)]"
-                    style={{ color: isActive(href) ? 'var(--c-green)' : 'var(--c-text)' }}>
-                    <span className="text-base">{icon}</span>
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] font-medium text-left transition-colors hover:bg-[var(--c-subtle)]"
+                    style={{ color: isActive(href) ? 'var(--c-primary)' : 'var(--c-text)' }}>
+                    <Icon name={icon} size={17} />
                     <span className="flex-1">{label}</span>
-                    {href === '/dashboard/aprobaciones' && aprobCount > 0 && (
-                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{aprobCount}</span>
-                    )}
+                    {href === '/dashboard/aprobaciones' && aprobCount > 0 && <Badge n={aprobCount} tone="danger" />}
                   </button>
                 ))}
               </div>
@@ -257,89 +260,54 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
 
       <div className="flex-1" />
 
-      {/* Aviso de créditos de IA bajos/agotados (doctor: solicita recarga; admin: recarga) */}
-      {credits && (credits.low || credits.empty) && (role === 'doctor' || role === 'admin') && (
+      {/* Aviso de créditos de IA: solo si el consultorio tiene IA contratada */}
+      {hasAI && credits && (credits.low || credits.empty) && (role === 'doctor' || role === 'admin') && (
         <button
           onClick={role === 'admin' ? () => router.push('/admin') : requestRecharge}
           title={`Créditos de IA restantes: ${credits.remaining.toLocaleString('es-MX')}`}
-          className="hidden sm:flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg flex-shrink-0 mr-1.5"
-          style={{
-            color: credits.empty ? '#f43f5e' : '#f59e0b',
-            background: (credits.empty ? '#f43f5e' : '#f59e0b') + '15',
-            border: `1px solid ${(credits.empty ? '#f43f5e' : '#f59e0b')}44`,
-          }}
+          className="hidden sm:flex items-center gap-2 text-[13px] font-medium px-3 py-1.5 rounded-lg flex-shrink-0"
+          style={{ color: credits.empty ? 'var(--c-danger)' : 'var(--c-warn)', border: '1px solid currentColor' }}
         >
-          <span>⚡</span>
-          <span>{credits.empty ? 'IA sin créditos' : 'IA: créditos bajos'}</span>
-          <span className="opacity-70">· {role === 'admin' ? 'Recargar' : (rechargeSent ? 'Solicitud enviada ✓' : 'Solicitar recarga')}</span>
+          <span>{credits.empty ? 'Sin créditos de IA' : 'Créditos de IA bajos'}</span>
+          <span style={{ opacity: .75 }}>· {role === 'admin' ? 'Recargar' : (rechargeSent ? 'Solicitud enviada' : 'Solicitar recarga')}</span>
         </button>
       )}
 
       {/* Ancla del chat del equipo — TeamChat monta aquí su botón (barra superior, siempre visible) */}
-      <div className="apex-chat-slot flex items-center mr-1.5" />
+      <div className="apex-chat-slot flex items-center" />
 
-      {/* Toggle dark/light */}
-      <button
-        onClick={toggleTheme}
-        title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all"
-        style={{
-          background:  isDark ? 'rgba(255,255,255,0.07)' : 'rgba(12,31,46,0.07)',
-          color:       'var(--c-text-2)',
-          border:      `1px solid var(--c-border)`,
-        }}
-      >
-        <span className="text-base">{isDark ? '☀️' : '🌙'}</span>
-        <span className="hidden sm:inline text-xs">{isDark ? 'Claro' : 'Oscuro'}</span>
-      </button>
+      {/* Tema: Lite es siempre claro, solo Pro puede cambiarlo */}
+      {!isLite && (
+        <button onClick={toggleTheme} className="px-3 py-1.5 rounded-lg text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-[var(--c-subtle)]"
+          style={{ color: 'var(--c-text-2)', border: '1px solid var(--c-border)' }}>
+          {theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
+        </button>
+      )}
 
-      {/* Badge de rol */}
-      <span
-        className="hidden sm:flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg flex-shrink-0"
-        style={{ color: roleColor, background: roleColor + '15', border: `1px solid ${roleColor}33` }}
-      >
-        {role === 'doctor' ? '🟣' : role === 'nurse' ? '🟨' : '🟦'} {ROLE_LABELS[role]}
-      </span>
-
-      {/* Perfil */}
-      <button
-        onClick={() => router.push('/dashboard/profile')}
-        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition-all"
-        style={{ border: '1px solid transparent' }}
-        onMouseEnter={e => e.currentTarget.style.background = 'var(--c-hover)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-      >
-        <div className="text-right hidden md:block">
-          <p className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{userName}</p>
-          <p className="font-mono text-xs" style={{ color: 'var(--c-text-3)' }}>Ver perfil</p>
+      {/* Persona: nombre, rol y acceso al perfil */}
+      <button onClick={() => router.push('/dashboard/profile')} aria-label="Ver mi perfil"
+        className="flex items-center gap-3 pl-3 pr-2 py-1.5 rounded-lg transition-colors hover:bg-[var(--c-subtle)]">
+        <div className="text-right hidden md:block leading-tight">
+          <p className="text-[14px] font-semibold" style={{ color: 'var(--c-text)' }}>{userName}</p>
+          <p className="text-[12px]" style={{ color: 'var(--c-text-2)' }}>{ROLE_LABELS[role]}</p>
         </div>
         {photoUrl ? (
-          <img src={photoUrl} alt="foto" className="w-9 h-9 rounded-full object-cover border-2"
-            style={{ borderColor: 'var(--c-green-30)' }} />
+          <img src={photoUrl} alt="" className="w-9 h-9 rounded-full object-cover" style={{ border: '1px solid var(--c-border-2)' }} />
         ) : (
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-sm font-bold text-black">
+          <div className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-semibold"
+            style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}>
             {userName[0]?.toUpperCase() || 'D'}
           </div>
         )}
       </button>
 
-      {/* Salir */}
       <button
-        onClick={async () => { clearRoleCache(); await signOut(); router.push('/auth/login'); }}
-        className="px-3 py-1.5 rounded-lg text-xs font-mono transition"
-        style={{ color: 'var(--c-text-2)', border: '1px solid transparent' }}
-        onMouseEnter={e => {
-          e.currentTarget.style.color = '#f43f5e';
-          e.currentTarget.style.background = 'rgba(244,63,94,.08)';
-          e.currentTarget.style.borderColor = 'rgba(244,63,94,.2)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.color = 'var(--c-text-2)';
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.borderColor = 'transparent';
-        }}
+        onClick={async () => { clearRoleCache(); clearBrandCache(); clearEntitlementsCache(); await signOut(); router.push('/auth/login'); }}
+        title="Cerrar sesión" aria-label="Cerrar sesión"
+        className="p-2 rounded-lg transition-colors hover:bg-[var(--c-subtle)]"
+        style={{ color: 'var(--c-text-2)' }}
       >
-        Salir
+        <Icon name="logout" size={18} />
       </button>
     </header>
   );

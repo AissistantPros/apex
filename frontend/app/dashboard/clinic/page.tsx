@@ -3,13 +3,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
+import { mix } from '@/app/lib/ui';
+import { useEntitlements } from '@/app/lib/useEntitlements';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 const money = (n: number) => '$' + Math.round(n || 0).toLocaleString('es-MX');
 
 const C = {
-  card: '#0d1520', border: '#1e2d3d', text: '#dde6ef', muted: '#7a95aa', faint: '#3d5870',
-  green: '#00e5a0', blue: '#0ea5e9', purple: '#a78bfa', amber: '#f59e0b', pink: '#f472b6', red: '#f43f5e',
+  card: 'var(--c-card)', border: 'var(--c-border)', text: 'var(--c-text)', muted: 'var(--c-text-2)', faint: 'var(--c-text-3)',
+  green: 'var(--c-green)', blue: 'var(--c-blue)', purple: 'var(--c-violet)', amber: 'var(--c-amber)', pink: 'var(--c-pink)', red: 'var(--c-red)',
 };
 const CAT = [C.green, C.blue, C.purple, C.amber, C.pink];
 
@@ -88,7 +90,7 @@ function Dona({ data }: { data: { nombre: string; valor: number }[] }) {
   return (
     <div className="flex items-center gap-5">
       <svg width="132" height="132" viewBox="0 0 132 132" className="shrink-0">
-        <circle cx={cx} cy={cy} r={R} fill="none" stroke="#111820" strokeWidth={22} />
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--c-subtle)" strokeWidth={22} />
         {segs.map((s, i) => <circle key={i} cx={cx} cy={cy} r={R} fill="none" stroke={s.c} strokeWidth={22} strokeDasharray={`${s.dash} ${C2 - s.dash}`} strokeDashoffset={-s.off} transform={`rotate(-90 ${cx} ${cy})`} />)}
       </svg>
       <div className="space-y-1.5">
@@ -108,6 +110,8 @@ const inp = 'w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2.5 
 const btn = 'px-4 py-2.5 rounded-xl text-sm font-bold transition disabled:opacity-40';
 
 export default function ClinicPage() {
+  const { features } = useEntitlements();
+  const sinMarketing = features?.marketing === false;   // Apex Lite no incluye publicidad
   const [role, setRole] = useState<string>('doctor');
   const esRecepcion = role === 'receptionist';
   const [tab, setTab] = useState<'resumen' | 'cobros' | 'gastos' | 'servicios' | 'staff'>('resumen');
@@ -141,21 +145,21 @@ export default function ClinicPage() {
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
 
   const TABS = ([
-    ['resumen', '📊 Resumen', ['doctor', 'accounting', 'marketing']],
-    ['cobros', '💳 Cobros', ['doctor', 'receptionist', 'accounting']],
-    ['gastos', '🧾 Gastos', ['doctor', 'accounting']],
-    ['servicios', '⚙️ Servicios', ['doctor']],
+    ['resumen', ' Resumen', ['doctor', 'accounting', 'marketing']],
+    ['cobros', ' Cobros', ['doctor', 'receptionist', 'accounting']],
+    ['gastos', ' Gastos', ['doctor', 'accounting']],
+    ['servicios', 'Servicios', ['doctor']],
   ] as const).filter(([, , roles]) => (roles as readonly string[]).includes(role));
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
       <main className="page-content pt-16 px-4 sm:px-6 py-8 max-w-6xl mx-auto">
         <h1 className="text-3xl font-serif font-semibold text-[#dde6ef] mb-1">
-          {esRecepcion ? 'Cobros — Recepción' : 'Mi Clínica'}
+          {esRecepcion ? 'Cobros' : 'Mi consultorio'}
         </h1>
         <p className="text-sm text-[#7a95aa] mb-5">
           {esRecepcion ? 'Cobra los conceptos que el médico envía y registra ventas y gastos.'
-                       : 'Finanzas, ventas, gastos y rendimiento de tu publicidad.'}
+                       : (sinMarketing ? 'Cobros, gastos y balance de tu consultorio.' : 'Finanzas, ventas, gastos y rendimiento de tu publicidad.')}
         </p>
 
         {/* Tabs */}
@@ -163,15 +167,15 @@ export default function ClinicPage() {
           {TABS.map(([id, label]) => (
             <button key={id} onClick={() => setTab(id as any)}
               className="px-3.5 py-2 rounded-xl text-sm font-semibold transition"
-              style={{ background: tab === id ? C.green : '#111820', color: tab === id ? '#000' : C.muted }}>
+              style={{ background: tab === id ? C.green : 'var(--c-subtle)', color: tab === id ? 'var(--c-primary-fg)' : C.muted }}>
               {label}
             </button>
           ))}
         </div>
 
-        {msg && <div className="mb-4 text-sm px-4 py-2.5 rounded-xl" style={{ background: 'rgba(0,229,160,.1)', border: `1px solid ${C.green}44`, color: C.green }}>{msg}</div>}
+        {msg && <div className="mb-4 text-sm px-4 py-2.5 rounded-xl" style={{ background: mix(C.green, 10), border: `1px solid ${mix(C.green, 27)}`, color: C.green }}>{msg}</div>}
 
-        {tab === 'resumen' && !esRecepcion && <Resumen ov={ov} />}
+        {tab === 'resumen' && !esRecepcion && <Resumen ov={ov} sinMarketing={sinMarketing} />}
         {tab === 'cobros' && <Cobros pending={pending} services={services} patients={patients} reload={loadAll} flash={flash} ov={ov} />}
         {tab === 'gastos' && <Gastos expenses={expenses} reload={loadAll} flash={flash} />}
         {tab === 'servicios' && !esRecepcion && <Servicios services={services} reload={loadAll} flash={flash} />}
@@ -181,7 +185,7 @@ export default function ClinicPage() {
 }
 
 // ── RESUMEN (dashboard financiero + ROI) ─────────────────────────────────────────
-function Resumen({ ov }: { ov: any }) {
+function Resumen({ ov, sinMarketing = false }: { ov: any; sinMarketing?: boolean }) {
   if (!ov) return <p className="text-[#7a95aa] text-sm">Cargando finanzas…</p>;
   const k = ov.kpis;
   return (
@@ -192,17 +196,17 @@ function Resumen({ ov }: { ov: any }) {
         <Kpi label="Balance" value={money(k.balance)} color={k.balance >= 0 ? C.green : C.red} hint={k.balance >= 0 ? 'Utilidad' : 'Pérdida'} />
         <Kpi label="Ingreso del mes" value={money(k.ingreso_mes)} color={C.blue} />
         <Kpi label="Ticket promedio" value={money(k.ticket_promedio)} color={C.purple} />
-        <Kpi label="Gasto publicidad" value={money(k.gasto_publicidad)} color={C.amber} />
+        {!sinMarketing && <Kpi label="Gasto publicidad" value={money(k.gasto_publicidad)} color={C.amber} />}
         <Kpi label="% facturado" value={`${k.facturadas_pct}%`} color={C.blue} />
         <Kpi label="Cobros pendientes" value={String(k.cobros_pendientes)} color={C.pink} />
       </div>
 
-      <Card title="Ingresos vs Gastos por mes" subtitle="Verde = ingreso · Rojo = gasto">
+      <Card title="Ingresos vs Gastos por mes" subtitle="Ingresos y gastos de cada mes">
         <BarrasIngGasto data={ov.serie_mensual} />
       </Card>
 
-      {/* ROI de marketing — lo más importante para el médico */}
-      <Card title="Rendimiento de la publicidad (ROI por canal)"
+      {/* ROI de marketing — solo si el consultorio tiene el servicio */}
+      {!sinMarketing && <Card title="Rendimiento de la publicidad (ROI por canal)"
         subtitle={`${ov.publicidad.pacientes_por_publicidad} de ${ov.publicidad.pacientes_total} pacientes (${ov.publicidad.pct_publicidad}%) llegaron por publicidad de pago · ingreso atribuido ${money(ov.publicidad.ingreso_atribuido)}`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[520px]">
@@ -223,7 +227,7 @@ function Resumen({ ov }: { ov: any }) {
                     <td className="font-mono" style={{ color: r.ganancia >= 0 ? C.green : C.red }}>{money(r.ganancia)}</td>
                     <td>
                       <span className="px-2 py-0.5 rounded-full text-xs font-bold font-mono"
-                        style={{ color: r.roas === null ? C.faint : bueno ? C.green : C.amber, background: (r.roas === null ? C.faint : bueno ? C.green : C.amber) + '1a' }}>
+                        style={{ color: r.roas === null ? C.faint : bueno ? C.green : C.amber, background: mix(r.roas === null ? C.faint : bueno ? C.green : C.amber, 10) }}>
                         {r.roas === null ? '—' : `${r.roas}x`}
                       </span>
                     </td>
@@ -237,7 +241,7 @@ function Resumen({ ov }: { ov: any }) {
           ROAS = pesos de ingreso por cada peso invertido. El fee de la agencia se incluye en el gasto total de
           publicidad pero no se atribuye a un canal específico.
         </p>
-      </Card>
+      </Card>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card title="Facturado vs no facturado" subtitle="Del ingreso cobrado"><Dona data={ov.facturacion} /></Card>
@@ -284,7 +288,7 @@ function Cobros({ pending, services, patients, reload, flash, ov }:
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="text-sm text-[#7a95aa]">{pending.length} cobro(s) pendiente(s){ov ? ` · ${money(ov.kpis.ingreso_mes)} cobrado este mes` : ''}</p>
-        <button onClick={() => setNuevo(v => !v)} className={btn} style={{ background: C.green, color: '#000' }}>
+        <button onClick={() => setNuevo(v => !v)} className={btn} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>
           {nuevo ? 'Cancelar' : '+ Enviar cobro a recepción'}
         </button>
       </div>
@@ -307,7 +311,7 @@ function Cobros({ pending, services, patients, reload, flash, ov }:
                 <div className="flex items-center gap-1.5">
                   <button onClick={() => setSel(p => ({ ...p, [s.id]: Math.max((p[s.id] || 0) - 1, 0) }))} className="w-7 h-7 rounded-lg bg-[#1e2d3d] text-[#dde6ef]">−</button>
                   <span className="w-6 text-center text-sm font-mono text-[#dde6ef]">{sel[s.id] || 0}</span>
-                  <button onClick={() => setSel(p => ({ ...p, [s.id]: (p[s.id] || 0) + 1 }))} className="w-7 h-7 rounded-lg" style={{ background: C.green, color: '#000' }}>+</button>
+                  <button onClick={() => setSel(p => ({ ...p, [s.id]: (p[s.id] || 0) + 1 }))} className="w-7 h-7 rounded-lg" style={{ background: C.green, color: 'var(--c-primary-fg)' }}>+</button>
                 </div>
               </div>
             ))}
@@ -331,7 +335,7 @@ function Cobros({ pending, services, patients, reload, flash, ov }:
               <span className="text-[#7a95aa]">Subtotal {money(subtotal)}</span>
               <span className="ml-3 font-bold text-[#dde6ef]">Total {money(total)}</span>
             </div>
-            <button onClick={enviar} className={btn} style={{ background: C.green, color: '#000' }}>Enviar a recepción</button>
+            <button onClick={enviar} className={btn} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>Enviar a recepción</button>
           </div>
         </div>
       )}
@@ -353,7 +357,7 @@ function Cobros({ pending, services, patients, reload, flash, ov }:
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className="font-bold text-[#dde6ef] font-mono">{money(v.total)}</span>
-                <button onClick={() => setCobrando(v)} className={btn} style={{ background: C.green, color: '#000' }}>Cobrar</button>
+                <button onClick={() => setCobrando(v)} className={btn} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>Cobrar</button>
               </div>
             </div>
           ))}
@@ -383,15 +387,15 @@ function ModalCobro({ venta, onClose, done }: { venta: any; onClose: () => void;
         <div className="flex gap-2 mb-4">
           {['efectivo', 'tarjeta', 'transferencia'].map(m => (
             <button key={m} onClick={() => setMetodo(m)} className="flex-1 py-2 rounded-xl text-sm font-semibold capitalize"
-              style={{ background: metodo === m ? C.green : '#111820', color: metodo === m ? '#000' : C.muted }}>{m}</button>
+              style={{ background: metodo === m ? C.green : 'var(--c-subtle)', color: metodo === m ? 'var(--c-primary-fg)' : C.muted }}>{m}</button>
           ))}
         </div>
         <label className="flex items-center gap-2 text-sm text-[#dde6ef] mb-5">
           <input type="checkbox" checked={factura} onChange={e => setFactura(e.target.checked)} /> Requiere factura
         </label>
         <div className="flex gap-2">
-          <button onClick={onClose} className={`${btn} flex-1`} style={{ background: '#1e2d3d', color: C.text }}>Cancelar</button>
-          <button onClick={cobrar} disabled={busy} className={`${btn} flex-1`} style={{ background: C.green, color: '#000' }}>{busy ? '…' : 'Confirmar cobro'}</button>
+          <button onClick={onClose} className={`${btn} flex-1`} style={{ background: 'var(--c-border)', color: C.text }}>Cancelar</button>
+          <button onClick={cobrar} disabled={busy} className={`${btn} flex-1`} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>{busy ? '…' : 'Confirmar cobro'}</button>
         </div>
       </div>
     </div>
@@ -432,7 +436,7 @@ function Gastos({ expenses, reload, flash }: { expenses: any[]; reload: () => vo
           <input className={inp} type="number" placeholder="Monto $" value={monto || ''} onChange={e => setMonto(+e.target.value || 0)} />
           <input className={inp} placeholder="Proveedor" value={proveedor} onChange={e => setProveedor(e.target.value)} />
         </div>
-        <button onClick={guardar} className={btn} style={{ background: C.green, color: '#000' }}>Registrar gasto</button>
+        <button onClick={guardar} className={btn} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>Registrar gasto</button>
       </div>
       <div className="space-y-1.5">
         {expenses.map(e => (
@@ -467,7 +471,7 @@ function Servicios({ services, reload, flash }: { services: any[]; reload: () =>
         <div className="flex gap-2 mb-4">
           <input className={inp} placeholder="Nombre del servicio" value={nombre} onChange={e => setNombre(e.target.value)} />
           <input className={`${inp} w-32`} type="number" placeholder="Precio $" value={precio || ''} onChange={e => setPrecio(+e.target.value || 0)} />
-          <button onClick={add} className={btn} style={{ background: C.green, color: '#000' }}>Agregar</button>
+          <button onClick={add} className={btn} style={{ background: C.green, color: 'var(--c-primary-fg)' }}>Agregar</button>
         </div>
         <div className="space-y-1.5">
           {services.map(s => (

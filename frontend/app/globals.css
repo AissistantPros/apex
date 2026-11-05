@@ -1,36 +1,98 @@
+/* Clases de Tailwind con color fijo → tokens del tema claro (archivo generado por
+   scripts/gen-theme-compat.mjs). Va primero: un @import debe preceder al resto. */
+@import './theme-compat.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════
-   APEX — Sistema de colores con variables CSS
-   Dark mode = default. Light mode = [data-theme="light"] en <html>
+   APEX — Tokens de diseño
+   Tema claro (por defecto) = Apex Lite: papel clínico, tinta azul, filetes finos.
+   Tema oscuro = Apex Pro (se conserva como estaba).
+   El color principal (--c-primary) y el de acento (--c-accent) los pone la marca de
+   cada consultorio (ver lib/brand.ts); aquí están los valores de respaldo.
 ═══════════════════════════════════════════════════════════════ */
 
-:root {
-  /* ── Fondos ── */
+:root,
+[data-theme="light"] {
+  /* Superficies */
+  --c-bg:         #f4f5f7;
+  --c-card:       #ffffff;
+  --c-subtle:     #f0f2f5;
+  --c-subtle-2:   #e6e9ee;
+  --c-deep:       #ebeef2;
+  --c-hover:      #f0f2f5;
+  --c-nav:        #ffffff;
+
+  /* Bordes */
+  --c-border:     #dce0e7;
+  --c-border-2:   #c6ccd6;
+
+  /* Texto (todos con contraste AA sobre blanco) */
+  --c-text:       #172033;
+  --c-text-2:     #4a5468;
+  --c-text-3:     #6b7385;
+
+  /* Marca del consultorio */
+  --c-primary:    #1d3557;
+  --c-primary-fg: #ffffff;
+  --c-accent:     var(--c-primary);
+
+  /* Semánticos */
+  --c-success:    #1e7a57;
+  --c-warn:       #9a5b00;
+  --c-danger:     #b3261e;
+
+  /* Colores de datos que antes eran un arcoíris: en Lite se funden con la marca */
+  --c-violet:     var(--c-primary);
+  --c-pink:       var(--c-primary);
+  --c-amber:      var(--c-warn);
+  --c-orange:     var(--c-warn);
+
+  /* Alias heredados (el código viejo usa estos nombres) */
+  --c-green:      var(--c-primary);
+  --c-green-fg:   var(--c-primary-fg);
+  --c-blue:       var(--c-primary);
+  --c-blue-fg:    var(--c-primary-fg);
+  --c-red:        var(--c-danger);
+  --c-green-10:   color-mix(in srgb, var(--c-primary) 8%,  transparent);
+  --c-green-15:   color-mix(in srgb, var(--c-primary) 12%, transparent);
+  --c-green-20:   color-mix(in srgb, var(--c-primary) 18%, transparent);
+  --c-green-30:   color-mix(in srgb, var(--c-primary) 28%, transparent);
+  --c-blue-10:    color-mix(in srgb, var(--c-primary) 8%,  transparent);
+  --c-blue-15:    color-mix(in srgb, var(--c-primary) 12%, transparent);
+  --c-blue-25:    color-mix(in srgb, var(--c-primary) 22%, transparent);
+}
+
+[data-theme="dark"] {
   --c-bg:         #070a0e;
   --c-card:       #0d1520;
+  --c-subtle:     #111820;
+  --c-subtle-2:   #1e2d3d;
   --c-hover:      #111820;
   --c-deep:       #0a1018;
   --c-nav:        rgba(7, 10, 14, 0.98);
-
-  /* ── Bordes ── */
   --c-border:     #1e2d3d;
-
-  /* ── Textos ── */
+  --c-border-2:   #2a3f54;
   --c-text:       #dde6ef;
   --c-text-2:     #7a95aa;
   --c-text-3:     #3d5870;
-
-  /* ── Acentos (iguales en ambos temas) ── */
+  --c-primary:    #00e5a0;
+  --c-primary-fg: #000000;
+  --c-accent:     #0ea5e9;
+  --c-success:    #00e5a0;
+  --c-warn:       #f59e0b;
+  --c-danger:     #f43f5e;
+  --c-violet:     #a78bfa;
+  --c-pink:       #f472b6;
+  --c-amber:      #f59e0b;
+  --c-orange:     #f97316;
   --c-green:      #00e5a0;
   --c-green-fg:   #000000;
   --c-blue:       #0ea5e9;
   --c-blue-fg:    #000000;
   --c-red:        #f43f5e;
-
-  /* ── Transparencias de acento ── */
   --c-green-10:   rgba(0, 229, 160, 0.10);
   --c-green-15:   rgba(0, 229, 160, 0.15);
   --c-green-20:   rgba(0, 229, 160, 0.20);
@@ -38,210 +100,62 @@
   --c-blue-10:    rgba(14, 165, 233, 0.10);
   --c-blue-15:    rgba(14, 165, 233, 0.15);
   --c-blue-25:    rgba(14, 165, 233, 0.25);
-
-  /* ── Grid overlay ── */
-  --c-grid:       rgba(0, 229, 160, 0.016);
 }
 
-[data-theme="light"] {
-  /* ── Fondos ── */
-  --c-bg:         #f0f5f9;
-  --c-card:       #ffffff;
-  --c-hover:      #f1f5f9;
-  --c-deep:       #e8edf3;
-  --c-nav:        rgba(255, 255, 255, 0.98);
+/* ── Base ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-  /* ── Bordes ── */
-  --c-border:     #cddae6;
-
-  /* ── Textos ── */
-  --c-text:       #0c1f2e;
-  --c-text-2:     #3d5870;
-  --c-text-3:     #7a95aa;
-
-  /* ── Acentos (un poco más oscuros para contraste sobre blanco) ── */
-  --c-green:      #009e72;
-  --c-green-fg:   #ffffff;
-  --c-blue:       #0369a1;
-  --c-blue-fg:    #ffffff;
-  --c-red:        #be123c;
-
-  /* ── Transparencias ── */
-  --c-green-10:   rgba(0, 158, 114, 0.10);
-  --c-green-15:   rgba(0, 158, 114, 0.15);
-  --c-green-20:   rgba(0, 158, 114, 0.20);
-  --c-green-30:   rgba(0, 158, 114, 0.30);
-  --c-blue-10:    rgba(3, 105, 161, 0.10);
-  --c-blue-15:    rgba(3, 105, 161, 0.15);
-  --c-blue-25:    rgba(3, 105, 161, 0.25);
-
-  /* ── Grid overlay (más suave en light) ── */
-  --c-grid:       rgba(0, 158, 114, 0.025);
-}
-
-/* ── Reset base ── */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html, body {
-  height: 100%;
-  scroll-behavior: smooth;
-}
+html, body { height: 100%; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 
 body {
   background: var(--c-bg);
   color: var(--c-text);
-  font-family: 'Syne', sans-serif;
-  transition: background 0.3s ease, color 0.3s ease;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: 'tnum' 1;          /* cifras tabulares: presión, peso, importes */
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image:
-    linear-gradient(var(--c-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
-  background-size: 48px 48px;
-  transition: background-image 0.3s ease;
+h1, h2, h3 { letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.5rem, 2.2vw, 2rem);     font-weight: 600; line-height: 1.2; }
+h2 { font-size: clamp(1.15rem, 1.6vw, 1.35rem); font-weight: 600; line-height: 1.3; }
+h3 { font-size: clamp(1rem, 1.3vw, 1.1rem);     font-weight: 600; line-height: 1.4; }
+
+button { font-size: 0.95rem; font-family: inherit; }
+
+/* Lo que antes era "mono" (etiquetas, ids) usa la misma familia, con cifras tabulares */
+.font-mono  { font-family: inherit !important; letter-spacing: 0.01em; }
+.font-serif { font-family: inherit !important; }
+
+/* Inputs cómodos para tableta */
+input, select, textarea { font-size: 1rem !important; font-family: inherit; }
+
+input[type="checkbox"], input[type="radio"] {
+  width: 20px !important; height: 20px !important;
+  min-width: 20px; min-height: 20px; cursor: pointer;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   OVERRIDES LIGHT MODE — Tailwind arbitrary-value classes
-   Necesario porque Tailwind genera clases con hex hardcodeado.
-   Con [data-theme="light"] + !important ganamos la cascada.
-═══════════════════════════════════════════════════════════════ */
+/* Foco visible para teclado */
+:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
+[data-theme="dark"] :focus-visible { outline-color: var(--c-blue); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
 
-/* ── Fondos ── */
-[data-theme="light"] .bg-\[\#070a0e\]  { background-color: var(--c-bg)   !important; }
-[data-theme="light"] .bg-\[\#0d1520\]  { background-color: var(--c-card)  !important; }
-[data-theme="light"] .bg-\[\#111820\]  { background-color: var(--c-hover) !important; }
-[data-theme="light"] .bg-\[\#0a1018\]  { background-color: var(--c-deep)  !important; }
+/* Scrollbars discretas */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 99px; }
 
-/* ── Textos ── */
-[data-theme="light"] .text-\[\#dde6ef\] { color: var(--c-text)   !important; }
-[data-theme="light"] .text-\[\#7a95aa\] { color: var(--c-text-2) !important; }
-[data-theme="light"] .text-\[\#3d5870\] { color: var(--c-text-3) !important; }
+/* Contenedor de página */
+.page-content { width: 100%; max-width: min(1200px, 92%); margin-left: auto; margin-right: auto; }
 
-/* ── Bordes ── */
-[data-theme="light"] .border-\[\#1e2d3d\] { border-color: var(--c-border) !important; }
-[data-theme="light"] .divide-\[\#1e2d3d\] > * + * { border-color: var(--c-border) !important; }
+/* El contenido empieza con aire bajo la barra de navegación (64px + filete de 3px) */
+.page-content.pt-16 { padding-top: 5.5rem !important; }
 
-/* ── Placeholders ── */
-[data-theme="light"] .placeholder-\[\#3d5870\]::placeholder { color: var(--c-text-3) !important; }
-[data-theme="light"] .placeholder-\[\#7a95aa\]::placeholder  { color: var(--c-text-2) !important; }
-
-/* ── Inputs / selects / textareas ── */
-[data-theme="light"] input,
-[data-theme="light"] select,
-[data-theme="light"] textarea {
-  color-scheme: light;
-}
-
-/* ── Scrollbar ── */
-[data-theme="light"] ::-webkit-scrollbar { width: 6px; height: 6px; }
-[data-theme="light"] ::-webkit-scrollbar-track { background: var(--c-bg); }
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 99px; }
-
-/* Dark scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #070a0e; }
-::-webkit-scrollbar-thumb { background: #1e2d3d; border-radius: 99px; }
-
-/* ── bg-[#1e2d3d] — usado como botón secundario ── */
-[data-theme="light"] .bg-\[\#1e2d3d\] { background-color: #e2eaf2 !important; }
-[data-theme="light"] .hover\:bg-\[\#2a3a4d\]:hover { background-color: #d1dde8 !important; }
-[data-theme="light"] .hover\:bg-\[\#1e2d3d\]:hover { background-color: #e2eaf2 !important; }
-[data-theme="light"] .hover\:bg-\[\#111820\]:hover  { background-color: var(--c-hover) !important; }
-
-/* ── Focus ring ── */
-[data-theme="light"] .focus\:border-\[\#00e5a0\]:focus { border-color: var(--c-green) !important; }
-[data-theme="light"] .focus\:border-\[\#0ea5e9\]:focus  { border-color: var(--c-blue) !important; }
-
-/* ── Fondos con opacity/rgba de los inline styles ── */
-[data-theme="light"] .bg-\[rgba\(7\,10\,14\,\.98\)\]  { background-color: var(--c-nav) !important; }
-[data-theme="light"] .bg-\[rgba\(7\,10\,14\,\.95\)\]  { background-color: rgba(240,245,249,0.95) !important; }
-[data-theme="light"] .bg-\[rgba\(7\,10\,14\,0\.98\)\] { background-color: var(--c-nav) !important; }
-
-/* ── Acento verde — texto ── */
-[data-theme="light"] .text-\[\#00e5a0\] { color: var(--c-green) !important; }
-/* ── Acento azul — texto ── */
-[data-theme="light"] .text-\[\#0ea5e9\] { color: var(--c-blue) !important; }
-/* ── Acento rojo (alertas) — texto, borde y fondo ── */
-[data-theme="light"] .text-\[\#f43f5e\]   { color: var(--c-red) !important; }
-[data-theme="light"] .border-\[\#f43f5e\] { border-color: var(--c-red) !important; }
-[data-theme="light"] .bg-\[\#f43f5e\]     { background-color: var(--c-red) !important; }
-
-/* ── Fondos de inputs con bg dark ── */
-[data-theme="light"] .bg-\[\#111820\],
-[data-theme="light"] input.bg-\[\#111820\] { background-color: var(--c-hover) !important; }
-
-/* ── Sombras en light mode ── */
-[data-theme="light"] .shadow-black\/50,
-[data-theme="light"] .shadow-black\/30 {
-  --tw-shadow-color: rgba(12, 31, 46, 0.15);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   TIPOGRAFÍA GRANDE Y CONTRASTADA (POS-style)
-═══════════════════════════════════════════════════════════════ */
-
-/* Headings grandes */
-h1 { font-size: clamp(1.6rem, 2.5vw, 2.2rem); font-weight: 700; line-height: 1.2; }
-h2 { font-size: clamp(1.2rem, 1.8vw, 1.5rem); font-weight: 600; line-height: 1.3; }
-h3 { font-size: clamp(1rem, 1.4vw, 1.2rem);   font-weight: 600; line-height: 1.4; }
-
-/* Botones y etiquetas — mínimo legible */
-button { font-size: 0.95rem; }
-
-/* Inputs grandes para tablet/touch */
-input, select, textarea {
-  font-size: 1rem !important;
-}
-
-/* Checkboxes y radios nativos — más grandes y táctiles para operar desde tablet.
-   !important para ganarle a las utilidades w-4/h-4 de Tailwind donde aún existan. */
-input[type="checkbox"],
-input[type="radio"] {
-  width: 20px !important;
-  height: 20px !important;
-  min-width: 20px;
-  min-height: 20px;
-  cursor: pointer;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   LAYOUT — Contenedor de página centralizado
-   Ajusta max-width aquí para cambiar todo el sistema de una vez.
-═══════════════════════════════════════════════════════════════ */
-.page-content {
-  width: 100%;
-  max-width: min(1200px, 80%);
-  margin-left: auto;
-  margin-right: auto;
-}
-
-/* % confidence badge — subtle pulse every 10s to signal it's clickable */
-@keyframes badgePulse {
-  0%, 80%, 100% {
-    box-shadow: none;
-    transform: scale(1);
+/* Quien prefiere menos movimiento, no ve animaciones */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
   }
-  85% {
-    box-shadow: 0 0 0 3px var(--pulse-clr, rgba(14,165,233,.25)),
-                0 0 12px var(--pulse-clr, rgba(14,165,233,.15));
-    transform: scale(1.06);
-  }
-  92% {
-    box-shadow: none;
-    transform: scale(1);
-  }
-}
-.badge-pulse {
-  animation: badgePulse 10s ease-in-out infinite;
 }

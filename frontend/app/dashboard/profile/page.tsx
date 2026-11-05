@@ -6,11 +6,14 @@ import { getUser, getSession } from '@/app/lib/auth';
 import { getRole, UserRole, ROLE_LABELS, ROLE_COLORS } from '@/app/lib/role';
 import { notifyDoctorProfileUpdated } from '@/app/lib/useDoctorProfile';
 import PhotoCropModal from '@/app/components/PhotoCropModal';
+import { mix } from '@/app/lib/ui';
+import { useEntitlements } from '@/app/lib/useEntitlements';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { lite } = useEntitlements();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,11 +119,11 @@ export default function ProfilePage() {
       <main className="page-content pt-16 px-6 py-10">
 
         <div className="mb-8">
-          <h1 className="text-2xl font-serif font-bold text-[#dde6ef] mb-1">👤 Mi Perfil</h1>
+          <h1 className="text-2xl font-serif font-bold text-[#dde6ef] mb-1"> Mi Perfil</h1>
           <p className="text-[#7a95aa] text-sm">
             {isStaff
               ? 'Personaliza tu nombre y tu foto — así te ve el equipo en el chat y en las notas.'
-              : 'Personaliza cómo APEX te identifica y cómo la IA se dirige a ti.'}
+              : 'Tus datos, tu foto y el membrete de tus documentos.'}
           </p>
         </div>
 
@@ -130,7 +133,7 @@ export default function ProfilePage() {
             {form.photo_url ? (
               <img src={form.photo_url} alt="foto" className="w-20 h-20 rounded-2xl object-cover border-2 border-[#00e5a0]/30" />
             ) : (
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-3xl font-black text-black">
+              <div className="w-20 h-20 rounded-2xl bg-[var(--c-primary)] text-[var(--c-primary-fg)] flex items-center justify-center text-3xl font-semibold">
                 {displayName[0]?.toUpperCase() || 'D'}
               </div>
             )}
@@ -145,7 +148,7 @@ export default function ProfilePage() {
         <div className="space-y-5">
 
           {/* Datos personales */}
-          <Card title="Datos personales" icon="👤">
+          <Card title="Datos personales" icon="">
             <Field label={isStaff ? '¿Cómo quieres que te vean en el sistema y el chat?' : '¿Cómo quieres que APEX te llame?'}>
               <input
                 value={form.display_name}
@@ -156,7 +159,7 @@ export default function ProfilePage() {
               <p className="text-xs text-[#3d5870] mt-1">
                 {isStaff
                   ? 'Así te verá el equipo en el chat y en las notas — con tu nombre y foto, no como “Recepción” o “Enfermería”.'
-                  : 'Este nombre se usa en el saludo del home y en las respuestas de la IA.'}
+                  : (lite ? 'Este nombre se usa en el saludo de la pantalla de inicio.' : 'Este nombre se usa en el saludo del home y en las respuestas de la IA.')}
               </p>
             </Field>
             <Field label="Celular / WhatsApp">
@@ -170,7 +173,7 @@ export default function ProfilePage() {
                   {form.photo_url ? (
                     <img src={form.photo_url} alt="foto" className="w-16 h-16 rounded-xl object-cover border-2 border-[#00e5a0]/30" />
                   ) : (
-                    <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-2xl font-black text-black">
+                    <div className="w-16 h-16 rounded-xl bg-[var(--c-primary)] text-[var(--c-primary-fg)] flex items-center justify-center text-2xl font-semibold">
                       {displayName[0]?.toUpperCase() || 'D'}
                     </div>
                   )}
@@ -189,7 +192,7 @@ export default function ProfilePage() {
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full py-2 px-4 rounded-lg text-sm font-semibold border border-[#1e2d3d] text-[#0ea5e9] hover:border-[#0ea5e9] hover:bg-[rgba(14,165,233,.08)] transition"
                   >
-                    📷 Subir y recortar imagen
+                     Subir y recortar imagen
                   </button>
                   <input
                     value={form.photo_url.startsWith('data:') ? '' : form.photo_url}
@@ -210,7 +213,7 @@ export default function ProfilePage() {
 
           {/* Clínica — solo el doctor/admin configura el consultorio */}
           {!isStaff && (
-            <Card title="Mi clínica" icon="🏥">
+            <Card title="Mi clínica" icon="">
               <Field label="Correo electrónico">
                 <input value={form.email} onChange={e => set('email', e.target.value)} className={inp} placeholder="doctor@clinica.com" />
               </Field>
@@ -224,10 +227,10 @@ export default function ProfilePage() {
           )}
 
           {/* Tu rol (definido por tu cuenta — ya no se cambia a mano) */}
-          <Card title="Tu rol en la clínica" icon="🔑">
+          <Card title="Tu rol en la clínica" icon="">
             <div className="flex items-center gap-3">
               <span className="px-3 py-1.5 rounded-lg text-sm font-bold"
-                style={{ background: (ROLE_COLORS[activeRole] || '#7a95aa') + '22', color: ROLE_COLORS[activeRole] || '#7a95aa' }}>
+                style={{ background: mix(ROLE_COLORS[activeRole] || 'var(--c-text-2)', 13), color: ROLE_COLORS[activeRole] || 'var(--c-text-2)' }}>
                 {ROLE_LABELS[activeRole] || activeRole}
               </span>
               <p className="text-xs text-[#7a95aa]">
@@ -236,9 +239,9 @@ export default function ProfilePage() {
             </div>
           </Card>
 
-          {/* Preferencias de IA — solo doctor/admin */}
-          {!isStaff && (
-          <Card title="Preferencias para la IA" icon="🤖">
+          {/* Preferencias de IA — solo doctor/admin, y solo si el consultorio tiene IA (no Lite) */}
+          {!isStaff && !lite && (
+          <Card title="Preferencias para la IA" icon="">
             <Field label="¿Cómo quieres que la IA te dirija en los análisis?">
               <select value={form.ai_name_preference} onChange={e => set('ai_name_preference', e.target.value)} className={inp}>
                 <option value="">Doctor / Doctora (por default)</option>
@@ -253,7 +256,7 @@ export default function ProfilePage() {
 
           {/* Membrete de la receta / documentos — solo doctor/admin */}
           {!isStaff && (
-          <Card title="Membrete para recetas y documentos" icon="📄">
+          <Card title="Membrete para recetas y documentos" icon="">
             <p className="text-xs text-[#7a95aa] -mt-2">Aparece en las recetas, reportes y solicitudes de estudios que entregas al paciente.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {([

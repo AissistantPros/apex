@@ -45,12 +45,12 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
-  admin:        '#f43f5e',
-  doctor:       '#a78bfa',
-  nurse:        '#f97316',
-  receptionist: '#0ea5e9',
-  accounting:   '#00e5a0',
-  marketing:    '#f472b6',
+  admin:        '#b3261e',
+  doctor:       '#1d3557',
+  nurse:        '#8a5a00',
+  receptionist: '#2f6b7a',
+  accounting:   '#1e7a57',
+  marketing:    '#6b5b95',
 };
 
 export const AREA_LABELS: Record<Area, string> = {

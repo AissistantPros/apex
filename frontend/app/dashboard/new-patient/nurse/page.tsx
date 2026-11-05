@@ -58,7 +58,7 @@ export default function NursePage() {
       <header className="fixed top-0 left-0 right-0 h-14 z-50 bg-[rgba(7,10,14,.97)] border-b border-[#1e2d3d] backdrop-blur-2xl flex items-center px-6">
         <button onClick={handleBack} className="text-[#00e5a0]">← Volver</button>
         <div className="flex-1" />
-        <div className="text-sm font-mono text-[#7a95aa]">🟨 FASE 2 - ENFERMERA</div>
+        <div className="text-sm font-mono text-[#7a95aa]"> FASE 2 - ENFERMERA</div>
       </header>
 
       {/* Main Content */}
@@ -85,7 +85,7 @@ export default function NursePage() {
           {step === 1 && (
             <div className="space-y-6 mb-8">
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🧬 Antecedentes Heredofamiliares</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Antecedentes Heredofamiliares</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-2 block">
@@ -121,7 +121,7 @@ export default function NursePage() {
           {step === 2 && (
             <div className="space-y-6 mb-8">
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🏥 Enfermedades crónicas</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Enfermedades crónicas</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-2 block">ENFERMEDADES DIAGNOSTICADAS</label>
@@ -136,7 +136,7 @@ export default function NursePage() {
               </div>
 
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🔪 Cirugías y hospitalizaciones</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Cirugías y hospitalizaciones</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-2 block">CIRUGÍAS (nombre y año)</label>
@@ -170,7 +170,7 @@ export default function NursePage() {
               </div>
 
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">⚠️ Alergias conocidas</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Alergias conocidas</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-2 block">ALERGIAS A MEDICAMENTOS</label>
@@ -206,7 +206,7 @@ export default function NursePage() {
               </div>
 
               <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4">🩸 Otros antecedentes</h2>
+                <h2 className="text-lg font-semibold text-[#dde6ef] mb-4"> Otros antecedentes</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-mono text-[#7a95aa] mb-2 block">TRANSFUSIONES</label>
