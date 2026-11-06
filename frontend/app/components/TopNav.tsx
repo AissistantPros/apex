@@ -193,6 +193,9 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     return true;
   });
 
+  const clinicalLinks = links.filter(l => ['/dashboard', '/dashboard/sala', '/dashboard/patients', '/dashboard/agenda'].includes(l.href));
+  const adminLinks = links.filter(l => !['/dashboard', '/dashboard/sala', '/dashboard/patients', '/dashboard/agenda'].includes(l.href));
+
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
 
@@ -359,64 +362,118 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
           borderRight: '1px solid var(--c-border)',
         }}
       >
-        <div className="space-y-1">
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
-            Menú principal
-          </p>
-          {links.map((linkItem) => {
-            const { href, icon, label } = linkItem;
-            const isChatLink = (linkItem as any).isChat;
-            const active = !isChatLink && isActive(href);
-            return (
-              <button
-                key={href + label}
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  if (isChatLink) {
-                    window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
-                  } else {
-                    router.push(href);
-                  }
-                }}
-                aria-current={active ? 'page' : undefined}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium text-left transition-all"
-                style={{
-                  background: active ? 'color-mix(in srgb, var(--c-primary) 12%, transparent)' : 'transparent',
-                  color: active ? 'var(--c-primary)' : 'var(--c-text-2)',
-                  fontWeight: active ? 600 : 500,
-                  borderLeft: active ? '3px solid var(--c-primary)' : '3px solid transparent',
-                }}
-              >
-                <Icon name={icon} size={18} />
-                <span className="flex-1 truncate">{label}</span>
-                {href === '/dashboard/sala' && waitCount > 0 && <Badge n={waitCount} />}
-              </button>
-            );
-          })}
+        <div className="space-y-3">
+          {/* Bloque 1: Clínica y Pacientes */}
+          <div className="space-y-0.5">
+            <p className="px-3 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
+              Clínica
+            </p>
+            {clinicalLinks.map((linkItem) => {
+              const { href, icon, label } = linkItem;
+              const isChatLink = (linkItem as any).isChat;
+              const active = !isChatLink && isActive(href);
+              return (
+                <button
+                  key={href + label}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    if (isChatLink) {
+                      window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
+                    } else {
+                      router.push(href);
+                    }
+                  }}
+                  aria-current={active ? 'page' : undefined}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium text-left transition-all"
+                  style={{
+                    background: active ? 'color-mix(in srgb, var(--c-primary) 12%, transparent)' : 'transparent',
+                    color: active ? 'var(--c-primary)' : 'var(--c-text-2)',
+                    fontWeight: active ? 600 : 500,
+                    borderLeft: active ? '3px solid var(--c-primary)' : '3px solid transparent',
+                  }}
+                >
+                  <Icon name={icon} size={18} />
+                  <span className="flex-1 truncate">{label}</span>
+                  {href === '/dashboard/sala' && waitCount > 0 && <Badge n={waitCount} />}
+                </button>
+              );
+            })}
+          </div>
 
-          {/* Accesos rápidos siempre a la mano para Recepción y Médico */}
+          {/* Bloque 2: Gestión y Consultorio */}
+          {adminLinks.length > 0 && (
+            <div className="pt-1">
+              <hr className="border-[var(--c-border)] opacity-60 mb-2" />
+              <p className="px-3 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
+                Gestión
+              </p>
+              <div className="space-y-0.5">
+                {adminLinks.map((linkItem) => {
+                  const { href, icon, label } = linkItem;
+                  const isChatLink = (linkItem as any).isChat;
+                  const active = !isChatLink && isActive(href);
+                  return (
+                    <button
+                      key={href + label}
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        if (isChatLink) {
+                          window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
+                        } else {
+                          router.push(href);
+                        }
+                      }}
+                      aria-current={active ? 'page' : undefined}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium text-left transition-all"
+                      style={{
+                        background: active ? 'color-mix(in srgb, var(--c-primary) 12%, transparent)' : 'transparent',
+                        color: active ? 'var(--c-primary)' : 'var(--c-text-2)',
+                        fontWeight: active ? 600 : 500,
+                        borderLeft: active ? '3px solid var(--c-primary)' : '3px solid transparent',
+                      }}
+                    >
+                      <Icon name={icon} size={18} />
+                      <span className="flex-1 truncate">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Bloque 3: Registros Rápidos (Sutiles y Separados) */}
           {(role === 'receptionist' || role === 'doctor' || role === 'admin') && (
-            <div className="pt-3 pb-1 px-1 space-y-1.5 border-t border-[var(--c-border)] mt-3">
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  router.push('/dashboard/clinic?tab=ingresos&action=nuevo');
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
-                style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
-              >
-                <span>+ Registrar Ingreso</span>
-              </button>
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  router.push('/dashboard/clinic?tab=gastos&action=nuevo');
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold border border-[var(--c-border)] transition-all hover:border-[var(--c-primary)] active:scale-95"
-                style={{ background: 'var(--c-subtle)', color: 'var(--c-text)' }}
-              >
-                <span>+ Registrar Gasto</span>
-              </button>
+            <div className="pt-1">
+              <hr className="border-[var(--c-border)] opacity-60 mb-2" />
+              <p className="px-3 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
+                Registros
+              </p>
+              <div className="space-y-1">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push('/dashboard/clinic?tab=ingresos&action=nuevo');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors text-[var(--c-text-2)] hover:text-[var(--c-primary)] hover:bg-[var(--c-subtle)] group"
+                >
+                  <span className="w-5 h-5 rounded-md flex items-center justify-center bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] font-bold text-xs group-hover:bg-[var(--c-primary)] group-hover:text-[var(--c-primary-fg)] transition-colors">
+                    +
+                  </span>
+                  <span className="truncate">Registrar Ingreso</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push('/dashboard/clinic?tab=gastos&action=nuevo');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors text-[var(--c-text-2)] hover:text-[#f43f5e] hover:bg-[var(--c-subtle)] group"
+                >
+                  <span className="w-5 h-5 rounded-md flex items-center justify-center bg-[color-mix(in_srgb,#f43f5e_15%,transparent)] text-[#f43f5e] font-bold text-xs group-hover:bg-[#f43f5e] group-hover:text-white transition-colors">
+                    +
+                  </span>
+                  <span className="truncate">Registrar Gasto</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

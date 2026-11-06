@@ -1216,38 +1216,44 @@ async def clinic_ai_analysis(body: FinancialAiIn, authorization: Optional[str] =
     ov = _build_financial_overview(actor)
     q_extra = (body.question or "").strip()
 
-    prompt = f"""Eres el asesor ejecutivo de NEGOCIOS y ESTRATEGIA COMERCIAL para este consultorio/clínica médica en APEX.
+    tot_vend = ov.get("resumen_ventas", {}).get("total_vendido", 0)
+    tot_gas = ov.get("gastos_analisis", {}).get("total_gastado", 0)
 
-REGLA DE ORO INQUEBRANTABLE:
-Tu opinión y análisis es ESTRICTAMENTE SOBRE EL NEGOCIO MÉDICO, RENTABILIDAD Y FINANZAS OPERATIVAS.
-NO hables como médico, NO hables de la salud o casos clínicos de los pacientes, NO hables de medicamentos ni de tratamientos clínicos. Tu análisis es 100% de NEGOCIO: márgenes, sedes físicas, fugas de gastos y flujo de ingresos.
+    # Si no hay registros aún y el médico no hizo una pregunta específica, responder con calma y sin alarmas
+    if tot_vend == 0 and tot_gas == 0 and not q_extra:
+        return {
+            "ok": True,
+            "analysis": "Hola, doctor. Por ahora no tienes ingresos o gastos registrados este mes.\n\nEn cuanto comiences a registrar tus cobros y egresos en las pestañas de Ingresos y Gastos, aquí te compartiré un resumen sereno y concreto sobre la marcha de tu consultorio y tus sedes.",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "daily_used": ent.get("ai_daily_used") or 0,
+            "daily_limit": ent.get("ai_daily_limit") or 50,
+            "daily_remaining": max(0, (ent.get("ai_daily_limit") or 50) - (ent.get("ai_daily_used") or 0)),
+        }
 
-DATOS DEL NEGOCIO MÉDICO:
-- Ventas globales: Total vendido=${ov['resumen_ventas']['total_vendido']:,} MXN | Total cobrado=${ov['resumen_ventas']['total_cobrado']:,} MXN | Cuentas por cobrar pendientes=${ov['resumen_ventas']['total_por_cobrar']:,} MXN
-- Comparativa mensual: Mes actual (${ov['resumen_ventas']['ingreso_mes_actual']:,} MXN) vs Mes anterior (${ov['resumen_ventas']['ingreso_mes_anterior']:,} MXN) -> Variación: {ov['resumen_ventas']['variacion_mes_pct']}%
-- Comparativa anual: Año actual (${ov['resumen_ventas']['ingreso_anio_actual']:,} MXN) vs Año anterior (${ov['resumen_ventas']['ingreso_anio_anterior']:,} MXN) -> Variación: {ov['resumen_ventas']['variacion_anio_pct']}%
-- Qué se vende más en VOLUMEN (Cantidad): {json.dumps(ov['top_vendidos']['por_cantidad'][:5], ensure_ascii=False)}
-- Qué genera MÁS DINERO (Ingresos brutos): {json.dumps(ov['top_vendidos']['por_ingreso'][:5], ensure_ascii=False)}
-- Análisis por sede física / hospitales / traslados a otras ciudades: {json.dumps(ov['analisis_sedes'], ensure_ascii=False)}
-- Cuentas por cobrar acumuladas ({len(ov['cuentas_por_cobrar'])} pendientes): {json.dumps([{'deudor': c['deudor'], 'procedimiento': c['procedimiento'], 'lugar': c['lugar'], 'monto': c['total'], 'dias': c['dias_antiguedad']} for c in ov['cuentas_por_cobrar'][:8]], ensure_ascii=False)}
-- Gastos totales (${ov['gastos_analisis']['total_gastado']:,} MXN) por categoría: {json.dumps(ov['gastos_analisis']['categorias'], ensure_ascii=False)}
-- Gastos hormiga y fugas detectadas: Total=${ov['gastos_analisis']['gastos_hormiga']['total']:,} MXN en {ov['gastos_analisis']['gastos_hormiga']['conteo']} compras menores. Fugas observadas: {json.dumps(ov['gastos_analisis']['fugas_detectadas'], ensure_ascii=False)}
+    prompt = f"""Eres el asesor de negocio y finanzas de este consultorio médico en APEX.
+Hablas directamente con el médico de forma cercana, serena, breve y tranquila.
 
-{f'PREGUNTA O PREOCUPACIÓN ESPECÍFICA DEL MÉDICO: {q_extra}' if q_extra else ''}
+REGLAS ESTRICTAS DE ESTILO:
+- MÁXIMO 100 A 130 PALABRAS EN TOTAL. Sé muy conciso.
+- Tono: Tranquilo, humano, constructivo y claro. Cero tecnicismos contables innecesarios.
+- PROHIBIDO: Emojis de alarma (como ❌, ⚠️, 🚨, 🔴), mayúsculas para gritar, palabras como "CRÍTICO", "OBLIGATORIO" o "URGENTE".
+- PROHIBIDO pedir plantillas de datos o formatos de texto. Trabaja con lo que haya de forma natural.
+- Enfoque: 100% sobre los números del negocio (ingresos, gastos, sedes o cirugías). No des consejos clínicos.
+- Formato: Máximo 2 párrafos breves o 3 viñetas cortas.
 
-ESTRUCTURA DE TU REPORTE DE NEGOCIO:
-1. **Diagnóstico Ejecutivo del Negocio**: Resumen conciso de cómo va la facturación (total cobrado vs por cobrar) y comparativa de crecimiento mensual y anual.
-2. **Rentabilidad de Sedes y Traslados**: Analiza dónde está ganando más dinero y si vale la pena operar en determinados hospitales o mantener consultorios en otras ciudades (ej. Amerimed Cancún vs Playa del Carmen, Joya, Galenia). ¿Tiene sentido trasladarse o es mejor consolidar volumen?
-3. **Márgenes: Volumen vs Alto Valor**: Explica cómo se complementan los servicios de consulta/estudios con los procedimientos/cirugías de mayor margen.
-4. **Fugas de Dinero y Gastos Hormiga**: Dónde recortar (Doctoralia, servicios de plataformas, celular, internet, consumos no consolidados).
-5. **3 Decisiones Estratégicas para el próximo mes**: Acciones concretas de director de negocio para maximizar la utilidad neta.
+DATOS DISPONIBLES DEL CONSULTORIO:
+- Vendido: ${ov['resumen_ventas']['total_vendido']:,} MXN | Cobrado: ${ov['resumen_ventas']['total_cobrado']:,} MXN | Por cobrar: ${ov['resumen_ventas']['total_por_cobrar']:,} MXN
+- Gastos registrados: ${ov['gastos_analisis']['total_gastado']:,} MXN
+- Sedes: {json.dumps([{'lugar': s['lugar'], 'ingreso': s['total_ingreso'], 'evaluacion': s['evaluacion']} for s in ov['analisis_sedes'][:4]], ensure_ascii=False)}
+- Servicios destacados: {json.dumps([x['concepto'] for x in ov['top_vendidos']['por_ingreso'][:3]], ensure_ascii=False)}
+- Gastos menores acumulados: ${ov['gastos_analisis']['gastos_hormiga']['total']:,} MXN
 
-Formato: Responde en español ejecutivo, profesional, directo, usando viñetas claras y negritas."""
+{f'Pregunta del médico: {q_extra}' if q_extra else 'Da un resumen sereno de 2 párrafos sobre cómo va la práctica este mes y una recomendación práctica.'}"""
 
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     msg = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1100,
+        max_tokens=250,
         messages=[{"role": "user", "content": prompt}],
     )
     analysis_text = "".join(b.text for b in msg.content if hasattr(b, "text")).strip()
