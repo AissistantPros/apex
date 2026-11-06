@@ -110,15 +110,21 @@ def _save_clinic_catalogs(clinic_id: Optional[str], catalogs: dict):
 # ── Modelos ────────────────────────────────────────────────────────────────────
 class ServiceIn(BaseModel):
     nombre: str
-    precio: float
+    precio: float = 0.0
+    precio_tipo: str = "fijo"                  # 'fijo' | 'variable' (abierto al momento de cobrar/operar)
+    categoria: str = "consulta"                # consulta | estudio | cirugia | producto | otro
+    precios_convenio: Optional[dict[str, float]] = None  # { 'GNP': 1900, 'AXA': 2100 }
+    descripcion: Optional[str] = None
     activo: bool = True
     orden: int = 0
-    categoria: Optional[str] = None
 
 class SaleItem(BaseModel):
     concepto: str
     precio: float
     cantidad: int = 1
+    service_id: Optional[str] = None
+    categoria: Optional[str] = None
+    precio_tipo: Optional[str] = "fijo"
 
 class SaleIn(BaseModel):
     patient_id: Optional[str] = None
@@ -129,10 +135,10 @@ class SaleIn(BaseModel):
     cortesia: bool = False
     facturada: bool = False
     metodo_pago: Optional[str] = None
-    estado: str = "pendiente"     # 'pendiente' (handoff) | 'cobrado' (venta directa)
+    estado: str = "pendiente"     # 'pendiente' (mostrador) | 'cobrado' (liquidado) | 'en_tramite' (por cobrar aseguradora)
     notas: Optional[str] = None
     # Campos ampliados de contabilidad médica (cirugías, procedimientos, aseguradoras, mostrador)
-    tipo_ingreso: Optional[str] = "consulta"   # consulta | procedimiento | cirugia | aseguradora | estudio | otro
+    tipo_ingreso: Optional[str] = "consulta"   # consulta | procedimiento | cirugia | aseguradora | estudio | producto | otro
     lugar: Optional[str] = None                # Consultorio, Hospital, Clínica, Quirófano...
     aseguradora: Optional[str] = None          # GNP, AXA, MetLife, Particular...
     poliza: Optional[str] = None               # Póliza / siniestro / folio
@@ -284,33 +290,97 @@ async def remove_catalog_item(kind: str, item_id: str, authorization: Optional[s
     return {"ok": True, "catalogs": cats}
 
 
-# ── Servicios configurables ─────────────────────────────────────────────────────
+# ── Servicios y Prestaciones (Consultas, Estudios, Cirugías, Productos) ────────
 @router.get("/services")
 async def list_services(authorization: Optional[str] = Header(None)):
-    did = get_actor(authorization)["doctor_id"]
+    actor = get_actor(authorization)
+    did = actor["doctor_id"]
     r = supabase.table("clinic_services").select("*").eq("doctor_id", did)\
         .order("orden").execute()
-    return {"services": r.data or []}
+    rows = r.data or []
+    clinic_id = actor.get("clinic_id")
+    cats = _get_clinic_catalogs(clinic_id)
+    services_meta = cats.get("services_meta") if isinstance(cats.get("services_meta"), dict) else {}
+
+    out = []
+    for s in rows:
+        sid = s.get("id")
+        meta = services_meta.get(sid) or {}
+        # Auto-detectar si es precio variable si el precio es 0 o si se configuró explícito
+        precio_val = float(s.get("precio") or 0)
+        p_tipo = meta.get("precio_tipo") or ("variable" if precio_val <= 0 else "fijo")
+        cat_val = meta.get("categoria") or s.get("categoria") or "consulta"
+        out.append({
+            **s,
+            "precio": precio_val,
+            "precio_tipo": p_tipo,
+            "categoria": cat_val,
+            "precios_convenio": meta.get("precios_convenio") or {},
+            "descripcion": meta.get("descripcion") or "",
+        })
+    return {"services": out}
 
 @router.post("/services")
 async def create_service(body: ServiceIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if actor["role"] == "receptionist":
         raise HTTPException(403, "Recepción no puede configurar servicios")
+    precio_final = 0.0 if body.precio_tipo == "variable" else float(body.precio or 0)
     r = supabase.table("clinic_services").insert({
-        "doctor_id": actor["doctor_id"], "nombre": body.nombre, "precio": body.precio,
-        "activo": body.activo, "orden": body.orden,
+        "doctor_id": actor["doctor_id"],
+        "nombre": body.nombre.strip(),
+        "precio": precio_final,
+        "activo": body.activo,
+        "orden": body.orden,
     }).execute()
-    return r.data[0] if r.data else {}
+    created = r.data[0] if r.data else {}
+    sid = created.get("id")
+
+    # Guardar metadatos enriquecidos en clinics.brand.catalogs
+    clinic_id = actor.get("clinic_id")
+    cats = _get_clinic_catalogs(clinic_id)
+    services_meta = dict(cats.get("services_meta") or {})
+    services_meta[sid] = {
+        "precio_tipo": body.precio_tipo,
+        "categoria": body.categoria,
+        "precios_convenio": body.precios_convenio or {},
+        "descripcion": (body.descripcion or "").strip(),
+    }
+    cats["services_meta"] = services_meta
+    _save_clinic_catalogs(clinic_id, cats)
+
+    return {
+        **created,
+        "precio_tipo": body.precio_tipo,
+        "categoria": body.categoria,
+        "precios_convenio": body.precios_convenio or {},
+        "descripcion": body.descripcion or "",
+    }
 
 @router.put("/services/{sid}")
 async def update_service(sid: str, body: ServiceIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if actor["role"] == "receptionist":
         raise HTTPException(403, "Recepción no puede configurar servicios")
+    precio_final = 0.0 if body.precio_tipo == "variable" else float(body.precio or 0)
     supabase.table("clinic_services").update({
-        "nombre": body.nombre, "precio": body.precio, "activo": body.activo, "orden": body.orden,
+        "nombre": body.nombre.strip(),
+        "precio": precio_final,
+        "activo": body.activo,
+        "orden": body.orden,
     }).eq("id", sid).eq("doctor_id", actor["doctor_id"]).execute()
+
+    clinic_id = actor.get("clinic_id")
+    cats = _get_clinic_catalogs(clinic_id)
+    services_meta = dict(cats.get("services_meta") or {})
+    services_meta[sid] = {
+        "precio_tipo": body.precio_tipo,
+        "categoria": body.categoria,
+        "precios_convenio": body.precios_convenio or {},
+        "descripcion": (body.descripcion or "").strip(),
+    }
+    cats["services_meta"] = services_meta
+    _save_clinic_catalogs(clinic_id, cats)
     return {"ok": True}
 
 @router.delete("/services/{sid}")
@@ -319,6 +389,13 @@ async def delete_service(sid: str, authorization: Optional[str] = Header(None)):
     if actor["role"] == "receptionist":
         raise HTTPException(403, "Recepción no puede configurar servicios")
     supabase.table("clinic_services").delete().eq("id", sid).eq("doctor_id", actor["doctor_id"]).execute()
+
+    clinic_id = actor.get("clinic_id")
+    cats = _get_clinic_catalogs(clinic_id)
+    services_meta = dict(cats.get("services_meta") or {})
+    services_meta.pop(sid, None)
+    cats["services_meta"] = services_meta
+    _save_clinic_catalogs(clinic_id, cats)
     return {"ok": True}
 
 
@@ -450,6 +527,65 @@ async def charge_sale(sid: str, body: ChargeIn, authorization: Optional[str] = H
     }).eq("id", sid).execute()
     return {"ok": True, "total": total}
 
+@router.post("/sales/{sid}/liquidate-insurance")
+async def liquidate_insurance_sale(sid: str, authorization: Optional[str] = Header(None)):
+    """Liquida en 1 clic un cobro que estaba en trámite con aseguradora/hospital."""
+    actor = get_actor(authorization)
+    venta = supabase.table("sales").select("*").eq("id", sid)\
+        .eq("doctor_id", actor["doctor_id"]).execute().data
+    if not venta:
+        raise HTTPException(404, "Venta no encontrada")
+    v = venta[0]
+    unpacked = _unpack_row_meta(v, SALE_META_DEFAULTS)
+    packed_notas = _pack_meta(unpacked.get("notas"), {
+        "tipo_ingreso": unpacked.get("tipo_ingreso") or "aseguradora",
+        "lugar": unpacked.get("lugar"),
+        "aseguradora": unpacked.get("aseguradora"),
+        "poliza": unpacked.get("poliza"),
+        "procedimiento": unpacked.get("procedimiento"),
+        "proxima_cita": unpacked.get("proxima_cita"),
+        "fecha_evento": unpacked.get("fecha_evento"),
+        "destino_fondo": "banco_consultorio",
+    })
+    supabase.table("sales").update({
+        "estado": "cobrado",
+        "metodo_pago": "aseguradora",
+        "notas": packed_notas,
+        "charged_by": actor["user_id"],
+        "charged_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", sid).execute()
+    return {"ok": True, "total": v.get("total")}
+
+
+@router.post("/reimburse-doctor")
+async def reimburse_doctor(body: dict, authorization: Optional[str] = Header(None)):
+    """Registra la liquidación / reembolso de gastos que el médico pagó de su propio dinero."""
+    actor = get_actor(authorization)
+    monto = float(body.get("monto") or 0)
+    if monto <= 0:
+        raise HTTPException(400, "Monto inválido para reembolso")
+    fuente = body.get("fuente") or "caja_consultorio"  # de dónde se le reembolsa: caja chica o banco
+    concepto = body.get("concepto") or f"Reembolso de gastos al Dr. ({fuente.replace('_', ' ')})"
+    packed_notas = _pack_meta(body.get("notas"), {
+        "origen_fondo": fuente,
+        "metodo_pago": "efectivo" if "caja" in fuente else "transferencia",
+        "tipo_egreso": "reembolso_medico",
+    })
+    row = {
+        "doctor_id": actor["doctor_id"],
+        "created_by": actor["user_id"],
+        "categoria": "otros",
+        "concepto": concepto,
+        "monto": monto,
+        "proveedor": "Reembolso Dr.",
+        "fecha": body.get("fecha") or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "recurrente": False,
+        "notas": packed_notas,
+    }
+    r = supabase.table("expenses").insert(row).execute()
+    return {"ok": True, "expense": r.data[0] if r.data else {}}
+
+
 @router.post("/sales/{sid}/cancel")
 async def cancel_sale(sid: str, authorization: Optional[str] = Header(None)):
     did = get_actor(authorization)["doctor_id"]
@@ -549,8 +685,46 @@ def _build_financial_overview(actor: dict) -> dict:
     did = actor["doctor_id"]
     raw_ventas = supabase.table("sales").select("*").eq("doctor_id", did).execute().data or []
     raw_gastos = supabase.table("expenses").select("*").eq("doctor_id", did).execute().data or []
-    pacientes = supabase.table("patients").select("id, full_name, sources_of_contact, social_network")\
+    pacientes = supabase.table("patients").select("id, full_name, sources_of_contact, social_network, prev_redes, prev_web, prev_gmaps, created_at")\
         .eq("doctor_id", did).execute().data or []
+    raw_visitas = supabase.table("visits").select("id, patient_id, created_at").eq("doctor_id", did).execute().data or []
+
+    # Conteo de visitas por paciente para saber primera vez vs seguimiento
+    visitas_paciente = defaultdict(int)
+    for vi in raw_visitas:
+        pid = vi.get("patient_id")
+        if pid:
+            visitas_paciente[pid] += 1
+
+    total_pac = len(pacientes)
+    primera_vez_cnt = sum(1 for p in pacientes if visitas_paciente.get(p["id"], 0) <= 1)
+    seguimiento_cnt = max(0, total_pac - primera_vez_cnt)
+
+    # Validación previa digital (Google Maps, Web, Redes)
+    gmaps_cnt = sum(1 for p in pacientes if p.get("prev_gmaps") or "gmaps" in str(p.get("sources_of_contact") or "").lower() or "google maps" in str(p.get("sources_of_contact") or "").lower())
+    web_cnt = sum(1 for p in pacientes if p.get("prev_web") or "web" in str(p.get("sources_of_contact") or "").lower() or "pagina" in str(p.get("sources_of_contact") or "").lower())
+    redes_cnt = sum(1 for p in pacientes if p.get("prev_redes") or p.get("social_network") or "redes" in str(p.get("sources_of_contact") or "").lower())
+
+    rec_cnt = sum(1 for p in pacientes if "recomend" in str(p.get("sources_of_contact") or "").lower() or _canal_paciente(p) == "Referido")
+    rec_val_cnt = sum(1 for p in pacientes if ("recomend" in str(p.get("sources_of_contact") or "").lower() or _canal_paciente(p) == "Referido") and (p.get("prev_gmaps") or p.get("prev_web") or p.get("prev_redes")))
+
+    patient_journey = {
+        "total_pacientes": total_pac,
+        "primera_vez_count": primera_vez_cnt,
+        "seguimiento_count": seguimiento_cnt,
+        "pct_primera_vez": round(100 * primera_vez_cnt / max(total_pac, 1)),
+        "pct_seguimiento": round(100 * seguimiento_cnt / max(total_pac, 1)),
+        "revisaron_gmaps": gmaps_cnt,
+        "pct_revisaron_gmaps": round(100 * gmaps_cnt / max(total_pac, 1)),
+        "revisaron_web": web_cnt,
+        "pct_revisaron_web": round(100 * web_cnt / max(total_pac, 1)),
+        "revisaron_redes": redes_cnt,
+        "pct_revisaron_redes": round(100 * redes_cnt / max(total_pac, 1)),
+        "recomendados_count": rec_cnt,
+        "pct_recomendados": round(100 * rec_cnt / max(total_pac, 1)),
+        "recomendados_que_validaron_digital": rec_val_cnt,
+        "pct_recomendados_que_validaron_digital": round(100 * rec_val_cnt / max(rec_cnt, 1)),
+    }
 
     ventas = [_unpack_row_meta(v, SALE_META_DEFAULTS) for v in raw_ventas]
     gastos = [_unpack_row_meta(g, EXPENSE_META_DEFAULTS) for g in raw_gastos]
@@ -809,6 +983,29 @@ def _build_financial_overview(actor: dict) -> dict:
         key=lambda x: -x["valor"]
     )
 
+    # Cuentas por cobrar / En trámite con Aseguradoras y Hospitales
+    nombres_pac = _nombre_pacientes(did)
+    por_cobrar_aseg = []
+    for v in ventas:
+        est = v.get("estado")
+        es_aseg = v.get("tipo_ingreso") == "aseguradora" or bool(v.get("aseguradora"))
+        if est == "en_tramite" or (es_aseg and est == "pendiente"):
+            d_crea = _mes(v)
+            dias = (ahora - d_crea).days if d_crea else 0
+            por_cobrar_aseg.append({
+                "id": v.get("id"),
+                "paciente": nombres_pac.get(v.get("patient_id")) or "Paciente",
+                "aseguradora": v.get("aseguradora") or "Aseguradora",
+                "procedimiento": v.get("procedimiento") or (v.get("items") or [{}])[0].get("concepto") or "Procedimiento",
+                "lugar": v.get("lugar") or "Hospital",
+                "poliza": v.get("poliza") or "",
+                "total": v.get("total") or 0,
+                "dias": dias,
+                "fecha": (v.get("fecha_evento") or str(v.get("created_at") or ""))[:10],
+            })
+
+    total_por_cobrar_aseg = round(sum(item["total"] for item in por_cobrar_aseg))
+
     return {
         "mes_actual": mes_actual,
         "promedios": promedios,
@@ -817,7 +1014,13 @@ def _build_financial_overview(actor: dict) -> dict:
         "ingresos_por_tipo": ingresos_por_tipo,
         "ingresos_por_lugar": ingresos_por_lugar,
         "ingresos_por_aseguradora": ingresos_por_aseguradora,
-        "kpis": kpis,
+        "kpis": {
+            **kpis,
+            "por_cobrar_aseguradoras_total": total_por_cobrar_aseg,
+            "por_cobrar_aseguradoras_count": len(por_cobrar_aseg),
+        },
+        "aseguradoras_por_cobrar": por_cobrar_aseg,
+        "patient_journey": patient_journey,
         "serie_mensual": serie_12[-8:],
         "historico_12m": serie_12,
         "facturacion": facturacion,
@@ -864,27 +1067,41 @@ async def clinic_ai_analysis(body: FinancialAiIn, authorization: Optional[str] =
     ov = _build_financial_overview(actor)
     q_extra = (body.question or "").strip()
 
-    prompt = f"""Eres el asesor financiero y contable médico de este consultorio en APEX.
-Analiza los datos reales del consultorio y entrega un diagnóstico claro, ejecutivo y accionable.
+    prompt = f"""Eres el asesor estratégico de negocio y crecimiento médico para este consultorio en APEX.
+Tu objetivo es darle al médico CLARIDAD ABSOLUTA sobre cómo va su práctica médica, con expectativas del MUNDO REAL (sin jerga contable compleja).
 
-DATOS FINANCIEROS DEL CONSULTORIO:
-- Mes actual ({ov['mes_actual']['nombre']}): Ingresos=${ov['mes_actual']['ingreso']:,} MXN | Gastos=${ov['mes_actual']['gasto']:,} MXN | Balance=${ov['mes_actual']['balance']:,} MXN | Consultas/eventos cobrados={ov['mes_actual']['ventas_count']}
+DATOS CLAVE DEL CONSULTORIO:
+- Mes actual ({ov['mes_actual']['nombre']}): Ingresos=${ov['mes_actual']['ingreso']:,} MXN | Gastos=${ov['mes_actual']['gasto']:,} MXN | Balance=${ov['mes_actual']['balance']:,} MXN | Procedimientos/consultas cobradas={ov['mes_actual']['ventas_count']}
 - Mes anterior: Ingresos=${ov['mes_actual']['ingreso_mes_anterior']:,} MXN | Gastos=${ov['mes_actual']['gasto_mes_anterior']:,} MXN
-- Promedio mensual histórico ({ov['promedios']['meses_con_actividad']} meses con actividad): Ingreso prom=${ov['promedios']['ingreso_mensual']:,} MXN | Gasto prom=${ov['promedios']['gasto_mensual']:,} MXN | Balance prom=${ov['promedios']['balance_mensual']:,} MXN
-- Comparativa anual: {json.dumps(ov['comparativa_anual'], ensure_ascii=False)}
+- Promedio mensual ({ov['promedios']['meses_con_actividad']} meses activos): Ingreso prom=${ov['promedios']['ingreso_mensual']:,} MXN | Gasto prom=${ov['promedios']['gasto_mensual']:,} MXN | Balance prom=${ov['promedios']['balance_mensual']:,} MXN
 - ¿Dónde está el dinero? (Flujo de fondos): {json.dumps(ov['flujo_fondos'], ensure_ascii=False)}
-- Ingresos por tipo (consultas, cirugías, procedimientos, aseguradoras): {json.dumps(ov['ingresos_por_tipo'], ensure_ascii=False)}
+- En trámite / por cobrar con aseguradoras: {json.dumps(ov['aseguradoras_por_cobrar'], ensure_ascii=False)} (Total: ${ov['kpis'].get('por_cobrar_aseguradoras_total', 0):,} MXN)
+- Ingresos por tipo (consultas, procedimientos, cirugías, aseguradoras): {json.dumps(ov['ingresos_por_tipo'], ensure_ascii=False)}
 - Ingresos por sede/hospital: {json.dumps(ov['ingresos_por_lugar'], ensure_ascii=False)}
-- Ingresos por aseguradora/cliente: {json.dumps(ov['ingresos_por_aseguradora'], ensure_ascii=False)}
 - Gastos por categoría: {json.dumps(ov['gasto_categorias'], ensure_ascii=False)}
-- Serie últimos 12 meses: {json.dumps(ov['historico_12m'], ensure_ascii=False)}
-{f'PREGUNTA ESPECÍFICA DEL MÉDICO: {q_extra}' if q_extra else ''}
 
-Responde en español con formato claro (viñetas y negritas):
-1. **Desempeño del Mes Actual vs Promedio Mensual y Año Anterior**.
-2. **¿Dónde está el dinero? (Caja del consultorio, Banco y Reembolsos pendientes al Médico si pagó gastos de su bolsillo)**.
-3. **Rentabilidad por Tipo de Ingreso (Consultas, Cirugías, Procedimientos, Aseguradoras) y Control de Gastos**.
-4. **3 Recomendaciones Concretas para optimizar flujo de caja y margen este mes**."""
+VIAJE DEL PACIENTE Y CAPTACIÓN (PATIENT JOURNEY):
+- Total de pacientes en base: {ov['patient_journey']['total_pacientes']} ({ov['patient_journey']['primera_vez_count']} de Primera Vez vs {ov['patient_journey']['seguimiento_count']} de Seguimiento)
+- Pacientes recomendados: {ov['patient_journey']['recomendados_count']} ({ov['patient_journey']['pct_recomendados']}%)
+- Validación digital previa:
+  * El {ov['patient_journey']['pct_revisaron_gmaps']}% revisó Google Maps antes de venir.
+  * El {ov['patient_journey']['pct_revisaron_web']}% visitó su página web antes de venir.
+  * El {ov['patient_journey']['pct_revisaron_redes']}% vio sus redes sociales.
+  * De los recomendados, el {ov['patient_journey']['pct_recomendados_que_validaron_digital']}% buscó activamente al médico en línea antes de agendar.
+- Inversión en publicidad de pago: ${ov['publicidad']['inversion_total']:,} MXN con {ov['publicidad']['pacientes_por_publicidad']} pacientes atribuidos directamente ({ov['publicidad']['pct_publicidad']}% del total).
+
+{f'PREGUNTA O PREOCUPACIÓN ESPECÍFICA DEL MÉDICO: {q_extra}' if q_extra else ''}
+
+DIRECTRICES OBLIGATORIAS DE TU RESPUESTA:
+1. **El pulso real de la práctica este mes**: Explica el resultado del mes comparado con su promedio y dónde está el dinero físico (en caja chica, en cuenta bancaria o si el médico desembolsó de su propio dinero y se le debe reintegrar).
+2. **Educación y expectativas en el mundo real sobre captación de pacientes**:
+   - Explica con claridad por qué las redes sociales y la presencia digital NO siempre cierran la venta en frío (la gente no compra una cirugía o consulta especializada por impulso en Instagram), sino que construyen **autoridad, prestigio y confianza**.
+   - Haz notar el fenómeno de validación: aunque un paciente llegue recomendado por un familiar o colega, hoy en día **el paciente entra a Google Maps a ver las reseñas, entra a la web y ve sus redes** antes de atreverse a agendar. Su presencia en línea es el seguro que evita que el paciente busque una segunda opinión.
+   - Da una expectativa realista de qué esperar de campañas de publicidad vs el boca a boca y la fidelización de pacientes de control.
+3. **Cuentas por cobrar y procedimientos**: Estatus de aseguradoras o cirugías pendientes de pago.
+4. **3 Consejos accionables de alto impacto** para que el médico optimice su práctica médica el próximo mes.
+
+Formato: Responde en español con tono profesional, empático y estructurado en viñetas claras y negritas."""
 
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     msg = client.messages.create(

@@ -82,6 +82,9 @@ def _unique_username(nombre_o_user: str, exclude_id: Optional[str] = None) -> st
 class StaffIn(BaseModel):
     nombre: str
     email: Optional[str] = None       # opcional; si falta se genera un usuario con el nombre
+    phone: Optional[str] = None
+    birthday: Optional[str] = None    # YYYY-MM-DD
+    photo_url: Optional[str] = None
     role: str = "receptionist"
     permissions: Optional[dict] = None
 
@@ -112,7 +115,7 @@ async def list_staff(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     _require_manage(actor)
     r = supabase.table("doctor_profiles").select(
-        "id, display_name, email, username, phone, role, is_local_admin, permissions, created_at")\
+        "id, display_name, email, username, phone, photo_url, role, is_local_admin, permissions, created_at")\
         .eq("parent_doctor_id", actor["doctor_id"]).execute()
     staff = r.data or []
     # Sedes de la clínica + asignación de cada miembro (para editar dónde trabaja)
@@ -128,6 +131,9 @@ async def list_staff(authorization: Optional[str] = Header(None)):
             by_user.setdefault(row["user_id"], []).append(row["location_id"])
         for m in staff:
             m["location_ids"] = by_user.get(m["id"], [])
+            # Extraer birthday guardado en permissions o meta
+            perms = m.get("permissions") if isinstance(m.get("permissions"), dict) else {}
+            m["birthday"] = perms.get("birthday") or ""
     return {"staff": staff, "areas": AREAS, "roles": ROLES, "locations": locations}
 
 
@@ -165,15 +171,25 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
         raise HTTPException(500, "No se obtuvo el id del nuevo usuario")
 
     username = _unique_username(body.nombre)
-    supabase.table("doctor_profiles").upsert({
+    perms_dict = perms_para(body.role, body.permissions)
+    if body.birthday:
+        perms_dict["birthday"] = body.birthday.strip()
+
+    profile_row = {
         "id": uid, "display_name": body.nombre, "email": email, "username": username,
         "role": body.role, "clinic_id": actor.get("clinic_id"),
-        "parent_doctor_id": actor["doctor_id"], "permissions": perms_para(body.role, body.permissions),
-    }).execute()
+        "parent_doctor_id": actor["doctor_id"], "permissions": perms_dict,
+    }
+    if body.phone:
+        profile_row["phone"] = body.phone.strip()
+    if body.photo_url:
+        profile_row["photo_url"] = body.photo_url.strip()
+
+    supabase.table("doctor_profiles").upsert(profile_row).execute()
 
     # La contraseña se devuelve UNA vez; no se guarda de forma legible.
     return {"ok": True, "id": uid, "usuario": username, "password": password,
-            "nombre": body.nombre, "role": body.role}
+            "nombre": body.nombre, "role": body.role, "birthday": body.birthday, "phone": body.phone}
 
 
 @router.post("/{uid}/password")
@@ -235,6 +251,10 @@ async def update_member_profile(uid: str, body: dict, authorization: Optional[st
             patch["permissions"] = perms_para(body["role"])
     if isinstance(body.get("permissions"), dict):
         patch["permissions"] = perms_para(patch.get("role") or prof[0].get("role") or "receptionist", body["permissions"])
+    if "birthday" in body:
+        current_perms = dict(patch.get("permissions") or prof[0].get("permissions") or {})
+        current_perms["birthday"] = str(body["birthday"] or "").strip()
+        patch["permissions"] = current_perms
     if "is_local_admin" in body:
         patch["is_local_admin"] = bool(body["is_local_admin"])
 
