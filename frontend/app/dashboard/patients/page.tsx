@@ -5,21 +5,45 @@ import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import Icon from '@/app/components/Icon';
 import { useEntitlements } from '@/app/lib/useEntitlements';
+import { getRole } from '@/app/lib/role';
 
 export default function PatientsPage() {
   const router = useRouter();
   const { lite } = useEntitlements();
+  const [role, setRole] = useState<string>('doctor');
   const [user, setUser] = useState<any>(null);
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setRole(getRole());
     getUser().then(u => {
       if (!u) router.push('/auth/login');
       else { setUser(u); fetchPatients(); }
     });
   }, [router]);
+
+  const handleDeletePatient = async (patientId: string, fullName: string) => {
+    const ok = window.confirm('¿Está seguro que quiere borrar este registro? Esto no se puede deshacer.');
+    if (!ok) return;
+    try {
+      const session = await getSession().catch(() => null);
+      const headers: Record<string, string> = session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/patients/${patientId}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || 'No se pudo borrar el registro');
+      }
+      setPatients(prev => prev.filter(p => p.id !== patientId));
+    } catch (e: any) {
+      alert(e.message || `Error al eliminar a ${fullName}`);
+    }
+  };
 
   const fetchPatients = async () => {
     try {
@@ -157,6 +181,15 @@ export default function PatientsPage() {
                       >
                         Expediente
                       </button>
+                      {role === 'doctor' && (
+                        <button
+                          onClick={() => handleDeletePatient(p.id, p.full_name || 'este paciente')}
+                          className="px-2.5 py-1.5 text-xs font-medium rounded-lg text-[#f43f5e] border border-[#f43f5e]/30 hover:bg-[#f43f5e]/10 transition"
+                          title="Borrar registro del paciente"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

@@ -269,9 +269,6 @@ export default function DashboardPage() {
 
       </main>
     </div>
-
-    {/* Chat IA — solo para el médico y solo si el consultorio tiene IA contratada */}
-    {isDoctor && !lite && <ChatBubble />}
     </>
   );
 }

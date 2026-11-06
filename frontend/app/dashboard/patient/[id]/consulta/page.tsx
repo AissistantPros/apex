@@ -10,8 +10,8 @@ import { getRole } from '@/app/lib/role';
 import {
   APEGO, CLASES_FUNCIONALES, CLASE_HINT, CONDICIONES, ENF_FAMILIARES, KIND_LABEL, PARENTESCOS,
   SINTOMAS, TIPO_CONTROL, avisosSignos, buildPatientPatch, buildVisitPayload, calcIMC,
-  defaultKind, emptyForm, faltantes, interpIMC,
-  type Apego, type Kind, type LiteForm, type SintomaKey, type TipoControl,
+  defaultKind, emptyForm, emptyRecetaItem, faltantes, interpIMC,
+  type Apego, type Kind, type LiteForm, type RecetaItem, type SintomaKey, type TipoControl,
 } from '@/app/lib/consultaLite';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -83,6 +83,16 @@ export default function ConsultaLitePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cobro a mostrador al terminar la visita
+  const [services, setServices] = useState<Array<{ id: string; nombre: string; precio: number }>>([]);
+  const [cobroItems, setCobroItems] = useState<Array<{ concepto: string; precio: string; cantidad: string }>>([
+    { concepto: 'Consulta médica', precio: '', cantidad: '1' },
+  ]);
+  const [enviarCobro, setEnviarCobro] = useState<boolean>(true);
+  const [indicacionesMostrador, setIndicacionesMostrador] = useState<string>('');
+  const [estadoCobro, setEstadoCobro] = useState<'pendiente' | 'cobrado'>('pendiente');
+  const [metodoCobroDirecto, setMetodoCobroDirecto] = useState<'efectivo' | 'tarjeta' | 'transferencia'>('efectivo');
+
   const set = <K extends keyof LiteForm>(k: K, v: LiteForm[K]) => setF(p => ({ ...p, [k]: v }));
   const first = kind === 'first_visit';
 
@@ -95,13 +105,21 @@ export default function ConsultaLitePage() {
       try {
         const s = await getSession();
         const headers: Record<string, string> = s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {};
-        const [pRes, vRes] = await Promise.all([
+        const [pRes, vRes, sRes] = await Promise.all([
           fetch(`${BACKEND()}/patients/${patientId}`, { headers }),
           fetch(`${BACKEND()}/visits/${patientId}`, { headers }),
+          fetch(`${BACKEND()}/clinic/services`, { headers }).catch(() => null),
         ]);
         if (!pRes.ok) throw new Error('No se pudo cargar el paciente');
         const p = await pRes.json();
         const vs: any[] = vRes.ok ? ((await vRes.json()).visits || []) : [];
+        if (sRes && sRes.ok) {
+          const svcs = ((await sRes.json()).services || []).filter((x: any) => x.activo !== false);
+          setServices(svcs);
+          if (svcs.length > 0) {
+            setCobroItems([{ concepto: svcs[0].nombre, precio: String(svcs[0].precio || ''), cantidad: '1' }]);
+          }
+        }
         setPatient(p); setVisits(vs);
         setKind(defaultKind(vs.length));
         // Lo que el expediente ya tiene se precarga para no volver a escribirlo
@@ -131,7 +149,7 @@ export default function ConsultaLitePage() {
   const ultima = visits[0];
   const sinAcceso = role === 'receptionist' || role === 'accounting' || role === 'marketing';
 
-  const guardar = async () => {
+  const guardar = async (irAReceta: boolean = false) => {
     setError(null);
     const falta = faltantes(f, kind);
     if (falta.length && !window.confirm(`Falta capturar:\n• ${falta.join('\n• ')}\n\n¿Guardar de todos modos?`)) return;
@@ -148,7 +166,42 @@ export default function ConsultaLitePage() {
       }
       const r = await fetch(`${BACKEND()}/visits/${patientId}`, { method: 'POST', headers, body: JSON.stringify(buildVisitPayload(f, kind)) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'No se pudo guardar la consulta');
-      router.push(`/dashboard/patient/${patientId}`);
+      const vCreated = await r.json();
+      const newVisitId = vCreated.id || vCreated.visit_id;
+
+      // Enviar cobro a mostrador si el médico definió al menos un concepto con monto > 0
+      const validCobros = cobroItems
+        .map(it => ({
+          concepto: it.concepto.trim(),
+          precio: parseFloat(it.precio || '0'),
+          cantidad: Math.max(1, parseInt(it.cantidad || '1', 10) || 1),
+        }))
+        .filter(it => it.concepto && it.precio > 0);
+
+      if (enviarCobro && validCobros.length > 0) {
+        await fetch(`${BACKEND()}/clinic/sales`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            patient_id: patientId,
+            visit_id: newVisitId || null,
+            items: validCobros,
+            estado: estadoCobro,
+            metodo_pago: estadoCobro === 'cobrado' ? metodoCobroDirecto : null,
+            tipo_ingreso: 'consulta',
+            lugar: 'Consultorio',
+            proxima_cita: f.proxima_cita || null,
+            indicaciones_mostrador: indicacionesMostrador.trim() || f.plan.trim() || null,
+            notas: indicacionesMostrador.trim() || null,
+          }),
+        }).catch(() => {});
+      }
+
+      if (irAReceta && newVisitId) {
+        router.push(`/dashboard/patient/${patientId}/visit/${newVisitId}/documentos`);
+      } else {
+        router.push(`/dashboard/patient/${patientId}`);
+      }
     } catch (e: any) {
       setError(e?.message || 'Error al guardar');
       setSaving(false);
@@ -385,16 +438,228 @@ export default function ConsultaLitePage() {
           <Lab t="Diagnóstico"><textarea rows={2} className={inp} value={f.diagnostico} onChange={e => set('diagnostico', e.target.value)} /></Lab>
           {!first && <Lab t="Evolución"><textarea rows={2} className={inp} value={f.evolucion_nota} onChange={e => set('evolucion_nota', e.target.value)} placeholder="Mejoría, igual, empeoramiento…" /></Lab>}
           <Lab t="Plan e indicaciones"><textarea rows={3} className={inp} value={f.plan} onChange={e => set('plan', e.target.value)} /></Lab>
-          <Lab t="Estudios solicitados"><input className={inp} value={f.estudios_solicitados} onChange={e => set('estudios_solicitados', e.target.value)} /></Lab>
+          <Lab t="Estudios solicitados (separados por coma o renglón)"><input className={inp} value={f.estudios_solicitados} onChange={e => set('estudios_solicitados', e.target.value)} placeholder="Ej. Biometría hemática, Perfil lipídico, Ecocardiograma…" /></Lab>
           <Lab t="Próxima cita"><input type="date" className={inp} value={f.proxima_cita} onChange={e => set('proxima_cita', e.target.value)} /></Lab>
+        </Card>
+
+        {/* Receta médica manual */}
+        <Card n={++n} title="Receta médica (captura manual)" sub="Agrega los medicamentos, dosis y duración para generar la receta oficial imprimible.">
+          <div className="space-y-3">
+            {f.receta.map((m, idx) => {
+              const updMed = (patch: Partial<RecetaItem>) =>
+                set('receta', f.receta.map((item, j) => j === idx ? { ...item, ...patch } : item));
+              return (
+                <div key={idx} className="rounded-xl border border-[#1e2d3d] bg-[#111820] p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#0ea5e9]">Medicamento #{idx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => set('receta', f.receta.filter((_, j) => j !== idx))}
+                      className="text-xs text-[#f43f5e] hover:underline"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2.5">
+                    <input className={inp} placeholder="Nombre genérico / sustancia *" value={m.nombre_generico} onChange={e => updMed({ nombre_generico: e.target.value })} />
+                    <input className={inp} placeholder="Nombre comercial (opcional)" value={m.nombre_comercial} onChange={e => updMed({ nombre_comercial: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <input className={inp} placeholder="Presentación (tab, cap)" value={m.presentacion} onChange={e => updMed({ presentacion: e.target.value })} />
+                    <input className={inp} placeholder="Dosis (ej. 50 mg)" value={m.dosis} onChange={e => updMed({ dosis: e.target.value })} />
+                    <input className={inp} placeholder="Frecuencia (ej. c/12 h)" value={m.frecuencia} onChange={e => updMed({ frecuencia: e.target.value })} />
+                    <input className={inp} placeholder="Duración (ej. 30 días)" value={m.duracion} onChange={e => updMed({ duracion: e.target.value })} />
+                  </div>
+                  <input className={inp} placeholder="Indicaciones adicionales (ej. tomar en ayunas, vigilar presión)" value={m.indicaciones} onChange={e => updMed({ indicaciones: e.target.value })} />
+                </div>
+              );
+            })}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => set('receta', [...f.receta, emptyRecetaItem()])}
+                className="flex-1 min-h-[46px] rounded-xl border-2 border-dashed border-[#0ea5e9]/60 text-[#0ea5e9] font-semibold text-sm"
+              >
+                + Agregar medicamento a la receta
+              </button>
+              {f.medicamentos.length > 0 && f.receta.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    set('receta', f.medicamentos.filter(x => x.nombre.trim()).map(x => ({
+                      ...emptyRecetaItem(),
+                      nombre_generico: x.nombre,
+                      dosis: x.dosis,
+                    })))
+                  }
+                  className="px-4 min-h-[46px] rounded-xl border border-[#1e2d3d] text-xs font-semibold text-[#7a95aa] hover:text-[#dde6ef]"
+                >
+                  Copiar medicamentos actuales ({f.medicamentos.filter(x => x.nombre.trim()).length})
+                </button>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        {/* Enviar cobro a mostrador */}
+        <Card n={++n} title="Enviar cobro e indicaciones a mostrador" sub="Define qué se va a cobrar hoy y las indicaciones para que recepción lo tenga de inmediato al salir el paciente.">
+          <div className="flex items-center justify-between pb-2">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={enviarCobro} onChange={e => setEnviarCobro(e.target.checked)} />
+              <span className="text-sm font-semibold">Generar orden de cobro al guardar esta visita</span>
+            </label>
+            {enviarCobro && (
+              <div className="flex items-center gap-1.5">
+                {(['pendiente', 'cobrado'] as const).map(est => (
+                  <button
+                    key={est}
+                    type="button"
+                    onClick={() => setEstadoCobro(est)}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold transition"
+                    style={{
+                      background: estadoCobro === est ? 'var(--c-primary)' : 'var(--c-subtle)',
+                      color: estadoCobro === est ? 'var(--c-primary-fg)' : 'var(--c-text-2)',
+                    }}
+                  >
+                    {est === 'pendiente' ? 'Enviar a mostrador (Pendiente)' : 'Cobrar aquí mismo'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {enviarCobro && (
+            <div className="space-y-3 pt-2">
+              {services.length > 0 && (
+                <div>
+                  <p className="text-xs font-mono text-[#7a95aa] mb-1.5">SERVICIOS FRECUENTES DEL CONSULTORIO (CLIC PARA AGREGAR)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {services.map(svc => (
+                      <button
+                        key={svc.id}
+                        type="button"
+                        onClick={() => {
+                          setCobroItems(prev => {
+                            if (prev.length === 1 && !prev[0].precio) {
+                              return [{ concepto: svc.nombre, precio: String(svc.precio), cantidad: '1' }];
+                            }
+                            return [...prev, { concepto: svc.nombre, precio: String(svc.precio), cantidad: '1' }];
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-[#1e2d3d] bg-[#111820] hover:border-[#0ea5e9] transition"
+                      >
+                        + {svc.nombre} (${Number(svc.precio).toLocaleString('es-MX')})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {cobroItems.map((it, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_110px_80px_auto] gap-2 items-center">
+                    <input
+                      className={inp}
+                      placeholder="Concepto a cobrar (ej. Consulta, ECG, Procedimiento)"
+                      value={it.concepto}
+                      onChange={e => setCobroItems(prev => prev.map((x, j) => j === idx ? { ...x, concepto: e.target.value } : x))}
+                    />
+                    <input
+                      inputMode="decimal"
+                      className={inp}
+                      placeholder="$ Monto"
+                      value={it.precio}
+                      onChange={e => setCobroItems(prev => prev.map((x, j) => j === idx ? { ...x, precio: e.target.value } : x))}
+                    />
+                    <input
+                      inputMode="numeric"
+                      className={`${inp} text-center`}
+                      placeholder="Cant."
+                      value={it.cantidad}
+                      onChange={e => setCobroItems(prev => prev.map((x, j) => j === idx ? { ...x, cantidad: e.target.value } : x))}
+                    />
+                    {cobroItems.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setCobroItems(prev => prev.filter((_, j) => j !== idx))}
+                        className="px-3 min-h-[48px] rounded-lg bg-[#1e2d3d] text-lg"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setCobroItems(prev => [...prev, { concepto: '', precio: '', cantidad: '1' }])}
+                    className="text-xs font-semibold text-[#0ea5e9] hover:underline"
+                  >
+                    + Agregar otro concepto al cobro
+                  </button>
+                  <p className="text-sm font-bold">
+                    Total a cobrar: $
+                    {cobroItems
+                      .reduce((acc, it) => acc + (parseFloat(it.precio || '0') || 0) * (parseInt(it.cantidad || '1', 10) || 1), 0)
+                      .toLocaleString('es-MX')}{' '}
+                    MXN
+                  </p>
+                </div>
+              </div>
+
+              {estadoCobro === 'cobrado' && (
+                <Lab t="Método de pago recibido">
+                  <div className="flex gap-2">
+                    {(['efectivo', 'tarjeta', 'transferencia'] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setMetodoCobroDirecto(m)}
+                        className="px-4 py-2 rounded-lg text-xs font-semibold capitalize border"
+                        style={{
+                          background: metodoCobroDirecto === m ? 'var(--c-primary)' : 'var(--c-subtle)',
+                          color: metodoCobroDirecto === m ? 'var(--c-primary-fg)' : 'var(--c-text)',
+                          borderColor: metodoCobroDirecto === m ? 'var(--c-primary)' : 'var(--c-border)',
+                        }}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </Lab>
+              )}
+
+              <Lab t="Indicaciones para recepción / mostrador (opcional)">
+                <input
+                  className={inp}
+                  value={indicacionesMostrador}
+                  onChange={e => setIndicacionesMostrador(e.target.value)}
+                  placeholder="Ej. Agendar cita en 1 mes con estudios de laboratorio; entregar factura…"
+                />
+              </Lab>
+            </div>
+          )}
         </Card>
       </div>
 
-      <div className="fixed bottom-0 inset-x-0 bg-[#080b10]/95 backdrop-blur border-t border-[#1e2d3d] p-4">
-        <div className="max-w-3xl mx-auto flex gap-3">
-          <button onClick={() => router.push(`/dashboard/patient/${patientId}`)} className="px-5 min-h-[52px] rounded-xl bg-[#1e2d3d] font-semibold">Cancelar</button>
-          <button onClick={guardar} disabled={saving} className="flex-1 min-h-[52px] rounded-xl bg-[#00e5a0] text-black font-bold text-base disabled:opacity-60">
+      <div className="fixed bottom-0 inset-x-0 md:left-[232px] bg-[#080b10]/95 backdrop-blur border-t border-[#1e2d3d] p-4 z-30">
+        <div className="max-w-3xl mx-auto flex flex-wrap gap-2.5">
+          <button onClick={() => router.push(`/dashboard/patient/${patientId}`)} className="px-4 min-h-[50px] rounded-xl bg-[#1e2d3d] font-semibold text-sm">
+            Cancelar
+          </button>
+          <button
+            onClick={() => guardar(false)}
+            disabled={saving}
+            className="flex-1 min-h-[50px] rounded-xl border border-[#0ea5e9] text-[#0ea5e9] font-bold text-sm px-4 disabled:opacity-60"
+          >
             {saving ? 'Guardando…' : `Guardar consulta · ${KIND_LABEL[kind]}`}
+          </button>
+          <button
+            onClick={() => guardar(true)}
+            disabled={saving}
+            className="flex-1 min-h-[50px] rounded-xl bg-[#00e5a0] text-black font-bold text-sm px-4 disabled:opacity-60"
+          >
+            {saving ? 'Generando…' : '🖨️ Guardar y generar receta'}
           </button>
         </div>
       </div>

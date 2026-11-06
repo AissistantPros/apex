@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
+import { useEntitlements } from '@/app/lib/useEntitlements';
 import { mix } from '@/app/lib/ui';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -46,6 +47,7 @@ const espera = (iso?: string) => {
 
 export default function SalaPage() {
   const router = useRouter();
+  const { lite, team } = useEntitlements();
   const [waiting, setWaiting] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
@@ -65,8 +67,14 @@ export default function SalaPage() {
     return () => clearInterval(t);
   }, []); // eslint-disable-line
 
+  const isDoctor = getRole() === 'doctor';
+
   const atender = (p: any) => {
-    const ph = STAGE[p.stage]?.phase || 2;
+    if (isDoctor && lite) {
+      router.push(`/dashboard/patient/${p.id}/consulta`);
+      return;
+    }
+    const ph = (!team.has_nurse && isDoctor) ? 2 : (STAGE[p.stage]?.phase || 2);
     router.push(`/dashboard/new-patient/flow?patient_id=${p.id}&phase=${ph}`);
   };
 
@@ -76,8 +84,6 @@ export default function SalaPage() {
     try { const d = await api(`/appointments/patient-brief/${p.id}`); setBrief({ ...d, p }); }
     catch (e: any) { flash(e.message); setBrief(null); } finally { setBriefLoading(false); }
   };
-
-  const isDoctor = getRole() === 'doctor';
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
@@ -100,7 +106,10 @@ export default function SalaPage() {
         ) : (
           <div className="space-y-2.5">
             {waiting.map((p, i) => {
-              const st = STAGE[p.stage] || { label: p.stage, color: 'var(--c-text-2)', phase: 2 };
+              const rawSt = STAGE[p.stage] || { label: p.stage, color: 'var(--c-text-2)', phase: 2 };
+              const st = (p.stage === 'nursing' && !team.has_nurse)
+                ? { label: 'Espera consulta médica', color: 'var(--c-violet)', phase: 2 }
+                : rawSt;
               return (
                 <div key={p.id} className="bg-[#0d1520] border rounded-2xl p-4 flex items-center gap-4"
                   style={{ borderColor: i === 0 ? 'var(--c-green)' : 'var(--c-border)' }}>

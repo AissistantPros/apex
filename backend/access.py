@@ -56,7 +56,11 @@ NURSING_FIELDS = {
     "miscarriages", "menopausal", "menopausal_age", "menopausal_tipo", "contraceptive",
     "pap_ultimo", "masto_ultima", "colpo_ultima", "erectile_dysfunction", "testosterone_use",
     "testosterone_detalle", "children", "psa_ultimo", "psa_valor", "libido_basal",
-    "salud_sexual_notas", "family_history_table", "toxic_exposure_occupational",
+    "salud_sexual_notas", "family_history_table", "family_other_history",
+    "personal_history_notes", "remote_history_notes", "smoking_notes", "alcohol_notes",
+    "cigarettes_per_day", "vaping", "vaping_since", "vaping_nicotine_mg",
+    "alcohol_since", "actividad_si", "care_type",
+    "toxic_exposure_occupational",
     "dental_amalgams", "tattoos_piercings", "childhood_residence_exposure",
     "secondhand_smoke_exposure", "notes_nurse",
 }

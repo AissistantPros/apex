@@ -30,7 +30,7 @@ export default function PatientPage() {
   const [patient, setPatient] = useState<any>(null);
   const [visits,  setVisits]  = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab]         = useState<'ficha' | 'visitas'>('ficha');
+  const [tab, setTab]         = useState<'ficha' | 'visitas' | 'archivos'>('ficha');
   const [showDanger,    setShowDanger]    = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting,      setDeleting]      = useState(false);
@@ -44,6 +44,24 @@ export default function PatientPage() {
   const [uploadingPhoto,  setUploadingPhoto]  = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Registro continuo: estudios, laboratorios y fotos (Antes y Después) sin requerir visita
+  const [patientFiles, setPatientFiles] = useState<any[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [fileCat, setFileCat] = useState<'laboratorio' | 'estudio' | 'foto_clinica'>('laboratorio');
+  const [fileStage, setFileStage] = useState<'antes' | 'despues' | 'seguimiento'>('antes');
+  const [fileZona, setFileZona] = useState('');
+  const [fileFecha, setFileFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fileNotas, setFileNotas] = useState('');
+  const [compareBeforeId, setCompareBeforeId] = useState<string>('');
+  const [compareAfterId, setCompareAfterId] = useState<string>('');
+  const continuousFileRef = useRef<HTMLInputElement>(null);
+
+  // Resumen con IA del paciente (Lite + Pro)
+  const [aiSummary, setAiSummary] = useState<{ text: string; generated_at?: string; visits_count?: number; files_count?: number } | null>(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState('');
+  const [showAiSummary, setShowAiSummary] = useState(false);
 
   const handlePhotoSelected = (file: File) => {
     if (!file.type.startsWith('image/')) { alert('Selecciona un archivo de imagen'); return; }
@@ -74,7 +92,7 @@ export default function PatientPage() {
   useEffect(() => { setRole(getRole()); }, []);
 
   // Consultorios Lite (IA de consulta apagada) capturan la consulta con el formulario básico.
-  const { lite } = useEntitlements();
+  const { lite, team } = useEntitlements();
 
   useEffect(() => {
     getUser().then(async u => {
@@ -90,13 +108,22 @@ export default function PatientPage() {
       const token   = session?.access_token;
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-      const [pRes, vRes] = await Promise.all([
+      const [pRes, vRes, fRes] = await Promise.all([
         fetch(`${BACKEND()}/patients/${patientId}`, { headers }),
         fetch(`${BACKEND()}/visits/${patientId}`,   { headers }),
+        fetch(`${BACKEND()}/patients/${patientId}/files`, { headers }).catch(() => null),
       ]);
       const pData    = await pRes.json();
       const vData    = await vRes.json();
       setPatient(pData);
+      if (pData?.func_intake?.ai_summary?.text) {
+        setAiSummary(pData.func_intake.ai_summary);
+      }
+      if (fRes && fRes.ok) {
+        const fData = await fRes.json().catch(() => ({}));
+        setPatientFiles(fData.files || []);
+        if (fData.ai_summary?.text) setAiSummary(fData.ai_summary);
+      }
       if (vRes.ok) {
         setVisits(vData.visits || []);
         setVisitsError(null);
@@ -114,6 +141,99 @@ export default function PatientPage() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUploadContinuousFile = async (file: File) => {
+    setUploadingFile(true);
+    try {
+      const session = await getSession();
+      const token = session?.access_token;
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('category', fileCat);
+      fd.append('stage', fileCat === 'foto_clinica' ? fileStage : '');
+      fd.append('zona', fileZona.trim());
+      fd.append('fecha', fileFecha);
+      fd.append('notas', fileNotas.trim());
+      const res = await fetch(`${BACKEND()}/patients/${patientId}/files`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.detail || 'No se pudo subir el archivo');
+      setPatientFiles(d.files || []);
+      setFileNotas('');
+      setFileZona('');
+    } catch (e: any) {
+      alert(e.message || 'Error al subir archivo');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleDeleteContinuousFile = async (fileId: string) => {
+    if (!window.confirm('¿Eliminar este archivo de la ficha del paciente?')) return;
+    try {
+      const session = await getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BACKEND()}/patients/${patientId}/files/${fileId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.detail || 'No se pudo eliminar');
+      setPatientFiles(d.files || []);
+    } catch (e: any) {
+      alert(e.message || 'Error al eliminar archivo');
+    }
+  };
+
+  const handleGenerateAiSummary = async () => {
+    setShowAiSummary(true);
+    setAiSummaryLoading(true);
+    setAiSummaryError('');
+    try {
+      const session = await getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BACKEND()}/patients/${patientId}/ai-summary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.detail || 'No se pudo generar el resumen con IA');
+      setAiSummary({
+        text: d.summary,
+        generated_at: d.generated_at,
+        visits_count: d.visits_count,
+        files_count: d.files_count,
+      });
+    } catch (e: any) {
+      setAiSummaryError(e.message || 'Error al generar el resumen con IA');
+    } finally {
+      setAiSummaryLoading(false);
+    }
+  };
+
+  // Eliminación directa cuando el usuario es el médico (sin auto-autorizarse)
+  const deletePatientDirectly = async () => {
+    const ok = window.confirm('¿Está seguro que quiere borrar este registro? Esto no se puede deshacer.');
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      const session = await getSession();
+      const headers: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const r = await fetch(`${BACKEND()}/patients/${patientId}`, { method: 'DELETE', headers });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'No se pudo eliminar el registro');
+      router.push('/dashboard/patients');
+    } catch (e: any) {
+      alert(e.message || 'No se pudo eliminar el registro');
+      setDeleting(false);
     }
   };
 
@@ -192,7 +312,31 @@ export default function PatientPage() {
               <p className="font-mono text-xs text-[#3d5870]">{patient.id}</p>
             </div>
             {/* Botones acción */}
-            <div className="flex gap-2 flex-shrink-0">
+            <div className="flex flex-wrap gap-2 flex-shrink-0 justify-end">
+              {role !== 'receptionist' && (
+                <button
+                  onClick={handleGenerateAiSummary}
+                  disabled={aiSummaryLoading}
+                  className="px-3.5 py-2.5 rounded-xl text-sm font-bold transition whitespace-nowrap border"
+                  style={{
+                    background: 'color-mix(in srgb, var(--c-primary) 14%, transparent)',
+                    borderColor: 'color-mix(in srgb, var(--c-primary) 40%, transparent)',
+                    color: 'var(--c-primary)',
+                  }}
+                  title="Analiza con IA todas las visitas, estudios, laboratorios, medicamentos y evolución del paciente"
+                >
+                  {aiSummaryLoading ? '✦ Analizando con IA…' : '✦ Resumen con IA'}
+                </button>
+              )}
+              {role !== 'receptionist' && (
+                <button
+                  onClick={() => setTab('archivos')}
+                  className="px-3.5 py-2.5 bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:border-[#00e5a0] transition whitespace-nowrap"
+                  title="Subir estudios, análisis o fotos de Antes y Después sin abrir visita"
+                >
+                  📎 Subir estudio / foto
+                </button>
+              )}
               <button
                 onClick={() => router.push(`/dashboard/patient/${patientId}/${lite ? 'consulta' : 'new-visit'}`)}
                 className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
@@ -240,6 +384,52 @@ export default function PatientPage() {
           </div>
         </div>
 
+        {/* ── Resumen clínico con IA (visible al generarlo o si ya existe en caché) ── */}
+        {role !== 'receptionist' && (showAiSummary || aiSummary?.text) && (
+          <div className="mb-6 bg-[#0d1520] border border-[#00e5a0]/35 rounded-2xl p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">✦</span>
+                <h2 className="text-sm font-bold text-[#dde6ef] uppercase tracking-wider">Resumen integral del paciente con IA</h2>
+                {aiSummary?.generated_at && (
+                  <span className="text-[11px] font-mono text-[#7a95aa]">
+                    · Actualizado {new Date(aiSummary.generated_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleGenerateAiSummary}
+                  disabled={aiSummaryLoading}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#111820] border border-[#1e2d3d] text-[#00e5a0] hover:border-[#00e5a0] transition disabled:opacity-50"
+                >
+                  {aiSummaryLoading ? 'Generando…' : '↻ Actualizar resumen'}
+                </button>
+                <button
+                  onClick={() => setShowAiSummary(false)}
+                  className="text-xs text-[#7a95aa] hover:text-[#dde6ef] px-2 py-1"
+                >
+                  Ocultar
+                </button>
+              </div>
+            </div>
+            {aiSummaryLoading && (
+              <div className="flex items-center gap-3 py-4 text-sm text-[#7a95aa]">
+                <span className="w-4 h-4 border-2 border-[#00e5a0] border-t-transparent rounded-full animate-spin" />
+                Leyendo historial clínico, visitas, recetas, estudios, laboratorios y fotos del paciente…
+              </div>
+            )}
+            {aiSummaryError && (
+              <p className="text-xs text-[#f43f5e] bg-[#f43f5e]/10 border border-[#f43f5e]/30 rounded-xl px-3 py-2">{aiSummaryError}</p>
+            )}
+            {!aiSummaryLoading && aiSummary?.text && (
+              <div className="text-sm text-[#dde6ef] whitespace-pre-wrap leading-relaxed bg-[#111820] border border-[#1e2d3d] rounded-xl p-4">
+                {aiSummary.text}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Banner registro pendiente ── */}
         {patient.registration_phase && patient.registration_phase !== 'complete' && (
           <div className="mb-6 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-2xl px-5 py-4 flex items-center gap-4">
@@ -247,13 +437,13 @@ export default function PatientPage() {
             <div className="flex-1">
               <p className="text-sm font-semibold text-[#f59e0b]">Registro pendiente</p>
               <p className="text-xs text-[#7a95aa] mt-0.5">
-                {patient.registration_phase === 'reception'
+                {patient.registration_phase === 'reception' && team.has_nurse
                   ? 'Faltan secciones de Enfermería y Médico.'
                   : 'Falta la sección del Médico.'}
               </p>
             </div>
             <button
-              onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=${patient.registration_phase === 'reception' ? 2 : 3}`)}
+              onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=${patient.registration_phase === 'reception' && team.has_nurse ? 2 : 3}`)}
               className="px-4 py-2 bg-[#f59e0b] text-black text-xs font-bold rounded-xl hover:opacity-90 transition flex-shrink-0"
             >
               Continuar →
@@ -265,8 +455,10 @@ export default function PatientPage() {
         <div className="flex gap-6 mb-6" style={{ borderBottom: '1px solid var(--c-border)' }}>
           {[
             { key: 'ficha',   label: role === 'receptionist' ? ' Ficha' : ' Ficha clínica' },
-            // Las visitas son clínicas: recepción no las ve
-            ...(role !== 'receptionist' ? [{ key: 'visitas', label: ` Visitas (${visits.length})` }] : []),
+            ...(role !== 'receptionist' ? [
+              { key: 'visitas',  label: ` Visitas (${visits.length})` },
+              { key: 'archivos', label: ` Estudios y Fotos · Antes/Después (${patientFiles.length})` },
+            ] : []),
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key as any)}
               className="px-1 pb-3 -mb-px text-[15px] font-medium transition"
@@ -556,25 +748,37 @@ export default function PatientPage() {
               />
             </div>
 
-            {/* Baja de expediente (por ley, requiere aprobación del doctor) */}
+            {/* Baja de expediente: si es el médico, borra directamente tras confirmación; si es staff, solicita autorización */}
             <div className="mt-2 border border-[#f43f5e]/20 rounded-2xl p-5 bg-[#f43f5e]/5">
               <button onClick={() => setShowDanger(!showDanger)}
                 className="flex items-center gap-2 text-[#f43f5e] font-semibold text-sm hover:opacity-80 transition">
-                 Baja de expediente {showDanger ? '▲' : '▼'}
+                 {role === 'doctor' ? 'Eliminar registro de paciente' : 'Baja de expediente'} {showDanger ? '▲' : '▼'}
               </button>
               {showDanger && (
                 <div ref={dangerRevealRef} className="mt-4 space-y-3">
-                  {pendingDel ? (
+                  {role === 'doctor' ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-[#7a95aa]">
+                        Como médico titular puedes eliminar este registro directamente sin pasos intermedios.
+                      </p>
+                      <button
+                        onClick={deletePatientDirectly}
+                        disabled={deleting}
+                        className="px-5 py-2.5 bg-[#f43f5e] text-white text-sm font-bold rounded-xl hover:opacity-90 disabled:opacity-50 transition"
+                      >
+                        {deleting ? 'Eliminando…' : '🗑️ Borrar registro definitivamente'}
+                      </button>
+                    </div>
+                  ) : pendingDel ? (
                     <div className="bg-[#f59e0b]/10 border border-[#f59e0b]/40 rounded-xl p-4">
                       <p className="text-sm font-bold text-[#f59e0b]"> Baja pendiente de aprobación del doctor</p>
-                      <p className="text-xs text-[#7a95aa] mt-1">Ya se solicitó la baja de este expediente. Solo el doctor puede aprobarla desde su plataforma. Nadie más puede borrarlo.</p>
+                      <p className="text-xs text-[#7a95aa] mt-1">Ya se solicitó la baja de este expediente. Solo el doctor puede aprobarla desde su plataforma.</p>
                       {pendingDel.reason && <p className="text-xs text-[#7a95aa] mt-1">Motivo: <span className="text-[#dde6ef]">{pendingDel.reason}</span></p>}
                     </div>
                   ) : (
                     <>
                       <p className="text-sm text-[#7a95aa]">
-                        Por ley el expediente debe conservarse. No se borra directamente: se envía una
-                        <strong className="text-[#dde6ef]"> solicitud de baja</strong> que <strong className="text-[#dde6ef]">solo el doctor puede aprobar</strong>.
+                        Se enviará una <strong className="text-[#dde6ef]">solicitud de baja</strong> para que el médico la autorice.
                       </p>
                       {!confirmDelete ? (
                         <button onClick={() => setConfirmDelete(true)}
@@ -634,12 +838,216 @@ export default function PatientPage() {
               visits.map((v, i) => (
                 <VisitDetail
                   key={v.id}
+                  patientId={patientId}
                   visit={v}
                   index={visits.length - i}
                   expanded={expandedVisit === v.id}
                   onToggle={() => setExpandedVisit(expandedVisit === v.id ? null : v.id)}
                 />
               ))
+            )}
+          </div>
+        )}
+
+        {/* ════════════════════════════════
+            TAB: ESTUDIOS, LABORATORIOS Y FOTOS (ANTES Y DESPUÉS) SIN VISITA
+        ════════════════════════════════ */}
+        {tab === 'archivos' && role !== 'receptionist' && (
+          <div className="space-y-6">
+            {/* Formulario para agregar estudio/foto sin abrir visita */}
+            <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+              <div>
+                <h3 className="text-base font-semibold text-[#dde6ef]">Subir estudio, análisis o foto de evolución (sin registrar visita)</h3>
+                <p className="text-xs text-[#7a95aa] mt-0.5">
+                  Ideal cuando el paciente envía resultados por WhatsApp o correo, o para llevar control fotográfico de Antes y Después. La IA leerá automáticamente estos archivos al generar el resumen del paciente.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Tipo de archivo</label>
+                  <select
+                    value={fileCat}
+                    onChange={e => setFileCat(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+                  >
+                    <option value="laboratorio">🧪 Resultados de laboratorio</option>
+                    <option value="estudio">📄 Estudio / Gabinete / Imagen</option>
+                    <option value="foto_clinica">📸 Foto clínica (Antes / Después)</option>
+                  </select>
+                </div>
+                {fileCat === 'foto_clinica' && (
+                  <div>
+                    <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Etapa (Antes / Después)</label>
+                    <select
+                      value={fileStage}
+                      onChange={e => setFileStage(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+                    >
+                      <option value="antes">Antes (Basal)</option>
+                      <option value="seguimiento">Seguimiento intermedio</option>
+                      <option value="despues">Después (Resultado)</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
+                    {fileCat === 'foto_clinica' ? 'Zona anatómica / ángulo' : 'Nombre del estudio'}
+                  </label>
+                  <input
+                    value={fileZona}
+                    onChange={e => setFileZona(e.target.value)}
+                    placeholder={fileCat === 'foto_clinica' ? 'Ej. Rostro frontal, Abdomen…' : 'Ej. Biometría hemática, Perfil tiroideo…'}
+                    className="w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Fecha del estudio / toma</label>
+                  <input
+                    type="date"
+                    value={fileFecha}
+                    onChange={e => setFileFecha(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Notas u observaciones clínicas (opcional)</label>
+                <input
+                  value={fileNotas}
+                  onChange={e => setFileNotas(e.target.value)}
+                  placeholder="Ej. Paciente envió por WhatsApp tras 4 semanas de tratamiento; mejoría notable en textura…"
+                  className="w-full px-3 py-2 bg-[#111820] border border-[#1e2d3d] rounded-xl text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+                />
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <input
+                  ref={continuousFileRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) handleUploadContinuousFile(f);
+                    e.target.value = '';
+                  }}
+                />
+                <span className="text-xs text-[#7a95aa]">Formatos admitidos: PDF (con lectura automática de texto), JPG, PNG, WebP, HEIC.</span>
+                <button
+                  type="button"
+                  disabled={uploadingFile}
+                  onClick={() => continuousFileRef.current?.click()}
+                  className="px-5 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition disabled:opacity-50"
+                >
+                  {uploadingFile ? 'Subiendo archivo…' : '+ Seleccionar y subir archivo'}
+                </button>
+              </div>
+            </div>
+
+            {/* Comparador visual Antes y Después */}
+            {(() => {
+              const fotos = patientFiles.filter(f => f.category === 'foto_clinica' || (f.mime || '').startsWith('image/'));
+              if (fotos.length < 2) return null;
+              const beforeFoto = fotos.find(f => f.id === compareBeforeId) || fotos.find(f => f.stage === 'antes') || fotos[fotos.length - 1];
+              const afterFoto = fotos.find(f => f.id === compareAfterId) || fotos.find(f => f.stage === 'despues') || fotos[0];
+              return (
+                <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-[#dde6ef] uppercase tracking-wider">📸 Comparativo Antes y Después</h3>
+                      <p className="text-xs text-[#7a95aa]">Selecciona dos fotografías para comparar la evolución del paciente lado a lado.</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { label: 'ANTES / BASAL', current: beforeFoto, setSel: setCompareBeforeId },
+                      { label: 'DESPUÉS / EVOLUCIÓN', current: afterFoto, setSel: setCompareAfterId },
+                    ].map((col, idx) => (
+                      <div key={idx} className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-3 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-mono font-bold text-[#00e5a0]">{col.label}</span>
+                          <select
+                            value={col.current?.id || ''}
+                            onChange={e => col.setSel(e.target.value)}
+                            className="bg-[#0d1520] border border-[#1e2d3d] rounded-lg px-2 py-1 text-xs text-[#dde6ef]"
+                          >
+                            {fotos.map(f => (
+                              <option key={f.id} value={f.id}>
+                                {(f.fecha || '').slice(0, 10)} · {f.stage?.toUpperCase() || 'FOTO'} {f.zona ? `(${f.zona})` : `— ${f.name}`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {col.current?.url && (
+                          <div className="aspect-[4/3] bg-black/40 rounded-lg overflow-hidden flex items-center justify-center">
+                            <img src={col.current.url} alt={col.current.name} className="max-h-full max-w-full object-contain" />
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-xs text-[#7a95aa]">
+                          <span>{col.current?.zona || col.current?.name}</span>
+                          <span>{col.current?.fecha}</span>
+                        </div>
+                        {col.current?.notas && <p className="text-xs text-[#dde6ef]">{col.current.notas}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Lista de archivos subidos */}
+            {patientFiles.length === 0 ? (
+              <div className="text-center py-12 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl">
+                <p className="text-[#7a95aa] text-sm">Aún no hay estudios, laboratorios ni fotos de evolución cargados directamente en la ficha.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {patientFiles.map((f: any) => {
+                  const isImg = (f.mime || '').startsWith('image/');
+                  return (
+                    <div key={f.id} className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4 flex flex-col gap-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#00e5a0]/10 text-[#00e5a0] border border-[#00e5a0]/30">
+                              {f.category === 'foto_clinica' ? `📸 Foto ${f.stage || ''}` : f.category === 'laboratorio' ? '🧪 Laboratorio' : '📄 Estudio'}
+                            </span>
+                            {f.zona && <span className="text-xs font-semibold text-[#dde6ef]">{f.zona}</span>}
+                            <span className="text-[11px] font-mono text-[#7a95aa]">· {f.fecha}</span>
+                          </div>
+                          <p className="text-xs text-[#7a95aa] truncate">{f.name}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {f.url && (
+                            <a href={f.url} target="_blank" rel="noreferrer"
+                              className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#111820] border border-[#1e2d3d] text-[#00e5a0] hover:border-[#00e5a0]">
+                              Abrir ↗
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleDeleteContinuousFile(f.id)}
+                            className="text-xs text-[#f43f5e] hover:opacity-80 px-1.5 py-1"
+                            title="Eliminar archivo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      {isImg && f.url && (
+                        <a href={f.url} target="_blank" rel="noreferrer" className="block bg-black/30 rounded-xl overflow-hidden max-h-56 flex items-center justify-center">
+                          <img src={f.url} alt={f.name} className="max-h-56 object-contain" />
+                        </a>
+                      )}
+                      {f.notas && <p className="text-xs text-[#dde6ef] bg-[#111820] rounded-lg px-3 py-2">{f.notas}</p>}
+                      {f.extracted_text && (
+                        <details className="text-xs text-[#7a95aa] bg-[#111820] rounded-lg px-3 py-2">
+                          <summary className="cursor-pointer font-mono text-[11px] text-[#00e5a0]">Texto extraído para IA ({f.extracted_text.length} caracteres)</summary>
+                          <p className="mt-2 whitespace-pre-wrap text-[11px] text-[#dde6ef] max-h-40 overflow-y-auto">{f.extracted_text}</p>
+                        </details>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
@@ -697,9 +1105,10 @@ const ORINA_LABELS_LOCAL: Record<string, string> = {
   '#BF360C': 'Naranja oscuro — evaluar',
 };
 
-function VisitDetail({ visit: v, index, expanded, onToggle }: {
-  visit: any; index: number; expanded: boolean; onToggle: () => void;
+function VisitDetail({ patientId, visit: v, index, expanded, onToggle }: {
+  patientId: string; visit: any; index: number; expanded: boolean; onToggle: () => void;
 }) {
+  const router = useRouter();
   const detailRef = useRevealScroll<HTMLDivElement>(expanded);
   const date = new Date(v.created_at).toLocaleDateString('es-MX', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -739,27 +1148,38 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
   return (
     <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-hidden">
       {/* Header de la visita — siempre visible */}
-      <button onClick={onToggle} className="w-full text-left p-5 hover:bg-[#111820] transition">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <div className="w-full text-left p-5 hover:bg-[#111820] transition">
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={onToggle} className="flex items-center gap-3 text-left flex-1">
             <span className="text-xs font-mono bg-[#0ea5e9]/10 text-[#0ea5e9] border border-[#0ea5e9]/20 px-2.5 py-1 rounded-full">
               Visita #{index}
             </span>
             <span className="text-xs text-[#3d5870]">{date.charAt(0).toUpperCase() + date.slice(1)}</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); router.push(`/dashboard/patient/${patientId}/visit/${v.id}/documentos`); }}
+              className="px-3 py-1 rounded-lg text-xs font-semibold bg-[#111820] border border-[#1e2d3d] text-[#00e5a0] hover:border-[#00e5a0] transition"
+            >
+              🖨️ Receta / Documentos
+            </button>
+            <button onClick={onToggle} className="text-[#3d5870] text-lg px-2">{expanded ? '▲' : '▼'}</button>
           </div>
-          <span className="text-[#3d5870] text-lg ml-4">{expanded ? '▲' : '▼'}</span>
         </div>
-        {motivo && <p className="text-[#dde6ef] font-medium mt-2 text-sm">{motivo}</p>}
-        {/* Chips resumen rápido */}
-        <div className="flex flex-wrap gap-2 mt-2">
-          {peso      && <MiniChip label="Peso"    value={`${peso} kg`} />}
-          {fc        && <MiniChip label="FC"      value={`${fc} lpm`} />}
-          {v.pa_der_sistolica && <MiniChip label="PA" value={`${v.pa_der_sistolica}/${v.pa_der_diastolica}`} />}
-          {glucosa   && <MiniChip label="Glucosa" value={`${glucosa} mg/dL`} />}
-          {v.spo2    && <MiniChip label="SpO₂"   value={`${v.spo2}%`} />}
-          {intensidad && <MiniChip label="Intensidad" value={`${intensidad}/10`} />}
+        <div onClick={onToggle} className="cursor-pointer">
+          {motivo && <p className="text-[#dde6ef] font-medium mt-2 text-sm">{motivo}</p>}
+          {/* Chips resumen rápido */}
+          <div className="flex flex-wrap gap-2 mt-2">
+            {peso      && <MiniChip label="Peso"    value={`${peso} kg`} />}
+            {fc        && <MiniChip label="FC"      value={`${fc} lpm`} />}
+            {v.pa_der_sistolica && <MiniChip label="PA" value={`${v.pa_der_sistolica}/${v.pa_der_diastolica}`} />}
+            {glucosa   && <MiniChip label="Glucosa" value={`${glucosa} mg/dL`} />}
+            {v.spo2    && <MiniChip label="SpO₂"   value={`${v.spo2}%`} />}
+            {intensidad && <MiniChip label="Intensidad" value={`${intensidad}/10`} />}
+          </div>
         </div>
-      </button>
+      </div>
 
       {/* Detalle expandido — TODOS los datos */}
       {expanded && (
@@ -969,15 +1389,16 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
             </VisitSection>
           )}
 
-          {/* Consulta Lite: cierre y seguimiento */}
+          {/* Consulta Lite: cierre, receta manual y seguimiento */}
           {v.dynamic_answers?.lite && (() => {
             const L = v.dynamic_answers.lite;
             const c = L.cierre || {};
             const sg = L.seguimiento || {};
             const hf = L.heredofamiliar || {};
-            if (!(c.plan || c.evolucion || c.estudios_solicitados || c.proxima_cita || sg.efectos_adversos || sg.pa_domicilio || sg.hospitalizado_desde || hf.cardiopatia_precoz)) return null;
+            const rec = Array.isArray(L.receta) ? L.receta.filter((m: any) => m?.nombre_generico || m?.nombre) : [];
+            if (!(c.plan || c.evolucion || c.estudios_solicitados || c.proxima_cita || sg.efectos_adversos || sg.pa_domicilio || sg.hospitalizado_desde || hf.cardiopatia_precoz || rec.length > 0)) return null;
             return (
-              <VisitSection title={L.kind === 'follow_up' ? 'Seguimiento' : 'Plan'} icon="">
+              <VisitSection title={L.kind === 'follow_up' ? 'Seguimiento y Receta' : 'Plan y Receta'} icon="">
                 {hf.cardiopatia_precoz && <Info label="Heredofamiliar" value="Familiar con cardiopatía precoz" />}
                 {sg.hospitalizado_desde && <Info label="Hospitalización o urgencias" value={sg.hospitalizado_desde} />}
                 {sg.efectos_adversos && <Info label="Efectos adversos" value={sg.efectos_adversos} />}
@@ -986,6 +1407,19 @@ function VisitDetail({ visit: v, index, expanded, onToggle }: {
                 {c.plan && <Info label="Plan e indicaciones" value={c.plan} />}
                 {c.estudios_solicitados && <Info label="Estudios solicitados" value={c.estudios_solicitados} />}
                 {c.proxima_cita && <Info label="Próxima cita" value={new Date(c.proxima_cita + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })} />}
+                {rec.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-xs font-mono text-[#00e5a0] uppercase">Receta prescrita ({rec.length})</p>
+                    {rec.map((m: any, idx: number) => (
+                      <div key={idx} className="bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2 text-xs text-[#dde6ef]">
+                        <span className="font-semibold">{m.nombre_generico || m.nombre}</span>
+                        {m.presentacion ? ` · ${m.presentacion}` : ''}
+                        <span className="text-[#7a95aa]"> — {[m.dosis, m.via, m.frecuencia, m.duracion].filter(Boolean).join(' · ')}</span>
+                        {m.indicacion && <p className="text-[11px] text-[#7a95aa] mt-0.5">{m.indicacion}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </VisitSection>
             );
           })()}

@@ -301,15 +301,74 @@ async def defaults():
     return {"areas": AREAS, "roles": ROLES, "defaults": DEFAULT_PERMS}
 
 
+def _get_clinic_team(doctor_id: Optional[str]) -> dict:
+    """Detecta qué roles están dados de alta en el consultorio para adaptar flujos:
+    si el médico trabaja solo, si tiene recepcionista, si tiene enfermería, etc."""
+    if not doctor_id:
+        return {
+            "has_receptionist": False,
+            "has_nurse": False,
+            "has_accounting": False,
+            "has_marketing": False,
+            "is_solo_doctor": True,
+            "roles": ["doctor"],
+            "members_count": 1,
+        }
+    try:
+        rows = supabase.table("doctor_profiles").select("id, role, display_name, permissions")\
+            .eq("parent_doctor_id", doctor_id).execute().data or []
+        roles = {"doctor"}
+        has_receptionist = False
+        has_nurse = False
+        has_accounting = False
+        has_marketing = False
+        for m in rows:
+            r = m.get("role") or ""
+            perms = m.get("permissions") or {}
+            if r:
+                roles.add(r)
+            if r == "receptionist" or perms.get("pacientes") == "edit":
+                has_receptionist = True
+            if r == "nurse" or perms.get("enfermeria") == "edit":
+                has_nurse = True
+            if r == "accounting" or perms.get("finanzas") == "edit":
+                has_accounting = True
+            if r == "marketing" or perms.get("marketing") == "edit":
+                has_marketing = True
+        return {
+            "has_receptionist": has_receptionist,
+            "has_nurse": has_nurse,
+            "has_accounting": has_accounting,
+            "has_marketing": has_marketing,
+            "is_solo_doctor": len(rows) == 0,
+            "roles": sorted(roles),
+            "members_count": 1 + len(rows),
+        }
+    except Exception:
+        return {
+            "has_receptionist": False,
+            "has_nurse": False,
+            "has_accounting": False,
+            "has_marketing": False,
+            "is_solo_doctor": True,
+            "roles": ["doctor"],
+            "members_count": 1,
+        }
+
+
 @router.get("/whoami")
 async def whoami(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if actor["role"] in ("doctor", "admin") and not actor.get("permissions"):
         actor["permissions"] = {a: "edit" for a in AREAS}
+    team = _get_clinic_team(actor.get("doctor_id"))
+    actor["clinic_team"] = team
     # Servicios contratados (para que el menú/UI muestre solo lo habilitado)
     try:
         from services.plans import get_entitlements
-        actor["entitlements"] = get_entitlements(actor.get("clinic_id"))
+        ent = get_entitlements(actor.get("clinic_id"), include_daily_usage=True)
+        ent["team"] = team
+        actor["entitlements"] = ent
     except Exception:
         actor["entitlements"] = None
     # Marca del consultorio (nombre, logo, colores) para personalizar la interfaz y los documentos
@@ -325,7 +384,9 @@ async def whoami(authorization: Optional[str] = Header(None)):
 async def entitlements(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     from services.plans import get_entitlements
-    return get_entitlements(actor.get("clinic_id"))
+    ent = get_entitlements(actor.get("clinic_id"), include_daily_usage=True)
+    ent["team"] = _get_clinic_team(actor.get("doctor_id"))
+    return ent
 
 
 # ── Perfil personal (cada quien edita SU propia identidad) ──────────────────────

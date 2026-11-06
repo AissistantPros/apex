@@ -49,6 +49,16 @@ export type Apego = keyof typeof APEGO;
 export interface SintomaEstado { si: boolean; nota: string; clase: string }
 export interface Familiar { parentesco: string; enfermedad: string; edad: string; nota: string }
 export interface Medicamento { nombre: string; dosis: string }
+export interface RecetaItem {
+  nombre_generico: string;
+  nombre_comercial: string;
+  presentacion: string;
+  dosis: string;
+  via: string;
+  frecuencia: string;
+  duracion: string;
+  indicaciones: string;
+}
 
 export interface LiteForm {
   // Motivo
@@ -72,10 +82,22 @@ export interface LiteForm {
   // Exploración
   ruidos_soplos: string; pulsos_edema: string; pulmones_yugulares: string; otros_hallazgos: string;
   ecg_hecho: '' | 'si' | 'no'; ecg_resultado: string;
-  // Cierre
+  // Cierre y Receta
   diagnostico: string; evolucion_nota: string; plan: string; estudios_solicitados: string;
   resultados_estudios: string; proxima_cita: string;
+  receta: RecetaItem[];
 }
+
+export const emptyRecetaItem = (): RecetaItem => ({
+  nombre_generico: '',
+  nombre_comercial: '',
+  presentacion: '',
+  dosis: '',
+  via: 'Oral',
+  frecuencia: '',
+  duracion: '',
+  indicaciones: '',
+});
 
 export const emptySintomas = (): Record<SintomaKey, SintomaEstado> =>
   Object.fromEntries(SINTOMAS.map(s => [s.key, { si: false, nota: '', clase: '' }])) as Record<SintomaKey, SintomaEstado>;
@@ -91,6 +113,7 @@ export const emptyForm = (): LiteForm => ({
   ruidos_soplos: '', pulsos_edema: '', pulmones_yugulares: '', otros_hallazgos: '',
   ecg_hecho: '', ecg_resultado: '',
   diagnostico: '', evolucion_nota: '', plan: '', estudios_solicitados: '', resultados_estudios: '', proxima_cita: '',
+  receta: [],
 });
 
 // ── Números e IMC ───────────────────────────────────────────────────────────────
@@ -200,9 +223,22 @@ export function buildVisitPayload(f: LiteForm, kind: Kind): Record<string, unkno
         version: 1, kind,
         signos: { fr: num(f.fr) },
         cierre: {
+          diagnostico: f.diagnostico.trim(),
           evolucion: f.evolucion_nota.trim(), plan: f.plan.trim(),
           estudios_solicitados: f.estudios_solicitados.trim(), proxima_cita: f.proxima_cita || null,
         },
+        receta: (f.receta || [])
+          .filter(m => m.nombre_generico.trim() || m.nombre_comercial.trim())
+          .map(m => ({
+            nombre_generico: m.nombre_generico.trim() || m.nombre_comercial.trim(),
+            nombre_comercial: m.nombre_comercial.trim(),
+            presentacion: m.presentacion.trim(),
+            dosis: m.dosis.trim(),
+            via: m.via.trim() || 'Oral',
+            frecuencia: m.frecuencia.trim(),
+            duracion: m.duracion.trim(),
+            indicaciones: m.indicaciones.trim(),
+          })),
         ...(first
           ? {
               heredofamiliar: {

@@ -23,9 +23,10 @@ MAX_BYTES_ENTRADA = 12 * 1024 * 1024          # lo que se acepta de entrada (fot
 Image.MAX_IMAGE_PIXELS = 50_000_000           # corta imágenes-bomba (descompresión enorme)
 
 PERFILES = {
-    "photo":     {"max": (256, 256), "cuadrada": True,  "calidad": 82, "alfa": False, "sin_perdida": False, "dir": "perfil"},
-    "logo":      {"max": (640, 240), "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
-    "logo_dark": {"max": (640, 240), "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
+    "photo":         {"max": (256, 256),   "cuadrada": True,  "calidad": 82, "alfa": False, "sin_perdida": False, "dir": "perfil"},
+    "logo":          {"max": (640, 240),   "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
+    "logo_dark":     {"max": (640, 240),   "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
+    "patient_photo": {"max": (1400, 1400), "cuadrada": False, "calidad": 85, "alfa": False, "sin_perdida": False, "dir": "expediente"},
 }
 LOGOS = ("logo", "logo_dark")
 
@@ -104,11 +105,11 @@ def url_publica(path: str) -> str:
     return f"{os.environ['SUPABASE_URL'].rstrip('/')}/storage/v1/object/public/{BUCKET}/{path}"
 
 
-def subir(path: str, webp: bytes) -> str:
-    """Sube el WebP al bucket y devuelve su URL pública."""
+def subir(path: str, webp: bytes, content_type: str = "image/webp") -> str:
+    """Sube el WebP (o documento) al bucket y devuelve su URL pública."""
     asegurar_bucket()
     _storage().from_(BUCKET).upload(
-        path, webp, {"content-type": "image/webp", "cache-control": "31536000", "upsert": "true"})
+        path, webp, {"content-type": content_type, "cache-control": "31536000", "upsert": "true"})
     return url_publica(path)
 
 

@@ -45,7 +45,7 @@ def _cascade_delete_patient(pid: str):
         for tbl in ("ai_call_logs", "prescription_log"):
             try: supabase.table(tbl).delete().eq("visit_id", vid).execute()
             except Exception: pass
-    for tbl in ("analyses", "patient_notes", "sales", "appointments"):
+    for tbl in ("analyses", "patient_notes", "sales", "appointments", "deletion_requests"):
         try: supabase.table(tbl).delete().eq("patient_id", pid).execute()
         except Exception: pass
     try: supabase.table("visits").delete().eq("patient_id", pid).execute()
@@ -66,6 +66,11 @@ async def request_deletion(body: RequestIn, authorization: Optional[str] = Heade
     p = pat[0]
     if not patient_belongs(actor, p):
         raise HTTPException(404, "Paciente no encontrado")
+    # Si quien solicita es el propio doctor, se elimina directamente sin auto-autorización
+    if actor["role"] == "doctor":
+        _cascade_delete_patient(body.patient_id)
+        return {"ok": True, "deleted": True, "deleted_patient_id": body.patient_id,
+                "aviso": "Expediente eliminado permanentemente."}
     # Evita solicitudes duplicadas
     dup = supabase.table("deletion_requests").select("id")\
         .eq("patient_id", body.patient_id).eq("status", "pending").execute().data

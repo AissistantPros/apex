@@ -10,7 +10,7 @@ from db import supabase
 FEATURES = [
     "agenda", "pacientes", "consulta", "contabilidad", "documentos", "chat_equipo",
     "marketing", "biblioteca", "sala_espera",
-    "ia_reportes", "ia_consulta", "ia_funcional", "ia_longevidad", "ia_estudios",
+    "ia_lite", "ia_reportes", "ia_consulta", "ia_funcional", "ia_longevidad", "ia_estudios",
 ]
 
 FEATURE_LABELS = {
@@ -23,8 +23,9 @@ FEATURE_LABELS = {
     "marketing": "Marketing y ROI",
     "biblioteca": "Biblioteca propia (subir libros + chat)",
     "sala_espera": "Sala de espera con resumen IA",
+    "ia_lite": "IA Lite (chat médico, resumen de paciente y finanzas, 50/día)",
     "ia_reportes": "IA para reportes / backend",
-    "ia_consulta": "IA de consulta (referencia, por créditos)",
+    "ia_consulta": "IA de consulta (diagnóstico y protocolo asistido)",
     "ia_funcional": "IA medicina funcional",
     "ia_longevidad": "IA longevidad",
     "ia_estudios": "IA análisis de estudios / labs",
@@ -32,11 +33,11 @@ FEATURE_LABELS = {
 
 # Base = administración sólida sin IA fuerte (Apex)
 _BASE = {"agenda", "pacientes", "consulta", "contabilidad", "documentos", "chat_equipo",
-         "ia_reportes", "ia_consulta", "marketing"}
+         "ia_lite", "ia_reportes", "ia_consulta", "marketing"}
 
-# Lite = solo control del consultorio: pacientes, agenda, visitas, cobros/gastos y documentos.
-# Sin IA (ni diagnóstico, ni reportes, ni chat), sin marketing y sin chat de equipo.
-_LITE = {"agenda", "pacientes", "consulta", "contabilidad", "documentos"}
+# Lite = control del consultorio + chat interno + IA Lite (chat médico, resumen de paciente
+# y análisis financiero con tope diario de 50 consultas). Sin generación de diagnóstico/receta por IA.
+_LITE = {"agenda", "pacientes", "consulta", "contabilidad", "documentos", "chat_equipo", "ia_lite"}
 
 PLAN_PRESETS = {
     "apex_lite":       set(_LITE),
@@ -55,12 +56,31 @@ PLAN_LABELS = {
 }
 
 DEFAULT_LIMITS = {
-    "apex_lite":       {"max_users": 3,  "max_locations": 1},
-    "apex":            {"max_users": 5,  "max_locations": 1},
+    "apex_lite":       {"max_users": 3,  "max_locations": 1, "daily_ai_messages": 50},
+    "apex":            {"max_users": 5,  "max_locations": 1, "daily_ai_messages": 200},
     "apex_funcional":  {"max_users": 10, "max_locations": 3},
     "apex_longevidad": {"max_users": 10, "max_locations": 3},
     "apex_full":       {"max_users": 20, "max_locations": 5},
 }
+
+DAILY_AI_ACTIONS = ("ia.chat", "patient.ai_summary", "clinic.ai_analysis", "brief.summary")
+
+
+def count_daily_ai_usage(clinic_id: Optional[str]) -> int:
+    """Cuenta cuántas consultas de IA ha hecho hoy la clínica (UTC día actual)."""
+    if not clinic_id:
+        return 0
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        r = supabase.table("usage_events").select("id", count="exact")\
+            .eq("clinic_id", clinic_id)\
+            .in_("action", list(DAILY_AI_ACTIONS))\
+            .gte("created_at", start_of_day).execute()
+        return r.count or 0
+    except Exception:
+        return 0
 
 # Umbral para avisar "créditos bajos" (en tokens de IA). ~una corrida de análisis de margen.
 LOW_CREDITS_THRESHOLD = 150000
@@ -71,7 +91,7 @@ def preset_features(plan: str) -> dict:
     return {f: (f in on) for f in FEATURES}
 
 
-def entitlements_for_clinic(clinic: dict) -> dict:
+def entitlements_for_clinic(clinic: dict, include_daily_usage: bool = False) -> dict:
     """Entitlements efectivos de una clínica (features + limits + créditos)."""
     plan = clinic.get("plan") or "apex"
     features = clinic.get("features")
@@ -81,10 +101,19 @@ def entitlements_for_clinic(clinic: dict) -> dict:
         # Completa llaves faltantes con el preset (por si se agregaron funciones nuevas)
         base = preset_features(plan)
         features = {f: bool(features.get(f, base[f])) for f in FEATURES}
-    limits = clinic.get("limits") if isinstance(clinic.get("limits"), dict) else DEFAULT_LIMITS.get(plan, {})
+    # En plan Lite siempre incluimos chat_equipo e ia_lite por defecto
+    if plan == "apex_lite":
+        features["chat_equipo"] = True
+        features["ia_lite"] = True
+    raw_limits = clinic.get("limits") if isinstance(clinic.get("limits"), dict) else {}
+    default_lim = DEFAULT_LIMITS.get(plan, {})
+    limits = {**default_lim, **raw_limits}
     credits = clinic.get("ai_credits") or 0
     used = clinic.get("ai_credits_used") or 0
     remaining = credits - used
+    daily_limit = limits.get("daily_ai_messages") or (50 if plan == "apex_lite" else 0)
+    daily_used = count_daily_ai_usage(clinic.get("id")) if (include_daily_usage and clinic.get("id") and daily_limit) else 0
+    daily_remaining = max(0, daily_limit - daily_used) if daily_limit else 0
     return {
         "plan": plan, "features": features, "limits": limits,
         "ai_credits": credits,
@@ -92,20 +121,23 @@ def entitlements_for_clinic(clinic: dict) -> dict:
         "ai_credits_remaining": remaining,
         # Aviso de créditos bajos: ~una corrida de análisis de margen (draft+clarify+protocolo).
         "ai_credits_low": credits > 0 and remaining <= LOW_CREDITS_THRESHOLD,
-        "ai_credits_empty": remaining <= 0,
+        "ai_credits_empty": remaining <= 0 and not (plan == "apex_lite" or features.get("ia_lite")),
+        "ai_daily_limit": daily_limit,
+        "ai_daily_used": daily_used,
+        "ai_daily_remaining": daily_remaining,
     }
 
 
-def get_entitlements(clinic_id: Optional[str]) -> dict:
+def get_entitlements(clinic_id: Optional[str], include_daily_usage: bool = False) -> dict:
     if not clinic_id:
         return {"plan": "apex", "features": preset_features("apex"), "limits": DEFAULT_LIMITS["apex"],
-                "ai_credits": 0, "ai_credits_used": 0}
-    r = supabase.table("clinics").select("plan, features, limits, ai_credits, ai_credits_used")\
+                "ai_credits": 0, "ai_credits_used": 0, "ai_daily_limit": 0, "ai_daily_used": 0, "ai_daily_remaining": 0}
+    r = supabase.table("clinics").select("id, plan, features, limits, ai_credits, ai_credits_used")\
         .eq("id", clinic_id).limit(1).execute().data
     if not r:
         return {"plan": "apex", "features": preset_features("apex"), "limits": DEFAULT_LIMITS["apex"],
-                "ai_credits": 0, "ai_credits_used": 0}
-    return entitlements_for_clinic(r[0])
+                "ai_credits": 0, "ai_credits_used": 0, "ai_daily_limit": 0, "ai_daily_used": 0, "ai_daily_remaining": 0}
+    return entitlements_for_clinic(r[0], include_daily_usage=include_daily_usage)
 
 
 def has_feature(clinic_id: Optional[str], feature: str) -> bool:
@@ -121,6 +153,43 @@ def require_ai(clinic_id: Optional[str], feature: Optional[str] = None) -> dict:
         raise HTTPException(403, "Este servicio de IA no está incluido en el plan de la clínica. "
                                  "Contacta al proveedor para activarlo.")
     if (ent.get("ai_credits") or 0) <= (ent.get("ai_credits_used") or 0):
+        raise HTTPException(402, "Se agotaron los créditos de IA de la clínica. "
+                                 "Recarga créditos para seguir usando la IA.")
+    return ent
+
+
+def require_ai_lite_or_pro(clinic_id: Optional[str], feature: Optional[str] = None) -> dict:
+    """Permite usar funciones de IA Lite (chat médico, resumen de paciente con IA,
+    análisis financiero con IA) tanto en clínicas Pro (con bolsa de créditos o tope diario)
+    como en clínicas Lite (con tope de 50 preguntas/consultas al día)."""
+    from fastapi import HTTPException
+    ent = get_entitlements(clinic_id, include_daily_usage=True)
+    plan = ent.get("plan") or "apex"
+    feats = ent.get("features") or {}
+    daily_limit = (ent.get("limits") or {}).get("daily_ai_messages") or (50 if plan == "apex_lite" else 0)
+
+    if plan == "apex_lite" or (feats.get("ia_lite") and (ent.get("ai_credits_remaining") or 0) <= 0):
+        if not feats.get("ia_lite") and plan != "apex_lite":
+            raise HTTPException(403, "Este servicio de IA no está activo para la clínica.")
+        limit_val = daily_limit or 50
+        used_today = ent.get("ai_daily_used") or count_daily_ai_usage(clinic_id)
+        if used_today >= limit_val:
+            raise HTTPException(
+                429,
+                f"Alcanzaste el límite de {limit_val} consultas de IA incluidas por día en tu plan Lite. "
+                "Tu contador se renueva mañana o puedes actualizar a Apex Pro para capacidad ampliada."
+            )
+        ent["ai_daily_limit"] = limit_val
+        ent["ai_daily_used"] = used_today
+        ent["ai_daily_remaining"] = max(0, limit_val - used_today)
+        return ent
+
+    # Planes Pro / Base con bolsa de créditos o tope diario
+    if feature and not feats.get(feature) and not feats.get("ia_lite"):
+        raise HTTPException(403, "Este servicio de IA no está incluido en el plan de la clínica.")
+    if (ent.get("ai_credits") or 0) <= (ent.get("ai_credits_used") or 0):
+        if daily_limit and (ent.get("ai_daily_used") or 0) < daily_limit:
+            return ent
         raise HTTPException(402, "Se agotaron los créditos de IA de la clínica. "
                                  "Recarga créditos para seguir usando la IA.")
     return ent

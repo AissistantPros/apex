@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getSession } from '@/app/lib/auth';
+import { useEntitlements } from '@/app/lib/useEntitlements';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 const hoy = () => new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -43,6 +44,7 @@ const MED_TEAL = '#0d9488';
 export default function DocumentosPage() {
   const { id, visit_id } = useParams<{ id: string; visit_id: string }>();
   const router = useRouter();
+  const { lite } = useEntitlements();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,38 +63,86 @@ export default function DocumentosPage() {
   const [synth, setSynth] = useState<Synth | null>(null);
   const [loadingLabel, setLoadingLabel] = useState('Cargando documentos…');
 
+  // Cobro a mostrador desde el cierre de documentos
+  const [services, setServices] = useState<{ id: string; nombre: string; precio: number }[]>([]);
+  const [cobroConcepto, setCobroConcepto] = useState('Consulta médica');
+  const [cobroMonto, setCobroMonto] = useState<number>(0);
+  const [cobroCant, setCobroCant] = useState<number>(1);
+  const [cobroInd, setCobroInd] = useState('');
+  const [cobroProxCita, setCobroProxCita] = useState('');
+  const [cobroEnviado, setCobroEnviado] = useState(false);
+  const [enviandoCobro, setEnviandoCobro] = useState(false);
+
+  useEffect(() => {
+    api('/clinic/services').then(r => {
+      const svcs = (r.services || []).filter((s: any) => s.activo !== false);
+      setServices(svcs);
+      if (svcs.length > 0) {
+        setCobroConcepto(svcs[0].nombre);
+        setCobroMonto(Number(svcs[0].precio) || 0);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const enviarCobroMostrador = async () => {
+    if (!cobroConcepto.trim() || cobroMonto <= 0) return;
+    setEnviandoCobro(true);
+    try {
+      await api('/clinic/sales', {
+        method: 'POST',
+        body: JSON.stringify({
+          patient_id: id,
+          visit_id,
+          items: [{ concepto: cobroConcepto.trim(), precio: Number(cobroMonto) || 0, cantidad: Number(cobroCant) || 1 }],
+          estado: 'pendiente',
+          tipo_ingreso: 'consulta',
+          lugar: 'Consultorio',
+          proxima_cita: cobroProxCita || null,
+          indicaciones_mostrador: cobroInd.trim() || null,
+        }),
+      });
+      setCobroEnviado(true);
+    } catch (e: any) {
+      alert(e.message || 'No se pudo enviar el cobro');
+    } finally {
+      setEnviandoCobro(false);
+    }
+  };
+
   const load = useCallback(async () => {
     try {
-      // 1) El agente DIRECTOR integra todo (dedup + plan por fases + explicación). Se genera
-      //    si no existe. Es la fuente principal del reporte final.
-      setLoadingLabel('El sistema está integrando el plan final…');
       let s: Synth | null = null;
-      try {
-        const r = await api(`/analyze/${visit_id}/synthesis`, { method: 'POST' });
-        s = r.synthesis || null;
-      } catch { /* si falla, usamos el ensamblado por enfoque */ }
+      if (!lite) {
+        setLoadingLabel('El sistema está integrando el plan final…');
+        try {
+          const r = await api(`/analyze/${visit_id}/synthesis`, { method: 'POST' });
+          s = r.synthesis || null;
+        } catch { /* si falla, usamos el ensamblado por enfoque */ }
+      }
       setSynth(s);
 
-      // 2) /documents da membrete, paciente y (como respaldo) receta/estudios por enfoque.
+      // 2) /documents da membrete, paciente y receta/estudios (en Lite y Pro).
       const d = await api(`/analyze/${visit_id}/documents`);
       setData(d);
 
-      // La receta y estudios preferentes salen de la síntesis (sin duplicados).
       const recetaSrc: Med[] = (s?.receta && s.receta.length ? s.receta : (d.receta || [])) as Med[];
       setReceta(recetaSrc.map(r => ({
         ...r,
         nombre_generico: r.nombre_generico || r.nombre || '',
         para_que_sirve: r.para_que_sirve || r.para_que,
       })));
+      if (d.explicacion_paciente && !indicaciones) {
+        setIndicaciones(d.explicacion_paciente);
+      }
       const est: Est[] = (s?.estudios && s.estudios.length)
         ? s.estudios
         : ((d.estudios || []) as string[]).map((x: string) => ({ estudio: x }));
       setEstudios(est);
-      setIncReceta((s?.receta?.length || d.disponibles?.receta) ? true : false);
-      setIncReporte(true);
+      setIncReceta((s?.receta?.length || d.disponibles?.receta || lite) ? true : false);
+      setIncReporte(!lite || Boolean(d.diagnosticos?.length || d.explicacion_paciente));
       setIncEstudios(est.length > 0);
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
-  }, [visit_id]);
+  }, [visit_id, lite]);
   useEffect(() => { load(); }, [load]);
 
   // Terminar visita: saca al paciente de la sala de espera y regresa a home.
@@ -252,6 +302,44 @@ export default function DocumentosPage() {
               </div>
             )}
 
+            {/* Enviar cobro a mostrador */}
+            <div className="bg-[#0d1520] border border-[#00e5a0]/30 rounded-2xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-mono text-[#00e5a0] tracking-wider">💳 COBRO E INDICACIONES A MOSTRADOR</p>
+                {cobroEnviado && <span className="text-[10px] font-mono text-emerald-400">✓ Enviado</span>}
+              </div>
+              {services.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {services.map(s => (
+                    <button key={s.id} type="button"
+                      onClick={() => { setCobroConcepto(s.nombre); setCobroMonto(Number(s.precio) || 0); setCobroEnviado(false); }}
+                      className="text-[11px] px-2 py-1 rounded-lg bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#00e5a0]">
+                      {s.nombre} · ${s.precio}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input className={inp} placeholder="Concepto a cobrar" value={cobroConcepto}
+                onChange={e => { setCobroConcepto(e.target.value); setCobroEnviado(false); }} />
+              <div className="grid grid-cols-2 gap-1.5">
+                <input className={inp} type="number" placeholder="Monto $" value={cobroMonto || ''}
+                  onChange={e => { setCobroMonto(+e.target.value || 0); setCobroEnviado(false); }} />
+                <input className={inp} type="number" min={1} placeholder="Cant." value={cobroCant}
+                  onChange={e => { setCobroCant(Math.max(1, +e.target.value || 1)); setCobroEnviado(false); }} />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono text-[#7a95aa] block mb-1">Próxima cita sugerida</label>
+                <input className={inp} type="date" value={cobroProxCita} onChange={e => setCobroProxCita(e.target.value)} />
+              </div>
+              <input className={inp} placeholder="Indicaciones para recepción (ej. agendar en 1 mes)" value={cobroInd}
+                onChange={e => setCobroInd(e.target.value)} />
+              <button type="button" onClick={enviarCobroMostrador} disabled={enviandoCobro || cobroEnviado || !cobroConcepto.trim() || cobroMonto <= 0}
+                className="w-full py-2 rounded-xl text-xs font-bold transition disabled:opacity-50"
+                style={{ background: cobroEnviado ? '#1e2d3d' : C.green, color: cobroEnviado ? C.green : '#000' }}>
+                {cobroEnviado ? '✓ Cobro enviado a recepción' : enviandoCobro ? 'Enviando…' : `Enviar cobro a mostrador ($${(cobroMonto * cobroCant).toLocaleString('es-MX')})`}
+              </button>
+            </div>
+
             <button onClick={terminarVisita} disabled={finishing}
               className="w-full px-4 py-3 rounded-2xl text-sm font-bold transition disabled:opacity-40"
               style={{ background: '#0d9488', color: '#fff' }}>
@@ -263,7 +351,7 @@ export default function DocumentosPage() {
           <div className="print-area">
             {nada && <div className="no-print bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-10 text-center text-[#7a95aa]">Selecciona al menos un documento para previsualizar.</div>}
 
-            {!nada && <Portada lh={lh} pac={pac} docs={docsIncluidos} />}
+            {!nada && docsIncluidos.length > 1 && <Portada lh={lh} pac={pac} docs={docsIncluidos} lite={lite} />}
             {!nada && docsIncluidos.length > 1 && <Indice docs={docsIncluidos} />}
 
             {incReceta && (
@@ -390,7 +478,7 @@ function Hoja({ lh, pac, titulo, children }: { lh: any; pac: any; titulo: string
 }
 
 // ── Portada del reporte (primera página) ─────────────────────────────────────
-function Portada({ lh, pac, docs }: { lh: any; pac: any; docs: string[] }) {
+function Portada({ lh, pac, docs, lite }: { lh: any; pac: any; docs: string[]; lite?: boolean }) {
   return (
     <div className="hoja bg-white text-[#1a1a1a] rounded-lg shadow-xl mx-auto mb-6 p-10 flex flex-col"
       style={{ width: '100%', maxWidth: 816, minHeight: 1000 }}>
@@ -433,7 +521,7 @@ function Portada({ lh, pac, docs }: { lh: any; pac: any; docs: string[] }) {
       {/* Pie: marca de la plataforma (APEX Pro) — el resto del documento es del médico */}
       <div className="mt-auto pt-6 border-t border-gray-200 flex items-center justify-between text-[10px] text-gray-400">
         <span>{[lh.direccion, lh.ciudad].filter(Boolean).join(' · ')}</span>
-        <span className="font-mono tracking-wider">Generado con <b style={{ color: MED_TEAL }}>APEX</b> <span className="border rounded px-1" style={{ borderColor: MED_TEAL, color: MED_TEAL }}>PRO</span></span>
+        <span className="font-mono tracking-wider">Generado con <b style={{ color: MED_TEAL }}>APEX</b> <span className="border rounded px-1" style={{ borderColor: MED_TEAL, color: MED_TEAL }}>{lite ? 'LITE' : 'PRO'}</span></span>
       </div>
     </div>
   );

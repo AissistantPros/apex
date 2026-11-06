@@ -16,10 +16,10 @@ interface ChatMsg {
 }
 
 const SUGGESTIONS = [
-  '¿Cuáles son las últimas guías de HTA?',
-  '¿Qué estudios pedir en síndrome metabólico?',
-  'Dosis de metformina en ERC leve',
-  'Nuevos datos de GLP-1 en longevidad',
+  '¿Qué pacientes tengo registrados en mi consultorio?',
+  'Protocolo y dosificación de BPC-157 y TB-500',
+  'Biomarcadores clave en medicina de longevidad y NAD+',
+  '¿Cómo van las estadísticas e ingresos de mi consultorio?',
 ];
 
 export default function ChatBubble() {
@@ -29,10 +29,37 @@ export default function ChatBubble() {
   const [sending, setSending]   = useState(false);
   const [imageFile, setImageFile] = useState<{ data: string; type: string; preview: string } | null>(null);
   const [unread, setUnread]     = useState(0);
+  const [statusInfo, setStatusInfo] = useState<{
+    doctor_name?: string;
+    specialty?: string;
+    clinic_name?: string;
+    plan?: string;
+    daily_used: number;
+    daily_limit: number;
+    daily_remaining: number;
+  } | null>(null);
 
   const chatEndRef  = useRef<HTMLDivElement>(null);
   const imageRef    = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Cargar ficha del médico y contador diario de IA
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const session = await getSession();
+        if (!session?.access_token) return;
+        const r = await fetch(`${BACKEND()}/chat/status`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (r.ok && alive) {
+          setStatusInfo(await r.json());
+        }
+      } catch { /* silencioso */ }
+    })();
+    return () => { alive = false; };
+  }, [open]);
 
   // Auto-scroll
   useEffect(() => {
@@ -96,14 +123,32 @@ export default function ChatBubble() {
         body: JSON.stringify({ messages: next.map(m => ({ role: m.role, content: m.content })) }),
       });
       const data = await res.json();
-      const aiMsg: ChatMsg = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response || 'Sin respuesta.',
-        displayText: data.response || 'Sin respuesta.',
-      };
-      setMessages(prev => [...prev, aiMsg]);
-      if (!open) setUnread(u => u + 1);
+      if (!res.ok) {
+        const errText = data?.detail || 'No se pudo procesar tu pregunta.';
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: errText,
+          displayText: errText,
+        }]);
+      } else {
+        if (typeof data.daily_used === 'number' && typeof data.daily_limit === 'number') {
+          setStatusInfo(prev => ({
+            ...(prev || {}),
+            daily_used: data.daily_used,
+            daily_limit: data.daily_limit,
+            daily_remaining: data.daily_remaining ?? Math.max(0, data.daily_limit - data.daily_used),
+          }));
+        }
+        const aiMsg: ChatMsg = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.response || 'Sin respuesta.',
+          displayText: data.response || 'Sin respuesta.',
+        };
+        setMessages(prev => [...prev, aiMsg]);
+        if (!open) setUnread(u => u + 1);
+      }
     } catch {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
@@ -152,17 +197,24 @@ export default function ChatBubble() {
               A
             </div>
             <div>
-              <p className="font-bold text-sm" style={{ color: 'var(--c-text)' }}>APEX AI</p>
+              <p className="font-bold text-sm" style={{ color: 'var(--c-text)' }}>APEX AI · Agente Médico</p>
               <p className="text-xs font-mono" style={{ color: 'var(--c-text-3)' }}>
-                {sending ? '✦ escribiendo…' : '● en línea'}
+                {sending
+                  ? '✦ consultando expediente y evidencia…'
+                  : statusInfo?.specialty
+                    ? `● ${statusInfo.specialty} · Longevidad & Funcional`
+                    : '● Longevidad · Péptidos · Base de Pacientes'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-xs px-2 py-0.5 rounded-full font-mono"
-              style={{ color: '#f59e0b', background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.2)' }}>
-              sin memoria
-            </span>
+            {statusInfo && statusInfo.daily_limit > 0 && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                title={`Preguntas disponibles hoy (${statusInfo.daily_used}/${statusInfo.daily_limit} usadas)`}
+                style={{ color: 'var(--c-primary)', background: 'color-mix(in srgb, var(--c-primary) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--c-primary) 28%, transparent)' }}>
+                {statusInfo.daily_remaining}/{statusInfo.daily_limit} hoy
+              </span>
+            )}
             {messages.length > 0 && (
               <button onClick={() => setMessages([])}
                 className="text-xs px-2 py-1 rounded-lg transition ml-1"
@@ -191,8 +243,12 @@ export default function ChatBubble() {
               <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#00e5a0] to-[#0ea5e9] flex items-center justify-center text-2xl font-black text-black mb-3">
                 A
               </div>
-              <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--c-text)' }}>Hola, soy APEX AI</p>
-              <p className="text-xs mb-4" style={{ color: 'var(--c-text-2)' }}>Pregúntame cualquier cosa</p>
+              <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--c-text)' }}>
+                Hola{statusInfo?.doctor_name ? `, ${statusInfo.doctor_name}` : ''}. Soy tu agente APEX AI
+              </p>
+              <p className="text-xs mb-4 px-2" style={{ color: 'var(--c-text-2)' }}>
+                Conozco tu especialidad, tus pacientes registrados, medicina funcional, péptidos, suplementos y longevidad.
+              </p>
               <div className="flex flex-col gap-1.5 w-full">
                 {SUGGESTIONS.map(s => (
                   <button key={s}

@@ -276,25 +276,382 @@ async def delete_patient(
     patient_id: str,
     authorization: Optional[str] = Header(None),
 ):
-    """El borrado directo está deshabilitado. Por ley el expediente debe conservarse:
-    la baja se hace por solicitud (POST /deletions/request) y SOLO el doctor la aprueba."""
+    """Si quien solicita es el médico titular (doctor), elimina el expediente inmediatamente
+    (previa confirmación en UI). Si es personal del equipo, debe solicitar autorización al doctor."""
+    from auth import get_actor
+    actor = get_actor(authorization)
+    if actor["role"] == "doctor":
+        patient = get_patient(patient_id)
+        if not patient or not patient_belongs(actor, patient):
+            raise HTTPException(404, "Paciente no encontrado")
+        from routes_deletions import _cascade_delete_patient
+        _cascade_delete_patient(patient_id)
+        return {"ok": True, "deleted": True, "patient_id": patient_id}
     raise HTTPException(
         403,
-        "El expediente no se puede borrar directamente. Envía una solicitud de baja; "
-        "solo el doctor puede aprobarla desde su plataforma.",
+        "El personal no puede borrar un expediente directamente. Envía una solicitud de baja; "
+        "el médico la revisará desde su plataforma.",
     )
 
 
 # ── Última prescripción + envío al paciente ─────────────
 
 def _last_prescription(patient_id: str) -> dict:
-    """Última prescripción del paciente (protocolos + notas del médico)."""
+    """Última prescripción del paciente (protocolos + notas del médico, incluyendo Consulta Lite)."""
     from db import supabase
+    import json as _json
     r = supabase.table("analyses").select(
         "visit_id, protocol_traditional, protocol_functional, protocol_longevity, "
         "doctor_traditional, doctor_functional, updated_at"
     ).eq("patient_id", patient_id).order("updated_at", desc=True).limit(1).execute()
-    return (r.data or [{}])[0]
+    ana = (r.data or [{}])[0]
+
+    # También revisar si la última visita tiene receta manual de Consulta Lite
+    v_rows = supabase.table("visits").select("id, visit_date, created_at, dynamic_answers")\
+        .eq("patient_id", patient_id).order("visit_date", desc=True).limit(5).execute().data or []
+    for v in v_rows:
+        da = v.get("dynamic_answers") or {}
+        lite = da.get("lite") if isinstance(da, dict) else None
+        receta_lite = (lite or {}).get("receta") if isinstance(lite, dict) else None
+        if isinstance(receta_lite, list) and any((m or {}).get("nombre_generico") or (m or {}).get("medicamento") for m in receta_lite):
+            meds = []
+            for m in receta_lite:
+                if not isinstance(m, dict):
+                    continue
+                nombre = (m.get("nombre_generico") or m.get("medicamento") or "").strip()
+                if not nombre:
+                    continue
+                meds.append({
+                    "nombre_generico": nombre,
+                    "nombre_comercial": m.get("nombre_comercial") or "",
+                    "presentacion": m.get("presentacion") or "",
+                    "dosis": m.get("dosis") or "",
+                    "via": m.get("via") or "Oral",
+                    "frecuencia": m.get("frecuencia") or "",
+                    "duracion": m.get("duracion") or "",
+                    "indicaciones": m.get("indicaciones") or "",
+                })
+            if meds and not ana.get("visit_id"):
+                cierre = (lite or {}).get("cierre") or {}
+                return {
+                    "visit_id": v.get("id"),
+                    "protocol_traditional": _json.dumps({"medicamentos": meds, "estudios": []}, ensure_ascii=False),
+                    "protocol_functional": None,
+                    "protocol_longevity": None,
+                    "doctor_traditional": cierre.get("plan") or "",
+                    "doctor_functional": None,
+                    "updated_at": v.get("visit_date") or v.get("created_at"),
+                }
+            break
+    return ana
+
+
+# ── Archivos continuos del expediente (estudios, labs, fotos Antes/Después sin visita) ──
+
+def _extract_document_text(raw_bytes: bytes, filename: str, content_type: str) -> str:
+    """Extrae texto legible de un PDF o archivo de texto para que la IA lo conozca."""
+    ext = (filename or "").lower().rsplit(".", 1)[-1] if "." in (filename or "") else ""
+    if ext in ("txt", "csv", "md"):
+        try:
+            return raw_bytes.decode("utf-8", errors="ignore")[:8000]
+        except Exception:
+            return ""
+    if ext == "pdf" or "pdf" in (content_type or "").lower():
+        import io
+        for mod_name in ("pypdf", "PyPDF2"):
+            try:
+                mod = __import__(mod_name)
+                reader = mod.PdfReader(io.BytesIO(raw_bytes))
+                pages = [p.extract_text() or "" for p in reader.pages[:15]]
+                txt = "\n".join(pages).strip()
+                if txt:
+                    return txt[:8000]
+            except Exception:
+                pass
+    return ""
+
+
+@router.get("/{patient_id}/files")
+async def list_patient_files(patient_id: str, authorization: Optional[str] = Header(None)):
+    """Lista los archivos, estudios, laboratorios y fotos (Antes/Después) del expediente continuo."""
+    from auth import get_actor
+    from access import require
+    actor = get_actor(authorization)
+    require(actor, "doctor", "nurse", "receptionist")
+    p = get_patient(patient_id)
+    if not p or not patient_belongs(actor, p):
+        raise HTTPException(404, "Paciente no encontrado")
+    fi = p.get("func_intake") if isinstance(p.get("func_intake"), dict) else {}
+    files = fi.get("patient_files") if isinstance(fi.get("patient_files"), list) else []
+    ai_summary = fi.get("ai_summary") if isinstance(fi.get("ai_summary"), dict) else None
+    return {"patient_id": patient_id, "files": files, "ai_summary": ai_summary}
+
+
+@router.post("/{patient_id}/files")
+async def upload_patient_file(
+    patient_id: str,
+    file: UploadFile = File(...),
+    category: str = Form("estudio"),          # laboratorio | estudio | foto_clinica | documento
+    stage: str = Form("general"),             # antes | despues | seguimiento | general
+    title: str = Form(""),
+    notes: str = Form(""),
+    taken_at: str = Form(""),
+    visit_id: str = Form(""),
+    authorization: Optional[str] = Header(None),
+):
+    """Sube un estudio, resultado de laboratorio o fotografía clínica (ej. Antes / Después)
+    directamente a la ficha del paciente sin necesidad de abrir una consulta."""
+    import hashlib
+    from uuid import uuid4
+    from auth import get_actor
+    from access import require
+    from services import imagenes
+    from db import supabase
+
+    actor = get_actor(authorization)
+    require(actor, "doctor", "nurse", "receptionist")
+    p = get_patient(patient_id)
+    if not p or not patient_belongs(actor, p):
+        raise HTTPException(404, "Paciente no encontrado")
+
+    raw_bytes = await file.read(imagenes.MAX_BYTES_ENTRADA + 1)
+    if not raw_bytes:
+        raise HTTPException(400, "El archivo está vacío")
+    if len(raw_bytes) > imagenes.MAX_BYTES_ENTRADA:
+        raise HTTPException(400, "El archivo supera el límite de 12 MB")
+
+    fname = file.filename or "archivo"
+    ctype = (file.content_type or "").lower()
+    ext = fname.lower().rsplit(".", 1)[-1] if "." in fname else ""
+    is_image = ctype.startswith("image/") or ext in ("jpg", "jpeg", "png", "webp", "heic")
+
+    url = None
+    width, height = None, None
+    extracted_text = ""
+
+    if is_image:
+        try:
+            webp, (width, height) = imagenes.procesar(raw_bytes, "patient_photo")
+            path = imagenes.ruta("patient_photo", patient_id, webp)
+            url = imagenes.subir(path, webp, content_type="image/webp")
+        except Exception as e:
+            raise HTTPException(400, f"No se pudo procesar la imagen: {str(e)[:140]}")
+    else:
+        h = hashlib.sha1(raw_bytes).hexdigest()[:10]
+        safe_ext = ext if ext in ("pdf", "txt", "csv", "doc", "docx", "xls", "xlsx") else "bin"
+        mime = ctype or ("application/pdf" if safe_ext == "pdf" else "application/octet-stream")
+        path = f"expediente/{patient_id}/doc-{h}.{safe_ext}"
+        try:
+            url = imagenes.subir(path, raw_bytes, content_type=mime)
+        except Exception as e:
+            raise HTTPException(502, f"No se pudo guardar el archivo: {str(e)[:140]}")
+        extracted_text = _extract_document_text(raw_bytes, fname, mime)
+
+    now_iso = datetime.utcnow().isoformat()
+    entry = {
+        "id": str(uuid4()),
+        "title": (title or "").strip() or fname,
+        "filename": fname,
+        "category": category if category in ("laboratorio", "estudio", "foto_clinica", "documento") else "estudio",
+        "stage": stage if stage in ("antes", "despues", "seguimiento", "general") else "general",
+        "notes": (notes or "").strip(),
+        "taken_at": (taken_at or "").strip() or now_iso[:10],
+        "visit_id": (visit_id or "").strip() or None,
+        "is_image": is_image,
+        "url": url,
+        "width": width,
+        "height": height,
+        "extracted_text": extracted_text[:4000] if extracted_text else "",
+        "uploaded_by": actor.get("user_id"),
+        "uploaded_by_role": actor.get("role"),
+        "created_at": now_iso,
+    }
+
+    fi = dict(p.get("func_intake") or {}) if isinstance(p.get("func_intake"), dict) else {}
+    files = list(fi.get("patient_files") or []) if isinstance(fi.get("patient_files"), list) else []
+    files.insert(0, entry)
+    fi["patient_files"] = files
+    supabase.table("patients").update({
+        "func_intake": fi,
+        "updated_at": now_iso,
+    }).eq("id", patient_id).execute()
+
+    return {"ok": True, "file": entry, "total": len(files)}
+
+
+@router.delete("/{patient_id}/files/{file_id}")
+async def delete_patient_file(
+    patient_id: str,
+    file_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    from auth import get_actor
+    from access import require
+    from services import imagenes
+    from db import supabase
+
+    actor = get_actor(authorization)
+    require(actor, "doctor")
+    p = get_patient(patient_id)
+    if not p or not patient_belongs(actor, p):
+        raise HTTPException(404, "Paciente no encontrado")
+
+    fi = dict(p.get("func_intake") or {}) if isinstance(p.get("func_intake"), dict) else {}
+    files = list(fi.get("patient_files") or []) if isinstance(fi.get("patient_files"), list) else []
+    removed = [f for f in files if f.get("id") == file_id]
+    new_files = [f for f in files if f.get("id") != file_id]
+    fi["patient_files"] = new_files
+    supabase.table("patients").update({
+        "func_intake": fi,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", patient_id).execute()
+    for r in removed:
+        if r.get("url"):
+            imagenes.quitar(r["url"])
+    return {"ok": True, "deleted_id": file_id, "total": len(new_files)}
+
+
+@router.post("/{patient_id}/ai-summary")
+async def generate_patient_ai_summary(
+    patient_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Genera un resumen clínico integral con IA leyendo datos del paciente, todas las visitas
+    (tradicionales, Lite y funcionales), estudios, laboratorios, fotos/notas de evolución y recetas.
+    Disponible en Apex Lite (dentro de las 50 consultas/día) y Apex Pro."""
+    import os
+    import json as _json
+    import anthropic
+    from auth import get_actor
+    from access import require
+    from services.plans import require_ai_lite_or_pro
+    from services.usage import log_event
+    from db import supabase
+
+    actor = get_actor(authorization)
+    require(actor, "doctor")
+    ent = require_ai_lite_or_pro(actor.get("clinic_id"), "ia_lite")
+
+    p = get_patient(patient_id)
+    if not p or not patient_belongs(actor, p):
+        raise HTTPException(404, "Paciente no encontrado")
+
+    visits = list_patient_visits(patient_id) or []
+    notes = get_patient_notes(patient_id) or []
+    analyses = supabase.table("analyses").select(
+        "visit_id, diagnosis, summary, protocol_traditional, protocol_functional, protocol_longevity, doctor_traditional, updated_at"
+    ).eq("patient_id", patient_id).order("updated_at", desc=True).limit(10).execute().data or []
+    fi = p.get("func_intake") if isinstance(p.get("func_intake"), dict) else {}
+    pfiles = fi.get("patient_files") if isinstance(fi.get("patient_files"), list) else []
+
+    # Construir contexto clínico estructurado
+    ctx_parts = [
+        f"PACIENTE: {p.get('full_name')} | Fecha nac.: {p.get('date_of_birth') or p.get('birth_date') or 'N/D'} | Sexo: {p.get('sexo_biologico') or 'N/D'} | Ocupación: {p.get('occupation') or 'N/D'}",
+        f"Antecedentes personales: crónicos={p.get('chronic_diseases') or 'ninguno'}, cirugías={p.get('surgeries') or 'ninguna'}, alergias med={p.get('allergies_medications') or 'ninguna'}, alergias alim={p.get('allergies_foods') or 'ninguna'}",
+        f"Medicamentos de base: {_json.dumps(p.get('medications') or [], ensure_ascii=False)[:800]}",
+    ]
+
+    if visits:
+        ctx_parts.append(f"\nHISTORIAL DE VISITAS ({len(visits)} registradas):")
+        for v in visits[:12]:
+            da = v.get("dynamic_answers") or {}
+            lite = da.get("lite") if isinstance(da, dict) else {}
+            cierre = (lite or {}).get("cierre") if isinstance(lite, dict) else {}
+            receta_lite = (lite or {}).get("receta") if isinstance(lite, dict) else []
+            labs_txt = (v.get("labs_extracted") or "")[:1200]
+            ctx_parts.append(
+                f"- Visita {str(v.get('visit_date') or v.get('created_at') or '')[:10]}: "
+                f"Motivo={v.get('chief_complaint') or v.get('motivo_principal') or 'N/D'} | "
+                f"PA={v.get('pa_der_sistolica') or '?'}/{v.get('pa_der_diastolica') or '?'} FC={v.get('heart_rate') or v.get('fc') or '?'} "
+                f"Peso={v.get('weight') or v.get('peso') or '?'}kg IMC={v.get('imc') or '?'} | "
+                f"Dx Lite={cierre.get('diagnostico') or ''} | Plan Lite={cierre.get('plan') or ''} | "
+                f"Evolución={cierre.get('evolucion') or v.get('doctor_notes') or ''} | "
+                f"Receta Lite={_json.dumps(receta_lite, ensure_ascii=False)[:600]} | "
+                f"Labs en visita={labs_txt}"
+            )
+
+    if analyses:
+        ctx_parts.append(f"\nANÁLISIS Y RECETAS EMITIDAS ({len(analyses)}):")
+        for a in analyses[:6]:
+            ctx_parts.append(
+                f"- Fecha {str(a.get('updated_at') or '')[:10]}: Dx={str(a.get('diagnosis') or '')[:400]} | "
+                f"Tradicional={str(a.get('protocol_traditional') or '')[:500]} | "
+                f"Funcional={str(a.get('protocol_functional') or '')[:400]}"
+            )
+
+    if pfiles:
+        ctx_parts.append(f"\nESTUDIOS, LABORATORIOS Y FOTOS EN EXPEDIENTE CONTINUO ({len(pfiles)}):")
+        for f in pfiles[:20]:
+            ctx_parts.append(
+                f"- [{f.get('taken_at') or str(f.get('created_at') or '')[:10]}] ({f.get('category')} / etapa: {f.get('stage')}): "
+                f"{f.get('title')} — Notas: {f.get('notes') or 'sin nota'} "
+                f"{('| Texto extraído: ' + f.get('extracted_text')[:800]) if f.get('extracted_text') else ''}"
+            )
+
+    if notes:
+        ctx_parts.append(f"\nNOTAS CLÍNICAS Y DE SEGUIMIENTO ({len(notes)}):")
+        for n in notes[:15]:
+            ctx_parts.append(f"- [{str(n.get('created_at') or '')[:10]}] ({n.get('author_role')}): {n.get('content')}")
+
+    clinical_context = "\n".join(ctx_parts)
+
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    prompt = f"""Eres el asistente médico clínico de cabecera del doctor. Analiza el expediente completo del paciente (incluyendo visitas, recetas, notas, estudios, laboratorios y registro fotográfico Antes/Después) y genera un RESUMEN EJECUTIVO CLÍNICO claro, estructurado y accionable para el médico.
+
+DATOS DEL EXPEDIENTE:
+{clinical_context}
+
+Responde en español con formato estructurado usando estas secciones exactas:
+1. **Síntesis del Paciente y Contexto Base**: Edad/demografía, antecedentes clave, alergias y medicación habitual.
+2. **Evolución por Visitas y Tratamientos**: Qué se ha diagnosticado, qué medicamentos o protocolos se han indicado y cómo ha evolucionado.
+3. **Estudios, Laboratorios y Registro Antes/Después**: Hallazgos en laboratorios/estudios subidos (con o sin visita) y seguimiento fotográfico/estético o funcional.
+4. **Puntos de Atención y Seguimiento Sugerido**: Pendientes, estudios por revisar o aspectos a vigilar en la siguiente revisión."""
+
+    msg = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1200,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    summary_text = "".join(b.text for b in msg.content if hasattr(b, "text")).strip()
+    tokens_in = getattr(msg.usage, "input_tokens", 0)
+    tokens_out = getattr(msg.usage, "output_tokens", 0)
+
+    log_event(
+        actor["user_id"],
+        actor.get("clinic_id"),
+        actor["role"],
+        "patient.ai_summary",
+        "Resumen IA",
+        ai_tokens=tokens_in + tokens_out,
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        model="claude-haiku-4-5-20251001",
+        meta={"patient_id": patient_id},
+    )
+
+    now_iso = datetime.utcnow().isoformat()
+    summary_obj = {
+        "text": summary_text,
+        "generated_at": now_iso,
+        "visits_count": len(visits),
+        "files_count": len(pfiles),
+    }
+    fi_updated = dict(fi)
+    fi_updated["ai_summary"] = summary_obj
+    supabase.table("patients").update({
+        "func_intake": fi_updated,
+        "updated_at": now_iso,
+    }).eq("id", patient_id).execute()
+
+    daily_used = (ent.get("ai_daily_used") or 0) + 1
+    daily_limit = ent.get("ai_daily_limit") or 50
+    return {
+        "ok": True,
+        "summary": summary_obj,
+        "daily_used": daily_used,
+        "daily_limit": daily_limit,
+        "daily_remaining": max(0, daily_limit - daily_used),
+    }
 
 
 @router.get("/{patient_id}/last-prescription")

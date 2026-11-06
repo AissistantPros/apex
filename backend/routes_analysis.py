@@ -3080,17 +3080,49 @@ async def get_synthesis(visit_id: str, authorization: Optional[str] = Header(Non
 @router.get("/{visit_id}/documents")
 async def get_documents(visit_id: str, authorization: Optional[str] = Header(None)):
     """Ensambla los datos para los 3 documentos de salida: receta, reporte y estudios.
-    Ninguno es obligatorio; el frontend decide cuáles incluir según haya contenido."""
+    Ninguno es obligatorio; el frontend decide cuáles incluir según haya contenido.
+    Soporta tanto el flujo asistido por IA como la captura manual (Consulta Lite)."""
     from auth import get_actor
     from access import require
-    require(get_actor(authorization), "doctor")
+    actor = get_actor(authorization)
+    require(actor, "doctor")
     analysis = get_analysis(visit_id) or {}
     visit = get_visit(visit_id) or {}
     patient_id = analysis.get("patient_id") or visit.get("patient_id")
     patient = get_patient(patient_id) if patient_id else {}
-    doctor_id = analysis.get("doctor_id") or visit.get("doctor_id")
+    doctor_id = analysis.get("doctor_id") or visit.get("doctor_id") or actor.get("doctor_id")
     perfil = get_doctor_profile(doctor_id) if doctor_id else {}
-    letterhead = (perfil or {}).get("letterhead") or {}
+    letterhead = dict((perfil or {}).get("letterhead") or {})
+
+    # Enriquecer membrete con la marca del consultorio si faltan campos
+    try:
+        from services.branding import get_clinic_branding
+        cb = get_clinic_branding(actor.get("clinic_id")) or {}
+        raw_b = cb.get("raw") if isinstance(cb.get("raw"), dict) else {}
+        doc_b = raw_b.get("doctor") if isinstance(raw_b.get("doctor"), dict) else {}
+        con_b = raw_b.get("contacto") if isinstance(raw_b.get("contacto"), dict) else {}
+        if not letterhead.get("doctor_name"):
+            letterhead["doctor_name"] = (perfil or {}).get("display_name") or doc_b.get("nombre") or ""
+        if not letterhead.get("specialty"):
+            esp = doc_b.get("especialidad") or ""
+            sub = doc_b.get("subespecialidad") or ""
+            letterhead["specialty"] = f"{esp} · {sub}" if (esp and sub) else (esp or sub)
+        if not letterhead.get("cedula_profesional") and doc_b.get("cedula_profesional"):
+            letterhead["cedula_profesional"] = doc_b.get("cedula_profesional")
+        if not letterhead.get("cedula_especialidad") and doc_b.get("cedula_especialidad"):
+            letterhead["cedula_especialidad"] = doc_b.get("cedula_especialidad")
+        if not letterhead.get("universidad") and doc_b.get("universidad"):
+            letterhead["universidad"] = doc_b.get("universidad")
+        if not letterhead.get("clinic_name"):
+            letterhead["clinic_name"] = (perfil or {}).get("clinic_name") or cb.get("name") or ""
+        if not letterhead.get("clinic_address"):
+            letterhead["clinic_address"] = con_b.get("direccion") or cb.get("address") or ""
+        if not letterhead.get("clinic_phone"):
+            letterhead["clinic_phone"] = con_b.get("tel_citas") or cb.get("phone") or (perfil or {}).get("phone") or ""
+        if not letterhead.get("logo_url") and (cb.get("logo_url") or (perfil or {}).get("clinic_logo_url")):
+            letterhead["logo_url"] = cb.get("logo_url") or (perfil or {}).get("clinic_logo_url")
+    except Exception:
+        pass
 
     # Clasificación de los items del protocolo:
     #  - receta: fármacos/off-label/suplementos/vitaminas/minerales (van en la receta oficial).
@@ -3121,6 +3153,30 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
                 if isinstance(p, dict) and (p.get("nombre") or "").strip():
                     avanzados.append({**p, "_enfoque": enfoque})
 
+    # Integrar captura manual de Consulta Lite (visit.dynamic_answers.lite)
+    da = visit.get("dynamic_answers") if isinstance(visit.get("dynamic_answers"), dict) else {}
+    lite = da.get("lite") if isinstance(da.get("lite"), dict) else {}
+    cierre_lite = lite.get("cierre") if isinstance(lite.get("cierre"), dict) else {}
+    receta_lite = lite.get("receta") if isinstance(lite.get("receta"), list) else []
+    if not receta and receta_lite:
+        for m in receta_lite:
+            if not isinstance(m, dict):
+                continue
+            nombre = (m.get("nombre_generico") or m.get("medicamento") or "").strip()
+            if not nombre:
+                continue
+            receta.append({
+                "nombre_generico": nombre,
+                "nombre_comercial": (m.get("nombre_comercial") or "").strip(),
+                "presentacion": (m.get("presentacion") or "").strip(),
+                "dosis": (m.get("dosis") or "").strip(),
+                "via": (m.get("via") or "Oral").strip(),
+                "frecuencia": (m.get("frecuencia") or "").strip(),
+                "duracion": (m.get("duracion") or "").strip(),
+                "indicaciones": (m.get("indicaciones") or "").strip(),
+                "tipo": (m.get("tipo") or "farmaco").strip(),
+            })
+
     # Estudios: se leen del DIAGNÓSTICO de cada enfoque (ahí viven los "estudios_sugeridos"),
     # no del protocolo. Se juntan de los 3 enfoques y se de-duplican.
     estudios = []
@@ -3129,6 +3185,11 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
                        ("doctor_longevity", "diagnosis_longevity")):
         fuente = (analysis.get(campo) or "").strip() or (analysis.get(alt) or "").strip()
         estudios.extend(_estudios_de_diagnostico(fuente))
+    if cierre_lite.get("estudios_solicitados"):
+        for raw_est in re.split(r"[\n,;]+", str(cierre_lite.get("estudios_solicitados"))):
+            s_est = raw_est.strip(" -•\t")
+            if s_est:
+                estudios.append(s_est)
     vistos, estudios_u = set(), []
     for e in estudios:
         k = e.lower().strip()
@@ -3138,6 +3199,12 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
     # Diagnósticos legibles para el REPORTE (sin JSON crudo).
     dx_convencional = _dx_convencional_legible(
         (analysis.get("doctor_traditional") or "").strip() or (analysis.get("diagnosis_traditional") or "").strip())
+    if not dx_convencional and (cierre_lite.get("diagnostico") or "").strip():
+        dx_convencional = [{
+            "nombre": (cierre_lite.get("diagnostico") or "").strip(),
+            "confianza": None,
+            "resumen": (cierre_lite.get("evolucion") or "").strip(),
+        }]
     # Funcional/longevidad vienen en texto; quitamos la línea JSON de confianza que los abre.
     def _sin_confianza(t: str) -> str:
         t = (t or "").strip()
@@ -3177,6 +3244,8 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
                     plan[k] = mg.get(k)
             if isinstance(mg.get("plan_por_fases"), list) and not plan.get("plan_por_fases"):
                 plan["plan_por_fases"] = mg.get("plan_por_fases")
+    if not plan.get("proxima_revision") and (cierre_lite.get("proxima_cita") or "").strip():
+        plan["proxima_revision"] = (cierre_lite.get("proxima_cita") or "").strip()
 
     # Reporte sugerido legible (texto plano, SIN JSON) para el textarea editable.
     partes_reporte = []
@@ -3184,6 +3253,8 @@ async def get_documents(visit_id: str, authorization: Optional[str] = Header(Non
         líneas = [f"• {d['nombre']}" + (f" (confianza {d['confianza']}%)" if d.get("confianza") is not None else "")
                   + (f": {d['resumen']}" if d.get("resumen") else "") for d in dx_convencional]
         partes_reporte.append("Diagnóstico:\n" + "\n".join(líneas))
+    if (cierre_lite.get("plan") or "").strip():
+        partes_reporte.append("Plan e indicaciones:\n" + (cierre_lite.get("plan") or "").strip())
     if func_txt:
         partes_reporte.append("Enfoque funcional:\n" + func_txt)
     if long_txt:

@@ -8,7 +8,7 @@ import { planNombre } from '@/app/lib/producto';
 import Icon, { type IconName } from '@/app/components/Icon';
 import ApexLogo from '@/app/components/ApexLogo';
 import { clearEntitlementsCache } from '@/app/lib/useEntitlements';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface TopNavProps {
   userName?: string;
@@ -66,8 +66,11 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const [plan, setPlan] = useState<string | null>(null);
   const [brand, setBrand] = useState<ClinicBrand | null>(null);
   const [credits, setCredits] = useState<{ remaining: number; low: boolean; empty: boolean } | null>(null);
+  const [dailyAi, setDailyAi] = useState<{ used: number; limit: number } | null>(null);
+  const [isSoloDoctor, setIsSoloDoctor] = useState<boolean>(true);
+  const [teamCount, setTeamCount] = useState<number>(1);
   const [rechargeSent, setRechargeSent] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Rol, permisos, plan y marca REALES de la cuenta (los define el backend, no el navegador).
   const cargarWhoami = useCallback(async () => {
@@ -88,6 +91,14 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
       if (ent?.plan) { setPlan(ent.plan); applyPlan(ent.plan); }
       if (ent && typeof ent.ai_credits_remaining === 'number') {
         setCredits({ remaining: ent.ai_credits_remaining, low: !!ent.ai_credits_low, empty: !!ent.ai_credits_empty });
+      }
+      if (ent && typeof ent.ai_daily_limit === 'number' && ent.ai_daily_limit > 0) {
+        setDailyAi({ used: ent.ai_daily_used || 0, limit: ent.ai_daily_limit });
+      }
+      const team = who?.clinic_team || ent?.team;
+      if (team) {
+        setIsSoloDoctor(!!team.is_solo_doctor);
+        setTeamCount(team.members_count || 1);
       }
       if (who?.clinic_brand) { setBrand(who.clinic_brand); applyBrand(who.clinic_brand); }
       else { setBrand(null); clearBrandCache(); }
@@ -177,23 +188,16 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
     return () => { alive = false; clearInterval(t); };
   }, [role]);
 
-  // Se muestran solo los módulos del rol Y de los servicios contratados (si ya se cargaron)
-  const links = ALL_LINKS.filter(l =>
-    l.roles.includes(role) && (!l.feature || !feats || feats[l.feature] !== false));
-  const primaryLinks = links.filter(l => l.primary);
-  const overflowLinks = links.filter(l => !l.primary);
-  const overflowBadge = overflowLinks.some(l => l.href === '/dashboard/aprobaciones') ? aprobCount : 0;
-
-  // Cerrar el menú "Más" al hacer clic fuera o con Escape
-  const moreRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onDown = (e: MouseEvent) => { if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false); };
-    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onEsc);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onEsc); };
-  }, [moreOpen]);
+  // Se muestran solo los módulos del rol Y de los servicios contratados (y adaptados al equipo)
+  const links = ALL_LINKS.filter(l => {
+    if (!l.roles.includes(role)) return false;
+    if (l.feature && feats && feats[l.feature] === false) return false;
+    // Si el médico trabaja solo y no hay solicitudes de baja pendientes, no estorbar con "Aprobaciones"
+    if (l.href === '/dashboard/aprobaciones' && isSoloDoctor && aprobCount === 0) return false;
+    // Si el médico trabaja solo y no hay nadie en sala de espera, no estorbar con "Sala"
+    if (l.href === '/dashboard/sala' && isSoloDoctor && waitCount === 0 && !feats?.sala_espera) return false;
+    return true;
+  });
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
@@ -218,138 +222,219 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const hoverBg = banda ? 'hover:bg-white/10' : 'hover:bg-[var(--c-subtle)]';
 
   return (
-    <header
-      className="fixed top-0 left-0 right-0 h-[72px] z-50 flex items-center px-4 md:px-6 gap-3"
-      style={{
-        background: banda ? 'var(--c-primary)' : 'var(--c-nav)',
-        borderBottom: banda ? 'none' : '1px solid var(--c-border)',
-        borderTop: '3px solid var(--c-accent)',
-        color: fg,
-      }}
-    >
-      {/* Identidad: logotipo COMPLETO del consultorio arriba a la izquierda + marca Apex */}
-      <button onClick={() => router.push('/dashboard')} className="flex items-center gap-4 mr-2 flex-shrink-0 h-full" aria-label="Ir al inicio">
-        {logoSrc ? (
-          logoEnPlaca ? (
-            <span className="rounded-md bg-white px-2.5 py-1.5 flex items-center">
-              <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[40px] w-auto max-w-[190px] object-contain" />
-            </span>
-          ) : (
-            <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[52px] w-auto max-w-[230px] object-contain" />
-          )
-        ) : (
-          <span className="text-[19px] font-semibold tracking-tight max-w-[220px] truncate" style={{ color: banda ? '#fff' : 'var(--c-primary)' }}>
-            {brand?.name || 'Apex'}
-          </span>
-        )}
-        <span className="hidden lg:flex items-center gap-4">
-          <span className="w-px h-8" style={{ background: banda ? 'rgba(255,255,255,0.3)' : 'var(--c-border-2)' }} />
-          <span style={{ color: fgSuave }}><ApexLogo plan={planNombre(plan)} size="sm" /></span>
-        </span>
-      </button>
-
-      {/* Navegación: el módulo activo se marca con una línea, sin cápsulas ni brillos */}
-      <nav className="flex items-stretch gap-0.5 self-stretch" aria-label="Principal">
-        {primaryLinks.map(({ href, icon, label }) => {
-          const active = isActive(href);
-          return (
-            <button key={href + label} onClick={() => router.push(href)} title={label} aria-label={label}
-              aria-current={active ? 'page' : undefined}
-              className={`relative flex items-center gap-2 px-3 text-[14px] font-medium transition-colors ${hoverBg}`}
-              style={{ color: active ? fgActivo : fgSuave }}>
-              <Icon name={icon} size={18} />
-              <span className="hidden md:inline">{label}</span>
-              {href === '/dashboard/sala' && waitCount > 0 && <Badge n={waitCount} />}
-              {active && <span className="absolute left-2 right-2 bottom-0 h-[3px] rounded-t-full" style={{ background: lineaActiva }} />}
-            </button>
-          );
-        })}
-
-        {overflowLinks.length > 0 && (
-          <div className="relative flex items-stretch" ref={moreRef}>
-            <button onClick={() => setMoreOpen(o => !o)} aria-haspopup="menu" aria-expanded={moreOpen}
-              className={`flex items-center gap-1.5 px-3 text-[14px] font-medium transition-colors ${hoverBg}`}
-              style={{ color: moreOpen ? fgActivo : fgSuave }}>
-              <Icon name="more" size={18} />
-              <span className="hidden md:inline">Más</span>
-              <Icon name="chevron" size={14} />
-              {!moreOpen && overflowBadge > 0 && <Badge n={overflowBadge} tone="danger" />}
-            </button>
-
-            {moreOpen && (
-              <div role="menu"
-                className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg py-1 z-50"
-                style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 8px 24px rgba(16,24,40,.18)' }}>
-                {overflowLinks.map(({ href, icon, label }) => (
-                  <button key={href + label} role="menuitem" onClick={() => { setMoreOpen(false); router.push(href); }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] font-medium text-left transition-colors hover:bg-[var(--c-subtle)]"
-                    style={{ color: isActive(href) ? 'var(--c-primary)' : 'var(--c-text)' }}>
-                    <Icon name={icon} size={17} />
-                    <span className="flex-1">{label}</span>
-                    {href === '/dashboard/aprobaciones' && aprobCount > 0 && <Badge n={aprobCount} tone="danger" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </nav>
-
-      <div className="flex-1" />
-
-      {/* Aviso de créditos de IA: solo si el consultorio tiene IA contratada */}
-      {hasAI && credits && (credits.low || credits.empty) && (role === 'doctor' || role === 'admin') && (
-        <button
-          onClick={role === 'admin' ? () => router.push('/admin') : requestRecharge}
-          title={`Créditos de IA restantes: ${credits.remaining.toLocaleString('es-MX')}`}
-          className="hidden sm:flex items-center gap-2 text-[13px] font-medium px-3 py-1.5 rounded-lg flex-shrink-0"
-          style={{ color: credits.empty ? 'var(--c-danger)' : 'var(--c-warn)', border: '1px solid currentColor', background: 'var(--c-card)' }}
-        >
-          <span>{credits.empty ? 'Sin créditos de IA' : 'Créditos de IA bajos'}</span>
-          <span style={{ opacity: .75 }}>· {role === 'admin' ? 'Recargar' : (rechargeSent ? 'Solicitud enviada' : 'Solicitar recarga')}</span>
-        </button>
-      )}
-
-      {/* Ancla del chat del equipo — TeamChat monta aquí su botón (barra superior, siempre visible) */}
-      <div className="apex-chat-slot flex items-center" />
-
-      {/* Tema claro / oscuro (Lite y Pro) */}
-      <button onClick={toggleTheme} aria-label={oscuro ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
-        title={oscuro ? 'Tema claro' : 'Tema oscuro'}
-        className={`p-2 rounded-lg transition-colors ${hoverBg}`} style={{ color: fgSuave }}>
-        <Icon name={oscuro ? 'sun' : 'moon'} size={19} />
-      </button>
-
-      {/* Persona: nombre, rol y acceso al perfil */}
-      <button onClick={() => router.push('/dashboard/profile')} aria-label="Ver mi perfil"
-        className={`flex items-center gap-3 pl-3 pr-2 py-1.5 rounded-lg transition-colors ${hoverBg}`}>
-        <div className="text-right hidden md:block leading-tight">
-          <p className="text-[14px] font-semibold" style={{ color: fg }}>{userName}</p>
-          <p className="text-[12px]" style={{ color: fgSuave }}>{ROLE_LABELS[role]}</p>
-        </div>
-        {photoUrl ? (
-          <img src={photoUrl} alt="" className="w-10 h-10 rounded-full object-cover"
-            style={{ border: banda ? '2px solid rgba(255,255,255,0.55)' : '1px solid var(--c-border-2)' }} />
-        ) : (
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-semibold"
-            style={banda ? { background: 'rgba(255,255,255,0.18)', color: '#fff' } : { background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}>
-            {userName[0]?.toUpperCase() || 'D'}
-          </div>
-        )}
-      </button>
-
-      <button
-        onClick={async () => {
-          clearRoleCache(); clearBrandCache(); clearEntitlementsCache();
-          try { localStorage.removeItem('apex_plan'); document.documentElement.removeAttribute('data-plan'); } catch { /* sin storage */ }
-          await signOut(); router.push('/auth/login');
+    <>
+      {/* ── Barra superior limpia (sin menú horizontal abarrotado) ── */}
+      <header
+        className="fixed top-0 left-0 right-0 h-[72px] z-50 flex items-center px-4 md:px-6 gap-3 print:hidden"
+        style={{
+          background: banda ? 'var(--c-primary)' : 'var(--c-nav)',
+          borderBottom: banda ? 'none' : '1px solid var(--c-border)',
+          borderTop: '3px solid var(--c-accent)',
+          color: fg,
         }}
-        title="Cerrar sesión" aria-label="Cerrar sesión"
-        className={`p-2 rounded-lg transition-colors ${hoverBg}`}
-        style={{ color: fgSuave }}
       >
-        <Icon name="logout" size={18} />
-      </button>
-    </header>
+        {/* Botón menú móvil */}
+        <button
+          onClick={() => setMobileMenuOpen(o => !o)}
+          className={`md:hidden p-2 rounded-lg transition-colors ${hoverBg}`}
+          style={{ color: fg }}
+          aria-label="Abrir menú lateral"
+        >
+          <Icon name="more" size={20} />
+        </button>
+
+        {/* Identidad: logotipo COMPLETO del consultorio arriba a la izquierda + marca Apex */}
+        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-4 mr-2 flex-shrink-0 h-full" aria-label="Ir al inicio">
+          {logoSrc ? (
+            logoEnPlaca ? (
+              <span className="rounded-md bg-white px-2.5 py-1.5 flex items-center">
+                <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[40px] w-auto max-w-[190px] object-contain" />
+              </span>
+            ) : (
+              <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[52px] w-auto max-w-[230px] object-contain" />
+            )
+          ) : (
+            <span className="text-[19px] font-semibold tracking-tight max-w-[220px] truncate" style={{ color: banda ? '#fff' : 'var(--c-primary)' }}>
+              {brand?.name || 'Apex'}
+            </span>
+          )}
+          <span className="hidden sm:flex items-center gap-4">
+            <span className="w-px h-8" style={{ background: banda ? 'rgba(255,255,255,0.3)' : 'var(--c-border-2)' }} />
+            <span style={{ color: fgSuave }}><ApexLogo plan={planNombre(plan)} size="sm" /></span>
+          </span>
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Contador diario de IA en Plan Lite + acceso a versión Pro */}
+        {isLite && role === 'doctor' && dailyAi && (
+          <div className="hidden lg:flex items-center gap-2">
+            <span
+              className="text-[12px] font-medium px-3 py-1.5 rounded-lg"
+              style={{
+                background: banda ? 'rgba(255,255,255,0.14)' : 'var(--c-subtle)',
+                color: fg,
+                border: banda ? '1px solid rgba(255,255,255,0.22)' : '1px solid var(--c-border)',
+              }}
+              title="Preguntas y resúmenes con IA disponibles hoy en tu plan Lite"
+            >
+              ✦ IA Lite: {Math.max(0, dailyAi.limit - dailyAi.used)}/{dailyAi.limit} hoy
+            </span>
+            <button
+              onClick={() => router.push('/dashboard/pro')}
+              className="text-[12px] font-semibold px-3 py-1.5 rounded-lg transition-opacity hover:opacity-90"
+              style={{
+                background: banda ? '#ffffff' : 'var(--c-primary)',
+                color: banda ? 'var(--c-primary)' : 'var(--c-primary-fg)',
+              }}
+            >
+              ✦ Conocer versión Pro
+            </button>
+          </div>
+        )}
+
+        {/* Aviso de créditos de IA: solo si el consultorio tiene bolsa de créditos baja */}
+        {!isLite && hasAI && credits && (credits.low || credits.empty) && (role === 'doctor' || role === 'admin') && (
+          <button
+            onClick={role === 'admin' ? () => router.push('/admin') : requestRecharge}
+            title={`Créditos de IA restantes: ${credits.remaining.toLocaleString('es-MX')}`}
+            className="hidden sm:flex items-center gap-2 text-[13px] font-medium px-3 py-1.5 rounded-lg flex-shrink-0"
+            style={{ color: credits.empty ? 'var(--c-danger)' : 'var(--c-warn)', border: '1px solid currentColor', background: 'var(--c-card)' }}
+          >
+            <span>{credits.empty ? 'Sin créditos de IA' : 'Créditos de IA bajos'}</span>
+            <span style={{ opacity: .75 }}>· {role === 'admin' ? 'Recargar' : (rechargeSent ? 'Solicitud enviada' : 'Solicitar recarga')}</span>
+          </button>
+        )}
+
+        {/* Ancla del chat del equipo — TeamChat monta aquí su botón (barra superior, siempre visible) */}
+        <div className="apex-chat-slot flex items-center" />
+
+        {/* Tema claro / oscuro (Lite y Pro) */}
+        <button onClick={toggleTheme} aria-label={oscuro ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          title={oscuro ? 'Tema claro' : 'Tema oscuro'}
+          className={`p-2 rounded-lg transition-colors ${hoverBg}`} style={{ color: fgSuave }}>
+          <Icon name={oscuro ? 'sun' : 'moon'} size={19} />
+        </button>
+
+        {/* Persona: nombre, rol y acceso al perfil */}
+        <button onClick={() => router.push('/dashboard/profile')} aria-label="Ver mi perfil"
+          className={`flex items-center gap-3 pl-3 pr-2 py-1.5 rounded-lg transition-colors ${hoverBg}`}>
+          <div className="text-right hidden md:block leading-tight">
+            <p className="text-[14px] font-semibold" style={{ color: fg }}>{userName}</p>
+            <p className="text-[12px]" style={{ color: fgSuave }}>{ROLE_LABELS[role]}</p>
+          </div>
+          {photoUrl ? (
+            <img src={photoUrl} alt="" className="w-10 h-10 rounded-full object-cover"
+              style={{ border: banda ? '2px solid rgba(255,255,255,0.55)' : '1px solid var(--c-border-2)' }} />
+          ) : (
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-semibold"
+              style={banda ? { background: 'rgba(255,255,255,0.18)', color: '#fff' } : { background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}>
+              {userName[0]?.toUpperCase() || 'D'}
+            </div>
+          )}
+        </button>
+
+        <button
+          onClick={async () => {
+            clearRoleCache(); clearBrandCache(); clearEntitlementsCache();
+            try { localStorage.removeItem('apex_plan'); document.documentElement.removeAttribute('data-plan'); } catch { /* sin storage */ }
+            await signOut(); router.push('/auth/login');
+          }}
+          title="Cerrar sesión" aria-label="Cerrar sesión"
+          className={`p-2 rounded-lg transition-colors ${hoverBg}`}
+          style={{ color: fgSuave }}
+        >
+          <Icon name="logout" size={18} />
+        </button>
+      </header>
+
+      {/* ── Menú lateral izquierdo (todos los módulos activos para el cliente) ── */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden print:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      <aside
+        aria-label="Menú principal del consultorio"
+        className={`fixed top-[72px] bottom-0 left-0 w-[232px] z-40 flex flex-col justify-between py-4 px-3 overflow-y-auto transition-transform duration-200 print:hidden ${
+          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+        style={{
+          background: 'var(--c-card)',
+          borderRight: '1px solid var(--c-border)',
+        }}
+      >
+        <div className="space-y-1">
+          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
+            Módulos activos
+          </p>
+          {links.map(({ href, icon, label }) => {
+            const active = isActive(href);
+            return (
+              <button
+                key={href + label}
+                onClick={() => { setMobileMenuOpen(false); router.push(href); }}
+                aria-current={active ? 'page' : undefined}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium text-left transition-all"
+                style={{
+                  background: active ? 'color-mix(in srgb, var(--c-primary) 12%, transparent)' : 'transparent',
+                  color: active ? 'var(--c-primary)' : 'var(--c-text-2)',
+                  fontWeight: active ? 600 : 500,
+                  borderLeft: active ? '3px solid var(--c-primary)' : '3px solid transparent',
+                }}
+              >
+                <Icon name={icon} size={18} />
+                <span className="flex-1 truncate">{label}</span>
+                {href === '/dashboard/sala' && waitCount > 0 && <Badge n={waitCount} />}
+                {href === '/dashboard/aprobaciones' && aprobCount > 0 && <Badge n={aprobCount} tone="danger" />}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Pie del menú lateral: modalidad de equipo y acceso a versión Pro */}
+        <div className="pt-4 mt-4 space-y-2.5" style={{ borderTop: '1px solid var(--c-border)' }}>
+          {role === 'doctor' && (
+            <button
+              onClick={() => { setMobileMenuOpen(false); router.push('/dashboard/staff'); }}
+              className="w-full text-left px-3 py-2 rounded-xl transition-colors hover:bg-[var(--c-subtle)]"
+              style={{ border: '1px solid var(--c-border)' }}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
+                Modalidad del consultorio
+              </p>
+              <p className="text-[13px] font-semibold mt-0.5" style={{ color: 'var(--c-text)' }}>
+                {isSoloDoctor ? 'Médico individual' : `Equipo activo (${teamCount})`}
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--c-primary)' }}>
+                {isSoloDoctor ? '+ Agregar recepción o enfermería' : 'Configurar roles y permisos →'}
+              </p>
+            </button>
+          )}
+
+          {isLite && role === 'doctor' && (
+            <button
+              onClick={() => { setMobileMenuOpen(false); router.push('/dashboard/pro'); }}
+              className="w-full text-left p-3 rounded-xl transition-all hover:opacity-95"
+              style={{
+                background: 'color-mix(in srgb, var(--c-primary) 8%, var(--c-card))',
+                border: '1px solid color-mix(in srgb, var(--c-primary) 30%, var(--c-border))',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--c-primary)' }}>
+                  ✦ Apex Pro
+                </span>
+                <span className="text-[11px] font-semibold" style={{ color: 'var(--c-primary)' }}>Ver ventajas →</span>
+              </div>
+              <p className="text-[12px] mt-1 leading-snug" style={{ color: 'var(--c-text-2)' }}>
+                Medicina Funcional, Longevidad y diagnóstico asistido con IA.
+              </p>
+            </button>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }

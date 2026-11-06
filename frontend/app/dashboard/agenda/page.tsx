@@ -39,6 +39,7 @@ async function api(path: string, opts: RequestInit = {}) {
 }
 
 function monday(d: Date) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }
+function firstOfMonth(d: Date) { const x = new Date(d.getFullYear(), d.getMonth(), 1); x.setHours(0, 0, 0, 0); return x; }
 const pad = (n: number) => String(n).padStart(2, '0');
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const hm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -51,7 +52,9 @@ type Loc = { id: string; name: string; color?: string };
 type Ctx = { locations: Loc[]; doctors: { id: string; display_name: string }[]; role: string; can_manage: boolean; hours: Record<string, { weekday: number; open_min: number; close_min: number }[]> };
 
 export default function AgendaPage() {
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [wkStart, setWkStart] = useState(() => monday(new Date()));
+  const [monthStart, setMonthStart] = useState(() => firstOfMonth(new Date()));
   const [appts, setAppts] = useState<Appt[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [ctx, setCtx] = useState<Ctx | null>(null);
@@ -73,19 +76,39 @@ export default function AgendaPage() {
 
   const days7 = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(wkStart); d.setDate(d.getDate() + i); return d; }), [wkStart]);
 
+  // Celdas del calendario mensual (6 semanas completas de Lunes a Domingo)
+  const monthCells = useMemo(() => {
+    const startGrid = monday(monthStart);
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(startGrid);
+      d.setDate(d.getDate() + i);
+      return d;
+    });
+  }, [monthStart]);
+
   useEffect(() => { api('/appointments/context').then(setCtx).catch(e => flash(e.message)); }, []);
 
   const load = useCallback(async () => {
     try {
-      const desde = new Date(wkStart).toISOString();
-      const hasta = new Date(new Date(wkStart).setDate(wkStart.getDate() + 7)).toISOString();
+      let desde: string;
+      let hasta: string;
+      if (viewMode === 'month') {
+        const startGrid = monday(monthStart);
+        const endGrid = new Date(startGrid);
+        endGrid.setDate(endGrid.getDate() + 42);
+        desde = startGrid.toISOString();
+        hasta = endGrid.toISOString();
+      } else {
+        desde = new Date(wkStart).toISOString();
+        hasta = new Date(new Date(wkStart).setDate(wkStart.getDate() + 7)).toISOString();
+      }
       const qs = new URLSearchParams({ desde, hasta });
       if (fLoc) qs.set('location_id', fLoc);
       if (fDoc) qs.set('doctor_id', fDoc);
       const d = await api(`/appointments?${qs.toString()}`);
       setAppts(d.appointments || []); setBlocks(d.blocks || []);
     } catch (e: any) { flash(e.message); }
-  }, [wkStart, fLoc, fDoc]);
+  }, [viewMode, wkStart, monthStart, fLoc, fDoc]);
   useEffect(() => { load(); }, [load]);
 
   // Horarios visibles según la(s) sede(s) seleccionada(s)
@@ -298,12 +321,93 @@ export default function AgendaPage() {
       <main className="page-content pt-16 px-4 sm:px-6 py-6 max-w-[1100px] mx-auto">
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <h1 className="text-2xl font-serif font-semibold text-[#dde6ef]"> Agenda</h1>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setWkStart(w => { const x = new Date(w); x.setDate(x.getDate() - 7); return x; })} className="px-2.5 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef]">‹</button>
-            <button onClick={() => setWkStart(monday(new Date()))} className="px-3 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#00e5a0] text-sm">Hoy</button>
-            <button onClick={() => setWkStart(w => { const x = new Date(w); x.setDate(x.getDate() + 7); return x; })} className="px-2.5 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef]">›</button>
+
+          {/* Selector de vista: Semana | Mes */}
+          <div className="inline-flex rounded-xl bg-[#0d1520] border border-[#1e2d3d] p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode('week')}
+              className="px-3 py-1 rounded-lg text-xs font-semibold transition"
+              style={{
+                background: viewMode === 'week' ? 'var(--c-green)' : 'transparent',
+                color: viewMode === 'week' ? 'var(--c-primary-fg)' : 'var(--c-text-2)',
+              }}
+            >
+              Semana
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMonthStart(firstOfMonth(wkStart));
+                setViewMode('month');
+              }}
+              className="px-3 py-1 rounded-lg text-xs font-semibold transition"
+              style={{
+                background: viewMode === 'month' ? 'var(--c-green)' : 'transparent',
+                color: viewMode === 'month' ? 'var(--c-primary-fg)' : 'var(--c-text-2)',
+              }}
+            >
+              Mes
+            </button>
           </div>
-          <span className="text-sm text-[#7a95aa]">{days7[0].toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })} – {days7[6].toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+
+          {viewMode === 'week' ? (
+            <>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setWkStart(w => { const x = new Date(w); x.setDate(x.getDate() - 7); return x; })}
+                  className="px-2.5 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef] text-xs font-medium hover:border-[#00e5a0]"
+                  title="Saltar a la semana anterior"
+                >
+                  ‹ Semana ant.
+                </button>
+                <button
+                  onClick={() => setWkStart(monday(new Date()))}
+                  className="px-3 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#00e5a0] text-xs font-semibold"
+                >
+                  Hoy
+                </button>
+                <button
+                  onClick={() => setWkStart(w => { const x = new Date(w); x.setDate(x.getDate() + 7); return x; })}
+                  className="px-2.5 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef] text-xs font-medium hover:border-[#00e5a0]"
+                  title="Saltar a la semana siguiente"
+                >
+                  Semana sig. ›
+                </button>
+              </div>
+              <span className="text-sm text-[#7a95aa] font-medium">
+                {days7[0].toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })} – {days7[6].toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setMonthStart(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                  className="px-2.5 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef] text-xs font-medium hover:border-[#00e5a0]"
+                  title="Saltar al mes anterior"
+                >
+                  ‹ Mes ant.
+                </button>
+                <button
+                  onClick={() => setMonthStart(firstOfMonth(new Date()))}
+                  className="px-3 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#00e5a0] text-xs font-semibold"
+                >
+                  Mes actual
+                </button>
+                <button
+                  onClick={() => setMonthStart(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                  className="px-2.5 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef] text-xs font-medium hover:border-[#00e5a0]"
+                  title="Saltar al mes siguiente"
+                >
+                  Mes sig. ›
+                </button>
+              </div>
+              <span className="text-sm text-[#dde6ef] font-semibold capitalize">
+                {monthStart.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
+              </span>
+            </>
+          )}
           <div className="flex-1" />
           {ctx && ctx.locations.length > 0 && (
             <select value={fLoc} onChange={e => setFLoc(e.target.value)} className="px-3 py-1.5 rounded-lg bg-[#0d1520] border border-[#1e2d3d] text-[#dde6ef] text-sm">
@@ -342,7 +446,115 @@ export default function AgendaPage() {
         {blockMode && <p className="text-[12px] text-[#f43f5e] mb-2">Modo bloqueo: arrastra sobre un horario para bloquearlo, o toca el encabezado de un día para bloquearlo completo.</p>}
         {msg && <div className="mb-3 text-sm px-4 py-2 rounded-lg bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-[#f43f5e]">{msg}</div>}
 
-        {days.length === 0 ? (
+        {viewMode === 'month' ? (
+          <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl overflow-hidden select-none">
+            {/* Encabezado de días Lun - Dom */}
+            <div className="grid grid-cols-7 border-b border-[#1e2d3d] bg-[#111820]">
+              {DIAS.map((d, i) => (
+                <div key={i} className="py-2 text-center text-xs font-mono text-[#7a95aa] border-r last:border-r-0 border-[#1e2d3d]">
+                  {d}
+                </div>
+              ))}
+            </div>
+            {/* Cuadrícula de 6 semanas (42 días) */}
+            <div className="grid grid-cols-7">
+              {monthCells.map((day, idx) => {
+                const dayStr = ymd(day);
+                const inMonth = day.getMonth() === monthStart.getMonth();
+                const isToday = dayStr === today;
+                const dayAppts = appts
+                  .filter(a => ymd(new Date(a.starts_at)) === dayStr && a.status !== 'cancelled')
+                  .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at));
+                const dayBlocks = blocks.filter(b => ymd(new Date(b.starts_at)) === dayStr);
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      if (blockMode) {
+                        blockWholeDay(day);
+                        return;
+                      }
+                      const start = new Date(day);
+                      start.setHours(9, 0, 0, 0);
+                      const end = new Date(+start + 30 * 60000);
+                      openCreateRange(start, end);
+                    }}
+                    className={`min-h-[108px] border-b border-r border-[#1e2d3d] p-1.5 flex flex-col gap-1 cursor-pointer hover:bg-[#111820]/70 transition ${
+                      !inMonth ? 'opacity-40 bg-[#070a0e]/40' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setWkStart(monday(day));
+                          setViewMode('week');
+                        }}
+                        title="Ver esta semana a detalle"
+                        className="text-xs font-bold px-1.5 py-0.5 rounded-md hover:underline"
+                        style={{
+                          background: isToday ? 'var(--c-green)' : 'transparent',
+                          color: isToday ? 'var(--c-primary-fg)' : 'var(--c-text)',
+                        }}
+                      >
+                        {day.getDate()}
+                      </button>
+                      {dayAppts.length > 0 && (
+                        <span className="text-[10px] font-mono text-[#7a95aa]">
+                          {dayAppts.length} cita{dayAppts.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {dayBlocks.length > 0 && (
+                      <div className="text-[9px] px-1.5 py-0.5 rounded bg-[#f43f5e]/15 text-[#f43f5e] border border-[#f43f5e]/30 truncate">
+                        Bloqueado {dayBlocks[0].reason ? `· ${dayBlocks[0].reason}` : ''}
+                      </div>
+                    )}
+                    <div className="space-y-1 overflow-y-auto max-h-[76px]">
+                      {dayAppts.slice(0, 3).map(a => {
+                        const s = new Date(a.starts_at);
+                        const col = locColor(a.location_id);
+                        return (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              openEdit(a);
+                            }}
+                            className="w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate block"
+                            style={{
+                              background: mix(col, 18),
+                              borderLeft: `2.5px solid ${col}`,
+                              color: 'var(--c-text)',
+                            }}
+                          >
+                            <span className="font-mono text-[9px] opacity-80">{hm(s)}</span> {a.patient_name}
+                          </button>
+                        );
+                      })}
+                      {dayAppts.length > 3 && (
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setWkStart(monday(day));
+                            setViewMode('week');
+                          }}
+                          className="text-[10px] font-mono text-[#00e5a0] hover:underline pl-1"
+                        >
+                          +{dayAppts.length - 3} más →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : days.length === 0 ? (
           <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-8 text-center text-[#7a95aa]">
             No hay horario de consultas configurado para esta semana.
             {ctx?.can_manage && <button onClick={() => setHoursModal(true)} className="block mx-auto mt-3 px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}>Configurar horario</button>}

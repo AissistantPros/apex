@@ -18,23 +18,27 @@ from services import plans  # noqa: E402
 class TestPlanLite(unittest.TestCase):
     def test_lite_solo_control(self):
         on = {k for k, v in plans.preset_features("apex_lite").items() if v}
-        self.assertEqual(on, {"agenda", "pacientes", "consulta", "contabilidad", "documentos"})
+        self.assertEqual(on, {"agenda", "pacientes", "consulta", "contabilidad", "documentos", "chat_equipo", "ia_lite"})
 
-    def test_lite_sin_ia_ni_marketing(self):
+    def test_lite_sin_ia_consulta_ni_marketing(self):
         feats = plans.preset_features("apex_lite")
-        for f in plans.FEATURES:
-            if f.startswith("ia_") or f in ("marketing", "biblioteca", "sala_espera", "chat_equipo"):
-                self.assertFalse(feats[f], f)
+        self.assertTrue(feats["chat_equipo"])
+        self.assertTrue(feats["ia_lite"])
+        for f in ("ia_consulta", "ia_funcional", "ia_longevidad", "ia_estudios", "ia_reportes", "marketing", "biblioteca", "sala_espera"):
+            self.assertFalse(feats[f], f)
 
     def test_lite_tiene_etiqueta_y_limites(self):
         self.assertIn("apex_lite", plans.PLAN_LABELS)
-        self.assertEqual(plans.DEFAULT_LIMITS["apex_lite"], {"max_users": 3, "max_locations": 1})
+        self.assertEqual(plans.DEFAULT_LIMITS["apex_lite"], {"max_users": 3, "max_locations": 1, "daily_ai_messages": 50})
 
     def test_entitlements_de_clinica_lite_sin_creditos(self):
         ent = plans.entitlements_for_clinic({"plan": "apex_lite", "features": {}, "ai_credits": 0})
         self.assertEqual(ent["plan"], "apex_lite")
         self.assertFalse(ent["features"]["ia_consulta"])
+        self.assertTrue(ent["features"]["ia_lite"])
+        self.assertTrue(ent["features"]["chat_equipo"])
         self.assertTrue(ent["features"]["pacientes"])
+        self.assertEqual(ent["ai_daily_limit"], 50)
 
     def test_otros_planes_no_cambian(self):
         self.assertTrue(plans.preset_features("apex")["ia_consulta"])

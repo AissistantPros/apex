@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getUser, getSession, onAuthStateChange } from '@/app/lib/auth';
 import NoteThread, { Note } from '@/app/components/NoteThread';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
+import { useEntitlements } from '@/app/lib/useEntitlements';
 import { esFuncionalCompleta } from '../DeepFunctionalIntake';
 import { getRole } from '@/app/lib/role';
 import DynamicQuestions, { DynAnswer } from '@/app/components/DynamicQuestions';
@@ -181,6 +182,7 @@ const PHASES_BY_ROLE: Record<string, number[]> = {
 function FlowPageInner() {
   const router     = useRouter();
   const { displayName: docName } = useDoctorProfile();
+  const { lite, team } = useEntitlements();
   const [user, setUser]         = useState<any>(null);
   const [token, setToken]       = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState('');
@@ -801,8 +803,9 @@ function FlowPageInner() {
           email: f.factura_email, direccion: f.factura_direccion,
         },
         ...(careType ? { care_type: careType } : {}),
-        registration_phase: 'reception',
-        phases_completed: ['receptionist'],
+        // Si la clínica tiene recepcionista pero NO tiene enfermería, pasa directo al médico
+        registration_phase: (userRole === 'receptionist' && !team.has_nurse) ? 'nursing' : 'reception',
+        phases_completed: (userRole === 'receptionist' && !team.has_nurse) ? ['receptionist', 'nurse'] : ['receptionist'],
       };
       const authH: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) authH['Authorization'] = `Bearer ${token}`;
@@ -836,7 +839,7 @@ function FlowPageInner() {
             headers: authH,
             body: JSON.stringify({
               content: pendingNote.trim(),
-              author_role: 'receptionist',
+              author_role: userRole === 'receptionist' ? 'receptionist' : 'doctor',
               author_name: docName,
             }),
           });
@@ -848,6 +851,8 @@ function FlowPageInner() {
         setPendingNote('');
       }
 
+      const destinoStaff = team.has_nurse ? 'al área de enfermería' : 'directamente al médico';
+
       if (isEditMode) {
         // En edición solo se guardan los cambios: no se registra visita ni se "pasa" a otra fase.
         setHandoff({
@@ -858,24 +863,26 @@ function FlowPageInner() {
       } else if (userRole === 'receptionist') {
         // Orden deseado: guardar → popup de NOTA → selector de tipo → home.
         if (careType) {
-          // Ya está clasificado: nota y a home (el selector ya no hace falta).
           setHandoff({
             titulo: `${f.first_name} ${f.last_name} ha sido guardado`,
-            sub: 'Se enviará al área de enfermería. ¿Deseas dejar una nota antes de terminar?',
+            sub: `Se enviará ${destinoStaff}. ¿Deseas dejar una nota antes de terminar?`,
             next: 'home',
           });
         } else {
-          // Nota primero; al continuar, se muestra el selector de tipo de atención.
           setHandoff({
             titulo: `${f.first_name} ${f.last_name} ha sido guardado`,
-            sub: 'Antes de enviarlo a enfermería, ¿deseas dejar una nota?',
+            sub: `Antes de enviarlo ${destinoStaff}, ¿deseas dejar una nota?`,
             next: 'bifurcation',
           });
         }
       } else if (careType) {
-        setPhase(2);
+        if (lite && newId) {
+          router.push(`/dashboard/patient/${newId}/consulta`);
+        } else {
+          setPhase(2);
+        }
       } else {
-        // Doctor de captura completa sin clasificar: selector y luego continúa a enfermería.
+        // Doctor de captura completa sin clasificar: selector y luego continúa a consulta o antecedentes.
         setShowBifurcation(true);
       }
     } catch (e: any) {
@@ -887,6 +894,10 @@ function FlowPageInner() {
 
   // ── BIFURCACIÓN: clasificar al paciente ──────────────────────────────────────
   const elegirCareType = async (tipo: 'comun' | 'funcional_longevidad') => {
+    if (lite && tipo === 'funcional_longevidad') {
+      router.push('/dashboard/pro');
+      return;
+    }
     setCareType(tipo);
     setShowBifurcation(false);
     if (patientId) {
@@ -899,9 +910,11 @@ function FlowPageInner() {
       } catch (_) {}
     }
     // Recepción termina aquí: la nota ya se pidió antes del selector, así que vuelve a home
-    // directamente. El médico (o quien haga toda la captura) continúa a la fase de enfermería.
+    // directamente. En versión Lite el médico puede pasar directo a su Consulta Lite o llenar Fase 2.
     if (userRole === 'receptionist') {
       router.push('/dashboard');
+    } else if (lite && patientId) {
+      router.push(`/dashboard/patient/${patientId}/consulta`);
     } else {
       setPhase(2);
     }
@@ -1243,27 +1256,83 @@ function FlowPageInner() {
               Esto define la profundidad de la entrevista. Se puede cambiar después.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <button onClick={() => elegirCareType('comun')}
-                className="text-left bg-[#0d1520] border border-[#1e2d3d] hover:border-[#0ea5e9] rounded-2xl p-6 transition group">
-                <div className="text-4xl mb-3"></div>
-                <p className="text-lg font-semibold text-[#dde6ef] mb-1">Consulta común</p>
-                <p className="text-sm text-[#7a95aa] leading-relaxed">
-                  Motivo de consulta puntual. Historia clínica completa de médico general, con un plus
-                  ligero (sueño, energía, estrés, hábitos). Entrevista ágil.
-                </p>
-                <p className="text-xs text-[#0ea5e9] mt-4 font-semibold">Entrevista estándar →</p>
-              </button>
-              <button onClick={() => elegirCareType('funcional_longevidad')}
-                className="text-left bg-[#0d1520] border border-[#00e5a0]/40 hover:border-[#00e5a0] rounded-2xl p-6 transition group"
-                style={{ boxShadow: '0 0 0 1px rgba(0,229,160,.08)' }}>
-                <div className="text-4xl mb-3"></div>
-                <p className="text-lg font-semibold text-[#dde6ef] mb-1">Medicina Funcional y Longevidad</p>
-                <p className="text-sm text-[#7a95aa] leading-relaxed">
-                  El paquete completo: las 5 palancas a detalle, línea de tiempo de salud, microbioma,
-                  tóxicos, conexión social y disponibilidad de estudios óptimos.
-                </p>
-                <p className="text-xs text-[#00e5a0] mt-4 font-semibold">Entrevista profunda →</p>
-              </button>
+              <div className="bg-[#0d1520] border border-[#1e2d3d] hover:border-[#0ea5e9] rounded-2xl p-6 transition flex flex-col justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-[#dde6ef] mb-1">Consulta común</p>
+                  <p className="text-sm text-[#7a95aa] leading-relaxed">
+                    Motivo de consulta puntual. Historia clínica completa de médico general, signos vitales,
+                    exploración, diagnóstico, receta manual imprimible y envío de cobro a mostrador.
+                  </p>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => elegirCareType('comun')}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold transition hover:opacity-90"
+                    style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                  >
+                    {lite && userRole !== 'receptionist' ? 'Ir directo a Consulta →' : 'Continuar →'}
+                  </button>
+                  {lite && userRole !== 'receptionist' && (
+                    <button
+                      onClick={async () => {
+                        setCareType('comun');
+                        setShowBifurcation(false);
+                        setPhase(2);
+                      }}
+                      className="px-3.5 py-2.5 rounded-xl text-xs font-medium transition hover:bg-[var(--c-subtle)]"
+                      style={{ color: 'var(--c-text-2)', border: '1px solid var(--c-border)' }}
+                    >
+                      Capturar antecedentes extendidos
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {lite ? (
+                <button
+                  onClick={() => router.push('/dashboard/pro')}
+                  className="text-left bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 transition relative overflow-hidden group flex flex-col justify-between"
+                  style={{ opacity: 0.72 }}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-lg font-semibold text-[#dde6ef]">Medicina Funcional y Longevidad</p>
+                      <span
+                        className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider flex-shrink-0"
+                        style={{
+                          background: 'color-mix(in srgb, var(--c-primary) 16%, transparent)',
+                          color: 'var(--c-primary)',
+                          border: '1px solid color-mix(in srgb, var(--c-primary) 38%, transparent)',
+                        }}
+                      >
+                        ✦ Solo en la versión Pro
+                      </span>
+                    </div>
+                    <p className="text-sm text-[#7a95aa] leading-relaxed">
+                      El paquete completo con IA diagnóstica en vivo: las 5 palancas a detalle, línea de tiempo
+                      de salud, microbioma, péptidos, suplementación avanzada y síntesis por fases.
+                    </p>
+                  </div>
+                  <div className="mt-5 pt-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--c-border)' }}>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--c-primary)' }}>
+                      Conocer las ventajas incluidas en Apex Pro →
+                    </span>
+                  </div>
+                </button>
+              ) : (
+                <button onClick={() => elegirCareType('funcional_longevidad')}
+                  className="text-left bg-[#0d1520] border border-[#00e5a0]/40 hover:border-[#00e5a0] rounded-2xl p-6 transition group flex flex-col justify-between"
+                  style={{ boxShadow: '0 0 0 1px rgba(0,229,160,.08)' }}>
+                  <div>
+                    <p className="text-lg font-semibold text-[#dde6ef] mb-1">Medicina Funcional y Longevidad</p>
+                    <p className="text-sm text-[#7a95aa] leading-relaxed">
+                      El paquete completo: las 5 palancas a detalle, línea de tiempo de salud, microbioma,
+                      tóxicos, conexión social y disponibilidad de estudios óptimos.
+                    </p>
+                  </div>
+                  <p className="text-xs text-[#00e5a0] mt-4 font-semibold">Entrevista profunda →</p>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1272,13 +1341,19 @@ function FlowPageInner() {
       <main className="pt-16 min-h-screen">
         <div className="page-content px-4 py-8 pb-36">
 
-          {/* Stepper — solo las fases que el rol puede ver */}
+          {/* Stepper — adaptado dinámicamente a si el médico está solo o tiene recepción / enfermería */}
           <div className="flex gap-2 mb-2">
             {allowedPhases.map(p => {
               const cfg = PHASE_CONFIG[p as 1|2|3];
               const done = p < phase;
               const active = p === phase;
               const canClick = allowedPhases.includes(p) && (p < phase || isEditMode);
+              const stepLabel =
+                p === 1
+                  ? (team.has_receptionist ? 'Recepción (Datos y Contacto)' : '1. Datos y Contacto')
+                  : p === 2
+                    ? (team.has_nurse ? 'Enfermería (Signos y Antecedentes)' : '2. Signos y Antecedentes')
+                    : '3. Consulta Médica';
               return (
                 <button key={p}
                   onClick={() => { if (canClick) setPhase(p); }}
@@ -1289,7 +1364,7 @@ function FlowPageInner() {
                     color: active || done || isEditMode ? 'var(--c-primary-fg)' : 'var(--c-text-2)',
                     opacity: !canClick && !active ? 0.4 : 1,
                   }}>
-                  {done ? '✓ ' : ''}{p === 1 ? 'Recepción' : p === 2 ? 'Enfermería' : 'Médico'}
+                  {done ? '✓ ' : ''}{stepLabel}
                 </button>
               );
             })}
