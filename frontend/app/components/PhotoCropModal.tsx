@@ -80,11 +80,6 @@ export default function PhotoCropModal({
     if (!naturalSize || !imgRef.current) return;
     setSaving(true);
     try {
-      const scale = baseScale * zoom;
-      const srcSize = VIEWPORT / scale;
-      const srcX = (dispW / 2 - VIEWPORT / 2 - pan.x) / scale;
-      const srcY = (dispH / 2 - VIEWPORT / 2 - pan.y) / scale;
-
       // El tamaño de salida es como máximo maxDimension (ej. 800px)
       const targetSize = Math.min(maxDimension, 800);
       const canvas = document.createElement('canvas');
@@ -95,7 +90,22 @@ export default function PhotoCropModal({
       // Fondo blanco en caso de transparencias
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, targetSize, targetSize);
-      ctx.drawImage(imgRef.current, srcX, srcY, srcSize, srcSize, 0, 0, targetSize, targetSize);
+
+      // Escala exacta entre el viewport interactivo y el canvas de salida
+      const ratio = targetSize / VIEWPORT;
+
+      ctx.save();
+      // Centrar sistema de coordenadas en el canvas
+      ctx.translate(targetSize / 2, targetSize / 2);
+      // Aplicar pan y zoom proporcionales exactamente como se ve en la pantalla
+      ctx.translate(pan.x * ratio, pan.y * ratio);
+      ctx.scale(zoom, zoom);
+
+      // Dibujar imagen centrada conservando rigurosamente su relación de aspecto natural (cero deformación)
+      const drawW = naturalSize.w * baseScale * ratio;
+      const drawH = naturalSize.h * baseScale * ratio;
+      ctx.drawImage(imgRef.current, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
 
       let quality = 0.82;
       let mimeType = format;
@@ -113,7 +123,7 @@ export default function PhotoCropModal({
         dataUrl = canvas.toDataURL(mimeType, quality);
       }
 
-      // 2. Si todavía excede 80 KB, reducir dimensiones progresivamente
+      // 2. Si todavía excede 80 KB, reducir dimensiones progresivamente manteniendo siempre 1:1
       let outSize = targetSize;
       let currentCanvas: HTMLCanvasElement = canvas;
       while (bytesOf(dataUrl) > maxBytes && outSize > 240) {
@@ -172,7 +182,7 @@ export default function PhotoCropModal({
               alt="recorte"
               onLoad={handleImgLoad}
               draggable={false}
-              className="absolute top-1/2 left-1/2 select-none pointer-events-none"
+              className="absolute top-1/2 left-1/2 select-none pointer-events-none max-w-none max-h-none"
               style={{
                 width: naturalSize ? naturalSize.w * baseScale : 'auto',
                 height: naturalSize ? naturalSize.h * baseScale : 'auto',

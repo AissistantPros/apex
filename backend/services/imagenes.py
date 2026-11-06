@@ -27,6 +27,7 @@ PERFILES = {
     "logo":          {"max": (640, 240),   "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
     "logo_dark":     {"max": (640, 240),   "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
     "patient_photo": {"max": (1400, 1400), "cuadrada": False, "calidad": 85, "alfa": False, "sin_perdida": False, "dir": "expediente"},
+    "staff_photo":   {"max": (800, 800),   "cuadrada": True,  "calidad": 82, "alfa": False, "sin_perdida": False, "dir": "staff", "max_bytes": 80 * 1024},
 }
 LOGOS = ("logo", "logo_dark")
 
@@ -75,6 +76,26 @@ def procesar(data: bytes, kind: str) -> tuple[bytes, tuple[int, int]]:
         im.save(buf, format="WEBP", lossless=True, quality=100, method=6)
     else:
         im.save(buf, format="WEBP", quality=perfil["calidad"], method=6)
+
+    max_bytes = perfil.get("max_bytes")
+    if max_bytes and not perfil["sin_perdida"] and len(buf.getvalue()) > max_bytes:
+        calidad = perfil["calidad"]
+        while len(buf.getvalue()) > max_bytes and calidad > 38:
+            calidad -= 8
+            buf = io.BytesIO()
+            im.save(buf, format="WEBP", quality=calidad, method=6)
+        if len(buf.getvalue()) > max_bytes:
+            w, h = im.size
+            while len(buf.getvalue()) > max_bytes and min(w, h) > 200:
+                w = max(100, int(w * 0.85))
+                h = max(100, int(h * 0.85))
+                im_red = im.resize((w, h), Image.LANCZOS)
+                buf = io.BytesIO()
+                im_red.save(buf, format="WEBP", quality=calidad, method=6)
+                if len(buf.getvalue()) <= max_bytes:
+                    im = im_red
+                    break
+
     return buf.getvalue(), im.size
 
 

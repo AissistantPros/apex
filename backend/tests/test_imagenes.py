@@ -49,6 +49,25 @@ class TestProcesar(unittest.TestCase):
         self.assertLess(len(webp), 30 * 1024)
         self.assertLess(len(webp), len(original) / 20)
 
+    def test_foto_staff_grande_queda_cuadrada_800_y_menor_a_80kb(self):
+        original = png(2400, 2400)
+        webp, size = imagenes.procesar(original, "staff_photo")
+        im = abre(webp)
+        self.assertEqual(im.format, "WEBP")
+        self.assertEqual(size[0], size[1])  # Rigurosamente cuadrada
+        self.assertLessEqual(size[0], 800)
+        self.assertLessEqual(len(webp), 80 * 1024)  # Garantizado < 80 KB
+
+    def test_foto_staff_rectangular_se_recorta_al_rostro_sin_deformar(self):
+        # Foto panorámica rectangular 16:9
+        original = png(1920, 1080)
+        webp, size = imagenes.procesar(original, "staff_photo")
+        im = abre(webp)
+        self.assertEqual(im.format, "WEBP")
+        self.assertEqual(size, (800, 800))
+        self.assertEqual(im.size, (800, 800))  # Aspect ratio 1:1, sin deformación
+        self.assertLessEqual(len(webp), 80 * 1024)
+
     def test_foto_rectangular_se_recorta_al_centro(self):
         webp, size = imagenes.procesar(png(1200, 600), "photo")
         self.assertEqual(size, (256, 256))

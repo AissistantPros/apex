@@ -241,10 +241,10 @@ function MemberCard({ member: m, onEdit, onRegen, onDelete }: { member: any; onE
     <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 flex flex-col justify-between hover:border-[#2a3e52] transition-all group">
       <div>
         <div className="flex flex-col items-center text-center pb-3">
-          <div className="w-20 h-20 rounded-full overflow-hidden bg-[#111820] border-2 flex items-center justify-center text-2xl shadow-inner mb-3 relative"
+          <div className="w-20 h-20 rounded-full overflow-hidden bg-[#111820] border-2 flex items-center justify-center text-2xl shadow-inner mb-3 relative shrink-0"
             style={{ borderColor: `${roleColor}66` }}>
             {m.photo_url ? (
-              <img src={m.photo_url} alt={m.display_name} className="w-full h-full object-cover" />
+              <img src={m.photo_url} alt={m.display_name} className="w-full h-full object-cover rounded-full" />
             ) : (
               <span className="font-bold text-lg" style={{ color: roleColor }}>
                 {(m.display_name || '?').trim()[0]?.toUpperCase() || '?'}

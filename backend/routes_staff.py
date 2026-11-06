@@ -144,62 +144,27 @@ async def upload_staff_photo(
     file: UploadFile = File(...),
     authorization: Optional[str] = Header(None),
 ):
-    """Sube y optimiza la foto del colaborador: recorte a máx. 800px, WebP y < 80 KB."""
+    """Sube y optimiza la foto del colaborador: recorte facial proporcional a máx. 800px, WebP y < 80 KB sin deformación."""
     actor = get_actor(authorization)
     _require_manage(actor)
     data = await file.read(12 * 1024 * 1024)
     if not data:
         raise HTTPException(400, "El archivo está vacío")
     try:
-        from PIL import Image, ImageOps
-
-        im = Image.open(io.BytesIO(data))
-        im.load()
-        im = ImageOps.exif_transpose(im)
-        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
-            base = Image.new("RGB", im.size, (255, 255, 255))
-            base.paste(im.convert("RGBA"), mask=im.convert("RGBA").split()[-1])
-            im = base
-        else:
-            im = im.convert("RGB")
-
-        # Máximo 800px en su lado más grande
-        max_dim = 800
-        if max(im.size) > max_dim:
-            im.thumbnail((max_dim, max_dim), Image.LANCZOS)
-
-        # Convertir a WebP asegurando < 80 KB
-        quality = 82
-        buf = io.BytesIO()
-        im.save(buf, format="WEBP", quality=quality, method=6)
-        webp_bytes = buf.getvalue()
-
-        while len(webp_bytes) > 80 * 1024 and quality > 35:
-            quality -= 8
-            buf = io.BytesIO()
-            im.save(buf, format="WEBP", quality=quality, method=6)
-            webp_bytes = buf.getvalue()
-
-        cur_w, cur_h = im.size
-        while len(webp_bytes) > 80 * 1024 and cur_w > 200:
-            cur_w = int(cur_w * 0.85)
-            cur_h = int(cur_h * 0.85)
-            im = im.resize((cur_w, cur_h), Image.LANCZOS)
-            buf = io.BytesIO()
-            im.save(buf, format="WEBP", quality=quality, method=6)
-            webp_bytes = buf.getvalue()
-
-        # Subir a Supabase Storage
-        asegurar_bucket()
-        uid_hex = secrets.token_hex(6)
+        from services import imagenes
+        webp_bytes, (w, h) = imagenes.procesar(data, "staff_photo")
         clinic_id = actor.get("clinic_id") or actor.get("doctor_id") or "staff"
-        path = f"staff/{clinic_id}/avatar-{uid_hex}.webp"
-        _storage().from_(BUCKET).upload(
-            path, webp_bytes,
-            {"content-type": "image/webp", "cache-control": "31536000", "upsert": "true"}
-        )
-        url = url_publica(path)
-        return {"ok": True, "url": url, "bytes": len(webp_bytes), "width": im.width, "height": im.height}
+        path = imagenes.ruta("staff_photo", clinic_id, webp_bytes)
+        url = imagenes.subir(path, webp_bytes)
+        return {"ok": True, "url": url, "bytes": len(webp_bytes), "width": w, "height": h}
+    except Exception as e:
+        from services.imagenes import ImagenInvalida
+        if isinstance(e, ImagenInvalida):
+            raise HTTPException(400, str(e))
+        if isinstance(e, HTTPException):
+            raise
+        print(f"[ERROR] upload_staff_photo: {e}")
+        raise HTTPException(500, f"Error al procesar la fotografía: {str(e)[:150]}")
     except HTTPException:
         raise
     except Exception as e:
