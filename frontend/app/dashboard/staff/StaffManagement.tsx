@@ -57,9 +57,44 @@ function LevelPicker({ value, onChange }: { value: PermLevel; onChange: (v: Perm
   );
 }
 
-function CredModal({ cred, onClose }: { cred: { usuario: string; password: string; nombre?: string; regen?: boolean }; onClose: () => void }) {
-  const [copied, setCopied] = useState('');
-  const copy = (t: string, k: string) => { navigator.clipboard?.writeText(t); setCopied(k); setTimeout(() => setCopied(''), 1500); };
+function CredModal({ cred, onClose }: { cred: { usuario: string; password: string; nombre?: string; phone?: string; regen?: boolean }; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const loginUrl = `${origin}/auth/login`;
+
+  const accessText = `¡Hola${cred.nombre ? ` ${cred.nombre}` : ''}! Aquí tienes tus datos de acceso para Apex:
+
+🔗 Enlace de ingreso: ${loginUrl}
+👤 Usuario: ${cred.usuario}
+🔑 Contraseña: ${cred.password}
+
+Por seguridad, guarda estos datos en un lugar seguro.`;
+
+  const cleanPhone = (cred.phone || '').replace(/[^0-9]/g, '');
+  const waUrl = cleanPhone.length >= 10
+    ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(accessText)}`
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(accessText)}`;
+
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(accessText);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = accessText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Fallback
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4 backdrop-blur-md" onClick={onClose}>
       <div className="bg-[#0d1520] border-2 border-[#00e5a0]/50 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
@@ -72,29 +107,55 @@ function CredModal({ cred, onClose }: { cred: { usuario: string; password: strin
         </div>
 
         <p className="text-xs text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-xl p-3 leading-relaxed">
-          ⚠️ <strong>Copia y comparte estas credenciales con tu colaborador ahora.</strong> Por seguridad la contraseña no se almacena en texto plano; después solo podrá ser regenerada.
+          ⚠️ <strong>Por seguridad, la contraseña no se almacena en texto plano.</strong> Comparte estos accesos ahora con tu colaborador antes de cerrar esta ventana.
         </p>
 
-        {[['Usuario de acceso', cred.usuario, 'u'], ['Contraseña temporal', cred.password, 'p']].map(([label, val, k]) => (
-          <div key={k}>
-            <p className="text-[10px] font-mono text-[#7a95aa] uppercase mb-1">{label}</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-sm text-[#00e5a0] font-mono font-bold break-all select-all">{val}</code>
-              <button
-                type="button"
-                onClick={() => copy(val as string, k as string)}
-                className="px-3.5 py-2.5 rounded-xl text-xs font-bold transition active:scale-95 shrink-0"
-                style={{ background: copied === k ? C.green : '#1e2d3d', color: copied === k ? '#051b14' : '#dde6ef' }}
-              >
-                {copied === k ? '✓ Copiado' : 'Copiar'}
-              </button>
+        {/* Resumen limpio de credenciales */}
+        <div className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-4 space-y-3">
+          <div>
+            <span className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-0.5">Enlace de ingreso</span>
+            <span className="text-xs text-[#38bdf8] font-mono break-all">{loginUrl}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1e2d3d]">
+            <div>
+              <span className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-0.5">Usuario</span>
+              <code className="text-sm text-[#00e5a0] font-mono font-bold break-all select-all">{cred.usuario}</code>
+            </div>
+            <div>
+              <span className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-0.5">Contraseña</span>
+              <code className="text-sm text-[#00e5a0] font-mono font-bold break-all select-all">{cred.password}</code>
             </div>
           </div>
-        ))}
+        </div>
 
-        <div className="pt-2">
-          <button onClick={onClose} className={`${btn} w-full`} style={{ background: C.green, color: '#051b14' }}>
-            ✓ Listo, credenciales guardadas
+        {/* Acciones principales: un solo botón de copiado + WhatsApp */}
+        <div className="space-y-2 pt-1">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm active:scale-95"
+            style={{ background: copied ? '#38bdf8' : '#00e5a0', color: '#051b14' }}
+          >
+            <span>{copied ? '✓' : '📋'}</span>
+            <span>{copied ? '¡Accesos copiados al portapapeles!' : 'Copiar accesos'}</span>
+          </button>
+
+          <a
+            href={waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-bold bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/40 text-[#25D366] transition flex items-center justify-center gap-2 active:scale-95 text-center"
+          >
+            <span>💬</span>
+            <span>Enviar por WhatsApp</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full min-h-[38px] px-4 py-2 rounded-xl text-xs font-semibold bg-[#111820] border border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] transition"
+          >
+            Listo, cerrar
           </button>
         </div>
       </div>
@@ -147,7 +208,7 @@ export default function StaffManagement() {
     if (!confirm(`¿Generar una nueva contraseña para ${m.display_name}? La actual dejará de funcionar.`)) return;
     try {
       const r = await api(`/staff/${m.id}/password`, { method: 'POST' });
-      setCred({ usuario: r.usuario, password: r.password, nombre: m.display_name, regen: true });
+      setCred({ usuario: r.usuario, password: r.password, nombre: m.display_name, phone: m.phone, regen: true });
     } catch (e: any) { flash(e.message); }
   };
 
