@@ -149,32 +149,10 @@ export default function ClinicPage() {
     <div className="min-h-screen bg-[#070a0e] text-[#dde6ef]">
       <main className="page-content pt-16 px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-6">
         {/* Cabecera Principal Limpia */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#1e2d3d]/60">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#dde6ef]">
-                {esRecepcion ? 'Caja & Cobros' : 'Mi Consultorio'}
-              </h1>
-            </div>
-          </div>
-
-          {/* Botones de Acción Rápida en Cabecera */}
-          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 sm:pb-0">
-            <button
-              onClick={() => setShowModalIngreso(true)}
-              className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c]`}
-            >
-              <span className="text-base font-bold leading-none">+</span>
-              <span>Registrar Ingreso</span>
-            </button>
-            <button
-              onClick={() => setShowModalGasto(true)}
-              className={`${btnSecondary} hover:border-[#f43f5e] hover:text-[#f43f5e]`}
-            >
-              <span className="text-base font-bold leading-none text-[#f43f5e]">+</span>
-              <span>Registrar Gasto</span>
-            </button>
-          </div>
+        <div className="pb-2 border-b border-[#1e2d3d]/60">
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#dde6ef]">
+            {esRecepcion ? 'Caja & Cobros' : 'Mi Consultorio'}
+          </h1>
         </div>
 
         {/* Pestañas Segmentadas Limpias (Apple HIG touch target >= 44px) */}
