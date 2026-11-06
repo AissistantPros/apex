@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
-import { mix } from '@/app/lib/ui';
 import { useEntitlements } from '@/app/lib/useEntitlements';
+import StaffManagement from '../staff/StaffManagement';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 const money = (n: number) => '$' + Math.round(n || 0).toLocaleString('es-MX');
@@ -44,6 +44,14 @@ const TIPO_INGRESO_LABELS: Record<string, { label: string; icon: string }> = {
   otro:          { label: 'Otro ingreso', icon: '📋' },
 };
 
+const SEDES_PREDEFINIDAS = [
+  'Consultorio Propio',
+  'Hospital Amerimed Cancún',
+  'Hospital Amerimed Playa del Carmen',
+  'Hospital Joya Cancún',
+  'Hospital Galenia',
+];
+
 async function authHeaders(): Promise<Record<string, string>> {
   const s = await getSession().catch(() => null);
   return { 'Content-Type': 'application/json', ...(s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}) };
@@ -63,188 +71,21 @@ const inp = 'w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3.5 py-3 
 const btnPrimary = 'min-h-[44px] px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.98] shadow-sm';
 const btnSecondary = 'min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-semibold transition bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#00e5a0] active:scale-[0.98]';
 
-// ── Gráficas y KPIs Limpios ──────────────────────────────────────────────────
-function Kpi({
-  label,
-  value,
-  color = C.green,
-  hint,
-  icon,
-}: {
-  label: string;
-  value: string;
-  color?: string;
-  hint?: string;
-  icon?: string;
-}) {
-  return (
-    <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4 sm:p-5 flex flex-col justify-between hover:border-[#2a3e52] transition">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-mono tracking-wider text-[#7a95aa] uppercase truncate">{label}</p>
-        {icon && <span className="text-base shrink-0">{icon}</span>}
-      </div>
-      <p className="mt-2 font-bold font-mono tracking-tight" style={{ color, fontSize: 24, lineHeight: 1.15 }}>
-        {value}
-      </p>
-      {hint && <p className="text-xs text-[#7a95aa] mt-1.5 leading-snug">{hint}</p>}
-    </div>
-  );
-}
+type TabKey = 'insights' | 'ingresos' | 'gastos' | 'equipo' | 'servicios';
 
-function Card({
-  title,
-  subtitle,
-  children,
-  right,
-  badge,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  right?: React.ReactNode;
-  badge?: React.ReactNode;
-}) {
-  return (
-    <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 sm:p-6 shadow-sm">
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-[#dde6ef]">{title}</h3>
-            {badge}
-          </div>
-          {subtitle && <p className="text-xs text-[#7a95aa] mt-0.5 leading-relaxed">{subtitle}</p>}
-        </div>
-        {right && <div className="shrink-0">{right}</div>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function BarrasIngGasto({ data }: { data: { nombre: string; ingreso: number; gasto: number }[] }) {
-  const max = Math.max(...data.flatMap(d => [d.ingreso, d.gasto]), 1);
-  return (
-    <div className="flex items-end justify-between gap-2 sm:gap-3 h-52 pt-3 px-1">
-      {data.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
-          <div className="flex items-end gap-1 w-full justify-center h-full">
-            <div
-              className="w-2.5 sm:w-3.5 rounded-t transition-all group-hover:brightness-110"
-              style={{ height: `${(d.ingreso / max) * 100}%`, minHeight: 3, background: C.green }}
-              title={`Ingreso ${money(d.ingreso)}`}
-            />
-            <div
-              className="w-2.5 sm:w-3.5 rounded-t transition-all group-hover:brightness-110"
-              style={{ height: `${(d.gasto / max) * 100}%`, minHeight: 3, background: C.red, opacity: 0.85 }}
-              title={`Gasto ${money(d.gasto)}`}
-            />
-          </div>
-          <span className="text-[10px] text-[#7a95aa] mt-2 whitespace-nowrap font-mono">{d.nombre}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BarrasH({
-  data,
-  color = C.green,
-  fmt = (n: number) => String(n),
-}: {
-  data: { nombre: string; valor: number }[];
-  color?: string;
-  fmt?: (n: number) => string;
-}) {
-  if (!data?.length) return <p className="text-xs text-[#486581] py-3">Sin registros suficientes para graficar</p>;
-  const max = Math.max(...data.map(d => Math.abs(d.valor)), 1);
-  return (
-    <div className="space-y-2.5">
-      {data.map((d, i) => (
-        <div key={i} className="flex items-center gap-3">
-          <div className="w-28 sm:w-36 shrink-0 text-right text-xs text-[#dde6ef] truncate" title={d.nombre}>
-            {d.nombre}
-          </div>
-          <div className="flex-1 h-7 bg-[#111820] rounded-lg overflow-hidden relative">
-            <div
-              className="h-full rounded-lg transition-all"
-              style={{ width: `${(Math.abs(d.valor) / max) * 100}%`, background: d.valor < 0 ? C.red : color, opacity: 0.9 }}
-            />
-            <span className="absolute inset-y-0 right-2.5 flex items-center text-xs font-mono font-medium text-[#dde6ef]">
-              {fmt(d.valor)}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Dona({ data }: { data: { nombre: string; valor: number }[] }) {
-  const total = (data || []).reduce((s, d) => s + d.valor, 0);
-  if (!total) return <p className="text-xs text-[#486581]">Sin datos registrados</p>;
-  const R = 48, cx = 60, cy = 60, C2 = 2 * Math.PI * R;
-  let acc = 0;
-  const segs = data.map((d, i) => {
-    const f = d.valor / total;
-    const s = { c: CAT_COLORS[i % CAT_COLORS.length], dash: f * C2, off: acc * C2, pct: Math.round(f * 100), ...d };
-    acc += f;
-    return s;
-  });
-  return (
-    <div className="flex flex-col sm:flex-row items-center gap-6">
-      <svg width="120" height="120" viewBox="0 0 120 120" className="shrink-0">
-        <circle cx={cx} cy={cy} r={R} fill="none" stroke="#162231" strokeWidth={20} />
-        {segs.map((s, i) => (
-          <circle
-            key={i}
-            cx={cx}
-            cy={cy}
-            r={R}
-            fill="none"
-            stroke={s.c}
-            strokeWidth={20}
-            strokeDasharray={`${s.dash} ${C2 - s.dash}`}
-            strokeDashoffset={-s.off}
-            transform={`rotate(-90 ${cx} ${cy})`}
-          />
-        ))}
-      </svg>
-      <div className="space-y-2 w-full">
-        {segs.map((s, i) => (
-          <div key={i} className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 truncate">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.c }} />
-              <span className="text-[#dde6ef] truncate">{s.nombre}</span>
-            </div>
-            <span className="text-[#7a95aa] font-mono shrink-0 ml-2">
-              {money(s.valor)} · <b className="text-[#dde6ef]">{s.pct}%</b>
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-type TabKey = 'pulso' | 'cobros' | 'gastos' | 'prestaciones' | 'equipo' | 'catalogos';
-
-// ── PÁGINA PRINCIPAL: MI CLÍNICA / MEDICAL PRACTICE OS ──────────────────────
 export default function ClinicPage() {
   const { features } = useEntitlements();
-  const sinMarketing = features?.marketing === false;
   const [role, setRole] = useState<string>('doctor');
   const esRecepcion = role === 'receptionist';
 
-  // Pestaña activa por defecto
-  const [tab, setTab] = useState<TabKey>('pulso');
+  // Pestaña activa
+  const [tab, setTab] = useState<TabKey>('insights');
 
   // Estados de datos
   const [ov, setOv] = useState<any>(null);
   const [services, setServices] = useState<any[]>([]);
-  const [pending, setPending] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [staff, setStaff] = useState<any[]>([]);
   const [catalogs, setCatalogs] = useState<{ proveedores: any[]; clientes: any[]; conceptos_gasto: any[] }>({
     proveedores: [],
     clientes: [],
@@ -254,23 +95,22 @@ export default function ClinicPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
-  // Modales globales
+  // Modales
+  const [showModalIngreso, setShowModalIngreso] = useState(false);
+  const [showModalGasto, setShowModalGasto] = useState(false);
   const [showReimburseModal, setShowReimburseModal] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
-      const [o, s, p, sl, ex, cat, st] = await Promise.all([
+      const [o, s, sl, ex, cat] = await Promise.all([
         api('/clinic/overview').catch(() => null),
         api('/clinic/services').catch(() => ({ services: [] })),
-        api('/clinic/pending').catch(() => ({ pending: [] })),
         api('/clinic/sales').catch(() => ({ sales: [] })),
         api('/clinic/expenses').catch(() => ({ expenses: [] })),
         api('/clinic/catalogs').catch(() => ({ proveedores: [], clientes: [], conceptos_gasto: [] })),
-        api('/staff').catch(() => ({ members: [] })),
       ]);
       setOv(o);
       setServices(s.services || []);
-      setPending(p.pending || []);
       setSales(sl.sales || []);
       setExpenses(ex.expenses || []);
       setCatalogs({
@@ -278,7 +118,6 @@ export default function ClinicPage() {
         clientes: cat.clientes || [],
         conceptos_gasto: cat.conceptos_gasto || [],
       });
-      setStaff(st.members || []);
     } catch (e: any) {
       setMsg(e.message);
     } finally {
@@ -289,7 +128,7 @@ export default function ClinicPage() {
   useEffect(() => {
     const r = getRole();
     setRole(r as any);
-    if (r === 'receptionist') setTab('cobros');
+    if (r === 'receptionist') setTab('ingresos');
     loadAll();
 
     authHeaders().then(headers => {
@@ -300,27 +139,46 @@ export default function ClinicPage() {
     });
   }, [loadAll]);
 
+  // Manejar query params de entrada para pestañas y modales directos (ej. ?tab=ingresos&action=nuevo)
+  useEffect(() => {
+    const checkParams = () => {
+      if (typeof window !== 'undefined') {
+        const p = new URLSearchParams(window.location.search);
+        const t = p.get('tab') as TabKey | null;
+        const act = p.get('action');
+        if (t && ['insights', 'ingresos', 'gastos', 'equipo', 'servicios'].includes(t)) {
+          setTab(t);
+        }
+        if (act === 'nuevo') {
+          if (t === 'ingresos' || (!t && esRecepcion)) setShowModalIngreso(true);
+          else if (t === 'gastos') setShowModalGasto(true);
+        }
+      }
+    };
+    checkParams();
+    window.addEventListener('popstate', checkParams);
+    return () => window.removeEventListener('popstate', checkParams);
+  }, [esRecepcion]);
+
   const flash = (t: string) => {
     setMsg(t);
     setTimeout(() => setMsg(''), 4000);
   };
 
   const TABS = useMemo(() => {
-    const base = [
-      { id: 'pulso', label: '📊 Pulso & Asesor IA', roles: ['doctor', 'accounting', 'marketing'] },
-      {
-        id: 'cobros',
-        label: `💵 Cobros & Mostrador`,
-        badge: pending.length > 0 ? pending.length : undefined,
-        roles: ['doctor', 'receptionist', 'accounting'],
-      },
-      { id: 'gastos', label: '🧾 Gastos', roles: ['doctor', 'accounting'] },
-      { id: 'prestaciones', label: '🩺 Catálogo de Prestaciones', roles: ['doctor', 'accounting'] },
-      { id: 'equipo', label: `👥 Mi Equipo (${staff.length})`, roles: ['doctor'] },
-      { id: 'catalogos', label: '⚙️ Proveedores & Convenios', roles: ['doctor', 'accounting'] },
-    ];
-    return base.filter(t => t.roles.includes(role));
-  }, [role, pending.length, staff.length]);
+    const list: { id: TabKey; label: string; icon: string; badge?: number }[] = [];
+    if (!esRecepcion) {
+      list.push({ id: 'insights', label: 'Insights & IA Negocio', icon: '🧠' });
+    }
+    const cpcCount = ov?.cuentas_por_cobrar?.length || 0;
+    list.push({ id: 'ingresos', label: 'Ingresos & Cobranza', icon: '💵', badge: cpcCount > 0 ? cpcCount : undefined });
+    list.push({ id: 'gastos', label: 'Gastos & Fugas', icon: '🧾' });
+    if (!esRecepcion) {
+      list.push({ id: 'equipo', label: 'Equipo de Trabajo', icon: '👥' });
+      list.push({ id: 'servicios', label: 'Servicios & Tarifas', icon: '🩺' });
+    }
+    return list;
+  }, [esRecepcion, ov?.cuentas_por_cobrar?.length]);
 
   return (
     <div className="min-h-screen bg-[#070a0e] text-[#dde6ef]">
@@ -330,64 +188,54 @@ export default function ClinicPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#dde6ef]">
-                {esRecepcion ? 'Cobros & Mostrador' : 'Centro de Mando Clínico'}
+                {esRecepcion ? 'Caja & Cobros de Consultorio' : 'Mi Consultorio'}
               </h1>
               <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#00e5a0]/10 border border-[#00e5a0]/30 text-[#00e5a0]">
-                {esRecepcion ? 'Recepción' : 'Mi Clínica'}
+                {esRecepcion ? 'Recepción' : 'Operación Interna'}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-[#7a95aa] mt-1 leading-relaxed">
               {esRecepcion
-                ? 'Atención en caja: cobra los conceptos, estudios y consultas indicados por el médico.'
-                : 'Gestión médica integral: flujo real del dinero, prestaciones fijas y variables, aseguradoras y asesoría estratégica con IA.'}
+                ? 'Registro de cobros al paciente, consultas y emisión de recibos en mostrador.'
+                : 'Gestión de negocio 100% interna: ingresos, gastos, sedes/hospitales, fugas y asesoría con IA.'}
             </p>
           </div>
 
-          {/* Quick status de caja y pendientes */}
-          {!esRecepcion && ov?.flujo_fondos && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-              <div className="px-3 py-2 rounded-xl bg-[#0d1520] border border-[#1e2d3d] text-left shrink-0">
-                <p className="text-[10px] font-mono uppercase text-[#7a95aa]">💵 Caja chica</p>
-                <p className="text-sm font-bold font-mono text-[#00e5a0]">
-                  {money(ov.flujo_fondos.caja_consultorio_neto)}
-                </p>
-              </div>
-              <div className="px-3 py-2 rounded-xl bg-[#0d1520] border border-[#1e2d3d] text-left shrink-0">
-                <p className="text-[10px] font-mono uppercase text-[#7a95aa]">🏦 Banco</p>
-                <p className="text-sm font-bold font-mono text-[#38bdf8]">
-                  {money(ov.flujo_fondos.banco_consultorio_neto)}
-                </p>
-              </div>
-              {ov.flujo_fondos.pagado_por_doctor_total > 0 && (
-                <button
-                  onClick={() => setShowReimburseModal(true)}
-                  className="px-3 py-2 rounded-xl bg-[#a78bfa]/10 border border-[#a78bfa]/30 text-left shrink-0 hover:bg-[#a78bfa]/20 transition"
-                >
-                  <p className="text-[10px] font-mono uppercase text-[#a78bfa]">👨‍⚕️ Reembolsar al Dr.</p>
-                  <p className="text-sm font-bold font-mono text-[#c4b5fd]">
-                    {money(ov.flujo_fondos.pagado_por_doctor_total)} →
-                  </p>
-                </button>
-              )}
-            </div>
-          )}
+          {/* Botones de Acción Rápida en Cabecera */}
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 sm:pb-0">
+            <button
+              onClick={() => setShowModalIngreso(true)}
+              className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c]`}
+            >
+              <span className="text-base font-bold leading-none">+</span>
+              <span>Registrar Ingreso</span>
+            </button>
+            <button
+              onClick={() => setShowModalGasto(true)}
+              className={`${btnSecondary} hover:border-[#f43f5e] hover:text-[#f43f5e]`}
+            >
+              <span className="text-base font-bold leading-none text-[#f43f5e]">+</span>
+              <span>Registrar Gasto</span>
+            </button>
+          </div>
         </div>
 
-        {/* Pestañas de Navegación Segmentada (Diseño táctil Apple / responsive) */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+        {/* Pestañas Segmentadas (Apple HIG touch target >= 44px) */}
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
           {TABS.map(t => {
             const active = tab === t.id;
             return (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id as TabKey)}
-                className="min-h-[42px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 active:scale-95"
+                onClick={() => setTab(t.id)}
+                className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 active:scale-95 cursor-pointer shadow-sm"
                 style={{
                   background: active ? '#00e5a0' : '#0d1520',
                   color: active ? '#051b14' : '#7a95aa',
                   border: `1px solid ${active ? '#00e5a0' : '#1e2d3d'}`,
                 }}
               >
+                <span>{t.icon}</span>
                 <span>{t.label}</span>
                 {t.badge !== undefined && (
                   <span
@@ -405,1299 +253,110 @@ export default function ClinicPage() {
           })}
         </div>
 
-        {/* Alerta de notificación flotante */}
+        {/* Notificación Toast */}
         {msg && (
           <div className="p-3.5 rounded-xl bg-[#00e5a0]/10 border border-[#00e5a0]/30 text-[#00e5a0] text-sm flex items-center justify-between gap-3 animate-in fade-in">
             <span>{msg}</span>
-            <button onClick={() => setMsg('')} className="text-[#00e5a0] hover:opacity-75 font-bold">×</button>
+            <button onClick={() => setMsg('')} className="text-[#00e5a0] hover:opacity-75 font-bold text-lg leading-none">×</button>
           </div>
         )}
 
-        {/* ── 1. PESTAÑA: PULSO CLÍNICO & ASESOR IA ── */}
-        {tab === 'pulso' && !esRecepcion && (
-          <PulsoTab
+        {/* ── 1. INSIGHTS TAB (100% NEGOCIO IA) ── */}
+        {tab === 'insights' && !esRecepcion && (
+          <InsightsTab
             ov={ov}
-            sinMarketing={sinMarketing}
-            onReimburse={() => setShowReimburseModal(true)}
-            onGoCobros={() => setTab('cobros')}
             reload={loadAll}
+            onOpenIngreso={() => setShowModalIngreso(true)}
+            onOpenGasto={() => setShowModalGasto(true)}
+            onOpenReembolso={() => setShowReimburseModal(true)}
           />
         )}
 
-        {/* ── 2. PESTAÑA: COBROS & MOSTRADOR ── */}
-        {tab === 'cobros' && (
-          <CobrosTab
-            pending={pending}
+        {/* ── 2. INGRESOS TAB (QUÉ SE VENDE MÁS, SEDES/HOSPITALES, CUENTAS POR COBRAR) ── */}
+        {tab === 'ingresos' && (
+          <IngresosTab
+            ov={ov}
             sales={sales}
-            services={services}
-            catalogs={catalogs}
-            patients={patients}
             reload={loadAll}
             flash={flash}
+            onOpenNuevo={() => setShowModalIngreso(true)}
           />
         )}
 
-        {/* ── 3. PESTAÑA: GASTOS ── */}
+        {/* ── 3. GASTOS TAB (DETALLE, GASTOS HORMIGA, FUGAS, REEMBOLSOS) ── */}
         {tab === 'gastos' && (
           <GastosTab
+            ov={ov}
             expenses={expenses}
             catalogs={catalogs}
             reload={loadAll}
             flash={flash}
-            onReimburse={() => setShowReimburseModal(true)}
+            onOpenNuevo={() => setShowModalGasto(true)}
+            onOpenReembolso={() => setShowReimburseModal(true)}
           />
         )}
 
-        {/* ── 4. PESTAÑA: CATÁLOGO DE PRESTACIONES (PRECIOS FIJOS Y VARIABLES) ── */}
-        {tab === 'prestaciones' && !esRecepcion && (
-          <PrestacionesTab
+        {/* ── 4. EQUIPO TAB (COMPONENTE MUDADO A MI CONSULTORIO) ── */}
+        {tab === 'equipo' && !esRecepcion && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d] flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[#dde6ef]">Equipo de Trabajo y Asistentes</h3>
+                <p className="text-xs text-[#7a95aa]">Personal administrativo, enfermería y recepción con permisos definidos por puesto.</p>
+              </div>
+              <span className="text-xs font-mono text-[#00e5a0]">Gestión Interna</span>
+            </div>
+            <StaffManagement />
+          </div>
+        )}
+
+        {/* ── 5. SERVICIOS & TARIFAS TAB (PRECIO FIJO O VARIABLE) ── */}
+        {tab === 'servicios' && !esRecepcion && (
+          <ServiciosTab
             services={services}
             reload={loadAll}
             flash={flash}
           />
         )}
-
-        {/* ── 5. PESTAÑA: MI EQUIPO (PREVIEW CON VÍNCULO A /STAFF) ── */}
-        {tab === 'equipo' && !esRecepcion && (
-          <EquipoTab staff={staff} reload={loadAll} />
-        )}
-
-        {/* ── 6. PESTAÑA: PROVEEDORES, CONVENIOS Y CONCEPTOS ── */}
-        {tab === 'catalogos' && !esRecepcion && (
-          <CatalogosTab
-            catalogs={catalogs}
-            reload={loadAll}
-            flash={flash}
-          />
-        )}
-
-        {/* MODAL DE REEMBOLSO AL DOCTOR */}
-        {showReimburseModal && (
-          <ModalReembolso
-            saldoPendiente={ov?.flujo_fondos?.pagado_por_doctor_total || 0}
-            onClose={() => setShowReimburseModal(false)}
-            done={() => {
-              setShowReimburseModal(false);
-              flash('Reembolso al médico registrado correctamente');
-              loadAll();
-            }}
-          />
-        )}
       </main>
-    </div>
-  );
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE 1: PULSO & ASESOR ESTRATÉGICO CON IA
-// ─────────────────────────────────────────────────────────────────────────────
-function PulsoTab({
-  ov,
-  sinMarketing,
-  onReimburse,
-  onGoCobros,
-  reload,
-}: {
-  ov: any;
-  sinMarketing: boolean;
-  onReimburse: () => void;
-  onGoCobros: () => void;
-  reload: () => void;
-}) {
-  const [showHistory, setShowHistory] = useState(false);
-  const [aiQuestion, setAiQuestion] = useState('');
-  const [aiReport, setAiReport] = useState<string>(ov?.ai_analysis || '');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState('');
-
-  if (!ov) {
-    return (
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-12 text-center text-[#7a95aa]">
-        <p className="animate-pulse">Cargando métricas clínicas y financieras…</p>
-      </div>
-    );
-  }
-
-  const k = ov.kpis || {};
-  const ma = ov.mes_actual || {
-    label: 'Mes actual',
-    ingreso: k.ingreso_mes || 0,
-    gasto: k.gasto_mes || 0,
-    balance: k.balance_mes || 0,
-    operaciones: 0,
-    variacion_ingreso_pct: null,
-  };
-  const prom = ov.promedios || {
-    meses_activos: 1,
-    ingreso_mensual: k.ingreso_promedio_mensual || 0,
-    gasto_mensual: k.gasto_promedio_mensual || 0,
-    balance_mensual: k.balance_promedio_mensual || 0,
-  };
-  const ff = ov.flujo_fondos || {
-    caja_consultorio_neto: 0,
-    banco_consultorio_neto: 0,
-    pagado_por_doctor_total: 0,
-  };
-  const pj = ov.patient_journey || {
-    primeras_visitas: 0,
-    subsecuentes: 0,
-    total_pacientes: 0,
-    canales: [],
-    presencia_digital: {
-      busqueda_maps: 0,
-      visita_web: 0,
-      redes_sociales: 0,
-      nota_pedagogica: '',
-    },
-  };
-  const aseguradorasPorCobrar = ov.aseguradoras_por_cobrar || [];
-
-  const runAiAnalysis = async (customPrompt?: string) => {
-    setAiLoading(true);
-    setAiError('');
-    try {
-      const q = customPrompt !== undefined ? customPrompt : aiQuestion.trim();
-      const r = await api('/clinic/ai-analysis', {
-        method: 'POST',
-        body: JSON.stringify({ question: q || null }),
-      });
-      setAiReport(r.analysis || '');
-    } catch (e: any) {
-      setAiError(e.message || 'No se pudo generar el análisis');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* 1. HERO: MES ACTUAL VS PROMEDIO */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Tarjeta Mes Actual */}
-        <div className="lg:col-span-2 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 sm:p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-mono uppercase tracking-wider text-[#00e5a0]">
-                📅 Resultado del Mes ({ma.label})
-              </span>
-              {ma.variacion_ingreso_pct !== null && (
-                <span
-                  className="text-xs font-mono font-semibold px-2.5 py-1 rounded-full"
-                  style={{
-                    background: ma.variacion_ingreso_pct >= 0 ? 'rgba(0,229,160,0.12)' : 'rgba(244,63,94,0.12)',
-                    color: ma.variacion_ingreso_pct >= 0 ? '#00e5a0' : '#f43f5e',
-                  }}
-                >
-                  {ma.variacion_ingreso_pct >= 0 ? '▲ +' : '▼ '}
-                  {ma.variacion_ingreso_pct}% vs mes previo
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
-              <div>
-                <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Ingresos Cobrados</p>
-                <p className="text-2xl sm:text-3xl font-bold font-mono text-[#00e5a0] mt-1">
-                  {money(ma.ingreso)}
-                </p>
-                <p className="text-xs text-[#7a95aa] mt-0.5">{ma.operaciones || 0} cobros</p>
-              </div>
-
-              <div>
-                <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Gastos del Mes</p>
-                <p className="text-2xl sm:text-3xl font-bold font-mono text-[#f43f5e] mt-1">
-                  {money(ma.gasto)}
-                </p>
-                <p className="text-xs text-[#7a95aa] mt-0.5">Operación clínica</p>
-              </div>
-
-              <div className="col-span-2 sm:col-span-1">
-                <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Utilidad Neta</p>
-                <p
-                  className="text-2xl sm:text-3xl font-bold font-mono mt-1"
-                  style={{ color: ma.balance >= 0 ? '#00e5a0' : '#f43f5e' }}
-                >
-                  {money(ma.balance)}
-                </p>
-                <p className="text-xs text-[#7a95aa] mt-0.5">
-                  {ma.balance >= 0 ? 'Margen positivo' : 'Revisar egresos'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-4 mt-4 border-t border-[#1e2d3d] flex flex-wrap items-center justify-between text-xs text-[#7a95aa] gap-2">
-            <span>Ticket promedio por paciente: <b className="text-[#dde6ef] font-mono">{money(k.ticket_promedio || 0)}</b></span>
-            <span>Facturado con CFDI: <b className="text-[#dde6ef] font-mono">{k.facturadas_pct || 0}%</b></span>
-          </div>
-        </div>
-
-        {/* Tarjeta Promedio Mensual */}
-        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 sm:p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-mono uppercase tracking-wider text-[#38bdf8]">
-                ⚖️ Promedio Mensual
-              </span>
-              <span className="text-[11px] text-[#7a95aa]">
-                {prom.meses_activos} {prom.meses_activos === 1 ? 'mes activo' : 'meses activos'}
-              </span>
-            </div>
-
-            <div className="space-y-3 pt-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#7a95aa]">Ingreso promedio:</span>
-                <span className="text-base font-bold font-mono text-[#38bdf8]">{money(prom.ingreso_mensual)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#7a95aa]">Gasto promedio:</span>
-                <span className="text-base font-bold font-mono text-[#f59e0b]">{money(prom.gasto_mensual)}</span>
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t border-[#1e2d3d]">
-                <span className="text-xs font-semibold text-[#dde6ef]">Utilidad promedio:</span>
-                <span
-                  className="text-lg font-bold font-mono"
-                  style={{ color: prom.balance_mensual >= 0 ? '#00e5a0' : '#f43f5e' }}
-                >
-                  {money(prom.balance_mensual)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 text-[11px] text-[#7a95aa] leading-relaxed bg-[#111820] rounded-xl p-2.5 border border-[#1e2d3d]">
-            💡 Mantén tus gastos operativos por debajo del 40% del ingreso promedio para maximizar la reinversión y dividendos.
-          </div>
-        </div>
-      </div>
-
-      {/* 2. ¿DÓNDE ESTÁ EL DINERO? (Caja, Banco, Reembolsos al Dr., Aseguradoras) */}
-      <Card
-        title="📍 ¿Dónde está el dinero hoy?"
-        subtitle="Rastreo transparente de la liquidez real de tu consultorio y compromisos pendientes."
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Caja chica */}
-          <div className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-4 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-mono uppercase text-[#7a95aa]">💵 Caja Consultorio</p>
-                <span className="text-xs">Efectivo</span>
-              </div>
-              <p
-                className="text-xl sm:text-2xl font-bold font-mono mt-1"
-                style={{ color: ff.caja_consultorio_neto >= 0 ? '#00e5a0' : '#f43f5e' }}
-              >
-                {money(ff.caja_consultorio_neto)}
-              </p>
-            </div>
-            <p className="text-[11px] text-[#7a95aa] mt-2">Disponible en físico para gastos menores y cambio.</p>
-          </div>
-
-          {/* Banco / Tarjeta clínica */}
-          <div className="bg-[#111820] border border-[#1e2d3d] rounded-xl p-4 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-mono uppercase text-[#7a95aa]">🏦 Banco de Clínica</p>
-                <span className="text-xs">Cuenta fiscal</span>
-              </div>
-              <p
-                className="text-xl sm:text-2xl font-bold font-mono mt-1"
-                style={{ color: ff.banco_consultorio_neto >= 0 ? '#38bdf8' : '#f43f5e' }}
-              >
-                {money(ff.banco_consultorio_neto)}
-              </p>
-            </div>
-            <p className="text-[11px] text-[#7a95aa] mt-2">Tarjetas, transferencias y liquidaciones recibidas.</p>
-          </div>
-
-          {/* Pagado por el doctor (pendiente de reembolso) */}
-          <div className="bg-[#111820] border border-[#a78bfa]/40 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden">
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-mono uppercase text-[#a78bfa]">👨‍⚕️ Pagado por el Dr.</p>
-                <span className="text-xs">Por reembolsar</span>
-              </div>
-              <p className="text-xl sm:text-2xl font-bold font-mono text-[#c4b5fd] mt-1">
-                {money(ff.pagado_por_doctor_total)}
-              </p>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] text-[#7a95aa]">Gastos cubiertos de su bolsa</span>
-              {ff.pagado_por_doctor_total > 0 && (
-                <button
-                  onClick={onReimburse}
-                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#a78bfa] text-black hover:opacity-90 transition shrink-0"
-                >
-                  Reembolsar
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Aseguradoras por cobrar */}
-          <div className="bg-[#111820] border border-[#f59e0b]/40 rounded-xl p-4 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-mono uppercase text-[#f59e0b]">🛡️ Aseguradoras</p>
-                <span className="text-xs text-[#f59e0b] font-mono">{aseguradorasPorCobrar.length} en trámite</span>
-              </div>
-              <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">
-                {money(aseguradorasPorCobrar.reduce((s: number, a: any) => s + (a.total || 0), 0))}
-              </p>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] text-[#7a95aa]">Honorarios por liquidar</span>
-              {aseguradorasPorCobrar.length > 0 && (
-                <button
-                  onClick={onGoCobros}
-                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#f59e0b] text-black hover:opacity-90 transition shrink-0"
-                >
-                  Ver trámite
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* 3. VIAJE DEL PACIENTE & VALIDACIÓN DIGITAL (COACHING PRÁCTICO) */}
-      <Card
-        title="🧭 Viaje del Paciente & El Secreto de la Autoridad Digital"
-        subtitle="Entiende de verdad cómo llegan tus pacientes y por qué tu presencia en línea cierra a los recomendados."
-        badge={
-          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#38bdf8]/10 border border-[#38bdf8]/30 text-[#38bdf8]">
-            Expectativas reales
-          </span>
-        }
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Métricas de Primera Vez vs Subsecuentes */}
-          <div className="space-y-3 bg-[#111820] border border-[#1e2d3d] rounded-xl p-4">
-            <p className="text-xs font-mono uppercase text-[#7a95aa]">Composición de Consultas</p>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold font-mono text-[#00e5a0]">{pj.primeras_visitas || 0}</p>
-                <p className="text-xs text-[#7a95aa]">Primera vez ({pj.total_pacientes ? Math.round((pj.primeras_visitas / pj.total_pacientes) * 100) : 0}%)</p>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold font-mono text-[#38bdf8]">{pj.subsecuentes || 0}</p>
-                <p className="text-xs text-[#7a95aa]">Seguimiento ({pj.total_pacientes ? Math.round((pj.subsecuentes / pj.total_pacientes) * 100) : 0}%)</p>
-              </div>
-            </div>
-            <div className="w-full h-2.5 bg-[#0d1520] rounded-full overflow-hidden flex">
-              <div
-                style={{ width: `${pj.total_pacientes ? (pj.primeras_visitas / pj.total_pacientes) * 100 : 50}%`, background: '#00e5a0' }}
-              />
-              <div
-                style={{ width: `${pj.total_pacientes ? (pj.subsecuentes / pj.total_pacientes) * 100 : 50}%`, background: '#38bdf8' }}
-              />
-            </div>
-            <p className="text-[11px] text-[#7a95aa] leading-relaxed">
-              En medicina de especialidad, los pacientes subsecuentes y tratamientos continuos representan entre el 60% y 80% de la utilidad sostenible de la clínica.
-            </p>
-          </div>
-
-          {/* Tarjeta pedagógica de Validación Digital */}
-          <div className="lg:col-span-2 bg-[#111820] border border-[#38bdf8]/30 rounded-xl p-4 sm:p-5 flex flex-col justify-between">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">💡</span>
-                <h4 className="text-sm font-bold text-[#dde6ef]">
-                  ¿Tus pacientes vienen recomendados? ¡Tu presencia digital los convenció!
-                </h4>
-              </div>
-              <p className="text-xs sm:text-sm text-[#7a95aa] leading-relaxed">
-                Un paciente recomendado no va a ciegas: <b>más del 80% busca tu nombre en Google Maps</b> para ver tus reseñas, visita tu página web para ver tu trayectoria y mira tu Instagram o TikTok para sentir confianza en tu autoridad antes de llamar o agendar.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 pt-3 mt-3 border-t border-[#1e2d3d] text-center">
-              <div className="p-2 rounded-lg bg-[#0d1520]">
-                <p className="text-xs font-bold text-[#38bdf8]">Google Maps</p>
-                <p className="text-[11px] text-[#7a95aa] mt-0.5">Reseñas & Ubicación</p>
-              </div>
-              <div className="p-2 rounded-lg bg-[#0d1520]">
-                <p className="text-xs font-bold text-[#00e5a0]">Web Médica</p>
-                <p className="text-[11px] text-[#7a95aa] mt-0.5">Credenciales & Cita</p>
-              </div>
-              <div className="p-2 rounded-lg bg-[#0d1520]">
-                <p className="text-xs font-bold text-[#a78bfa]">Redes Sociales</p>
-                <p className="text-[11px] text-[#7a95aa] mt-0.5">Autoridad & Casos</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* 4. ASESOR ESTRATÉGICO CON IA */}
-      <div className="bg-gradient-to-br from-[#0d1520] via-[#0d1520] to-[#0d1f19] border border-[#00e5a0]/35 rounded-2xl p-5 sm:p-6 space-y-4 shadow-md">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-lg bg-[#00e5a0]/20 flex items-center justify-center text-[#00e5a0] font-bold text-xs">
-                ✦
-              </span>
-              <h3 className="text-base font-bold text-[#dde6ef]">Asesor Clínico & Estratégico IA</h3>
-            </div>
-            <p className="text-xs text-[#7a95aa] mt-1">
-              Tu copiloto analiza tus números, procedimientos de alto valor, flujo de dinero y captación para darte recomendaciones ejecutivas claras.
-            </p>
-          </div>
-
-          <button
-            onClick={() => runAiAnalysis()}
-            disabled={aiLoading}
-            className={btnPrimary}
-            style={{ background: '#00e5a0', color: '#051b14' }}
-          >
-            {aiLoading ? '✦ Generando diagnóstico…' : '✦ Analizar con IA'}
-          </button>
-        </div>
-
-        {/* Chips de preguntas rápidas */}
-        <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
-          {[
-            '¿Qué procedimientos generan más margen?',
-            '¿Cómo mejorar el cobro a aseguradoras?',
-            '¿Cuánto debo gastar en publicidad vs recomendaciones?',
-            '¿Cómo está mi flujo de caja este mes?',
-          ].map((prompt, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                setAiQuestion(prompt);
-                runAiAnalysis(prompt);
-              }}
-              className="px-3 py-1.5 rounded-lg bg-[#111820] border border-[#1e2d3d] text-[#7a95aa] hover:text-[#00e5a0] hover:border-[#00e5a0]/40 whitespace-nowrap transition"
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex gap-2">
-          <input
-            className={inp}
-            placeholder="Hazle una consulta personalizada sobre tu práctica médica…"
-            value={aiQuestion}
-            onChange={e => setAiQuestion(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') runAiAnalysis(); }}
-          />
-        </div>
-
-        {aiError && <p className="text-xs text-[#f43f5e]">{aiError}</p>}
-
-        {aiReport && (
-          <div className="bg-[#111820]/90 border border-[#00e5a0]/20 rounded-xl p-4 sm:p-5 text-sm text-[#dde6ef] whitespace-pre-wrap leading-relaxed shadow-inner">
-            {aiReport}
-          </div>
-        )}
-      </div>
-
-      {/* 5. HISTORIAL COLAPSABLE */}
-      <div className="text-center pt-2">
-        <button
-          onClick={() => setShowHistory(v => !v)}
-          className={btnSecondary}
-        >
-          {showHistory ? '▲ Ocultar histórico detallado' : '📈 Ver histórico completo de 12 meses y comparativas'}
-        </button>
-      </div>
-
-      {showHistory && (
-        <div className="space-y-5 animate-in fade-in pt-2">
-          {/* Comparativa anual */}
-          {ov.comparativa_anual && (
-            <Card
-              title={`Comparativa Anual (${ov.comparativa_anual.anio_actual} vs ${ov.comparativa_anual.anio_anterior})`}
-              subtitle="Acumulado anual consolidado"
-            >
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Kpi
-                  label={`Ingreso ${ov.comparativa_anual.anio_actual}`}
-                  value={money(ov.comparativa_anual.ingreso_actual)}
-                  color={C.green}
-                  hint={
-                    ov.comparativa_anual.variacion_pct !== null
-                      ? `${ov.comparativa_anual.variacion_pct >= 0 ? '+' : ''}${ov.comparativa_anual.variacion_pct}% vs año previo`
-                      : undefined
-                  }
-                />
-                <Kpi label={`Gasto ${ov.comparativa_anual.anio_actual}`} value={money(ov.comparativa_anual.gasto_actual)} color={C.red} />
-                <Kpi label={`Ingreso ${ov.comparativa_anual.anio_anterior}`} value={money(ov.comparativa_anual.ingreso_anterior)} color={C.blue} />
-                <Kpi label={`Gasto ${ov.comparativa_anual.anio_anterior}`} value={money(ov.comparativa_anual.gasto_anterior)} color={C.amber} />
-              </div>
-            </Card>
-          )}
-
-          <Card title="Ingresos vs Gastos (Últimos 12 meses)" subtitle="Comportamiento estacional de tu práctica">
-            <BarrasIngGasto data={ov.historico_12m || ov.serie_mensual || []} />
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <Card title="Ingresos por Tipo" subtitle="Cirugías, consultas y estudios">
-              <BarrasH data={ov.ingresos_por_tipo || []} color={C.green} fmt={money} />
-            </Card>
-            <Card title="Ingresos por Sede / Hospital" subtitle="Dónde operaste y atendiste">
-              <BarrasH data={ov.ingresos_por_lugar || []} color={C.blue} fmt={money} />
-            </Card>
-            <Card title="Ingresos por Aseguradora" subtitle="Participación de compañías">
-              <BarrasH data={ov.ingresos_por_aseguradora || []} color={C.purple} fmt={money} />
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Card title="Gastos por Categoría" subtitle="Distribución del presupuesto">
-              <BarrasH data={ov.gasto_categorias || []} color={C.red} fmt={money} />
-            </Card>
-            <Card title="Facturación Fiscal (CFDI)" subtitle="Proporción sobre el total">
-              <Dona data={ov.facturacion || []} />
-            </Card>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE 2: COBROS & MOSTRADOR (TPV MÉDICO CON PRECIOS FIJOS Y VARIABLES)
-// ─────────────────────────────────────────────────────────────────────────────
-function CobrosTab({
-  pending,
-  sales,
-  services,
-  catalogs,
-  patients,
-  reload,
-  flash,
-}: {
-  pending: any[];
-  sales: any[];
-  services: any[];
-  catalogs: { proveedores: any[]; clientes: any[]; conceptos_gasto: any[] };
-  patients: any[];
-  reload: () => void;
-  flash: (t: string) => void;
-}) {
-  const [nuevo, setNuevo] = useState(false);
-  const [categoriaSel, setCategoriaSel] = useState<string>('todas');
-  const [filtroHistorial, setFiltroHistorial] = useState<string>('todos');
-
-  // Formulario nuevo cobro
-  const [pid, setPid] = useState('');
-  const [tipoIngreso, setTipoIngreso] = useState<string>('consulta');
-  const [lugar, setLugar] = useState('Consultorio');
-  const [aseguradora, setAseguradora] = useState('');
-  const [poliza, setPoliza] = useState('');
-  const [fechaEvento, setFechaEvento] = useState(() => new Date().toISOString().slice(0, 10));
-
-  // Servicios seleccionados { [service_id]: { cantidad: number, precio_custom?: number } }
-  const [itemsMap, setItemsMap] = useState<Record<string, { cantidad: number; precio: number; variable: boolean; nombre: string }>>({});
-  const [customConcepto, setCustomConcepto] = useState('');
-  const [customMonto, setCustomMonto] = useState<number>(0);
-  const [descuento, setDescuento] = useState(0);
-  const [cortesia, setCortesia] = useState(false);
-  const [motivo, setMotivo] = useState('');
-  const [modoRegistro, setModoRegistro] = useState<'cobrado' | 'pendiente' | 'en_tramite'>('cobrado');
-  const [metodoPago, setMetodoPago] = useState('efectivo');
-  const [facturada, setFacturada] = useState(false);
-  const [proximaCita, setProximaCita] = useState('');
-  const [indicacionesMostrador, setIndicacionesMostrador] = useState('');
-  const [cobrandoModal, setCobrandoModal] = useState<any>(null);
-
-  // Toggle de servicio del catálogo
-  const toggleService = (srv: any) => {
-    setItemsMap(prev => {
-      const copy = { ...prev };
-      if (copy[srv.id]) {
-        delete copy[srv.id];
-      } else {
-        const isVar = srv.precio_tipo === 'variable';
-        copy[srv.id] = {
-          cantidad: 1,
-          precio: srv.precio || 0,
-          variable: isVar,
-          nombre: srv.nombre,
-        };
-      }
-      return copy;
-    });
-  };
-
-  const updateServicePrice = (srvId: string, precio: number) => {
-    setItemsMap(prev => {
-      if (!prev[srvId]) return prev;
-      return {
-        ...prev,
-        [srvId]: { ...prev[srvId], precio },
-      };
-    });
-  };
-
-  // Items calculados
-  const selectedItems = Object.entries(itemsMap).map(([id, it]) => ({
-    service_id: id,
-    concepto: it.nombre,
-    precio: it.precio,
-    cantidad: it.cantidad,
-    precio_tipo: it.variable ? 'variable' : 'fijo',
-  }));
-
-  const manualItems = customConcepto.trim() && customMonto > 0
-    ? [{ concepto: customConcepto.trim(), precio: customMonto, cantidad: 1, precio_tipo: 'variable' }]
-    : [];
-
-  const allItems = [...selectedItems, ...manualItems];
-  const subtotal = allItems.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
-  const total = cortesia ? 0 : Math.max(subtotal - descuento, 0);
-
-  const guardarCobro = async () => {
-    if (!allItems.length && !cortesia) {
-      return flash('Selecciona una prestación o ingresa un concepto y monto');
-    }
-    const finalItems = allItems.length
-      ? allItems
-      : [{ concepto: customConcepto || 'Consulta', precio: 0, cantidad: 1 }];
-
-    try {
-      await api('/clinic/sales', {
-        method: 'POST',
-        body: JSON.stringify({
-          patient_id: pid || null,
-          items: finalItems,
-          descuento,
-          cortesia,
-          descuento_motivo: cortesia ? (motivo || 'Cortesía') : (descuento > 0 ? motivo : null),
-          estado: modoRegistro,
-          metodo_pago: modoRegistro === 'cobrado' ? metodoPago : (modoRegistro === 'en_tramite' ? 'aseguradora' : null),
-          facturada: modoRegistro === 'cobrado' ? facturada : false,
-          tipo_ingreso: tipoIngreso,
-          lugar: lugar.trim() || 'Consultorio',
-          aseguradora: aseguradora.trim() || null,
-          poliza: poliza.trim() || null,
-          procedimiento: finalItems.map(i => i.concepto).join(', '),
-          proxima_cita: proximaCita || null,
-          indicaciones_mostrador: indicacionesMostrador.trim() || null,
-          fecha_evento: fechaEvento || null,
-        }),
-      });
-
-      // Reset
-      setNuevo(false);
-      setItemsMap({});
-      setCustomConcepto('');
-      setCustomMonto(0);
-      setPid('');
-      setDescuento(0);
-      setCortesia(false);
-      setMotivo('');
-      setProximaCita('');
-      setIndicacionesMostrador('');
-      flash(
-        modoRegistro === 'cobrado'
-          ? 'Ingreso cobrado registrado en contabilidad'
-          : modoRegistro === 'en_tramite'
-          ? 'Cirugía registrada en trámite con aseguradora'
-          : 'Cobro enviado a mostrador de recepción'
-      );
-      reload();
-    } catch (e: any) {
-      flash(e.message);
-    }
-  };
-
-  const liquidarAseguradora = async (saleId: string) => {
-    try {
-      await api(`/clinic/sales/${saleId}/liquidate-insurance`, { method: 'POST' });
-      flash('Pago de aseguradora liquidado a cuenta bancaria');
-      reload();
-    } catch (e: any) {
-      flash(e.message);
-    }
-  };
-
-  const aseguradorasEnTramite = (sales || []).filter(s => s.estado === 'en_tramite');
-  const ventasCobradas = (sales || []).filter(
-    s => s.estado === 'cobrado' && (filtroHistorial === 'todos' || (s.tipo_ingreso || 'consulta') === filtroHistorial)
-  );
-
-  const serviciosFiltrados = services.filter(s => {
-    if (!s.activo) return false;
-    if (categoriaSel === 'todas') return true;
-    return (s.categoria || 'consulta') === categoriaSel;
-  });
-
-  return (
-    <div className="space-y-6">
-      {/* Botón de acción superior */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-[#dde6ef]">Terminal de Cobros & Facturación Interna</h2>
-          <p className="text-xs text-[#7a95aa]">
-            {pending.length} cobro(s) pendiente(s) en recepción · {aseguradorasEnTramite.length} en trámite con aseguradoras
-          </p>
-        </div>
-        <button
-          onClick={() => setNuevo(v => !v)}
-          className={btnPrimary}
-          style={{ background: '#00e5a0', color: '#051b14' }}
-        >
-          {nuevo ? '✕ Cancelar registro' : '+ Registrar cobro, cirugía o aseguradora'}
-        </button>
-      </div>
-
-      {/* COLA 1: COBROS PENDIENTES EN MOSTRADOR (Enviados por el médico) */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-mono uppercase tracking-wider text-[#f59e0b] flex items-center gap-1.5">
-            <span>🔔</span> Cobros listos para cobrar en recepción ({pending.length})
-          </p>
-        </div>
-
-        {pending.length === 0 ? (
-          <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 text-center text-xs text-[#7a95aa]">
-            No hay pacientes pendientes de cobro en mostrador en este momento.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {pending.map(v => (
-              <div
-                key={v.id}
-                className="bg-[#0d1520] border border-[#f59e0b]/40 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-3 hover:border-[#f59e0b] transition"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-base font-bold text-[#dde6ef]">{v.patient_name || 'Paciente en mostrador'}</span>
-                    <span className="text-lg font-bold font-mono text-[#00e5a0]">{money(v.total)}</span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#7a95aa]">
-                    <span className="px-2 py-0.5 rounded-full bg-[#111820] border border-[#1e2d3d] text-[#dde6ef]">
-                      {TIPO_INGRESO_LABELS[v.tipo_ingreso || 'consulta']?.label || v.tipo_ingreso}
-                    </span>
-                    {v.lugar && <span>📍 {v.lugar}</span>}
-                  </div>
-
-                  <p className="text-xs text-[#dde6ef] font-medium">
-                    {(v.items || []).map((i: any) => `${i.concepto}${i.cantidad > 1 ? ` x${i.cantidad}` : ''} (${money(i.precio)})`).join(' · ')}
-                  </p>
-
-                  {v.proxima_cita && (
-                    <p className="text-xs text-[#00e5a0] bg-[#00e5a0]/10 border border-[#00e5a0]/25 rounded-lg px-2.5 py-1.5">
-                      📅 Próxima cita indicada: <b>{v.proxima_cita}</b>
-                    </p>
-                  )}
-
-                  {v.indicaciones_mostrador && (
-                    <p className="text-xs text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/25 rounded-lg px-2.5 py-1.5">
-                      💬 Indicación médica: <b>{v.indicaciones_mostrador}</b>
-                    </p>
-                  )}
-                </div>
-
-                <div className="pt-3 border-t border-[#1e2d3d] flex items-center justify-end">
-                  <button
-                    onClick={() => setCobrandoModal(v)}
-                    className={btnPrimary}
-                    style={{ background: '#00e5a0', color: '#051b14' }}
-                  >
-                    Cobrar ahora →
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* COLA 2: CIRUGÍAS Y PROCEDIMIENTOS EN TRÁMITE CON ASEGURADORAS */}
-      {aseguradorasEnTramite.length > 0 && (
-        <Card
-          title={`🛡️ Aseguradoras en Trámite (${aseguradorasEnTramite.length})`}
-          subtitle="Cirugías y procedimientos realizados pendientes de liquidar a tu cuenta bancaria."
-        >
-          <div className="space-y-2.5">
-            {aseguradorasEnTramite.map(s => (
-              <div
-                key={s.id}
-                className="bg-[#111820] border border-[#f59e0b]/30 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div className="space-y-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-bold text-[#dde6ef]">{s.aseguradora || 'Aseguradora'}</span>
-                    {s.poliza && <span className="text-xs text-[#7a95aa] font-mono">Póliza: {s.poliza}</span>}
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#f59e0b]/15 text-[#f59e0b] border border-[#f59e0b]/30">
-                      En trámite
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#7a95aa]">
-                    Paciente: <b className="text-[#dde6ef]">{s.patient_name || 'Particular'}</b> · {s.procedimiento || 'Cirugía'} · 📍 {s.lugar || 'Hospital'}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-lg font-bold font-mono text-[#f59e0b]">{money(s.total)}</span>
-                  <button
-                    onClick={() => liquidarAseguradora(s.id)}
-                    className={btnPrimary}
-                    style={{ background: '#38bdf8', color: '#051b14' }}
-                  >
-                    ✓ Liquidar a banco
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+      {/* ── MODAL: REGISTRAR INGRESO ── */}
+      {showModalIngreso && (
+        <ModalRegistrarIngreso
+          patients={patients}
+          services={services}
+          catalogs={catalogs}
+          onClose={() => setShowModalIngreso(false)}
+          onSuccess={() => {
+            setShowModalIngreso(false);
+            flash('✓ Ingreso registrado exitosamente');
+            loadAll();
+          }}
+        />
       )}
 
-      {/* FORMULARIO EXPANDIBLE: REGISTRO TPV RÁPIDO CON PRECIOS FIJOS Y VARIABLES */}
-      {nuevo && (
-        <div className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-5 sm:p-6 space-y-5 shadow-lg animate-in fade-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#1e2d3d]">
-            <div>
-              <p className="text-xs font-mono text-[#00e5a0] uppercase tracking-wider">Terminal de Registro Médico</p>
-              <h3 className="text-base font-bold text-[#dde6ef] mt-0.5">Captura de Cobro, Cirugía o Procedimiento</h3>
-            </div>
-
-            {/* Selector de Destino del Registro */}
-            <div className="inline-flex rounded-xl bg-[#111820] border border-[#1e2d3d] p-1 gap-1">
-              <button
-                type="button"
-                onClick={() => setModoRegistro('cobrado')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-                style={{
-                  background: modoRegistro === 'cobrado' ? '#00e5a0' : 'transparent',
-                  color: modoRegistro === 'cobrado' ? '#051b14' : '#7a95aa',
-                }}
-              >
-                ✓ Cobrado ahora
-              </button>
-              <button
-                type="button"
-                onClick={() => setModoRegistro('en_tramite')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-                style={{
-                  background: modoRegistro === 'en_tramite' ? '#f59e0b' : 'transparent',
-                  color: modoRegistro === 'en_tramite' ? '#000' : '#7a95aa',
-                }}
-              >
-                🛡️ Aseguradora (En trámite)
-              </button>
-              <button
-                type="button"
-                onClick={() => setModoRegistro('pendiente')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-                style={{
-                  background: modoRegistro === 'pendiente' ? '#38bdf8' : 'transparent',
-                  color: modoRegistro === 'pendiente' ? '#051b14' : '#7a95aa',
-                }}
-              >
-                ⏳ Enviar a mostrador
-              </button>
-            </div>
-          </div>
-
-          {/* Paso 1: Datos Generales */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">PACIENTE</label>
-              <select className={inp} value={pid} onChange={e => setPid(e.target.value)}>
-                <option value="">— Sin paciente / General —</option>
-                {patients.map(p => (
-                  <option key={p.id} value={p.id}>{p.full_name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">TIPO DE ATENCIÓN</label>
-              <select className={inp} value={tipoIngreso} onChange={e => setTipoIngreso(e.target.value)}>
-                {Object.entries(TIPO_INGRESO_LABELS).map(([k, it]) => (
-                  <option key={k} value={k}>{it.icon} {it.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">LUGAR / HOSPITAL</label>
-              <input
-                list="lugares-list"
-                className={inp}
-                placeholder="Ej. Consultorio, Hospital Ángeles…"
-                value={lugar}
-                onChange={e => setLugar(e.target.value)}
-              />
-              <datalist id="lugares-list">
-                <option value="Consultorio" />
-                <option value="Quirófano / Clínica ambulatoria" />
-                {catalogs.clientes.map((c: any) => (
-                  <option key={c.id} value={c.nombre} />
-                ))}
-              </datalist>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">FECHA</label>
-              <input
-                type="date"
-                className={inp}
-                value={fechaEvento}
-                onChange={e => setFechaEvento(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Si es aseguradora o cirugía: campos de seguro */}
-          {(modoRegistro === 'en_tramite' || tipoIngreso === 'aseguradora' || tipoIngreso === 'cirugia') && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#111820] border border-[#f59e0b]/30 rounded-xl p-3.5">
-              <div>
-                <label className="text-[10px] font-mono text-[#f59e0b] uppercase block mb-1">
-                  COMPAÑÍA ASEGURADORA / CONVENIO
-                </label>
-                <input
-                  list="aseguradoras-list"
-                  className={inp}
-                  placeholder="Ej. GNP Seguros, AXA, Seguros Monterrey, MetLife…"
-                  value={aseguradora}
-                  onChange={e => setAseguradora(e.target.value)}
-                />
-                <datalist id="aseguradoras-list">
-                  <option value="GNP Seguros" />
-                  <option value="AXA Seguros" />
-                  <option value="Seguros Monterrey New York Life" />
-                  <option value="MetLife" />
-                  <option value="Mapfre" />
-                  <option value="Inbursa" />
-                </datalist>
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
-                  N° DE PÓLIZA / SINIESTRO / CARTA AUTORIZACIÓN
-                </label>
-                <input
-                  className={inp}
-                  placeholder="Ej. Siniestro #984321 / Autorización…"
-                  value={poliza}
-                  onChange={e => setPoliza(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Paso 2: Selección Rápida de Prestaciones (Fijas y Variables) */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase">
-                SELECCIÓN DE PRESTACIONES & CIRUGÍAS
-              </label>
-
-              {/* Filtro por categoría */}
-              <div className="flex gap-1 overflow-x-auto text-xs">
-                {['todas', 'consulta', 'estudio', 'cirugia', 'producto'].map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setCategoriaSel(cat)}
-                    className="px-2.5 py-1 rounded-lg capitalize transition"
-                    style={{
-                      background: categoriaSel === cat ? '#1e2d3d' : '#111820',
-                      color: categoriaSel === cat ? '#00e5a0' : '#7a95aa',
-                      border: `1px solid ${categoriaSel === cat ? '#00e5a0' : '#1e2d3d'}`,
-                    }}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Grid de servicios táctiles */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {serviciosFiltrados.map(s => {
-                const isSelected = !!itemsMap[s.id];
-                const isVar = s.precio_tipo === 'variable';
-                return (
-                  <div
-                    key={s.id}
-                    className="bg-[#111820] border rounded-xl p-3 flex flex-col justify-between transition-all"
-                    style={{
-                      borderColor: isSelected ? '#00e5a0' : '#1e2d3d',
-                      background: isSelected ? 'rgba(0, 229, 160, 0.05)' : '#111820',
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-[#dde6ef] truncate">{s.nombre}</p>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#0d1520] text-[#7a95aa] uppercase">
-                          {isVar ? 'Precio variable' : 'Precio fijo'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleService(s)}
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0"
-                        style={{
-                          background: isSelected ? '#00e5a0' : '#1e2d3d',
-                          color: isSelected ? '#051b14' : '#dde6ef',
-                        }}
-                      >
-                        {isSelected ? '✓ Seleccionado' : '+ Agregar'}
-                      </button>
-                    </div>
-
-                    {/* Si está seleccionado: muestra precio o permite ingresar precio si es variable */}
-                    {isSelected && (
-                      <div className="mt-3 pt-2 border-t border-[#1e2d3d] flex items-center justify-between gap-2">
-                        <span className="text-xs text-[#7a95aa]">
-                          {isVar ? 'Precio pactado ($):' : 'Importe:'}
-                        </span>
-                        {isVar ? (
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            className="w-28 bg-[#0d1520] border border-[#00e5a0] rounded-lg px-2 py-1 text-sm text-[#00e5a0] font-mono font-bold text-right outline-none"
-                            placeholder="0"
-                            value={itemsMap[s.id]?.precio || ''}
-                            onChange={e => updateServicePrice(s.id, +e.target.value || 0)}
-                          />
-                        ) : (
-                          <span className="text-sm font-bold font-mono text-[#00e5a0]">
-                            {money(s.precio)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* O ingresar concepto y monto libre / honorarios directos */}
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-3 pt-2">
-            <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
-                O ESCRIBE UN CONCEPTO PERSONALIZADO (HONORARIOS, CIRUGÍA, ETC.)
-              </label>
-              <input
-                className={inp}
-                placeholder="Ej. Honorarios quirúrgicos, Colocación de catéter, Estudio especial…"
-                value={customConcepto}
-                onChange={e => setCustomConcepto(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
-                MONTO ($ MXN)
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                className={inp}
-                placeholder="0"
-                value={customMonto || ''}
-                onChange={e => setCustomMonto(+e.target.value || 0)}
-              />
-            </div>
-          </div>
-
-          {/* Paso 3: Método de pago o Indicaciones de mostrador */}
-          {modoRegistro === 'cobrado' && (
-            <div className="flex flex-wrap items-center justify-between gap-4 bg-[#111820] border border-[#1e2d3d] rounded-xl p-4">
-              <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">MÉTODO DE PAGO</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {['efectivo', 'tarjeta', 'transferencia'].map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setMetodoPago(m)}
-                      className="px-3 py-2 rounded-xl text-xs font-semibold capitalize transition"
-                      style={{
-                        background: metodoPago === m ? '#00e5a0' : '#0d1520',
-                        color: metodoPago === m ? '#051b14' : '#dde6ef',
-                        border: `1px solid ${metodoPago === m ? '#00e5a0' : '#1e2d3d'}`,
-                      }}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label className="flex items-center gap-2 text-xs font-medium text-[#dde6ef] cursor-pointer mt-2 sm:mt-0">
-                <input
-                  type="checkbox"
-                  checked={facturada}
-                  onChange={e => setFacturada(e.target.checked)}
-                  className="rounded accent-[#00e5a0] w-4 h-4"
-                />
-                Requiere factura (CFDI)
-              </label>
-            </div>
-          )}
-
-          {modoRegistro === 'pendiente' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#111820] border border-[#1e2d3d] rounded-xl p-4">
-              <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
-                  PRÓXIMA CITA SUGERIDA (para recepción)
-                </label>
-                <input
-                  type="date"
-                  className={inp}
-                  value={proximaCita}
-                  onChange={e => setProximaCita(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
-                  INDICACIONES PARA MOSTRADOR
-                </label>
-                <input
-                  className={inp}
-                  placeholder="Ej. Agendar revisión en 15 días con biometría…"
-                  value={indicacionesMostrador}
-                  onChange={e => setIndicacionesMostrador(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Descuentos o cortesías */}
-          <div className="flex flex-wrap items-center gap-4 pt-1">
-            <label className="flex items-center gap-2 text-xs font-medium text-[#dde6ef] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={cortesia}
-                onChange={e => setCortesia(e.target.checked)}
-                className="rounded accent-[#00e5a0] w-4 h-4"
-              />
-              Cortesía médica ($0)
-            </label>
-
-            {!cortesia && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#7a95aa]">Descuento $</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  className={`${inp} w-28 py-1.5`}
-                  placeholder="0"
-                  value={descuento || ''}
-                  onChange={e => setDescuento(+e.target.value || 0)}
-                />
-              </div>
-            )}
-
-            {(cortesia || descuento > 0) && (
-              <input
-                className={`${inp} flex-1 min-w-[180px] py-1.5`}
-                placeholder="Motivo del descuento o cortesía…"
-                value={motivo}
-                onChange={e => setMotivo(e.target.value)}
-              />
-            )}
-          </div>
-
-          {/* Resumen Total y Botón de Envío */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-[#1e2d3d]">
-            <div className="flex items-baseline gap-3">
-              <span className="text-xs text-[#7a95aa]">Subtotal: {money(subtotal)}</span>
-              <span className="text-xl font-bold font-mono text-[#00e5a0]">Total: {money(total)}</span>
-            </div>
-
-            <button
-              onClick={guardarCobro}
-              className={btnPrimary}
-              style={{ background: '#00e5a0', color: '#051b14' }}
-            >
-              {modoRegistro === 'cobrado'
-                ? '✓ Registrar ingreso cobrado'
-                : modoRegistro === 'en_tramite'
-                ? '🛡️ Registrar cirugía en trámite'
-                : '⏳ Enviar cobro a recepción'}
-            </button>
-          </div>
-        </div>
+      {/* ── MODAL: REGISTRAR GASTO ── */}
+      {showModalGasto && (
+        <ModalRegistrarGasto
+          catalogs={catalogs}
+          onClose={() => setShowModalGasto(false)}
+          onSuccess={() => {
+            setShowModalGasto(false);
+            flash('✓ Gasto registrado en contabilidad');
+            loadAll();
+          }}
+        />
       )}
 
-      {/* HISTORIAL DE INGRESOS COBRADOS */}
-      <Card
-        title={`📋 Historial de Ingresos Cobrados (${ventasCobradas.length})`}
-        subtitle="Movimientos liquidados y registrados en la caja o banco de la clínica."
-        right={
-          <div className="flex gap-1 overflow-x-auto text-xs">
-            {[
-              ['todos', 'Todos'],
-              ['consulta', 'Consultas'],
-              ['cirugia', 'Cirugías'],
-              ['estudio', 'Estudios'],
-              ['aseguradora', 'Aseguradoras'],
-            ].map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setFiltroHistorial(k)}
-                className="px-2.5 py-1 rounded-lg transition"
-                style={{
-                  background: filtroHistorial === k ? '#1e2d3d' : '#111820',
-                  color: filtroHistorial === k ? '#00e5a0' : '#7a95aa',
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        {ventasCobradas.length === 0 ? (
-          <p className="text-xs text-[#486581] py-4 text-center">No hay ingresos registrados con este filtro.</p>
-        ) : (
-          <div className="space-y-2">
-            {ventasCobradas.slice(0, 35).map(s => (
-              <div
-                key={s.id}
-                className="bg-[#111820] border border-[#1e2d3d] rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:border-[#2a3e52] transition"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#0d1520] border border-[#1e2d3d] text-[#00e5a0]">
-                      {TIPO_INGRESO_LABELS[s.tipo_ingreso || 'consulta']?.label || s.tipo_ingreso}
-                    </span>
-                    <span className="text-sm font-semibold text-[#dde6ef]">{s.patient_name || 'Paciente general'}</span>
-                    {s.lugar && <span className="text-xs text-[#7a95aa]">📍 {s.lugar}</span>}
-                    {s.aseguradora && <span className="text-xs text-[#a78bfa]">🛡️ {s.aseguradora}</span>}
-                  </div>
-                  <p className="text-xs text-[#7a95aa]">
-                    {s.procedimiento || (s.items || []).map((i: any) => i.concepto).join(' · ')}
-                    {' · '}
-                    <span className="capitalize">{s.metodo_pago || 'efectivo'}</span>
-                    {s.facturada ? ' · Con CFDI' : ''}
-                    {' · '}
-                    {(s.fecha_evento || s.cobrado_en || s.created_at || '').slice(0, 10)}
-                  </p>
-                </div>
-                <span className="font-mono font-bold text-sm sm:text-base text-[#00e5a0] shrink-0">
-                  {money(s.total)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* MODAL PARA COBRAR EN MOSTRADOR */}
-      {cobrandoModal && (
-        <ModalCobroMostrador
-          venta={cobrandoModal}
-          onClose={() => setCobrandoModal(null)}
+      {/* ── MODAL: REEMBOLSAR AL DOCTOR ── */}
+      {showReimburseModal && ov?.flujo_fondos && (
+        <ModalReembolso
+          saldoPendiente={ov.flujo_fondos.pagado_por_doctor_total || ov.flujo_fondos.pagado_por_doctor?.total_aportado_doctor || 0}
+          onClose={() => setShowReimburseModal(false)}
           done={() => {
-            setCobrandoModal(null);
-            flash('Cobro registrado exitosamente en recepción');
-            reload();
+            setShowReimburseModal(false);
+            flash('✓ Reembolso al médico liquidado');
+            loadAll();
           }}
         />
       )}
@@ -1705,363 +364,856 @@ function CobrosTab({
   );
 }
 
-function ModalCobroMostrador({
-  venta,
-  onClose,
-  done,
-}: {
-  venta: any;
-  onClose: () => void;
-  done: () => void;
-}) {
-  const [metodo, setMetodo] = useState('efectivo');
-  const [factura, setFactura] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const confirmarCobro = async () => {
-    setBusy(true);
-    try {
-      await api(`/clinic/sales/${venta.id}/charge`, {
-        method: 'POST',
-        body: JSON.stringify({ metodo_pago: metodo, facturada: factura }),
-      });
-      done();
-    } catch {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
-        <div>
-          <span className="text-[10px] font-mono uppercase text-[#00e5a0]">Atención en Recepción</span>
-          <h3 className="text-xl font-bold font-mono text-[#00e5a0] mt-0.5">{money(venta.total)}</h3>
-          <p className="text-sm font-semibold text-[#dde6ef] mt-1">{venta.patient_name || 'Paciente en mostrador'}</p>
-        </div>
-
-        {venta.proxima_cita && (
-          <p className="text-xs text-[#00e5a0] bg-[#00e5a0]/10 border border-[#00e5a0]/25 rounded-lg p-2">
-            📅 Próxima cita indicada por el médico: <b>{venta.proxima_cita}</b>
-          </p>
-        )}
-
-        {venta.indicaciones_mostrador && (
-          <p className="text-xs text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/25 rounded-lg p-2">
-            💬 {venta.indicaciones_mostrador}
-          </p>
-        )}
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">MÉTODO DE PAGO</label>
-          <div className="grid grid-cols-2 gap-2">
-            {['efectivo', 'tarjeta', 'transferencia', 'aseguradora'].map(m => (
-              <button
-                key={m}
-                onClick={() => setMetodo(m)}
-                className="py-2.5 rounded-xl text-xs font-semibold capitalize transition"
-                style={{
-                  background: metodo === m ? '#00e5a0' : '#111820',
-                  color: metodo === m ? '#051b14' : '#dde6ef',
-                  border: `1px solid ${metodo === m ? '#00e5a0' : '#1e2d3d'}`,
-                }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <label className="flex items-center gap-2 text-xs text-[#dde6ef] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={factura}
-            onChange={e => setFactura(e.target.checked)}
-            className="rounded accent-[#00e5a0]"
-          />
-          Requiere factura fiscal (CFDI)
-        </label>
-
-        <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className={`${btnSecondary} flex-1`}>
-            Cancelar
-          </button>
-          <button
-            onClick={confirmarCobro}
-            disabled={busy}
-            className={`${btnPrimary} flex-1`}
-            style={{ background: '#00e5a0', color: '#051b14' }}
-          >
-            {busy ? 'Guardando…' : 'Confirmar cobro'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE 3: GASTOS (REGISTRO EN 10 SEGUNDOS Y ORIGEN DEL DINERO)
+// 1. PESTAÑA: INSIGHTS & IA DE NEGOCIO (100% ESTRATEGIA COMERCIAL Y FINANCIERA)
 // ─────────────────────────────────────────────────────────────────────────────
-function GastosTab({
-  expenses,
-  catalogs,
+function InsightsTab({
+  ov,
   reload,
-  flash,
-  onReimburse,
+  onOpenIngreso,
+  onOpenGasto,
+  onOpenReembolso,
 }: {
-  expenses: any[];
-  catalogs: { proveedores: any[]; clientes: any[]; conceptos_gasto: any[] };
+  ov: any;
   reload: () => void;
-  flash: (t: string) => void;
-  onReimburse: () => void;
+  onOpenIngreso: () => void;
+  onOpenGasto: () => void;
+  onOpenReembolso: () => void;
 }) {
-  const [cat, setCat] = useState('insumos');
-  const [concepto, setConcepto] = useState('');
-  const [monto, setMonto] = useState<number>(0);
-  const [proveedor, setProveedor] = useState('');
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
-  const [origenFondo, setOrigenFondo] = useState<string>('caja_consultorio');
-  const [guardarConcepto, setGuardarConcepto] = useState(false);
-  const [guardarProveedor, setGuardarProveedor] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiReport, setAiReport] = useState<string>(ov?.ai_analysis || '');
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [aiError, setAiError] = useState('');
 
-  const CATS = ['insumos', 'renta', 'sueldos', 'equipo_medico', 'servicios', 'impuestos_contador', 'seguros', 'publicidad', 'otros'];
+  const rv = ov?.resumen_ventas || {};
+  const ff = ov?.flujo_fondos || {};
+  const sedes = ov?.analisis_sedes || [];
+  const fugas = ov?.gastos_analisis?.fugas_detectadas || [];
+  const hormiga = ov?.gastos_analisis?.gastos_hormiga || {};
 
-  const guardarGasto = async () => {
-    if (!concepto.trim()) return flash('Escribe el concepto del gasto');
-    if (!monto || monto <= 0) return flash('Indica un monto válido');
+  const consultarIa = async (customQ?: string) => {
+    setLoadingAi(true);
+    setAiError('');
     try {
-      await api('/clinic/expenses', {
+      const q = customQ !== undefined ? customQ : aiPrompt.trim();
+      const res = await api('/clinic/ai-analysis', {
         method: 'POST',
-        body: JSON.stringify({
-          categoria: cat,
-          concepto: concepto.trim(),
-          monto,
-          proveedor: proveedor.trim() || null,
-          fecha,
-          origen_fondo: origenFondo,
-          guardar_concepto: guardarConcepto,
-          guardar_proveedor: guardarProveedor,
-        }),
+        body: JSON.stringify({ question: q || null }),
       });
-      setConcepto('');
-      setMonto(0);
-      setProveedor('');
-      setGuardarConcepto(false);
-      setGuardarProveedor(false);
-      flash('Gasto registrado correctamente');
-      reload();
+      setAiReport(res.analysis || '');
     } catch (e: any) {
-      flash(e.message);
+      setAiError(e.message || 'Error al conectar con el Asesor IA de Negocio');
+    } finally {
+      setLoadingAi(false);
     }
   };
-
-  const gastosDelDoctor = expenses.filter(e => {
-    const orig = ORIGEN_FONDO_LABELS[e.origen_fondo || ''] || {};
-    return orig.isDoctor;
-  });
 
   return (
     <div className="space-y-6">
-      {/* Formulario rápido en 10 segundos */}
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 sm:p-6 space-y-5">
-        <div>
-          <p className="text-xs font-mono text-[#f43f5e] uppercase tracking-wider">Control de Egresos</p>
-          <h3 className="text-base font-bold text-[#dde6ef] mt-0.5">Captura Rápida de Gastos</h3>
+      {/* KPI Strip Superior */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4 sm:p-5">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Vendido</p>
+          <p className="text-2xl sm:text-3xl font-bold font-mono text-[#00e5a0] mt-1">
+            {money(rv.total_vendido || 0)}
+          </p>
+          <div className="flex items-center gap-2 mt-2 text-xs text-[#7a95aa]">
+            {rv.variacion_mes_pct !== null && rv.variacion_mes_pct !== undefined ? (
+              <span className={`font-mono font-semibold ${rv.variacion_mes_pct >= 0 ? 'text-[#00e5a0]' : 'text-[#f43f5e]'}`}>
+                {rv.variacion_mes_pct >= 0 ? '+' : ''}{rv.variacion_mes_pct}% vs mes ant.
+              </span>
+            ) : (
+              <span>Comparativo mensual activo</span>
+            )}
+          </div>
         </div>
 
-        {/* Chips de conceptos guardados */}
-        {catalogs.conceptos_gasto.length > 0 && (
-          <div>
-            <p className="text-[10px] font-mono text-[#7a95aa] uppercase mb-1.5">CONCEPTOS FRECUENTES (clic para rellenar)</p>
-            <div className="flex flex-wrap gap-1.5">
-              {catalogs.conceptos_gasto.map((c: any) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    setConcepto(c.nombre);
-                    if (c.categoria) setCat(c.categoria);
-                  }}
-                  className="px-2.5 py-1 rounded-lg text-xs bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#00e5a0] transition active:scale-95"
-                >
-                  {c.nombre}
-                </button>
-              ))}
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4 sm:p-5">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Cobrado (Caja & Banco)</p>
+          <p className="text-2xl sm:text-3xl font-bold font-mono text-[#38bdf8] mt-1">
+            {money(rv.total_cobrado || 0)}
+          </p>
+          <p className="text-xs text-[#7a95aa] mt-2">
+            Ingreso líquido recaudado
+          </p>
+        </div>
+
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4 sm:p-5">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total por Cobrar</p>
+          <p className="text-2xl sm:text-3xl font-bold font-mono text-[#f59e0b] mt-1">
+            {money(rv.total_por_cobrar || 0)}
+          </p>
+          <p className="text-xs text-[#7a95aa] mt-2">
+            {ov?.cuentas_por_cobrar?.length || 0} cuentas pendientes
+          </p>
+        </div>
+
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4 sm:p-5">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Gastos Totales Registrados</p>
+          <p className="text-2xl sm:text-3xl font-bold font-mono text-[#f43f5e] mt-1">
+            {money(ov?.gastos_analisis?.total_gastado || ov?.kpis?.gasto_mes || 0)}
+          </p>
+          <p className="text-xs text-[#7a95aa] mt-2">
+            Utilidad Neta: <b className="text-[#dde6ef] font-mono">{money((rv.total_cobrado || 0) - (ov?.gastos_analisis?.total_gastado || 0))}</b>
+          </p>
+        </div>
+      </div>
+
+      {/* Tarjeta de Asesor IA de Negocio (100% Enfoque Comercial / Financiero) */}
+      <div className="bg-[#0d1520] border border-[#00e5a0]/30 rounded-2xl p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">🧠</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-[#dde6ef]">
+                  Asesor de Estrategia y Negocio Médico (IA)
+                </h3>
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-[#00e5a0]/20 text-[#00e5a0] border border-[#00e5a0]/40">
+                  100% Negocio y Finanzas
+                </span>
+              </div>
+              <p className="text-xs text-[#7a95aa] mt-0.5">
+                Evaluación estratégica de rentabilidad de sedes, traslados, márgenes y detección de fugas de dinero. (Sin consejos médicos).
+              </p>
             </div>
           </div>
-        )}
-
-        {/* Campos principales */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="sm:col-span-2">
-            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">CONCEPTO DEL GASTO *</label>
-            <input
-              className={inp}
-              placeholder="Ej. Compra de gasas y jeringas, Renta consultorio, Luz CFE…"
-              value={concepto}
-              onChange={e => setConcepto(e.target.value)}
-            />
-            <label className="flex items-center gap-2 text-xs text-[#00e5a0] mt-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={guardarConcepto}
-                onChange={e => setGuardarConcepto(e.target.checked)}
-                className="rounded accent-[#00e5a0]"
-              />
-              ¿Guardar este concepto para usarlo en un clic a futuro?
-            </label>
-          </div>
-
-          <div>
-            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">MONTO ($ MXN) *</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              className={inp}
-              placeholder="0"
-              value={monto || ''}
-              onChange={e => setMonto(+e.target.value || 0)}
-            />
-          </div>
-
-          <div>
-            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">FECHA</label>
-            <input
-              type="date"
-              className={inp}
-              value={fecha}
-              onChange={e => setFecha(e.target.value)}
-            />
-          </div>
+          <button
+            onClick={() => consultarIa()}
+            disabled={loadingAi}
+            className={`${btnPrimary} bg-[#00e5a0]/20 text-[#00e5a0] border border-[#00e5a0]/40 hover:bg-[#00e5a0]/30`}
+          >
+            {loadingAi ? 'Analizando negocio…' : '↻ Actualizar Opinión'}
+          </button>
         </div>
 
-        {/* ¿De dónde salió el dinero? */}
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">
-            ¿DE DÓNDE SALIÓ EL DINERO PARA ESTE PAGO? *
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {Object.entries(ORIGEN_FONDO_LABELS).map(([k, info]) => {
-              const active = origenFondo === k;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setOrigenFondo(k)}
-                  className="px-3.5 py-2.5 rounded-xl text-xs font-semibold border text-left transition flex items-center justify-between"
-                  style={{
-                    background: active
-                      ? (info.isDoctor ? 'rgba(167, 139, 250, 0.15)' : 'rgba(0, 229, 160, 0.12)')
-                      : '#111820',
-                    borderColor: active
-                      ? (info.isDoctor ? '#a78bfa' : '#00e5a0')
-                      : '#1e2d3d',
-                    color: active
-                      ? (info.isDoctor ? '#c4b5fd' : '#00e5a0')
-                      : '#dde6ef',
-                  }}
-                >
-                  <span className="truncate">{info.label}</span>
-                  <span className="text-sm shrink-0 ml-1">{info.icon}</span>
-                </button>
-              );
-            })}
-          </div>
-          {ORIGEN_FONDO_LABELS[origenFondo]?.isDoctor && (
-            <p className="text-[11px] text-[#a78bfa] mt-1.5">
-              ℹ️ Este gasto se acumulará como saldo a favor del médico para que la clínica se lo reembolse después.
+        {/* Reporte IA */}
+        <div className="p-4 sm:p-5 rounded-xl bg-[#070a0e] border border-[#1e2d3d] text-sm text-[#dde6ef] whitespace-pre-line leading-relaxed font-sans">
+          {aiReport ? (
+            aiReport
+          ) : (
+            <p className="text-[#7a95aa] italic">
+              Haz clic en "Actualizar Opinión" o escribe una pregunta para que el Asesor IA evalúe la salud financiera de tu consultorio.
             </p>
           )}
         </div>
 
-        {/* Proveedor y categoría */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">CATEGORÍA</label>
-            <select className={inp} value={cat} onChange={e => setCat(e.target.value)}>
-              {CATS.map(c => (
-                <option key={c} value={c}>{c.replace('_', ' ').toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">PROVEEDOR (opcional)</label>
-            <input
-              list="proveedores-list"
-              className={inp}
-              placeholder="Ej. Farmacia Especializada, CFE, Telmex…"
-              value={proveedor}
-              onChange={e => setProveedor(e.target.value)}
-            />
-            <datalist id="proveedores-list">
-              {catalogs.proveedores.map((p: any) => (
-                <option key={p.id} value={p.nombre} />
-              ))}
-            </datalist>
-          </div>
+        {/* Input para preguntas de negocio al Asesor IA */}
+        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+          <input
+            className={inp}
+            placeholder="Pregunta sobre tu negocio: ¿Conviene abrir en Playa del Carmen? ¿Dónde tengo fugas de dinero?..."
+            value={aiPrompt}
+            onChange={e => setAiPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') consultarIa(); }}
+          />
+          <button
+            onClick={() => consultarIa()}
+            disabled={loadingAi || !aiPrompt.trim()}
+            className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] shrink-0`}
+          >
+            {loadingAi ? 'Pensando…' : 'Preguntar'}
+          </button>
         </div>
 
-        <div className="flex justify-end pt-1">
-          <button
-            onClick={guardarGasto}
-            className={btnPrimary}
-            style={{ background: '#f43f5e', color: '#fff' }}
-          >
-            ✓ Registrar egreso
-          </button>
+        {/* Chips de Preguntas Frecuentes Rápidas */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#7a95aa] pt-1">
+          <span className="text-[10px] font-mono uppercase text-[#486581]">Preguntas sugeridas:</span>
+          {[
+            '¿Qué sede u hospital me deja mayor utilidad neta?',
+            '¿Vale la pena trasladarme a otra ciudad por pocas consultas?',
+            '¿Dónde están mis mayores gastos hormiga y fugas?',
+            '¿Qué procedimientos quirúrgicos debería promover más?',
+          ].map((sug, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                setAiPrompt(sug);
+                consultarIa(sug);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#00e5a0] transition text-[11px]"
+            >
+              {sug}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Historial de gastos */}
-      <Card
-        title={`Gastos Registrados (${expenses.length})`}
-        subtitle="Egresos organizados por fecha y origen del fondo."
-      >
-        <div className="space-y-2">
-          {expenses.slice(0, 40).map(e => {
-            const orig = ORIGEN_FONDO_LABELS[e.origen_fondo || 'caja_consultorio'] || ORIGEN_FONDO_LABELS.caja_consultorio;
-            return (
-              <div
-                key={e.id}
-                className="bg-[#111820] border border-[#1e2d3d] rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold text-[#dde6ef] truncate">{e.concepto || e.categoria}</p>
-                    <span
-                      className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
-                      style={{
-                        background: orig.isDoctor ? 'rgba(167, 139, 250, 0.12)' : 'rgba(56, 189, 248, 0.1)',
-                        borderColor: orig.isDoctor ? '#a78bfa' : '#38bdf8',
-                        color: orig.isDoctor ? '#c4b5fd' : '#38bdf8',
-                      }}
-                    >
-                      {orig.short}
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#7a95aa]">
-                    {e.fecha} · <span className="capitalize">{(e.categoria || '').replace('_', ' ')}</span>
-                    {e.proveedor ? ` · ${e.proveedor}` : ''}
+      {/* Grid: Sedes y Fugas Detectadas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Análisis Rápido de Sedes / Hospitales */}
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-bold text-[#dde6ef]">Rentabilidad por Sede & Hospital</h4>
+              <p className="text-xs text-[#7a95aa]">¿Dónde conviene operar o consultar más?</p>
+            </div>
+            <span className="text-xs font-mono text-[#00e5a0]">{sedes.length} sedes</span>
+          </div>
+
+          <div className="space-y-3">
+            {sedes.slice(0, 4).map((s: any, i: number) => (
+              <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-[#dde6ef] truncate">{s.lugar}</p>
+                  <p className="text-[11px] text-[#7a95aa] mt-0.5">
+                    {s.cantidad} atenciones · Ticket prom. <b className="text-[#dde6ef]">{money(s.ticket_promedio)}</b>
                   </p>
+                  <p className="text-[10px] text-[#38bdf8] mt-1 font-mono">{s.evaluacion}</p>
                 </div>
-                <span className="font-mono font-bold text-sm text-[#f43f5e] shrink-0">
-                  {money(e.monto)}
-                </span>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold font-mono text-[#00e5a0]">{money(s.total_ingreso)}</p>
+                  <span className="text-[10px] font-mono text-[#7a95aa]">{s.pct_ingreso}% del ingreso</span>
+                </div>
               </div>
-            );
-          })}
+            ))}
+            {sedes.length === 0 && (
+              <p className="text-xs text-[#7a95aa] py-3 text-center">Registra cobros con sede asignada para ver la comparativa.</p>
+            )}
+          </div>
         </div>
-      </Card>
+
+        {/* Detección de Fugas y Gastos Hormiga */}
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-bold text-[#dde6ef]">Alertas de Fugas & Gastos Hormiga</h4>
+              <p className="text-xs text-[#7a95aa]">Consumos menores o duplicados detectados</p>
+            </div>
+            {hormiga.total > 0 && (
+              <span className="text-xs font-mono font-bold text-[#f43f5e] bg-[#f43f5e]/10 px-2 py-0.5 rounded-full border border-[#f43f5e]/30">
+                {money(hormiga.total)} acumulados
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2.5">
+            {fugas.map((f: string, i: number) => (
+              <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#f43f5e]/30 text-xs text-[#dde6ef] flex items-start gap-2.5">
+                <span className="text-base leading-none text-[#f43f5e]">⚠️</span>
+                <p className="leading-relaxed">{f}</p>
+              </div>
+            ))}
+            {fugas.length === 0 && (
+              <div className="p-4 rounded-xl bg-[#111820] border border-[#00e5a0]/30 text-xs text-[#00e5a0] flex items-center gap-2">
+                <span>✓</span>
+                <p>No se han detectado gastos hormiga anormales ni fugas de capital este mes.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE 4: CATÁLOGO DE PRESTACIONES (PRECIOS FIJOS Y VARIABLES)
+// 2. PESTAÑA: INGRESOS & COBRANZA (VENTAS, TOP CONCEPTOS, SEDES, COBRANZA)
 // ─────────────────────────────────────────────────────────────────────────────
-function PrestacionesTab({
+function IngresosTab({
+  ov,
+  sales,
+  reload,
+  flash,
+  onOpenNuevo,
+}: {
+  ov: any;
+  sales: any[];
+  reload: () => void;
+  flash: (t: string) => void;
+  onOpenNuevo: () => void;
+}) {
+  const [topModo, setTopModo] = useState<'cantidad' | 'ingreso'>('ingreso');
+  const [filtroCobro, setFiltroCobro] = useState<'todos' | 'pendiente' | 'cobrado'>('todos');
+  const [busqueda, setBusqueda] = useState('');
+
+  const rv = ov?.resumen_ventas || {};
+  const sedes = ov?.analisis_sedes || [];
+  const cuentasPorCobrar = ov?.cuentas_por_cobrar || [];
+  const topCantidad = ov?.top_vendidos?.por_cantidad || [];
+  const topIngreso = ov?.top_vendidos?.por_ingreso || [];
+
+  const marcarComoPagado = async (item: any) => {
+    try {
+      if (item.tipo_deudor === 'aseguradora' || item.estado === 'en_tramite') {
+        await api(`/clinic/sales/${item.id}/liquidate-insurance`, { method: 'POST' });
+      } else {
+        await api(`/clinic/sales/${item.id}/charge`, {
+          method: 'POST',
+          body: JSON.stringify({
+            metodo_pago: 'efectivo',
+            facturada: false,
+          }),
+        });
+      }
+      flash(`✓ Cobro liquidado: ${item.procedimiento} (${money(item.total)})`);
+      reload();
+    } catch (e: any) {
+      flash(e.message || 'Error al liquidar el cobro');
+    }
+  };
+
+  const salesFiltradas = sales.filter(s => {
+    if (filtroCobro !== 'todos' && s.estado !== filtroCobro) return false;
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      const matchPac = (s.patient_name || '').toLowerCase().includes(q);
+      const matchProc = (s.procedimiento || '').toLowerCase().includes(q);
+      const matchAseg = (s.aseguradora || '').toLowerCase().includes(q);
+      const matchLugar = (s.lugar || '').toLowerCase().includes(q);
+      if (!matchPac && !matchProc && !matchAseg && !matchLugar) return false;
+    }
+    return true;
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Botón Superior y Resumen de Cobros */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-[#0d1520] border border-[#1e2d3d]">
+        <div>
+          <h2 className="text-lg font-bold text-[#dde6ef]">Control de Ingresos y Cobranza</h2>
+          <p className="text-xs text-[#7a95aa] mt-0.5">
+            Registra servicios prestados en consultorio u hospitales y gestiona cuentas por cobrar.
+          </p>
+        </div>
+        <button
+          onClick={onOpenNuevo}
+          className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] shadow`}
+        >
+          <span className="text-base font-bold">+</span>
+          <span>Registrar Ingreso</span>
+        </button>
+      </div>
+
+      {/* KPI Cards: Resumen de Ventas */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Vendido</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono text-[#00e5a0] mt-1">{money(rv.total_vendido || 0)}</p>
+          <p className="text-[11px] text-[#7a95aa] mt-1 font-mono">
+            {rv.variacion_mes_pct !== null && rv.variacion_mes_pct !== undefined ? `${rv.variacion_mes_pct >= 0 ? '+' : ''}${rv.variacion_mes_pct}% vs mes ant.` : 'Mes corriente'}
+          </p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Cobrado (Líquido)</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">{money(rv.total_cobrado || 0)}</p>
+          <p className="text-[11px] text-[#7a95aa] mt-1">Efectivo, tarjetas y transf.</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total por Cobrar</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">{money(rv.total_por_cobrar || 0)}</p>
+          <p className="text-[11px] text-[#f59e0b] mt-1 font-semibold">{cuentasPorCobrar.length} pendientes</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Comparativa Anual</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono text-[#dde6ef] mt-1">{money(rv.ingreso_anio_actual || 0)}</p>
+          <p className="text-[11px] text-[#7a95aa] mt-1 font-mono">
+            {rv.variacion_anio_pct !== null && rv.variacion_anio_pct !== undefined ? `${rv.variacion_anio_pct >= 0 ? '+' : ''}${rv.variacion_anio_pct}% vs año ant.` : 'Histórico en curso'}
+          </p>
+        </div>
+      </div>
+
+      {/* Grid: Qué se vende más & Análisis de Sedes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Qué se vende más */}
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-[#dde6ef]">¿Qué es lo que se vende más?</h3>
+              <p className="text-xs text-[#7a95aa]">Servicios con mayor volumen vs mayor facturación</p>
+            </div>
+            <div className="flex gap-1 bg-[#111820] p-1 rounded-lg border border-[#1e2d3d]">
+              <button
+                onClick={() => setTopModo('ingreso')}
+                className="px-2.5 py-1 rounded text-xs font-semibold transition"
+                style={{
+                  background: topModo === 'ingreso' ? '#00e5a0' : 'transparent',
+                  color: topModo === 'ingreso' ? '#051b14' : '#7a95aa',
+                }}
+              >
+                Por Ingreso ($)
+              </button>
+              <button
+                onClick={() => setTopModo('cantidad')}
+                className="px-2.5 py-1 rounded text-xs font-semibold transition"
+                style={{
+                  background: topModo === 'cantidad' ? '#00e5a0' : 'transparent',
+                  color: topModo === 'cantidad' ? '#051b14' : '#7a95aa',
+                }}
+              >
+                Por Cantidad (#)
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            {(topModo === 'ingreso' ? topIngreso : topCantidad).slice(0, 6).map((item: any, i: number) => {
+              const maxVal = topModo === 'ingreso'
+                ? Math.max(...topIngreso.map((x: any) => x.total), 1)
+                : Math.max(...topCantidad.map((x: any) => x.cantidad), 1);
+              const val = topModo === 'ingreso' ? item.total : item.cantidad;
+              const pctBar = Math.round((val / maxVal) * 100);
+
+              return (
+                <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[#dde6ef] truncate max-w-[220px]">{item.concepto}</span>
+                    <span className="font-mono text-[#00e5a0] font-bold">
+                      {money(item.total)} · <b className="text-[#7a95aa]">{item.cantidad} serv.</b>
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#070a0e] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#00e5a0] rounded-full transition-all" style={{ width: `${pctBar}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {topIngreso.length === 0 && (
+              <p className="text-xs text-[#7a95aa] py-4 text-center">Sin servicios registrados aún.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Análisis por Sedes y Hospitales */}
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-bold text-[#dde6ef]">Análisis de Ingresos por Sede / Hospital</h3>
+            <p className="text-xs text-[#7a95aa]">
+              Evalúa si vale la pena tener múltiples consultorios o trasladarse por consultas a otras ciudades.
+            </p>
+          </div>
+
+          <div className="space-y-2.5">
+            {sedes.map((s: any, i: number) => (
+              <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-[#dde6ef]">{s.lugar}</p>
+                    <p className="text-[11px] text-[#7a95aa]">
+                      {s.cantidad} pacientes · Ticket prom: <b className="text-[#dde6ef]">{money(s.ticket_promedio)}</b>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-mono font-bold text-[#00e5a0]">{money(s.total_ingreso)}</p>
+                    {s.total_por_cobrar > 0 && (
+                      <p className="text-[10px] font-mono text-[#f59e0b]">Por cobrar: {money(s.total_por_cobrar)}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="p-2 rounded-lg bg-[#070a0e] text-[11px] font-mono text-[#38bdf8] flex items-center justify-between">
+                  <span>💡 {s.evaluacion}</span>
+                  <span className="text-[#7a95aa]">{s.pct_ingreso}% total</span>
+                </div>
+              </div>
+            ))}
+            {sedes.length === 0 && (
+              <p className="text-xs text-[#7a95aa] py-4 text-center">Registra cobros asignando el hospital o consultorio.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Cuentas por Cobrar & Filtros */}
+      {cuentasPorCobrar.length > 0 && (
+        <div className="bg-[#0d1520] border border-[#f59e0b]/40 rounded-2xl p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⏳</span>
+                <h3 className="text-base font-bold text-[#dde6ef]">Cuentas por Cobrar & Cobranza Activa</h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#f59e0b]/20 text-[#f59e0b] border border-[#f59e0b]/40">
+                  {cuentasPorCobrar.length} pendientes
+                </span>
+              </div>
+              <p className="text-xs text-[#7a95aa] mt-0.5">
+                Aseguradoras, hospitales o pacientes particulares con saldo por liquidar y días transcurridos.
+              </p>
+            </div>
+            <p className="text-sm font-mono font-bold text-[#f59e0b]">
+              Total pendiente: {money(rv.total_por_cobrar || 0)}
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-[#1e2d3d] text-[#7a95aa] font-mono uppercase text-[10px]">
+                  <th className="py-2.5 px-3">Deudor / Paciente</th>
+                  <th className="py-2.5 px-3">Concepto / Procedimiento</th>
+                  <th className="py-2.5 px-3">Sede / Hospital</th>
+                  <th className="py-2.5 px-3">Antigüedad</th>
+                  <th className="py-2.5 px-3 text-right">Monto</th>
+                  <th className="py-2.5 px-3 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1e2d3d]/50">
+                {cuentasPorCobrar.map((c: any) => (
+                  <tr key={c.id} className="hover:bg-[#111820]/60 transition">
+                    <td className="py-3 px-3">
+                      <p className="font-semibold text-[#dde6ef]">{c.deudor}</p>
+                      {c.paciente && c.paciente !== c.deudor && (
+                        <p className="text-[10px] text-[#7a95aa]">Paciente: {c.paciente}</p>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-[#dde6ef]">{c.procedimiento}</td>
+                    <td className="py-3 px-3 text-[#7a95aa]">{c.lugar}</td>
+                    <td className="py-3 px-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${c.dias_antiguedad > 30 ? 'bg-[#f43f5e]/20 text-[#f43f5e]' : 'bg-[#f59e0b]/20 text-[#f59e0b]'}`}>
+                        {c.dias_antiguedad} días
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-[#dde6ef]">
+                      {money(c.total)}
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => marcarComoPagado(c)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition active:scale-95 shadow-sm"
+                      >
+                        ✓ Marcar como pagado
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Historial de Cobros Recientes */}
+      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-[#dde6ef]">Historial de Cobros Realizados</h3>
+            <p className="text-xs text-[#7a95aa]">Registro cronológico de servicios y facturación</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              className="bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-1.5 text-xs text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+              placeholder="Buscar por paciente o concepto…"
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+            />
+            <select
+              className="bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-1.5 text-xs text-[#dde6ef] outline-none"
+              value={filtroCobro}
+              onChange={e => setFiltroCobro(e.target.value as any)}
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="cobrado">Solo Cobrados</option>
+              <option value="pendiente">Solo Pendientes</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead>
+              <tr className="border-b border-[#1e2d3d] text-[#7a95aa] font-mono uppercase text-[10px]">
+                <th className="py-2.5 px-3">Fecha</th>
+                <th className="py-2.5 px-3">Paciente / Cliente</th>
+                <th className="py-2.5 px-3">Concepto</th>
+                <th className="py-2.5 px-3">Sede</th>
+                <th className="py-2.5 px-3">Método & Factura</th>
+                <th className="py-2.5 px-3 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e2d3d]/50">
+              {salesFiltradas.slice(0, 15).map((s: any) => (
+                <tr key={s.id} className="hover:bg-[#111820]/60 transition">
+                  <td className="py-3 px-3 text-[#7a95aa] font-mono whitespace-nowrap">
+                    {s.fecha_evento || (s.created_at || '').slice(0, 10)}
+                  </td>
+                  <td className="py-3 px-3">
+                    <p className="font-semibold text-[#dde6ef]">{s.patient_name || s.aseguradora || 'Particular'}</p>
+                    {s.poliza && <p className="text-[10px] text-[#7a95aa]">Póliza: {s.poliza}</p>}
+                  </td>
+                  <td className="py-3 px-3 text-[#dde6ef]">{s.procedimiento || (s.items || [])[0]?.concepto || 'Consulta'}</td>
+                  <td className="py-3 px-3 text-[#7a95aa]">{s.lugar || 'Consultorio'}</td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="capitalize text-[#dde6ef]">{s.metodo_pago || (s.estado === 'pendiente' ? 'Por cobrar' : 'Efectivo')}</span>
+                      {s.tarjeta_nombre && <span className="text-[10px] font-mono text-[#a78bfa]">({s.tarjeta_nombre})</span>}
+                      {s.facturada && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-[#00e5a0]/20 text-[#00e5a0] border border-[#00e5a0]/40">
+                          FACT
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono font-bold" style={{ color: s.estado === 'cobrado' ? '#00e5a0' : '#f59e0b' }}>
+                    {money(s.total)}
+                  </td>
+                </tr>
+              ))}
+              {salesFiltradas.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-[#7a95aa]">No se encontraron cobros registrados con ese filtro.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. PESTAÑA: GASTOS (CUÁNTO SE GASTÓ, EN QUÉ, GASTOS HORMIGA, FUGAS, REEMBOLSOS)
+// ─────────────────────────────────────────────────────────────────────────────
+function GastosTab({
+  ov,
+  expenses,
+  catalogs,
+  reload,
+  flash,
+  onOpenNuevo,
+  onOpenReembolso,
+}: {
+  ov: any;
+  expenses: any[];
+  catalogs: any;
+  reload: () => void;
+  flash: (t: string) => void;
+  onOpenNuevo: () => void;
+  onOpenReembolso: () => void;
+}) {
+  const ga = ov?.gastos_analisis || {};
+  const ff = ov?.flujo_fondos || {};
+  const hormiga = ga.gastos_hormiga || {};
+  const fugas = ga.fugas_detectadas || [];
+  const categorias = ga.categorias || [];
+  const saldoDoctor = ff.pagado_por_doctor_total || ff.pagado_por_doctor?.total_aportado_doctor || 0;
+
+  const eliminarGasto = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar este registro de gasto?')) return;
+    try {
+      await api(`/clinic/expenses/${id}`, { method: 'DELETE' });
+      flash('Gasto eliminado');
+      reload();
+    } catch (e: any) {
+      flash(e.message || 'Error al eliminar');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Cabecera y Botón Nuevo Gasto */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-[#0d1520] border border-[#1e2d3d]">
+        <div>
+          <h2 className="text-lg font-bold text-[#dde6ef]">Control de Gastos & Egresos</h2>
+          <p className="text-xs text-[#7a95aa] mt-0.5">
+            Registra rentas, insumos médicos, plataformas, sueldos y localiza gastos hormiga o fugas.
+          </p>
+        </div>
+        <button
+          onClick={onOpenNuevo}
+          className={`${btnPrimary} bg-[#f43f5e] text-[#fff] hover:bg-[#e11d48] shadow`}
+        >
+          <span className="text-base font-bold">+</span>
+          <span>Registrar Gasto</span>
+        </button>
+      </div>
+
+      {/* KPI Cards de Gastos */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Gastado</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono text-[#f43f5e] mt-1">
+            {money(ga.total_gastado || ov?.kpis?.gasto_mes || 0)}
+          </p>
+          <p className="text-[11px] text-[#7a95aa] mt-1">Acumulado en el periodo</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Gastos Facturados</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">
+            {money(ov?.gastos_facturados || expenses.filter(e => e.facturado).reduce((s, e) => s + (e.monto || 0), 0))}
+          </p>
+          <p className="text-[11px] text-[#7a95aa] mt-1">Deducibles fiscalmente</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Gastos Hormiga (≤ $1,500)</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">
+            {money(hormiga.total || 0)}
+          </p>
+          <p className="text-[11px] text-[#7a95aa] mt-1">{hormiga.conteo || 0} compras menores</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d] flex flex-col justify-between">
+          <div>
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Pagado por el Dr.</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#a78bfa] mt-1">
+              {money(saldoDoctor)}
+            </p>
+          </div>
+          {saldoDoctor > 0 && (
+            <button
+              onClick={onOpenReembolso}
+              className="mt-2 text-xs font-semibold text-[#a78bfa] hover:underline text-left"
+            >
+              Reembolsar al médico →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Detección de Fugas y Gastos Hormiga */}
+      {fugas.length > 0 && (
+        <div className="p-5 rounded-2xl bg-[#0d1520] border border-[#f43f5e]/40 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🚨</span>
+            <h3 className="text-sm font-bold text-[#dde6ef]">Oportunidades de Ahorro y Fugas Detectadas</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {fugas.map((f: string, i: number) => (
+              <div key={i} className="p-3.5 rounded-xl bg-[#111820] border border-[#1e2d3d] text-xs text-[#dde6ef] leading-relaxed">
+                {f}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Desglose por Categoría & Plataformas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-3">
+          <h3 className="text-sm font-bold text-[#dde6ef]">¿En qué se gasta más?</h3>
+          <p className="text-xs text-[#7a95aa]">Desglose por rubros operativos y médicos</p>
+
+          <div className="space-y-2 pt-2">
+            {categorias.map((c: any, i: number) => {
+              const maxC = Math.max(...categorias.map((x: any) => x.valor), 1);
+              const pct = Math.round((c.valor / maxC) * 100);
+              return (
+                <div key={i} className="p-2.5 rounded-xl bg-[#111820] border border-[#1e2d3d] space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[#dde6ef]">{c.nombre}</span>
+                    <span className="font-mono text-[#f43f5e] font-bold">{money(c.valor)}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#070a0e] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#f43f5e] rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {categorias.length === 0 && (
+              <p className="text-xs text-[#7a95aa] py-3 text-center">Sin egresos registrados.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Origen de los fondos (Caja chica, Banco o Doctor) */}
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-3">
+          <h3 className="text-sm font-bold text-[#dde6ef]">¿De dónde salió el dinero?</h3>
+          <p className="text-xs text-[#7a95aa]">Control de fondos para evitar desbalances de caja</p>
+
+          <div className="space-y-3 pt-2">
+            <div className="p-3.5 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[#dde6ef]">💵 Caja del consultorio (Efectivo)</p>
+                <p className="text-[11px] text-[#7a95aa]">Salidas de efectivo menor</p>
+              </div>
+              <p className="text-sm font-mono font-bold text-[#00e5a0]">
+                {money(ff.caja_consultorio?.salidas_caja || 0)}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[#dde6ef]">🏦 Tarjeta o Banco de la clínica</p>
+                <p className="text-[11px] text-[#7a95aa]">Pagos transferidos y terminales</p>
+              </div>
+              <p className="text-sm font-mono font-bold text-[#38bdf8]">
+                {money(ff.banco_consultorio?.salidas_tarjeta_transferencia || 0)}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#111820] border border-[#a78bfa]/30 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[#dde6ef]">👨‍⚕️ Dinero personal del Dr.</p>
+                <p className="text-[11px] text-[#7a95aa]">Gastos cubiertos del bolsillo médico</p>
+              </div>
+              <p className="text-sm font-mono font-bold text-[#a78bfa]">
+                {money(saldoDoctor)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Historial de Gastos Registrados */}
+      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+        <h3 className="text-sm font-bold text-[#dde6ef]">Historial de Gastos</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead>
+              <tr className="border-b border-[#1e2d3d] text-[#7a95aa] font-mono uppercase text-[10px]">
+                <th className="py-2.5 px-3">Fecha</th>
+                <th className="py-2.5 px-3">Concepto</th>
+                <th className="py-2.5 px-3">Categoría</th>
+                <th className="py-2.5 px-3">Proveedor</th>
+                <th className="py-2.5 px-3">Fondo / Factura</th>
+                <th className="py-2.5 px-3 text-right">Monto</th>
+                <th className="py-2.5 px-3 text-right"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e2d3d]/50">
+              {expenses.map((g: any) => {
+                const orig = ORIGEN_FONDO_LABELS[g.origen_fondo || ''] || { short: 'Caja' };
+                return (
+                  <tr key={g.id} className="hover:bg-[#111820]/60 transition">
+                    <td className="py-3 px-3 text-[#7a95aa] font-mono">{g.fecha || (g.created_at || '').slice(0, 10)}</td>
+                    <td className="py-3 px-3 font-semibold text-[#dde6ef]">{g.concepto}</td>
+                    <td className="py-3 px-3 capitalize text-[#7a95aa]">{g.categoria || 'General'}</td>
+                    <td className="py-3 px-3 text-[#dde6ef]">{g.proveedor || '—'}</td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[#dde6ef]">{orig.short}</span>
+                        {g.tarjeta_nombre && <span className="text-[10px] font-mono text-[#a78bfa]">({g.tarjeta_nombre})</span>}
+                        {g.facturado && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-[#38bdf8]/20 text-[#38bdf8] border border-[#38bdf8]/40">
+                            FACTURADO
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-[#f43f5e]">{money(g.monto)}</td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => eliminarGasto(g.id)}
+                        className="text-[#f43f5e] hover:opacity-70 p-1 font-bold"
+                        title="Eliminar gasto"
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {expenses.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-6 text-center text-[#7a95aa]">No hay gastos registrados en este periodo.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. PESTAÑA: SERVICIOS & TARIFAS (PRECIO FIJO O PRECIO VARIABLE)
+// ─────────────────────────────────────────────────────────────────────────────
+function ServiciosTab({
   services,
   reload,
   flash,
@@ -2071,9 +1223,6 @@ function PrestacionesTab({
   flash: (t: string) => void;
 }) {
   const [showModal, setShowModal] = useState(false);
-  const [filtro, setFiltro] = useState<string>('todas');
-
-  // Formulario nueva prestación
   const [nombre, setNombre] = useState('');
   const [precio, setPrecio] = useState<number>(0);
   const [precioTipo, setPrecioTipo] = useState<'fijo' | 'variable'>('fijo');
@@ -2081,7 +1230,7 @@ function PrestacionesTab({
   const [descripcion, setDescripcion] = useState('');
 
   const guardarPrestacion = async () => {
-    if (!nombre.trim()) return flash('Indica el nombre de la prestación');
+    if (!nombre.trim()) return flash('Indica el nombre del servicio');
     if (precioTipo === 'fijo' && (!precio || precio <= 0)) {
       return flash('Para precio fijo, ingresa un importe mayor a cero');
     }
@@ -2104,10 +1253,10 @@ function PrestacionesTab({
       setPrecio(0);
       setPrecioTipo('fijo');
       setDescripcion('');
-      flash('Prestación agregada al catálogo');
+      flash('✓ Servicio registrado en el catálogo');
       reload();
     } catch (e: any) {
-      flash(e.message);
+      flash(e.message || 'Error al guardar el servicio');
     }
   };
 
@@ -2131,148 +1280,97 @@ function PrestacionesTab({
     }
   };
 
-  const eliminarPrestacion = async (id: string) => {
-    if (!confirm('¿Eliminar esta prestación del catálogo?')) return;
+  const eliminarServicio = async (id: string) => {
+    if (!confirm('¿Eliminar este servicio del catálogo?')) return;
     try {
       await api(`/clinic/services/${id}`, { method: 'DELETE' });
-      flash('Prestación eliminada');
+      flash('Servicio eliminado');
       reload();
     } catch (e: any) {
       flash(e.message);
     }
   };
 
-  const filtrados = services.filter(s => {
-    if (filtro === 'todas') return true;
-    return (s.categoria || 'consulta') === filtro;
-  });
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-[#0d1520] border border-[#1e2d3d]">
         <div>
-          <h2 className="text-lg font-bold text-[#dde6ef]">Catálogo de Prestaciones & Honorarios Médicos</h2>
-          <p className="text-xs text-[#7a95aa]">
-            Define prestaciones con precio fijo (consultas, holter) o precio variable (marcapasos, stents, cirugías según hospital).
+          <h2 className="text-lg font-bold text-[#dde6ef]">Catálogo de Servicios & Procedimientos</h2>
+          <p className="text-xs text-[#7a95aa] mt-0.5">
+            Alta de consultas, holter, pruebas de esfuerzo o cirugías con precio fijo o variable según hospital/aseguradora.
           </p>
         </div>
-
         <button
           onClick={() => setShowModal(true)}
-          className={btnPrimary}
-          style={{ background: '#00e5a0', color: '#051b14' }}
+          className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c]`}
         >
-          + Nueva prestación médica
+          <span className="text-base font-bold">+</span>
+          <span>Nuevo Servicio</span>
         </button>
       </div>
 
-      {/* Filtros de Categoría */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs">
-        {[
-          ['todas', 'Todas las prestaciones'],
-          ['consulta', 'Consultas médicas'],
-          ['estudio', 'Estudios diagnósticos'],
-          ['cirugia', 'Cirugías & Procedimientos'],
-          ['producto', 'Suplementos / Productos'],
-        ].map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setFiltro(k)}
-            className="px-3 py-1.5 rounded-xl font-medium transition"
-            style={{
-              background: filtro === k ? '#00e5a0' : '#0d1520',
-              color: filtro === k ? '#051b14' : '#7a95aa',
-              border: `1px solid ${filtro === k ? '#00e5a0' : '#1e2d3d'}`,
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Lista de Prestaciones */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtrados.map(s => {
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {services.map((s: any) => {
           const isVar = s.precio_tipo === 'variable';
           return (
             <div
               key={s.id}
-              className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-4 sm:p-5 flex flex-col justify-between hover:border-[#2a3e52] transition"
+              className="p-5 rounded-2xl bg-[#0d1520] border border-[#1e2d3d] flex flex-col justify-between hover:border-[#2a3e52] transition"
             >
               <div>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-bold text-[#dde6ef]">{s.nombre}</h3>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#111820] text-[#7a95aa] border border-[#1e2d3d]">
-                        {s.categoria || 'consulta'}
-                      </span>
-                      <span
-                        className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
-                        style={{
-                          background: isVar ? 'rgba(245, 158, 11, 0.1)' : 'rgba(0, 229, 160, 0.1)',
-                          borderColor: isVar ? '#f59e0b' : '#00e5a0',
-                          color: isVar ? '#f59e0b' : '#00e5a0',
-                        }}
-                      >
-                        {isVar ? 'Precio variable' : 'Precio fijo'}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => eliminarPrestacion(s.id)}
-                    className="text-[#7a95aa] hover:text-[#f43f5e] text-lg p-1"
-                    title="Eliminar"
-                  >
-                    ×
-                  </button>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <span className="text-xs font-mono uppercase px-2 py-0.5 rounded bg-[#111820] text-[#7a95aa] border border-[#1e2d3d]">
+                    {s.categoria || 'consulta'}
+                  </span>
+                  <span className={`w-2 h-2 rounded-full ${s.activo ? 'bg-[#00e5a0]' : 'bg-[#486581]'}`} />
                 </div>
-
-                {s.descripcion && (
-                  <p className="text-xs text-[#7a95aa] mt-2 leading-relaxed">{s.descripcion}</p>
-                )}
+                <h4 className="text-base font-bold text-[#dde6ef]">{s.nombre}</h4>
+                {s.descripcion && <p className="text-xs text-[#7a95aa] mt-1">{s.descripcion}</p>}
               </div>
 
-              <div className="pt-3 mt-3 border-t border-[#1e2d3d] flex items-center justify-between">
+              <div className="pt-4 mt-4 border-t border-[#1e2d3d] flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-mono text-[#7a95aa] uppercase">
-                    {isVar ? 'Cobro en mostrador' : 'Precio de lista'}
-                  </p>
-                  <p className="text-base font-bold font-mono text-[#dde6ef] mt-0.5">
-                    {isVar ? 'Se pacta al operar' : money(s.precio)}
+                  <p className="text-[10px] font-mono uppercase text-[#7a95aa]">Tarifa</p>
+                  <p className="text-base font-bold font-mono" style={{ color: isVar ? '#f59e0b' : '#00e5a0' }}>
+                    {isVar ? 'Precio Variable' : money(s.precio)}
                   </p>
                 </div>
 
-                <button
-                  onClick={() => toggleActivo(s)}
-                  className="px-2.5 py-1 rounded-lg text-xs font-mono transition"
-                  style={{
-                    background: s.activo ? 'rgba(0, 229, 160, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-                    color: s.activo ? '#00e5a0' : '#f43f5e',
-                  }}
-                >
-                  {s.activo ? 'Activo' : 'Pausado'}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => toggleActivo(s)}
+                    className="px-2.5 py-1 rounded-lg text-xs bg-[#111820] text-[#dde6ef] border border-[#1e2d3d] hover:border-[#00e5a0]"
+                  >
+                    {s.activo ? 'Pausar' : 'Activar'}
+                  </button>
+                  <button
+                    onClick={() => eliminarServicio(s.id)}
+                    className="p-1.5 rounded-lg text-xs text-[#f43f5e] hover:bg-[#f43f5e]/10"
+                    title="Eliminar"
+                  >
+                    🗑
+                  </button>
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* MODAL NUEVA PRESTACIÓN */}
+      {/* Modal Nuevo Servicio */}
       {showModal && (
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
             <div>
-              <p className="text-[10px] font-mono uppercase text-[#00e5a0]">Catálogo de Práctica Médica</p>
-              <h3 className="text-lg font-bold text-[#dde6ef] mt-0.5">Nueva Prestación / Servicio</h3>
+              <h3 className="text-lg font-bold text-[#dde6ef]">Dar de Alta Servicio / Procedimiento</h3>
+              <p className="text-xs text-[#7a95aa]">Define el concepto y si su precio es fijo o variable.</p>
             </div>
 
             <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">NOMBRE DE LA PRESTACIÓN *</label>
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Nombre del Servicio *</label>
               <input
                 className={inp}
-                placeholder="Ej. Consulta cardiológica, Holter 24h, Colocación de Marcapasos…"
+                placeholder="Ej. Consulta Especialidad, Holter 24h, Colocación de Marcapasos…"
                 value={nombre}
                 onChange={e => setNombre(e.target.value)}
               />
@@ -2280,32 +1378,54 @@ function PrestacionesTab({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">CATEGORÍA</label>
-                <select className={inp} value={categoria} onChange={e => setCategoria(e.target.value)}>
-                  <option value="consulta">Consulta médica</option>
-                  <option value="estudio">Estudio diagnóstico</option>
-                  <option value="cirugia">Cirugía / Quirófano</option>
-                  <option value="producto">Producto / Suplemento</option>
-                  <option value="otro">Otro</option>
+                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Categoría</label>
+                <select
+                  className={inp}
+                  value={categoria}
+                  onChange={e => setCategoria(e.target.value)}
+                >
+                  <option value="consulta">Consulta</option>
+                  <option value="procedimiento">Procedimiento</option>
+                  <option value="cirugia">Cirugía</option>
+                  <option value="estudio">Estudio</option>
+                  <option value="producto">Producto</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">TIPO DE PRECIO *</label>
-                <select
-                  className={inp}
-                  value={precioTipo}
-                  onChange={e => setPrecioTipo(e.target.value as any)}
-                >
-                  <option value="fijo">Precio Fijo ($)</option>
-                  <option value="variable">Precio Variable (Al cobrar)</option>
-                </select>
+                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Tipo de Precio</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPrecioTipo('fijo')}
+                    className="py-2.5 rounded-xl text-xs font-semibold transition"
+                    style={{
+                      background: precioTipo === 'fijo' ? '#00e5a0' : '#111820',
+                      color: precioTipo === 'fijo' ? '#051b14' : '#7a95aa',
+                      border: `1px solid ${precioTipo === 'fijo' ? '#00e5a0' : '#1e2d3d'}`,
+                    }}
+                  >
+                    Fijo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrecioTipo('variable')}
+                    className="py-2.5 rounded-xl text-xs font-semibold transition"
+                    style={{
+                      background: precioTipo === 'variable' ? '#f59e0b' : '#111820',
+                      color: precioTipo === 'variable' ? '#051b14' : '#7a95aa',
+                      border: `1px solid ${precioTipo === 'variable' ? '#f59e0b' : '#1e2d3d'}`,
+                    }}
+                  >
+                    Variable
+                  </button>
+                </div>
               </div>
             </div>
 
-            {precioTipo === 'fijo' ? (
+            {precioTipo === 'fijo' && (
               <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">PRECIO DE LISTA ($ MXN) *</label>
+                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Precio Fijo ($ MXN) *</label>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -2315,17 +1435,13 @@ function PrestacionesTab({
                   onChange={e => setPrecio(+e.target.value || 0)}
                 />
               </div>
-            ) : (
-              <div className="bg-[#111820] border border-[#f59e0b]/30 rounded-xl p-3 text-xs text-[#7a95aa] leading-relaxed">
-                💡 <b>Precio Variable:</b> Ideal para cirugías, colocación de stents o procedimientos donde el costo final depende del hospital, aseguradora o complejidad del paciente. Se definirá al momento de registrar el cobro.
-              </div>
             )}
 
             <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">DESCRIPCIÓN / INDICACIONES (opcional)</label>
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Descripción / Notas (Opcional)</label>
               <textarea
-                className={`${inp} h-20 resize-none`}
-                placeholder="Breve detalle de lo que incluye la prestación…"
+                className={`${inp} resize-none h-20 text-xs`}
+                placeholder="Detalles sobre indicaciones o preparación…"
                 value={descripcion}
                 onChange={e => setDescripcion(e.target.value)}
               />
@@ -2335,12 +1451,8 @@ function PrestacionesTab({
               <button onClick={() => setShowModal(false)} className={`${btnSecondary} flex-1`}>
                 Cancelar
               </button>
-              <button
-                onClick={guardarPrestacion}
-                className={`${btnPrimary} flex-1`}
-                style={{ background: '#00e5a0', color: '#051b14' }}
-              >
-                Guardar prestación
+              <button onClick={guardarPrestacion} className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] flex-1`}>
+                Guardar Servicio
               </button>
             </div>
           </div>
@@ -2351,210 +1463,592 @@ function PrestacionesTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE 5: MI EQUIPO (PREVIEW MODERNO Y VÍNCULO A /STAFF)
+// MODAL: REGISTRAR INGRESO (SÚPER SENCILLO CON CRECIMIENTO ORGÁNICO)
 // ─────────────────────────────────────────────────────────────────────────────
-function EquipoTab({ staff, reload }: { staff: any[]; reload: () => void }) {
+function ModalRegistrarIngreso({
+  patients,
+  services,
+  catalogs,
+  onClose,
+  onSuccess,
+}: {
+  patients: any[];
+  services: any[];
+  catalogs: any;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [monto, setMonto] = useState<number>(0);
+  const [concepto, setConcepto] = useState('');
+  const [pacienteQuery, setPacienteQuery] = useState('');
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [showPatientList, setShowPatientList] = useState(false);
+  const [lugar, setLugar] = useState('Consultorio Propio');
+  const [facturada, setFacturada] = useState(false);
+  const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta' | 'transferencia' | 'pendiente'>('efectivo');
+  const [tarjetaNombre, setTarjetaNombre] = useState('');
+  const [guardarCliente, setGuardarCliente] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  // Filtrado de pacientes en tiempo real
+  const pacientesFiltrados = useMemo(() => {
+    if (!pacienteQuery.trim()) return patients.slice(0, 8);
+    const q = pacienteQuery.toLowerCase();
+    return patients.filter((p: any) =>
+      `${p.first_name || ''} ${p.last_name || ''} ${p.telefono || ''}`.toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [patients, pacienteQuery]);
+
+  const seleccionarPaciente = (p: any) => {
+    const full = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    setSelectedPatientId(p.id);
+    setPacienteQuery(full);
+    setShowPatientList(false);
+  };
+
+  const seleccionarServicioChip = (srv: any) => {
+    setConcepto(srv.nombre);
+    if (srv.precio_tipo === 'fijo' && srv.precio > 0) {
+      setMonto(srv.precio);
+    }
+  };
+
+  const enviarCobro = async () => {
+    if (!monto || monto <= 0) return setErr('Por favor indica un monto válido.');
+    if (!concepto.trim()) return setErr('Por favor indica el concepto del cobro.');
+
+    setSaving(true);
+    setErr('');
+    try {
+      const modo = metodoPago === 'pendiente' ? 'pendiente' : 'cobrado';
+      await api('/clinic/sales', {
+        method: 'POST',
+        body: JSON.stringify({
+          patient_id: selectedPatientId,
+          items: [{ concepto: concepto.trim(), precio: monto, cantidad: 1, precio_tipo: 'variable' }],
+          estado: modo,
+          metodo_pago: modo === 'cobrado' ? metodoPago : null,
+          facturada: modo === 'cobrado' ? facturada : false,
+          lugar: lugar.trim() || 'Consultorio',
+          aseguradora: !selectedPatientId && pacienteQuery.trim() ? pacienteQuery.trim() : null,
+          procedimiento: concepto.trim(),
+          tarjeta_nombre: metodoPago === 'tarjeta' ? tarjetaNombre.trim() : null,
+          guardar_cliente: guardarCliente,
+        }),
+      });
+      onSuccess();
+    } catch (e: any) {
+      setErr(e.message || 'Error al guardar el ingreso');
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-[#dde6ef]">Equipo de la Clínica</h2>
-          <p className="text-xs text-[#7a95aa]">
-            Médicos asociados, recepcionistas y personal de enfermería. Vista simplificada con avatares centrados.
-          </p>
+    <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-5 sm:p-6 w-full max-w-lg space-y-4 max-h-[92vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between pb-2 border-b border-[#1e2d3d]">
+          <div>
+            <span className="text-[10px] font-mono uppercase text-[#00e5a0]">Mostrador / Caja</span>
+            <h3 className="text-lg font-bold text-[#dde6ef]">Registrar Ingreso</h3>
+          </div>
+          <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef] text-xl font-bold">×</button>
         </div>
 
-        <Link
-          href="/dashboard/staff"
-          className={btnPrimary}
-          style={{ background: '#00e5a0', color: '#051b14' }}
-        >
-          Gestionar equipo completo en Mi Equipo →
-        </Link>
-      </div>
+        {err && (
+          <div className="p-3 rounded-xl bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-xs text-[#f43f5e]">
+            {err}
+          </div>
+        )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {staff.map(m => (
-          <div
-            key={m.id}
-            className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 text-center flex flex-col items-center justify-between hover:border-[#2a3e52] transition"
-          >
-            {/* Foto circular centrada */}
-            <div className="w-18 h-18 rounded-full overflow-hidden bg-[#111820] border-2 border-[#1e2d3d] flex items-center justify-center text-2xl mb-3 shadow-inner">
-              {m.photo_url ? (
-                <img src={m.photo_url} alt={m.name} className="w-full h-full object-cover" />
-              ) : (
-                <span>{m.role === 'doctor' ? '👨‍⚕️' : m.role === 'nurse' ? '🩺' : '💼'}</span>
+        {/* 1. MONTO */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Monto Cobrado ($ MXN) *</label>
+          <div className="relative">
+            <span className="absolute inset-y-0 left-3.5 flex items-center text-lg text-[#00e5a0] font-bold font-mono">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              className={`${inp} pl-9 text-xl sm:text-2xl font-bold font-mono text-[#00e5a0]`}
+              placeholder="0"
+              value={monto || ''}
+              onChange={e => setMonto(+e.target.value || 0)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* 2. A QUIÉN SE COBRÓ */}
+        <div className="relative">
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
+            ¿A quién se cobró? (Paciente, Aseguradora o Entidad)
+          </label>
+          <input
+            className={inp}
+            placeholder="Escribe para buscar paciente o nombre de aseguradora…"
+            value={pacienteQuery}
+            onFocus={() => setShowPatientList(true)}
+            onChange={e => {
+              setPacienteQuery(e.target.value);
+              setSelectedPatientId(null);
+              setShowPatientList(true);
+            }}
+          />
+
+          {showPatientList && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-[#111820] border border-[#1e2d3d] rounded-xl shadow-2xl max-h-48 overflow-y-auto z-50 divide-y divide-[#1e2d3d]">
+              {pacientesFiltrados.map((p: any) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => seleccionarPaciente(p)}
+                  className="w-full text-left p-2.5 hover:bg-[#162231] text-xs flex items-center justify-between transition"
+                >
+                  <span className="font-semibold text-[#dde6ef]">{p.first_name} {p.last_name}</span>
+                  <span className="text-[10px] font-mono text-[#7a95aa]">{p.telefono || 'Sin teléfono'}</span>
+                </button>
+              ))}
+              {pacienteQuery.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setShowPatientList(false)}
+                  className="w-full text-left p-2.5 bg-[#0d1520] hover:bg-[#162231] text-xs text-[#00e5a0] font-semibold"
+                >
+                  + Usar como nombre libre: "{pacienteQuery}"
+                </button>
               )}
             </div>
+          )}
 
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-[#dde6ef] truncate max-w-[180px]">{m.name}</h3>
-              <p className="text-xs text-[#7a95aa] capitalize">{m.role}</p>
-              {m.phone && <p className="text-[11px] text-[#486581] font-mono">{m.phone}</p>}
-            </div>
+          {/* Opción de guardar en clientes frecuentes */}
+          {!selectedPatientId && pacienteQuery.trim() && (
+            <label className="flex items-center gap-2 text-xs text-[#7a95aa] mt-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={guardarCliente}
+                onChange={e => setGuardarCliente(e.target.checked)}
+                className="rounded accent-[#00e5a0]"
+              />
+              <span>Guardar a "{pacienteQuery}" para sugerirlo la próxima vez</span>
+            </label>
+          )}
+        </div>
 
-            <div className="pt-3 mt-3 border-t border-[#1e2d3d] w-full text-center">
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#111820] text-[#00e5a0]">
-                {m.active ? '● Activo' : 'Inactivo'}
-              </span>
+        {/* 3. POR QUÉ CONCEPTO */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Concepto del Cobro *</label>
+          <input
+            className={inp}
+            placeholder="Ej. Consulta de Valoración, Prueba de Esfuerzo, Cirugía Quirófano…"
+            value={concepto}
+            onChange={e => setConcepto(e.target.value)}
+          />
+
+          {/* Chips de servicios frecuentes */}
+          {services.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {services.slice(0, 6).map((s: any) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => seleccionarServicioChip(s)}
+                  className="px-2.5 py-1 rounded-lg text-xs bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#00e5a0] transition"
+                >
+                  {s.nombre} {s.precio > 0 ? `(${money(s.precio)})` : ''}
+                </button>
+              ))}
             </div>
+          )}
+        </div>
+
+        {/* 4. DÓNDE SE REALIZÓ */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
+            ¿Dónde se realizó? (Sede / Hospital)
+          </label>
+          <select
+            className={inp}
+            value={lugar}
+            onChange={e => setLugar(e.target.value)}
+          >
+            {SEDES_PREDEFINIDAS.map((sed, i) => (
+              <option key={i} value={sed}>{sed}</option>
+            ))}
+            <option value="Hospital Privado (Otro)">Hospital Privado (Otro)</option>
+            <option value="Consulta a Domicilio">Consulta a Domicilio</option>
+          </select>
+        </div>
+
+        {/* 5. ¿EMITIMOS FACTURA? */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-[#111820] border border-[#1e2d3d]">
+          <div>
+            <p className="text-xs font-semibold text-[#dde6ef]">¿Emitimos factura nosotros?</p>
+            <p className="text-[10px] text-[#7a95aa]">Comprobante fiscal CFDI emitido por la clínica</p>
           </div>
-        ))}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setFacturada(false)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{
+                background: !facturada ? '#1e2d3d' : 'transparent',
+                color: !facturada ? '#dde6ef' : '#7a95aa',
+              }}
+            >
+              No
+            </button>
+            <button
+              type="button"
+              onClick={() => setFacturada(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{
+                background: facturada ? '#00e5a0' : 'transparent',
+                color: facturada ? '#051b14' : '#7a95aa',
+              }}
+            >
+              Sí
+            </button>
+          </div>
+        </div>
+
+        {/* 6. FORMA DE PAGO */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Forma de Pago</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { id: 'efectivo', l: '💵 Efectivo' },
+              { id: 'tarjeta', l: '💳 Tarjeta' },
+              { id: 'transferencia', l: '🏦 Transf.' },
+              { id: 'pendiente', l: '⏳ Por cobrar' },
+            ].map(m => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMetodoPago(m.id as any)}
+                className="py-2.5 px-2 rounded-xl text-xs font-semibold transition text-center"
+                style={{
+                  background: metodoPago === m.id ? '#00e5a0' : '#111820',
+                  color: metodoPago === m.id ? '#051b14' : '#dde6ef',
+                  border: `1px solid ${metodoPago === m.id ? '#00e5a0' : '#1e2d3d'}`,
+                }}
+              >
+                {m.l}
+              </button>
+            ))}
+          </div>
+
+          {metodoPago === 'tarjeta' && (
+            <div className="mt-2.5">
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
+                ¿Qué tarjeta / terminal se utilizó?
+              </label>
+              <input
+                className={inp}
+                placeholder="Ej. Débito BBVA, Clip Consultorio, Crédito Banamex…"
+                value={tarjetaNombre}
+                onChange={e => setTarjetaNombre(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 pt-3 border-t border-[#1e2d3d]">
+          <button onClick={onClose} className={`${btnSecondary} flex-1`}>
+            Cancelar
+          </button>
+          <button
+            onClick={enviarCobro}
+            disabled={saving}
+            className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] flex-1`}
+          >
+            {saving ? 'Registrando…' : '✓ Guardar Ingreso'}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE 6: CATÁLOGOS (PROVEEDORES, ASEGURADORAS, CONCEPTOS)
+// MODAL: REGISTRAR GASTO (SÚPER SENCILLO CON CRECIMIENTO ORGÁNICO)
 // ─────────────────────────────────────────────────────────────────────────────
-function CatalogosTab({
+function ModalRegistrarGasto({
   catalogs,
-  reload,
-  flash,
+  onClose,
+  onSuccess,
 }: {
-  catalogs: { proveedores: any[]; clientes: any[]; conceptos_gasto: any[] };
-  reload: () => void;
-  flash: (t: string) => void;
+  catalogs: any;
+  onClose: () => void;
+  onSuccess: () => void;
 }) {
-  // Clientes / Aseguradoras
-  const [cliNombre, setCliNombre] = useState('');
-  const [cliTipo, setCliTipo] = useState('Aseguradora');
-  const [cliRfc, setCliRfc] = useState('');
+  const [monto, setMonto] = useState<number>(0);
+  const [concepto, setConcepto] = useState('');
+  const [categoria, setCategoria] = useState('insumos');
+  const [proveedor, setProveedor] = useState('');
+  const [facturado, setFacturado] = useState(false);
+  const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
+  const [tarjetaNombre, setTarjetaNombre] = useState('');
+  const [origenFondo, setOrigenFondo] = useState<string>('caja_consultorio');
+  const [guardarProveedor, setGuardarProveedor] = useState(false);
+  const [guardarConcepto, setGuardarConcepto] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
 
-  // Proveedores
-  const [provNombre, setProvNombre] = useState('');
-  const [provCat, setProvCat] = useState('');
-  const [provTel, setProvTel] = useState('');
+  const enviarGasto = async () => {
+    if (!monto || monto <= 0) return setErr('Por favor indica un monto válido.');
+    if (!concepto.trim()) return setErr('Por favor indica en qué se gastó.');
 
-  // Conceptos
-  const [conNombre, setConNombre] = useState('');
-  const [conCat, setConCat] = useState('insumos');
-
-  const addCatalogItem = async (kind: string, payload: any, reset: () => void) => {
-    if (!payload.nombre?.trim()) return flash('Escribe el nombre');
+    setSaving(true);
+    setErr('');
     try {
-      await api('/clinic/catalogs/item', { method: 'POST', body: JSON.stringify({ kind, ...payload }) });
-      reset();
-      flash('Guardado en catálogo');
-      reload();
+      await api('/clinic/expenses', {
+        method: 'POST',
+        body: JSON.stringify({
+          concepto: concepto.trim(),
+          monto,
+          categoria,
+          proveedor: proveedor.trim() || null,
+          fecha: new Date().toISOString().slice(0, 10),
+          origen_fondo: origenFondo,
+          facturado,
+          tarjeta_nombre: formaPago === 'tarjeta' ? tarjetaNombre.trim() : null,
+          guardar_proveedor: guardarProveedor,
+          guardar_concepto: guardarConcepto,
+        }),
+      });
+      onSuccess();
     } catch (e: any) {
-      flash(e.message);
-    }
-  };
-
-  const delCatalogItem = async (kind: string, id: string) => {
-    try {
-      await api(`/clinic/catalogs/item/${kind}/${id}`, { method: 'DELETE' });
-      reload();
-    } catch (e: any) {
-      flash(e.message);
+      setErr(e.message || 'Error al guardar el gasto');
+      setSaving(false);
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* 1. Clientes y Aseguradoras */}
-      <Card title="🛡️ Aseguradoras & Hospitales" subtitle="Para cirugías y trámites de cobro">
-        <div className="space-y-3">
-          <input className={inp} placeholder="Nombre (GNP, Hospital Ángeles…)" value={cliNombre} onChange={e => setCliNombre(e.target.value)} />
-          <div className="grid grid-cols-2 gap-2">
-            <select className={inp} value={cliTipo} onChange={e => setCliTipo(e.target.value)}>
-              <option value="Aseguradora">Aseguradora</option>
-              <option value="Hospital">Hospital</option>
-              <option value="Convenio">Convenio</option>
-            </select>
-            <input className={inp} placeholder="RFC (opcional)" value={cliRfc} onChange={e => setCliRfc(e.target.value)} />
+    <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-[#0d1520] border border-[#f43f5e]/40 rounded-2xl p-5 sm:p-6 w-full max-w-lg space-y-4 max-h-[92vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between pb-2 border-b border-[#1e2d3d]">
+          <div>
+            <span className="text-[10px] font-mono uppercase text-[#f43f5e]">Egresos & Compras</span>
+            <h3 className="text-lg font-bold text-[#dde6ef]">Registrar Gasto</h3>
           </div>
-          <button
-            onClick={() => addCatalogItem('clientes', { nombre: cliNombre, categoria: cliTipo, rfc: cliRfc }, () => { setCliNombre(''); setCliRfc(''); })}
-            className={`${btnPrimary} w-full`}
-            style={{ background: '#00e5a0', color: '#051b14' }}
-          >
-            + Guardar entidad
-          </button>
+          <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef] text-xl font-bold">×</button>
+        </div>
 
-          <div className="space-y-1.5 max-h-56 overflow-y-auto pt-2">
-            {catalogs.clientes.map((c: any) => (
-              <div key={c.id} className="flex items-center justify-between bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-xs">
-                <div>
-                  <p className="font-semibold text-[#dde6ef]">{c.nombre}</p>
-                  <p className="text-[10px] text-[#7a95aa]">{c.categoria || 'Entidad'}</p>
-                </div>
-                <button onClick={() => delCatalogItem('clientes', c.id)} className="text-[#f43f5e] text-base px-1">×</button>
-              </div>
+        {err && (
+          <div className="p-3 rounded-xl bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-xs text-[#f43f5e]">
+            {err}
+          </div>
+        )}
+
+        {/* 1. MONTO */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Monto Gastado ($ MXN) *</label>
+          <div className="relative">
+            <span className="absolute inset-y-0 left-3.5 flex items-center text-lg text-[#f43f5e] font-bold font-mono">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              className={`${inp} pl-9 text-xl sm:text-2xl font-bold font-mono text-[#f43f5e]`}
+              placeholder="0"
+              value={monto || ''}
+              onChange={e => setMonto(+e.target.value || 0)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* 2. EN QUÉ SE GASTÓ */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">¿En qué se gastó? (Concepto) *</label>
+          <input
+            className={inp}
+            placeholder="Ej. Renta consultorio, Gasas y jeringas, Doctoralia, Ads Meta, CFE…"
+            value={concepto}
+            onChange={e => setConcepto(e.target.value)}
+          />
+
+          {/* Chips rápidos de conceptos frecuentes */}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {[
+              { n: 'Renta Consultorio', c: 'renta' },
+              { n: 'Insumos Médicos', c: 'insumos' },
+              { n: 'Doctoralia / Agenda', c: 'servicios' },
+              { n: 'Publicidad / Ads Meta', c: 'publicidad' },
+              { n: 'Papelería / Oficina', c: 'otros' },
+              { n: 'Internet / Celular', c: 'servicios' },
+            ].map((ch, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setConcepto(ch.n);
+                  setCategoria(ch.c);
+                }}
+                className="px-2.5 py-1 rounded-lg text-xs bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#f43f5e] transition"
+              >
+                {ch.n}
+              </button>
+            ))}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-[#7a95aa] mt-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={guardarConcepto}
+              onChange={e => setGuardarConcepto(e.target.checked)}
+              className="rounded accent-[#f43f5e]"
+            />
+            <span>Guardar este concepto para rellenar en 1 clic en el futuro</span>
+          </label>
+        </div>
+
+        {/* 3. PROVEEDOR */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Proveedor / Comercio</label>
+          <input
+            className={inp}
+            placeholder="Ej. Farmacias del Ahorro, CFE, Propietario Consultorio, Telcel…"
+            value={proveedor}
+            onChange={e => setProveedor(e.target.value)}
+          />
+
+          <label className="flex items-center gap-2 text-xs text-[#7a95aa] mt-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={guardarProveedor}
+              onChange={e => setGuardarProveedor(e.target.checked)}
+              className="rounded accent-[#f43f5e]"
+            />
+            <span>Guardar este proveedor para autocompletar la próxima vez</span>
+          </label>
+        </div>
+
+        {/* 4. ¿SE FACTURÓ EL GASTO? */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-[#111820] border border-[#1e2d3d]">
+          <div>
+            <p className="text-xs font-semibold text-[#dde6ef]">¿Se facturó el gasto?</p>
+            <p className="text-[10px] text-[#7a95aa]">¿El proveedor emitió factura fiscal deducible?</p>
+          </div>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setFacturado(false)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{
+                background: !facturado ? '#1e2d3d' : 'transparent',
+                color: !facturado ? '#dde6ef' : '#7a95aa',
+              }}
+            >
+              No
+            </button>
+            <button
+              type="button"
+              onClick={() => setFacturado(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{
+                background: facturado ? '#38bdf8' : 'transparent',
+                color: facturado ? '#051b14' : '#7a95aa',
+              }}
+            >
+              Sí
+            </button>
+          </div>
+        </div>
+
+        {/* 5. ¿DE DÓNDE SALIÓ EL DINERO? */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">
+            ¿De dónde salió el dinero para pagar? *
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {[
+              { id: 'caja_consultorio', l: '💵 Caja consultorio', sub: 'Efectivo chica' },
+              { id: 'tarjeta_consultorio', l: '💳 Tarjeta clínica', sub: 'Cuenta bancaria' },
+              { id: 'tarjeta_doctor', l: '👨‍⚕️ Dr. (Reembolso)', sub: 'Bolsillo médico' },
+            ].map(f => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setOrigenFondo(f.id)}
+                className="p-2.5 rounded-xl text-left text-xs font-semibold transition"
+                style={{
+                  background: origenFondo === f.id ? (f.id === 'tarjeta_doctor' ? '#a78bfa' : '#00e5a0') : '#111820',
+                  color: origenFondo === f.id ? '#051b14' : '#dde6ef',
+                  border: `1px solid ${origenFondo === f.id ? (f.id === 'tarjeta_doctor' ? '#a78bfa' : '#00e5a0') : '#1e2d3d'}`,
+                }}
+              >
+                <p>{f.l}</p>
+                <p className="text-[10px] opacity-75 font-normal">{f.sub}</p>
+              </button>
             ))}
           </div>
         </div>
-      </Card>
 
-      {/* 2. Proveedores */}
-      <Card title="📦 Proveedores" subtitle="Insumos, renta y servicios de la clínica">
-        <div className="space-y-3">
-          <input className={inp} placeholder="Nombre del proveedor" value={provNombre} onChange={e => setProvNombre(e.target.value)} />
-          <div className="grid grid-cols-2 gap-2">
-            <input className={inp} placeholder="Giro (Farmacia, CFE…)" value={provCat} onChange={e => setProvCat(e.target.value)} />
-            <input className={inp} placeholder="Teléfono" value={provTel} onChange={e => setProvTel(e.target.value)} />
-          </div>
-          <button
-            onClick={() => addCatalogItem('proveedores', { nombre: provNombre, categoria: provCat, telefono: provTel }, () => { setProvNombre(''); setProvCat(''); setProvTel(''); })}
-            className={`${btnPrimary} w-full`}
-            style={{ background: '#00e5a0', color: '#051b14' }}
-          >
-            + Guardar proveedor
-          </button>
-
-          <div className="space-y-1.5 max-h-56 overflow-y-auto pt-2">
-            {catalogs.proveedores.map((p: any) => (
-              <div key={p.id} className="flex items-center justify-between bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-xs">
-                <div>
-                  <p className="font-semibold text-[#dde6ef]">{p.nombre}</p>
-                  <p className="text-[10px] text-[#7a95aa]">{p.categoria || 'Giro'}</p>
-                </div>
-                <button onClick={() => delCatalogItem('proveedores', p.id)} className="text-[#f43f5e] text-base px-1">×</button>
-              </div>
+        {/* 6. FORMA DE PAGO */}
+        <div>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">Método de Pago</label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: 'efectivo', l: 'Efectivo' },
+              { id: 'transferencia', l: 'Transferencia' },
+              { id: 'tarjeta', l: 'Tarjeta' },
+            ].map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setFormaPago(p.id as any)}
+                className="py-2.5 rounded-xl text-xs font-semibold transition"
+                style={{
+                  background: formaPago === p.id ? '#1e2d3d' : '#111820',
+                  color: formaPago === p.id ? '#dde6ef' : '#7a95aa',
+                  border: `1px solid ${formaPago === p.id ? '#00e5a0' : '#1e2d3d'}`,
+                }}
+              >
+                {p.l}
+              </button>
             ))}
           </div>
+
+          {formaPago === 'tarjeta' && (
+            <div className="mt-2.5">
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
+                ¿Qué tarjeta se usó?
+              </label>
+              <input
+                className={inp}
+                placeholder="Ej. Tarjeta de crédito clínica, Tarjeta personal Dr.…"
+                value={tarjetaNombre}
+                onChange={e => setTarjetaNombre(e.target.value)}
+              />
+            </div>
+          )}
         </div>
-      </Card>
 
-      {/* 3. Conceptos Frecuentes de Gasto */}
-      <Card title="🏷️ Conceptos Rápidos" subtitle="Para captura de gastos en 10 segundos">
-        <div className="space-y-3">
-          <input className={inp} placeholder="Ej. Renta consultorio, Gasas…" value={conNombre} onChange={e => setConNombre(e.target.value)} />
-          <select className={inp} value={conCat} onChange={e => setConCat(e.target.value)}>
-            {['insumos', 'renta', 'sueldos', 'equipo_medico', 'servicios', 'impuestos_contador', 'seguros', 'publicidad', 'otros'].map(c => (
-              <option key={c} value={c}>{c.replace('_', ' ').toUpperCase()}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => addCatalogItem('conceptos_gasto', { nombre: conNombre, categoria: conCat }, () => setConNombre(''))}
-            className={`${btnPrimary} w-full`}
-            style={{ background: '#00e5a0', color: '#051b14' }}
-          >
-            + Guardar concepto
+        <div className="flex gap-2 pt-3 border-t border-[#1e2d3d]">
+          <button onClick={onClose} className={`${btnSecondary} flex-1`}>
+            Cancelar
           </button>
-
-          <div className="space-y-1.5 max-h-56 overflow-y-auto pt-2">
-            {catalogs.conceptos_gasto.map((c: any) => (
-              <div key={c.id} className="flex items-center justify-between bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-xs">
-                <div>
-                  <p className="font-semibold text-[#dde6ef]">{c.nombre}</p>
-                  <p className="text-[10px] text-[#7a95aa] capitalize">{(c.categoria || '').replace('_', ' ')}</p>
-                </div>
-                <button onClick={() => delCatalogItem('conceptos_gasto', c.id)} className="text-[#f43f5e] text-base px-1">×</button>
-              </div>
-            ))}
-          </div>
+          <button
+            onClick={enviarGasto}
+            disabled={saving}
+            className={`${btnPrimary} bg-[#f43f5e] text-[#fff] flex-1 hover:bg-[#e11d48]`}
+          >
+            {saving ? 'Registrando…' : '✓ Guardar Gasto'}
+          </button>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODAL: REEMBOLSO AL DOCTOR
+// MODAL: REEMBOLSAR AL DOCTOR
 // ─────────────────────────────────────────────────────────────────────────────
 function ModalReembolso({
   saldoPendiente,
@@ -2589,7 +2083,7 @@ function ModalReembolso({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#0d1520] border border-[#a78bfa]/40 rounded-2xl p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <span className="text-[10px] font-mono uppercase text-[#a78bfa]">Liquidación Interna</span>
@@ -2601,7 +2095,7 @@ function ModalReembolso({
         </div>
 
         <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">MONTO A REEMBOLSAR ($ MXN)</label>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Monto a Reembolsar ($ MXN)</label>
           <input
             type="number"
             inputMode="decimal"
@@ -2613,7 +2107,7 @@ function ModalReembolso({
 
         <div>
           <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">
-            ¿DESDE DÓNDE SE HACE EL REEMBOLSO?
+            ¿Desde dónde se hace el reembolso?
           </label>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -2626,7 +2120,7 @@ function ModalReembolso({
                 border: `1px solid ${origen === 'caja_consultorio' ? '#a78bfa' : '#1e2d3d'}`,
               }}
             >
-              💵 Caja chica (Efectivo)
+              💵 Caja chica
             </button>
             <button
               type="button"
@@ -2638,13 +2132,13 @@ function ModalReembolso({
                 border: `1px solid ${origen === 'transferencia_consultorio' ? '#a78bfa' : '#1e2d3d'}`,
               }}
             >
-              🏦 Transf. de Clínica
+              🏦 Transf. Clínica
             </button>
           </div>
         </div>
 
         <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">NOTAS / REFERENCIA</label>
+          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Notas / Referencia</label>
           <input
             className={inp}
             placeholder="Ej. Reembolso insumos y farmacia…"

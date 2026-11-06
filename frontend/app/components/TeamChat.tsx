@@ -85,6 +85,12 @@ export default function TeamChat() {
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    const handler = () => setOpen(o => !o);
+    window.addEventListener('apex:toggle-chat', handler);
+    return () => window.removeEventListener('apex:toggle-chat', handler);
+  }, []);
+
   // Solo recepción, enfermería y médico (y admin) participan
   useEffect(() => {
     const r = getRole();

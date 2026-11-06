@@ -17,22 +17,16 @@ interface TopNavProps {
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-// primary: se muestra siempre en la barra. El resto se agrupa en el menú "Más".
-const ALL_LINKS: Array<{ href: string; icon: IconName; label: string; roles: string[]; feature?: string; primary?: boolean }> = [
-  { href: '/dashboard',            icon: 'home',      label: 'Inicio',      roles: ['admin','doctor','nurse','receptionist','accounting','marketing'], primary: true },
-  { href: '/dashboard/patients',   icon: 'users',     label: 'Pacientes',   roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes', primary: true },
-  { href: '/dashboard/agenda',     icon: 'calendar',  label: 'Agenda',      roles: ['doctor','nurse','receptionist'], feature: 'agenda', primary: true },
-  { href: '/dashboard/sala',       icon: 'bell',      label: 'Sala',        roles: ['doctor','nurse'], primary: true },
-  { href: '/dashboard/proximos',   icon: 'clock',     label: 'Próximos',    roles: ['doctor'], feature: 'sala_espera', primary: true },
-  { href: '/dashboard/clinic',     icon: 'wallet',    label: 'Cobros',      roles: ['receptionist'], feature: 'contabilidad', primary: true },
-  { href: '/dashboard/clinic',     icon: 'building',  label: 'Mi consultorio', roles: ['admin','doctor','accounting'], feature: 'contabilidad' },
-  { href: '/dashboard/marketing',  icon: 'megaphone', label: 'Marketing',   roles: ['admin','doctor','marketing'], feature: 'marketing' },
-  { href: '/dashboard/biblioteca', icon: 'book',      label: 'Biblioteca',  roles: ['admin'] },
-  { href: '/dashboard/staff',      icon: 'team',      label: 'Equipo',      roles: ['admin','doctor'] },
-  { href: '/dashboard/aprobaciones', icon: 'check',   label: 'Aprobaciones', roles: ['doctor'] },
-  { href: '/dashboard/stats',      icon: 'activity',  label: 'Estadísticas', roles: ['doctor'] },
-  { href: '/dashboard/help',       icon: 'book',      label: 'Ayuda',       roles: ['doctor','nurse','receptionist','accounting'] },
-  { href: '/dashboard/soporte',    icon: 'message',   label: 'Soporte',     roles: ['doctor'] },
+// Menú principal: Inicio, Sala de espera, Pacientes, Agenda, Chat, Estadísticas, Mi Consultorio.
+// Soporte se ubica pegado al fondo (separado del menú principal).
+const ALL_LINKS: Array<{ href: string; icon: IconName; label: string; roles: string[]; feature?: string; isChat?: boolean }> = [
+  { href: '/dashboard',            icon: 'home',      label: 'Inicio',         roles: ['admin','doctor','nurse','receptionist','accounting','marketing'] },
+  { href: '/dashboard/sala',       icon: 'bell',      label: 'Sala de espera', roles: ['admin','doctor','nurse','receptionist'] },
+  { href: '/dashboard/patients',   icon: 'users',     label: 'Pacientes',      roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes' },
+  { href: '/dashboard/agenda',     icon: 'calendar',  label: 'Agenda',         roles: ['doctor','nurse','receptionist'], feature: 'agenda' },
+  { href: '#chat',                 icon: 'message',   label: 'Chat',           roles: ['admin','doctor','nurse','receptionist'], isChat: true },
+  { href: '/dashboard/stats',      icon: 'activity',  label: 'Estadísticas',   roles: ['admin','doctor'] },
+  { href: '/dashboard/clinic',     icon: 'building',  label: 'Mi Consultorio', roles: ['admin','doctor','receptionist','accounting'], feature: 'contabilidad' },
 ];
 
 // ── Helpers de tema ──────────────────────────────────────────────────────────
@@ -367,14 +361,23 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
       >
         <div className="space-y-1">
           <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
-            Módulos activos
+            Menú principal
           </p>
-          {links.map(({ href, icon, label }) => {
-            const active = isActive(href);
+          {links.map((linkItem) => {
+            const { href, icon, label } = linkItem;
+            const isChatLink = (linkItem as any).isChat;
+            const active = !isChatLink && isActive(href);
             return (
               <button
                 key={href + label}
-                onClick={() => { setMobileMenuOpen(false); router.push(href); }}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (isChatLink) {
+                    window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
+                  } else {
+                    router.push(href);
+                  }
+                }}
                 aria-current={active ? 'page' : undefined}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium text-left transition-all"
                 style={{
@@ -387,52 +390,68 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
                 <Icon name={icon} size={18} />
                 <span className="flex-1 truncate">{label}</span>
                 {href === '/dashboard/sala' && waitCount > 0 && <Badge n={waitCount} />}
-                {href === '/dashboard/aprobaciones' && aprobCount > 0 && <Badge n={aprobCount} tone="danger" />}
               </button>
             );
           })}
+
+          {/* Accesos rápidos siempre a la mano para Recepción y Médico */}
+          {(role === 'receptionist' || role === 'doctor' || role === 'admin') && (
+            <div className="pt-3 pb-1 px-1 space-y-1.5 border-t border-[var(--c-border)] mt-3">
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  router.push('/dashboard/clinic?tab=ingresos&action=nuevo');
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+              >
+                <span>+ Registrar Ingreso</span>
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  router.push('/dashboard/clinic?tab=gastos&action=nuevo');
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold border border-[var(--c-border)] transition-all hover:border-[var(--c-primary)] active:scale-95"
+                style={{ background: 'var(--c-subtle)', color: 'var(--c-text)' }}
+              >
+                <span>+ Registrar Gasto</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Pie del menú lateral: modalidad de equipo y acceso a versión Pro */}
-        <div className="pt-4 mt-4 space-y-2.5" style={{ borderTop: '1px solid var(--c-border)' }}>
-          {role === 'doctor' && (
-            <button
-              onClick={() => { setMobileMenuOpen(false); router.push('/dashboard/staff'); }}
-              className="w-full text-left px-3 py-2 rounded-xl transition-colors hover:bg-[var(--c-subtle)]"
-              style={{ border: '1px solid var(--c-border)' }}
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>
-                Modalidad del consultorio
-              </p>
-              <p className="text-[13px] font-semibold mt-0.5" style={{ color: 'var(--c-text)' }}>
-                {isSoloDoctor ? 'Médico individual' : `Equipo activo (${teamCount})`}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: 'var(--c-primary)' }}>
-                {isSoloDoctor ? '+ Agregar recepción o enfermería' : 'Configurar roles y permisos →'}
-              </p>
-            </button>
-          )}
-
+        {/* Pie del menú lateral: soporte abajo de todo + ventajas Pro */}
+        <div className="pt-3 mt-auto space-y-2 border-t border-[var(--c-border)]">
           {isLite && role === 'doctor' && (
             <button
               onClick={() => { setMobileMenuOpen(false); router.push('/dashboard/pro'); }}
-              className="w-full text-left p-3 rounded-xl transition-all hover:opacity-95"
+              className="w-full text-left p-2.5 rounded-xl transition-all hover:opacity-95 mb-1"
               style={{
                 background: 'color-mix(in srgb, var(--c-primary) 8%, var(--c-card))',
                 border: '1px solid color-mix(in srgb, var(--c-primary) 30%, var(--c-border))',
               }}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--c-primary)' }}>
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--c-primary)' }}>
                   ✦ Apex Pro
                 </span>
-                <span className="text-[11px] font-semibold" style={{ color: 'var(--c-primary)' }}>Ver ventajas →</span>
+                <span className="text-[11px] font-semibold" style={{ color: 'var(--c-primary)' }}>Ver →</span>
               </div>
-              <p className="text-[12px] mt-1 leading-snug" style={{ color: 'var(--c-text-2)' }}>
-                Medicina Funcional, Longevidad y diagnóstico asistido con IA.
+              <p className="text-[11px] mt-0.5 leading-tight" style={{ color: 'var(--c-text-2)' }}>
+                Medicina Funcional & Longevidad
               </p>
             </button>
           )}
+
+          {/* Soporte hasta abajo pegado al fondo (fuera del menú principal) */}
+          <button
+            onClick={() => { setMobileMenuOpen(false); router.push('/dashboard/soporte'); }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-left transition-colors text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)]"
+          >
+            <Icon name="message" size={17} />
+            <span className="flex-1">Soporte</span>
+          </button>
         </div>
       </aside>
     </>

@@ -147,6 +147,8 @@ class SaleIn(BaseModel):
     indicaciones_mostrador: Optional[str] = None
     fecha_evento: Optional[str] = None
     destino_fondo: Optional[str] = None        # caja_consultorio | banco_consultorio | cuenta_doctor
+    guardar_cliente: bool = False
+    tarjeta_nombre: Optional[str] = None
 
 class ChargeIn(BaseModel):
     metodo_pago: str
@@ -155,6 +157,7 @@ class ChargeIn(BaseModel):
     descuento_motivo: Optional[str] = None
     cortesia: Optional[bool] = None
     destino_fondo: Optional[str] = None
+    tarjeta_nombre: Optional[str] = None
 
 class ExpenseIn(BaseModel):
     categoria: str
@@ -167,6 +170,8 @@ class ExpenseIn(BaseModel):
     notas: Optional[str] = None
     origen_fondo: Optional[str] = "caja_consultorio"  # caja_consultorio | tarjeta_consultorio | transferencia_consultorio | efectivo_doctor | tarjeta_doctor | transferencia_doctor
     metodo_pago: Optional[str] = "efectivo"
+    facturado: bool = False
+    tarjeta_nombre: Optional[str] = None
     guardar_concepto: bool = False
     guardar_proveedor: bool = False
 
@@ -410,11 +415,14 @@ SALE_META_DEFAULTS = {
     "indicaciones_mostrador": "",
     "fecha_evento": "",
     "destino_fondo": "caja_consultorio",
+    "tarjeta_nombre": "",
 }
 
 EXPENSE_META_DEFAULTS = {
     "origen_fondo": "caja_consultorio",
     "metodo_pago": "efectivo",
+    "facturado": False,
+    "tarjeta_nombre": "",
 }
 
 
@@ -476,6 +484,7 @@ async def create_sale(body: SaleIn, authorization: Optional[str] = Header(None))
         "destino_fondo": body.destino_fondo or (
             "caja_consultorio" if body.metodo_pago == "efectivo" else "banco_consultorio"
         ),
+        "tarjeta_nombre": body.tarjeta_nombre or "",
     })
     row = {
         "doctor_id": actor["doctor_id"], "patient_id": body.patient_id, "visit_id": body.visit_id,
@@ -489,6 +498,23 @@ async def create_sale(body: SaleIn, authorization: Optional[str] = Header(None))
         row["charged_at"] = datetime.now(timezone.utc).isoformat()
     r = supabase.table("sales").insert(row).execute()
     created = r.data[0] if r.data else {}
+
+    # Guardar cliente / aseguradora / entidad automáticamente si se solicitó
+    if body.guardar_cliente:
+        nom_cliente = (body.aseguradora or body.lugar or "").strip()
+        if nom_cliente:
+            clinic_id = actor.get("clinic_id")
+            cats = _get_clinic_catalogs(clinic_id)
+            lista_cli = list(cats.get("clientes") or [])
+            if not any((x.get("nombre") or "").strip().lower() == nom_cliente.lower() for x in lista_cli):
+                lista_cli.append({
+                    "id": str(uuid4()),
+                    "nombre": nom_cliente,
+                    "categoria": "Aseguradora" if body.aseguradora else "Hospital / Sede",
+                })
+                cats["clientes"] = lista_cli
+                _save_clinic_catalogs(clinic_id, cats)
+
     return _unpack_row_meta(created, SALE_META_DEFAULTS) if created else {}
 
 @router.post("/sales/{sid}/charge")
@@ -517,6 +543,7 @@ async def charge_sale(sid: str, body: ChargeIn, authorization: Optional[str] = H
         "indicaciones_mostrador": unpacked.get("indicaciones_mostrador"),
         "fecha_evento": unpacked.get("fecha_evento"),
         "destino_fondo": destino,
+        "tarjeta_nombre": body.tarjeta_nombre or unpacked.get("tarjeta_nombre") or "",
     })
     supabase.table("sales").update({
         "estado": "cobrado", "metodo_pago": body.metodo_pago, "facturada": body.facturada,
@@ -619,6 +646,8 @@ async def create_expense(body: ExpenseIn, authorization: Optional[str] = Header(
     packed_notas = _pack_meta(body.notas, {
         "origen_fondo": origen,
         "metodo_pago": metodo,
+        "facturado": body.facturado,
+        "tarjeta_nombre": body.tarjeta_nombre or "",
     })
     row = {
         "doctor_id": actor["doctor_id"],
@@ -983,28 +1012,117 @@ def _build_financial_overview(actor: dict) -> dict:
         key=lambda x: -x["valor"]
     )
 
-    # Cuentas por cobrar / En trámite con Aseguradoras y Hospitales
+    # Cuentas por cobrar / En trámite con Pacientes, Aseguradoras y Hospitales
     nombres_pac = _nombre_pacientes(did)
+    todas_por_cobrar = []
     por_cobrar_aseg = []
+    total_vendido = round(sum(v.get("total") or 0 for v in ventas if v.get("estado") != "cancelado"))
+    total_cobrado = round(ingreso)
+    total_por_cobrar = 0.0
+
     for v in ventas:
         est = v.get("estado")
-        es_aseg = v.get("tipo_ingreso") == "aseguradora" or bool(v.get("aseguradora"))
-        if est == "en_tramite" or (es_aseg and est == "pendiente"):
+        if est in ("pendiente", "en_tramite"):
             d_crea = _mes(v)
             dias = (ahora - d_crea).days if d_crea else 0
-            por_cobrar_aseg.append({
+            deudor = v.get("aseguradora") or nombres_pac.get(v.get("patient_id")) or "Particular / Mostrador"
+            tot = float(v.get("total") or 0)
+            total_por_cobrar += tot
+            item_cpc = {
                 "id": v.get("id"),
+                "patient_id": v.get("patient_id"),
                 "paciente": nombres_pac.get(v.get("patient_id")) or "Paciente",
-                "aseguradora": v.get("aseguradora") or "Aseguradora",
-                "procedimiento": v.get("procedimiento") or (v.get("items") or [{}])[0].get("concepto") or "Procedimiento",
-                "lugar": v.get("lugar") or "Hospital",
+                "deudor": deudor,
+                "tipo_deudor": "aseguradora" if v.get("aseguradora") else "paciente",
+                "aseguradora": v.get("aseguradora") or "",
                 "poliza": v.get("poliza") or "",
-                "total": v.get("total") or 0,
+                "procedimiento": v.get("procedimiento") or (v.get("items") or [{}])[0].get("concepto") or "Consulta",
+                "lugar": v.get("lugar") or "Consultorio",
+                "total": tot,
                 "dias": dias,
+                "dias_antiguedad": dias,
+                "estado": est,
                 "fecha": (v.get("fecha_evento") or str(v.get("created_at") or ""))[:10],
-            })
+            }
+            todas_por_cobrar.append(item_cpc)
+            if est == "en_tramite" or v.get("tipo_ingreso") == "aseguradora" or bool(v.get("aseguradora")):
+                por_cobrar_aseg.append(item_cpc)
 
+    todas_por_cobrar.sort(key=lambda x: -x["dias_antiguedad"])
+    total_por_cobrar = round(total_por_cobrar)
     total_por_cobrar_aseg = round(sum(item["total"] for item in por_cobrar_aseg))
+
+    # ── Qué se vende más (en cantidad y en ingresos) ───────────────────────────
+    conceptos_stats = defaultdict(lambda: {"cantidad": 0, "total": 0.0, "categoria": "consulta"})
+    for v in ventas:
+        if v.get("estado") == "cancelado":
+            continue
+        for item in (v.get("items") or []):
+            nombre_c = (item.get("concepto") or "Servicio").strip()
+            cat_c = item.get("categoria") or v.get("tipo_ingreso") or "consulta"
+            cant_c = int(item.get("cantidad") or 1)
+            precio_c = float(item.get("precio") or 0) * cant_c
+            conceptos_stats[nombre_c]["cantidad"] += cant_c
+            conceptos_stats[nombre_c]["total"] += precio_c
+            conceptos_stats[nombre_c]["categoria"] = cat_c
+
+    top_por_cantidad = sorted(
+        [{"concepto": k, "cantidad": val["cantidad"], "total": round(val["total"]), "categoria": val["categoria"]} for k, val in conceptos_stats.items()],
+        key=lambda x: -x["cantidad"]
+    )
+    top_por_ingreso = sorted(
+        [{"concepto": k, "cantidad": val["cantidad"], "total": round(val["total"]), "categoria": val["categoria"]} for k, val in conceptos_stats.items()],
+        key=lambda x: -x["total"]
+    )
+
+    # ── Análisis por lugar físico / sedes / hospitales ─────────────────────────
+    lugares_stats = defaultdict(lambda: {"total_ingreso": 0.0, "total_por_cobrar": 0.0, "cantidad": 0})
+    for v in ventas:
+        if v.get("estado") == "cancelado":
+            continue
+        lug = (v.get("lugar") or "Consultorio").strip()
+        tot = float(v.get("total") or 0)
+        lugares_stats[lug]["cantidad"] += 1
+        if v.get("estado") == "cobrado":
+            lugares_stats[lug]["total_ingreso"] += tot
+        else:
+            lugares_stats[lug]["total_por_cobrar"] += tot
+
+    analisis_sedes = []
+    total_ing_general = max(ingreso, 1.0)
+    for lug, st in sorted(lugares_stats.items(), key=lambda x: -x[1]["total_ingreso"]):
+        pct = round(100 * st["total_ingreso"] / total_ing_general)
+        t_prom = round(st["total_ingreso"] / max(st["cantidad"], 1))
+        # Evaluación de negocio para sedes
+        eval_negocio = "Sede principal con alta rentabilidad" if pct >= 40 else (
+            "Centro quirúrgico / hospital de alto ticket" if t_prom >= 8000 else (
+                "Bajo volumen: evaluar si el costo de traslado compensa" if st["cantidad"] < 8 else "Sede secundaria estable"
+            )
+        )
+        analisis_sedes.append({
+            "lugar": lug,
+            "total_ingreso": round(st["total_ingreso"]),
+            "total_por_cobrar": round(st["total_por_cobrar"]),
+            "cantidad": st["cantidad"],
+            "ticket_promedio": t_prom,
+            "pct_ingreso": pct,
+            "evaluacion": eval_negocio,
+        })
+
+    # ── Análisis detallado de gastos, gastos hormiga y fugas ────────────────────
+    gastos_hormiga_items = [g for g in gastos if float(g.get("monto") or 0) <= 1500 and g.get("categoria") not in ("renta", "sueldos")]
+    total_hormiga = round(sum(float(g.get("monto") or 0) for g in gastos_hormiga_items))
+
+    fugas = []
+    if total_hormiga > 0:
+        fugas.append(f"Se detectaron {len(gastos_hormiga_items)} gastos menores a $1,500 MXN que acumulan ${total_hormiga:,} MXN en consumos menores no consolidados.")
+    plat_gastos = [g for g in gastos if (g.get("categoria") or "") in ("publicidad", "internet", "servicios") or any(w in str(g.get("concepto") or "").lower() for w in ("doctoralia", "meta", "google", "software", "celular", "telcel", "at&t"))]
+    tot_plat = round(sum(float(g.get("monto") or 0) for g in plat_gastos))
+    if tot_plat > 0:
+        fugas.append(f"Gasto en plataformas digitales, Doctoralia, software y telefonía: ${tot_plat:,} MXN. Audita suscripciones duplicadas o desuso.")
+
+    var_mes_pct = round(100 * (ing_mes - ing_mes_ant) / ing_mes_ant, 1) if ing_mes_ant > 0 else None
+    var_anio_pct = round(100 * (ing_anio_actual - ing_anio_ant) / ing_anio_ant, 1) if ing_anio_ant > 0 else None
 
     return {
         "mes_actual": mes_actual,
@@ -1014,10 +1132,41 @@ def _build_financial_overview(actor: dict) -> dict:
         "ingresos_por_tipo": ingresos_por_tipo,
         "ingresos_por_lugar": ingresos_por_lugar,
         "ingresos_por_aseguradora": ingresos_por_aseguradora,
+        "resumen_ventas": {
+            "total_vendido": total_vendido,
+            "total_cobrado": total_cobrado,
+            "total_por_cobrar": total_por_cobrar,
+            "variacion_mes_pct": var_mes_pct,
+            "variacion_anio_pct": var_anio_pct,
+            "ingreso_mes_actual": ing_mes,
+            "ingreso_mes_anterior": ing_mes_ant,
+            "ingreso_anio_actual": ing_anio_actual,
+            "ingreso_anio_anterior": ing_anio_ant,
+        },
+        "top_vendidos": {
+            "por_cantidad": top_por_cantidad[:12],
+            "por_ingreso": top_por_ingreso[:12],
+        },
+        "analisis_sedes": analisis_sedes,
+        "cuentas_por_cobrar": todas_por_cobrar,
+        "gastos_analisis": {
+            "total_gastado": round(gasto_total),
+            "categorias": gasto_categorias,
+            "gastos_hormiga": {
+                "total": total_hormiga,
+                "conteo": len(gastos_hormiga_items),
+                "items": gastos_hormiga_items[:15],
+            },
+            "fugas_detectadas": fugas,
+        },
         "kpis": {
             **kpis,
+            "total_vendido": total_vendido,
+            "total_cobrado": total_cobrado,
+            "total_por_cobrar": total_por_cobrar,
             "por_cobrar_aseguradoras_total": total_por_cobrar_aseg,
             "por_cobrar_aseguradoras_count": len(por_cobrar_aseg),
+            "cuentas_por_cobrar_count": len(todas_por_cobrar),
         },
         "aseguradoras_por_cobrar": por_cobrar_aseg,
         "patient_journey": patient_journey,
@@ -1067,41 +1216,33 @@ async def clinic_ai_analysis(body: FinancialAiIn, authorization: Optional[str] =
     ov = _build_financial_overview(actor)
     q_extra = (body.question or "").strip()
 
-    prompt = f"""Eres el asesor estratégico de negocio y crecimiento médico para este consultorio en APEX.
-Tu objetivo es darle al médico CLARIDAD ABSOLUTA sobre cómo va su práctica médica, con expectativas del MUNDO REAL (sin jerga contable compleja).
+    prompt = f"""Eres el asesor ejecutivo de NEGOCIOS y ESTRATEGIA COMERCIAL para este consultorio/clínica médica en APEX.
 
-DATOS CLAVE DEL CONSULTORIO:
-- Mes actual ({ov['mes_actual']['nombre']}): Ingresos=${ov['mes_actual']['ingreso']:,} MXN | Gastos=${ov['mes_actual']['gasto']:,} MXN | Balance=${ov['mes_actual']['balance']:,} MXN | Procedimientos/consultas cobradas={ov['mes_actual']['ventas_count']}
-- Mes anterior: Ingresos=${ov['mes_actual']['ingreso_mes_anterior']:,} MXN | Gastos=${ov['mes_actual']['gasto_mes_anterior']:,} MXN
-- Promedio mensual ({ov['promedios']['meses_con_actividad']} meses activos): Ingreso prom=${ov['promedios']['ingreso_mensual']:,} MXN | Gasto prom=${ov['promedios']['gasto_mensual']:,} MXN | Balance prom=${ov['promedios']['balance_mensual']:,} MXN
-- ¿Dónde está el dinero? (Flujo de fondos): {json.dumps(ov['flujo_fondos'], ensure_ascii=False)}
-- En trámite / por cobrar con aseguradoras: {json.dumps(ov['aseguradoras_por_cobrar'], ensure_ascii=False)} (Total: ${ov['kpis'].get('por_cobrar_aseguradoras_total', 0):,} MXN)
-- Ingresos por tipo (consultas, procedimientos, cirugías, aseguradoras): {json.dumps(ov['ingresos_por_tipo'], ensure_ascii=False)}
-- Ingresos por sede/hospital: {json.dumps(ov['ingresos_por_lugar'], ensure_ascii=False)}
-- Gastos por categoría: {json.dumps(ov['gasto_categorias'], ensure_ascii=False)}
+REGLA DE ORO INQUEBRANTABLE:
+Tu opinión y análisis es ESTRICTAMENTE SOBRE EL NEGOCIO MÉDICO, RENTABILIDAD Y FINANZAS OPERATIVAS.
+NO hables como médico, NO hables de la salud o casos clínicos de los pacientes, NO hables de medicamentos ni de tratamientos clínicos. Tu análisis es 100% de NEGOCIO: márgenes, sedes físicas, fugas de gastos y flujo de ingresos.
 
-VIAJE DEL PACIENTE Y CAPTACIÓN (PATIENT JOURNEY):
-- Total de pacientes en base: {ov['patient_journey']['total_pacientes']} ({ov['patient_journey']['primera_vez_count']} de Primera Vez vs {ov['patient_journey']['seguimiento_count']} de Seguimiento)
-- Pacientes recomendados: {ov['patient_journey']['recomendados_count']} ({ov['patient_journey']['pct_recomendados']}%)
-- Validación digital previa:
-  * El {ov['patient_journey']['pct_revisaron_gmaps']}% revisó Google Maps antes de venir.
-  * El {ov['patient_journey']['pct_revisaron_web']}% visitó su página web antes de venir.
-  * El {ov['patient_journey']['pct_revisaron_redes']}% vio sus redes sociales.
-  * De los recomendados, el {ov['patient_journey']['pct_recomendados_que_validaron_digital']}% buscó activamente al médico en línea antes de agendar.
-- Inversión en publicidad de pago: ${ov['publicidad']['inversion_total']:,} MXN con {ov['publicidad']['pacientes_por_publicidad']} pacientes atribuidos directamente ({ov['publicidad']['pct_publicidad']}% del total).
+DATOS DEL NEGOCIO MÉDICO:
+- Ventas globales: Total vendido=${ov['resumen_ventas']['total_vendido']:,} MXN | Total cobrado=${ov['resumen_ventas']['total_cobrado']:,} MXN | Cuentas por cobrar pendientes=${ov['resumen_ventas']['total_por_cobrar']:,} MXN
+- Comparativa mensual: Mes actual (${ov['resumen_ventas']['ingreso_mes_actual']:,} MXN) vs Mes anterior (${ov['resumen_ventas']['ingreso_mes_anterior']:,} MXN) -> Variación: {ov['resumen_ventas']['variacion_mes_pct']}%
+- Comparativa anual: Año actual (${ov['resumen_ventas']['ingreso_anio_actual']:,} MXN) vs Año anterior (${ov['resumen_ventas']['ingreso_anio_anterior']:,} MXN) -> Variación: {ov['resumen_ventas']['variacion_anio_pct']}%
+- Qué se vende más en VOLUMEN (Cantidad): {json.dumps(ov['top_vendidos']['por_cantidad'][:5], ensure_ascii=False)}
+- Qué genera MÁS DINERO (Ingresos brutos): {json.dumps(ov['top_vendidos']['por_ingreso'][:5], ensure_ascii=False)}
+- Análisis por sede física / hospitales / traslados a otras ciudades: {json.dumps(ov['analisis_sedes'], ensure_ascii=False)}
+- Cuentas por cobrar acumuladas ({len(ov['cuentas_por_cobrar'])} pendientes): {json.dumps([{'deudor': c['deudor'], 'procedimiento': c['procedimiento'], 'lugar': c['lugar'], 'monto': c['total'], 'dias': c['dias_antiguedad']} for c in ov['cuentas_por_cobrar'][:8]], ensure_ascii=False)}
+- Gastos totales (${ov['gastos_analisis']['total_gastado']:,} MXN) por categoría: {json.dumps(ov['gastos_analisis']['categorias'], ensure_ascii=False)}
+- Gastos hormiga y fugas detectadas: Total=${ov['gastos_analisis']['gastos_hormiga']['total']:,} MXN en {ov['gastos_analisis']['gastos_hormiga']['conteo']} compras menores. Fugas observadas: {json.dumps(ov['gastos_analisis']['fugas_detectadas'], ensure_ascii=False)}
 
 {f'PREGUNTA O PREOCUPACIÓN ESPECÍFICA DEL MÉDICO: {q_extra}' if q_extra else ''}
 
-DIRECTRICES OBLIGATORIAS DE TU RESPUESTA:
-1. **El pulso real de la práctica este mes**: Explica el resultado del mes comparado con su promedio y dónde está el dinero físico (en caja chica, en cuenta bancaria o si el médico desembolsó de su propio dinero y se le debe reintegrar).
-2. **Educación y expectativas en el mundo real sobre captación de pacientes**:
-   - Explica con claridad por qué las redes sociales y la presencia digital NO siempre cierran la venta en frío (la gente no compra una cirugía o consulta especializada por impulso en Instagram), sino que construyen **autoridad, prestigio y confianza**.
-   - Haz notar el fenómeno de validación: aunque un paciente llegue recomendado por un familiar o colega, hoy en día **el paciente entra a Google Maps a ver las reseñas, entra a la web y ve sus redes** antes de atreverse a agendar. Su presencia en línea es el seguro que evita que el paciente busque una segunda opinión.
-   - Da una expectativa realista de qué esperar de campañas de publicidad vs el boca a boca y la fidelización de pacientes de control.
-3. **Cuentas por cobrar y procedimientos**: Estatus de aseguradoras o cirugías pendientes de pago.
-4. **3 Consejos accionables de alto impacto** para que el médico optimice su práctica médica el próximo mes.
+ESTRUCTURA DE TU REPORTE DE NEGOCIO:
+1. **Diagnóstico Ejecutivo del Negocio**: Resumen conciso de cómo va la facturación (total cobrado vs por cobrar) y comparativa de crecimiento mensual y anual.
+2. **Rentabilidad de Sedes y Traslados**: Analiza dónde está ganando más dinero y si vale la pena operar en determinados hospitales o mantener consultorios en otras ciudades (ej. Amerimed Cancún vs Playa del Carmen, Joya, Galenia). ¿Tiene sentido trasladarse o es mejor consolidar volumen?
+3. **Márgenes: Volumen vs Alto Valor**: Explica cómo se complementan los servicios de consulta/estudios con los procedimientos/cirugías de mayor margen.
+4. **Fugas de Dinero y Gastos Hormiga**: Dónde recortar (Doctoralia, servicios de plataformas, celular, internet, consumos no consolidados).
+5. **3 Decisiones Estratégicas para el próximo mes**: Acciones concretas de director de negocio para maximizar la utilidad neta.
 
-Formato: Responde en español con tono profesional, empático y estructurado en viñetas claras y negritas."""
+Formato: Responde en español ejecutivo, profesional, directo, usando viñetas claras y negritas."""
 
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     msg = client.messages.create(
