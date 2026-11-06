@@ -82,13 +82,15 @@ def _unique_username(nombre_o_user: str, exclude_id: Optional[str] = None) -> st
 
 
 class StaffIn(BaseModel):
-    nombre: str
+    nombre: Optional[str] = None
+    display_name: Optional[str] = None
     email: Optional[str] = None       # opcional; si falta se genera un usuario con el nombre
     phone: Optional[str] = None
     birthday: Optional[str] = None    # YYYY-MM-DD
     photo_url: Optional[str] = None
     role: str = "receptionist"
     permissions: Optional[dict] = None
+    location_ids: Optional[list[str]] = None
 
 class PermsIn(BaseModel):
     role: Optional[str] = None
@@ -176,6 +178,10 @@ async def upload_staff_photo(
 async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     _require_manage(actor)
+    nombre = (body.display_name or body.nombre or "").strip()
+    if not nombre:
+        raise HTTPException(400, "Indica el nombre del colaborador")
+
     if body.role not in ROLES or body.role == "doctor":
         raise HTTPException(400, "Rol inválido")
 
@@ -184,13 +190,13 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
     if email and not _EMAIL_RE.match(email):
         raise HTTPException(400, "Correo inválido")
     if not email:
-        email = f"{_slug(body.nombre)}.{secrets.randbelow(900) + 100}@staff.apex.mx"
+        email = f"{_slug(nombre)}.{secrets.randbelow(900) + 100}@staff.apex.mx"
 
     password = _gen_password()   # aleatoria, segura, se muestra una sola vez
     try:
         created = supabase.auth.admin.create_user({
             "email": email, "password": password, "email_confirm": True,
-            "user_metadata": {"display_name": body.nombre, "role": body.role},
+            "user_metadata": {"display_name": nombre, "role": body.role},
         })
     except HTTPException:
         raise
@@ -205,13 +211,13 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
     if not uid:
         raise HTTPException(500, "No se obtuvo el id del nuevo usuario")
 
-    username = _unique_username(body.nombre)
+    username = _unique_username(nombre)
     perms_dict = perms_para(body.role, body.permissions)
     if body.birthday:
         perms_dict["birthday"] = body.birthday.strip()
 
     profile_row = {
-        "id": uid, "display_name": body.nombre, "email": email, "username": username,
+        "id": uid, "display_name": nombre, "email": email, "username": username,
         "role": body.role, "clinic_id": actor.get("clinic_id"),
         "parent_doctor_id": actor["doctor_id"], "permissions": perms_dict,
     }
@@ -222,9 +228,26 @@ async def create_staff(body: StaffIn, authorization: Optional[str] = Header(None
 
     supabase.table("doctor_profiles").upsert(profile_row).execute()
 
+    if body.location_ids:
+        rows = [{"user_id": uid, "location_id": lid} for lid in body.location_ids if lid]
+        if rows:
+            try:
+                supabase.table("user_locations").upsert(rows).execute()
+            except Exception as e:
+                print(f"[WARN] Error asignando sedes a {uid}: {e}")
+
     # La contraseña se devuelve UNA vez; no se guarda de forma legible.
-    return {"ok": True, "id": uid, "usuario": username, "password": password,
-            "nombre": body.nombre, "role": body.role, "birthday": body.birthday, "phone": body.phone}
+    return {
+        "ok": True,
+        "id": uid,
+        "usuario": username,
+        "password": password,
+        "nombre": nombre,
+        "display_name": nombre,
+        "role": body.role,
+        "birthday": body.birthday,
+        "phone": body.phone,
+    }
 
 
 @router.post("/{uid}/password")
@@ -260,6 +283,7 @@ async def update_perms(uid: str, body: PermsIn, authorization: Optional[str] = H
     return {"ok": True, "role": role, "permissions": nuevos}
 
 
+@router.put("/{uid}")
 @router.put("/{uid}/profile")
 async def update_member_profile(uid: str, body: dict, authorization: Optional[str] = Header(None)):
     """Editar los DATOS de un miembro del equipo (nombre, teléfono, usuario, foto).

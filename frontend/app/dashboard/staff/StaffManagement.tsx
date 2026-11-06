@@ -14,7 +14,20 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 async function api(path: string, opts: RequestInit = {}) {
   const res = await fetch(`${B()}${path}`, { ...opts, headers: { ...(await authHeaders()), ...(opts.headers || {}) } });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${res.status}`); }
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    let msg = `HTTP ${res.status}`;
+    if (typeof e.detail === 'string') {
+      msg = e.detail;
+    } else if (Array.isArray(e.detail)) {
+      msg = e.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ');
+    } else if (e.detail && typeof e.detail === 'object') {
+      msg = JSON.stringify(e.detail);
+    } else if (e.message) {
+      msg = e.message;
+    }
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -48,20 +61,42 @@ function CredModal({ cred, onClose }: { cred: { usuario: string; password: strin
   const [copied, setCopied] = useState('');
   const copy = (t: string, k: string) => { navigator.clipboard?.writeText(t); setCopied(k); setTimeout(() => setCopied(''), 1500); };
   return (
-    <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <p className="text-lg font-semibold text-[#dde6ef] mb-1">{cred.regen ? 'Nueva contraseña' : 'Acceso generado'}{cred.nombre ? ` — ${cred.nombre}` : ''}</p>
-        <p className="text-xs text-[#f59e0b] mb-4">Guárdala ahora. Por seguridad no se almacena en texto plano; después solo se podrá regenerar una nueva.</p>
-        {[['Usuario', cred.usuario, 'u'], ['Contraseña', cred.password, 'p']].map(([label, val, k]) => (
-          <div key={k} className="mb-3">
-            <p className="text-[10px] font-mono text-[#7a95aa] mb-1">{label}</p>
+    <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4 backdrop-blur-md" onClick={onClose}>
+      <div className="bg-[#0d1520] border-2 border-[#00e5a0]/50 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🎉</span>
+            <p className="text-lg font-bold text-[#dde6ef]">{cred.regen ? 'Nueva contraseña generada' : '¡Acceso creado con éxito!'}</p>
+          </div>
+          {cred.nombre && <p className="text-sm font-semibold text-[#00e5a0] mt-1">{cred.nombre}</p>}
+        </div>
+
+        <p className="text-xs text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-xl p-3 leading-relaxed">
+          ⚠️ <strong>Copia y comparte estas credenciales con tu colaborador ahora.</strong> Por seguridad la contraseña no se almacena en texto plano; después solo podrá ser regenerada.
+        </p>
+
+        {[['Usuario de acceso', cred.usuario, 'u'], ['Contraseña temporal', cred.password, 'p']].map(([label, val, k]) => (
+          <div key={k}>
+            <p className="text-[10px] font-mono text-[#7a95aa] uppercase mb-1">{label}</p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-lg px-3 py-2 text-sm text-[#dde6ef] font-mono break-all">{val}</code>
-              <button onClick={() => copy(val as string, k as string)} className="px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: copied === k ? C.green : 'var(--c-border)', color: copied === k ? '#000' : C.text }}>{copied === k ? '✓ Copiado' : 'Copiar'}</button>
+              <code className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-sm text-[#00e5a0] font-mono font-bold break-all select-all">{val}</code>
+              <button
+                type="button"
+                onClick={() => copy(val as string, k as string)}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-bold transition active:scale-95 shrink-0"
+                style={{ background: copied === k ? C.green : '#1e2d3d', color: copied === k ? '#051b14' : '#dde6ef' }}
+              >
+                {copied === k ? '✓ Copiado' : 'Copiar'}
+              </button>
             </div>
           </div>
         ))}
-        <button onClick={onClose} className={`${btn} w-full mt-2`} style={{ background: C.green, color: '#000' }}>Listo, credenciales guardadas</button>
+
+        <div className="pt-2">
+          <button onClick={onClose} className={`${btn} w-full`} style={{ background: C.green, color: '#051b14' }}>
+            ✓ Listo, credenciales guardadas
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -322,16 +357,19 @@ function AddStaffModal({ defaults, areas, locations, onClose, onCreated, flash }
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [formError, setFormError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectRole = (r: UserRole) => {
     setRole(r);
     setPerms(defaults[r] ? { ...defaults[r] } : {});
+    setFormError('');
     setStep(2);
   };
 
   const uploadPhoto = async (f: Blob) => {
     setUploading(true);
+    setFormError('');
     try {
       const form = new FormData();
       form.append('file', f, 'avatar.webp');
@@ -349,20 +387,30 @@ function AddStaffModal({ defaults, areas, locations, onClose, onCreated, flash }
       setPhotoUrl(data.url);
       flash('✓ Fotografía recortada y optimizada en WebP (<80 KB)');
     } catch (e: any) {
-      flash(e.message || 'No se pudo subir la foto');
+      setFormError(e.message || 'No se pudo subir la foto');
     } finally {
       setUploading(false);
     }
   };
 
   const submit = async () => {
-    if (!name.trim()) return flash('Indica el nombre del colaborador');
-    if (!role) return flash('Selecciona un puesto para continuar');
+    setFormError('');
+    if (!name.trim()) {
+      setFormError('Indica el nombre del colaborador');
+      setStep(1);
+      return;
+    }
+    if (!role) {
+      setFormError('Selecciona un puesto para continuar');
+      setStep(1);
+      return;
+    }
     setBusy(true);
     try {
       const res = await api('/staff', {
         method: 'POST',
         body: JSON.stringify({
+          nombre: name.trim(),
           display_name: name.trim(),
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
@@ -373,9 +421,13 @@ function AddStaffModal({ defaults, areas, locations, onClose, onCreated, flash }
           location_ids: locationIds,
         }),
       });
-      onCreated({ usuario: res.usuario, password: res.password, nombre: name.trim() });
+      onCreated({
+        usuario: res.usuario,
+        password: res.password,
+        nombre: res.nombre || res.display_name || name.trim(),
+      });
     } catch (e: any) {
-      flash(e.message);
+      setFormError(e.message || 'Error al crear el colaborador');
       setBusy(false);
     }
   };
@@ -393,6 +445,13 @@ function AddStaffModal({ defaults, areas, locations, onClose, onCreated, flash }
             </div>
             <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef] text-xl">✕</button>
           </div>
+
+          {formError && (
+            <div className="text-xs px-3.5 py-2.5 rounded-xl bg-[#f43f5e]/15 border border-[#f43f5e]/40 text-[#f43f5e] font-medium flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{formError}</span>
+            </div>
+          )}
 
           {step === 1 && (
             <div className="space-y-4">
@@ -539,10 +598,12 @@ function EditStaffModal({ member: m, areas, locations, onClose, onSaved, flash }
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [formError, setFormError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadPhoto = async (f: Blob) => {
     setUploading(true);
+    setFormError('');
     try {
       const form = new FormData();
       form.append('file', f, 'avatar.webp');
@@ -560,13 +621,14 @@ function EditStaffModal({ member: m, areas, locations, onClose, onSaved, flash }
       setPhotoUrl(data.url);
       flash('✓ Fotografía actualizada en WebP (<80 KB)');
     } catch (e: any) {
-      flash(e.message || 'No se pudo subir la foto');
+      setFormError(e.message || 'No se pudo subir la foto');
     } finally {
       setUploading(false);
     }
   };
 
   const save = async () => {
+    setFormError('');
     setBusy(true);
     try {
       await api(`/staff/${m.id}`, {
@@ -581,7 +643,7 @@ function EditStaffModal({ member: m, areas, locations, onClose, onSaved, flash }
       });
       onSaved();
     } catch (e: any) {
-      flash(e.message);
+      setFormError(e.message || 'Error al actualizar');
       setBusy(false);
     }
   };
@@ -594,6 +656,13 @@ function EditStaffModal({ member: m, areas, locations, onClose, onSaved, flash }
             <h3 className="text-base font-bold text-[#dde6ef]">Editar {m.display_name}</h3>
             <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef]">✕</button>
           </div>
+
+          {formError && (
+            <div className="text-xs px-3.5 py-2.5 rounded-xl bg-[#f43f5e]/15 border border-[#f43f5e]/40 text-[#f43f5e] font-medium flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{formError}</span>
+            </div>
+          )}
 
           <div className="flex items-center gap-4">
             <div
