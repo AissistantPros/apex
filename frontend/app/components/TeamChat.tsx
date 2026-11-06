@@ -1,57 +1,129 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-// @ts-ignore — este proyecto no tiene @types/react-dom; createPortal existe en runtime
+// Chat del equipo (recepción, enfermería y médico) con el aspecto de WhatsApp para iPhone.
+// Se abre desde el botón "Chat" del menú: sube desde abajo, a la izquierda y junto al menú
+// (sin taparlo). Envío al instante (el mensaje aparece antes de que responda el servidor),
+// Enter envía y Shift+Enter hace salto de línea, con emojis y stickers.
+
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
+import Icon from '@/app/components/Icon';
+import BandejaEmojis from '@/app/components/chat/BandejaEmojis';
+import Sticker from '@/app/components/chat/Sticker';
+import {
+  agruparMensajes, codificarSticker, contarSoloEmojis, etiquetaLista, horaCorta, indiceColor, leerSticker, vistaPrevia,
+} from '@/app/lib/chatFormato';
+import '@/app/components/chat/chat.css';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-const CANALES: { id: string; label: string; icon: string }[] = [
-  { id: 'general', label: 'General', icon: '💬' },
-  { id: 'recepcion', label: 'Recepción', icon: '🛎️' },
-  { id: 'enfermeria', label: 'Enfermería', icon: '💉' },
-  { id: 'medico', label: 'Médico', icon: '🩺' },
+const CANALES: { id: string; label: string }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'recepcion', label: 'Recepción' },
+  { id: 'enfermeria', label: 'Enfermería' },
+  { id: 'medico', label: 'Médico' },
 ];
-const ROLE_LABEL: Record<string, string> = { doctor: 'Médico', receptionist: 'Recepción', nurse: 'Enfermería', accounting: 'Contabilidad', marketing: 'Marketing' };
-const ROLE_COLOR: Record<string, string> = { doctor: '#a78bfa', receptionist: '#0ea5e9', nurse: '#f97316', admin: '#a78bfa' };
+const ROLE_LABEL: Record<string, string> = { doctor: 'Médico', receptionist: 'Recepción', nurse: 'Enfermería', accounting: 'Contabilidad', marketing: 'Marketing', admin: 'Médico' };
+const ROLE_COLOR: Record<string, string> = { doctor: '#7048e8', receptionist: '#1c7ed6', nurse: '#e8590c', admin: '#7048e8' };
 // Canal de área → rol que lo atiende (para etiquetar el canal con la persona real)
 const CHANNEL_ROLE: Record<string, string> = { recepcion: 'receptionist', enfermeria: 'nurse', medico: 'doctor' };
+// A cada rol le corresponde SU canal de área — no debe poder mandarse mensajes a sí mismo.
+const OWN_CHANNEL: Record<string, string> = { receptionist: 'recepcion', nurse: 'enfermeria', doctor: 'medico' };
 
 type Member = { id: string; display_name?: string; photo_url?: string; role?: string };
-
-// Avatar: foto del perfil o inicial sobre un color de rol
-function Avatar({ name, photo, color, size = 44 }: { name?: string; photo?: string; color?: string; size?: number }) {
-  const c = color || '#7a95aa';
-  if (photo) return <img src={photo} alt="" className="rounded-full object-cover shrink-0" style={{ width: size, height: size, border: `1.5px solid ${c}55` }} />;
-  const ini = (name || '?').trim()[0]?.toUpperCase() || '?';
-  return (
-    <span className="rounded-full flex items-center justify-center font-bold shrink-0"
-      style={{ width: size, height: size, background: c + '22', color: c, fontSize: size * 0.42 }}>{ini}</span>
-  );
-}
+type Msg = {
+  id: string; clave?: string; canal: string; author_id?: string; author_name?: string; author_role?: string;
+  content: string; created_at: string; pending?: boolean; failed?: boolean;
+};
+type Preview = { content: string; created_at: string; author_id?: string; author_name?: string; author_role?: string };
 
 async function authHeaders(): Promise<Record<string, string>> {
   const s = await getSession().catch(() => null);
   return { 'Content-Type': 'application/json', ...(s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}) };
 }
 
-type Msg = { id: string; canal: string; author_id?: string; author_name?: string; author_role?: string; content: string; created_at: string };
+const esTactil = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+const sinAcentosRol = (r?: string) => (r === 'admin' ? 'doctor' : r || '');
 
-// Cómo se muestra un canal: la persona real (nombre + foto que puso en su perfil)
-// en vez de la etiqueta genérica del rol.
+// Cómo se muestra un canal: la persona real (nombre + foto de su perfil) en vez de la etiqueta del rol.
 function canalIdentidad(canalId: string, byRole: Record<string, Member>) {
-  if (canalId === 'general') return { titulo: 'General (todo el equipo)', sub: 'Visible para todos', member: null as Member | null };
+  if (canalId === 'general') return { titulo: 'General', sub: 'Todo el equipo', member: null as Member | null };
   const rol = CHANNEL_ROLE[canalId];
   const m = byRole[rol];
   const genLabel = ROLE_LABEL[rol] || canalId;
-  const nombre = m?.display_name || genLabel;
-  return { titulo: nombre, sub: `Mensaje directo · ${genLabel}`, member: m || null };
+  return { titulo: m?.display_name || genLabel, sub: `Mensaje directo · ${genLabel}`, member: m || null };
 }
 
-// A cada rol le corresponde SU canal de área — no debe poder mandarse mensajes a sí mismo.
-const OWN_CHANNEL: Record<string, string> = { receptionist: 'recepcion', nurse: 'enfermeria', doctor: 'medico' };
+function Avatar({ nombre, foto, color, tamano = 52, general }: { nombre?: string; foto?: string; color?: string; tamano?: number; general?: boolean }) {
+  const estilo = { width: tamano, height: tamano, fontSize: tamano * 0.42 } as const;
+  if (general) {
+    return (
+      <span className="shrink-0 rounded-full flex items-center justify-center text-white" style={{ ...estilo, background: 'var(--wa-accent)' }} aria-hidden>
+        <Icon name="users" size={tamano * 0.5} />
+      </span>
+    );
+  }
+  if (foto) return <img src={foto} alt="" className="shrink-0 rounded-full object-cover" style={{ width: tamano, height: tamano }} />;
+  const c = color || '#7a95aa';
+  return (
+    <span className="shrink-0 rounded-full flex items-center justify-center font-semibold" style={{ ...estilo, background: c + '26', color: c }} aria-hidden>
+      {(nombre || '?').trim()[0]?.toUpperCase() || '?'}
+    </span>
+  );
+}
+
+function Estado({ msg, sobreSuelto }: { msg: Msg; sobreSuelto?: boolean }) {
+  if (msg.failed) return <Icon name="close" size={12} />;
+  if (msg.pending) return <Icon name="clock" size={12} />;
+  return <span style={{ color: sobreSuelto ? '#fff' : 'var(--wa-tick)', display: 'inline-flex' }}><Icon name="tick" size={14} title="Enviado" /></span>;
+}
+
+// ── Una burbuja ──────────────────────────────────────────────────────────────────────────
+const Burbuja = memo(function Burbuja({
+  msg, mio, primero, mostrarNombre, nombre, colorIdx, nuevo, onReintentar,
+}: {
+  msg: Msg; mio: boolean; primero: boolean; mostrarNombre: boolean; nombre: string; colorIdx: number; nuevo: boolean;
+  onReintentar: (m: Msg) => void;
+}) {
+  const hora = horaCorta(msg.created_at);
+  const stickerId = leerSticker(msg.content);
+  const soloEmojis = stickerId ? 0 : contarSoloEmojis(msg.content);
+
+  let cuerpo;
+  if (stickerId || soloEmojis) {
+    cuerpo = (
+      <div className="wa-suelto" data-mio={mio}>
+        {stickerId ? <Sticker id={stickerId} tamano={104} /> : (
+          <span className="wa-suelto-emoji" style={{ fontSize: soloEmojis === 1 ? 58 : soloEmojis === 2 ? 46 : 38 }}>{msg.content.trim()}</span>
+        )}
+        <span className="wa-suelto-meta">{hora}{mio && <Estado msg={msg} sobreSuelto />}</span>
+      </div>
+    );
+  } else {
+    cuerpo = (
+      <div className="wa-burbuja" data-mio={mio} data-cola={primero}>
+        {mostrarNombre && <div className="wa-autor" style={{ color: `var(--wa-n${colorIdx})` }}>{nombre}</div>}
+        <span className="wa-texto">{msg.content}</span>
+        <span className="wa-meta">{hora}{mio && <Estado msg={msg} />}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="wa-fila-msg" data-mio={mio} data-primero={primero} data-nuevo={nuevo}>
+      <div style={{ maxWidth: '84%', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: mio ? 'flex-end' : 'flex-start' }}>
+        {cuerpo}
+        {msg.failed && (
+          <button type="button" className="wa-fallo" onClick={() => onReintentar(msg)}>
+            No se envió · Reintentar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export default function TeamChat() {
   const [enabled, setEnabled] = useState(false);
@@ -60,31 +132,45 @@ export default function TeamChat() {
   const [view, setView] = useState<'list' | 'chat'>('list');
   const [canal, setCanal] = useState('general');
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [pend, setPend] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [me, setMe] = useState('');
   const [byId, setById] = useState<Record<string, Member>>({});
   const [byRole, setByRole] = useState<Record<string, Member>>({});
   const [unread, setUnread] = useState<Record<string, number>>({});
+  const [previews, setPreviews] = useState<Record<string, Preview>>({});
+  const [bandeja, setBandeja] = useState(false);
+  const [bajarVisible, setBajarVisible] = useState(false);
+  const [nuevosAbajo, setNuevosAbajo] = useState(0);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+
   const lastSeenRef = useRef<string>(new Date(Date.now() - 86400000).toISOString());
   const prevTotalRef = useRef<number>(0);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const msgsRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const cursorRef = useRef<number | null>(null);
+  const cacheRef = useRef<Record<string, Msg[]>>({});
+  const firmaRef = useRef('');
+  const pegado = useRef(true);
+  const primeraCarga = useRef(true);
+  const prevCantidad = useRef(0);
+  const contador = useRef(0);
+
   // El botón vive en la barra superior visible. Algunas páginas tienen su propio header que
-  // tapa la barra estándar; como sus anclas aparecen DESPUÉS en el DOM, tomamos la ÚLTIMA
-  // visible, que es la del header que realmente está arriba.
+  // tapa la barra estándar; como sus anclas aparecen DESPUÉS en el DOM, tomamos la ÚLTIMA visible.
   useEffect(() => {
     const find = () => {
-      const slots = Array.from(document.querySelectorAll<HTMLElement>('.apex-chat-slot'))
-        .filter(el => el.offsetParent !== null);
-      setSlot(slots[slots.length - 1] || null);
+      const slots = Array.from(document.querySelectorAll<HTMLElement>('.apex-chat-slot')).filter(el => el.offsetParent !== null);
+      const nuevo = slots[slots.length - 1] || null;
+      setSlot(prev => (prev === nuevo ? prev : nuevo));
     };
     find();
     const t = setInterval(find, 800);
     return () => clearInterval(t);
   }, []);
 
+  // Botón "Chat" del menú lateral
   useEffect(() => {
     const handler = () => setOpen(o => !o);
     window.addEventListener('apex:toggle-chat', handler);
@@ -124,11 +210,12 @@ export default function TeamChat() {
         const rol: Record<string, Member> = {};
         (d.members || []).forEach((m: Member) => {
           id[m.id] = m;
-          const rr = m.role === 'admin' ? 'doctor' : (m.role || '');
+          const rr = sinAcentosRol(m.role);
           // Si hay varios del mismo rol, se queda el que tenga foto/nombre configurado.
           if (!rol[rr] || (!rol[rr].photo_url && m.photo_url)) rol[rr] = m;
         });
         setById(id); setByRole(rol);
+        if (d.me) setMe(d.me); // se sabe quién soy desde la lista de chats ("Tú: …")
       } catch { /* silencioso */ }
     };
     cargarRoster();
@@ -136,11 +223,11 @@ export default function TeamChat() {
     return () => clearInterval(t);
   }, [enabled]);
 
-  // Canales visibles: General + las OTRAS dos áreas (no la propia). Admin ve todas.
-  const visibleCanales = CANALES.filter(c => c.id === 'general' || c.id !== OWN_CHANNEL[role]);
+  // Canales visibles: General + las OTRAS dos áreas (no la propia).
+  const visibleCanales = useMemo(() => CANALES.filter(c => c.id === 'general' || c.id !== OWN_CHANNEL[role]), [role]);
   useEffect(() => {
     if (!visibleCanales.some(c => c.id === canal)) setCanal('general');
-  }, [role]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visibleCanales, canal]);
 
   // Sonido corto (Web Audio) al llegar un mensaje nuevo
   const beep = () => {
@@ -157,16 +244,41 @@ export default function TeamChat() {
     } catch { /* silencioso */ }
   };
 
+  // Carga de la conversación. Solo toca el estado si algo cambió (así no hay parpadeos al sondear).
   const cargar = useCallback(async (c: string) => {
     try {
-      const r = await fetch(`${B()}/messages?canal=${c}`, { headers: await authHeaders() });
+      const r = await fetch(`${B()}/messages?canal=${c}&limit=100`, { headers: await authHeaders() });
       if (!r.ok) return;
       const d = await r.json();
-      setMsgs(d.messages || []); setMe(d.me || '');
+      const lista: Msg[] = d.messages || [];
+      const firma = `${c}:${lista.length}:${lista[lista.length - 1]?.id || ''}`;
+      if (d.me) setMe(d.me);
+      if (firma === firmaRef.current) return;
+      firmaRef.current = firma;
+      setMsgs(prev => {
+        // Conserva la identidad en pantalla de los mensajes propios ya mostrados (sin parpadeo).
+        const claves = new Map(prev.filter(m => m.clave).map(m => [m.id, m.clave!]));
+        const resultado = lista.map(m => (claves.has(m.id) ? { ...m, clave: claves.get(m.id) } : m));
+        cacheRef.current[c] = resultado;
+        return resultado;
+      });
     } catch { /* silencioso */ }
   }, []);
 
-  // Polling de mensajes del canal abierto (solo en la vista de conversación)
+  const entrarAlChat = useCallback((c: string) => {
+    firmaRef.current = '';
+    primeraCarga.current = true;
+    prevCantidad.current = 0;
+    pegado.current = true;
+    setNuevosAbajo(0);
+    setBajarVisible(false);
+    setBandeja(false);
+    setMsgs(cacheRef.current[c] || []);
+    setCanal(c);
+    setView('chat');
+  }, []);
+
+  // Sondeo de la conversación abierta
   useEffect(() => {
     if (!enabled || !open || view !== 'chat') return;
     cargar(canal);
@@ -174,7 +286,22 @@ export default function TeamChat() {
     return () => clearInterval(t);
   }, [enabled, open, view, canal, cargar]);
 
-  // Polling del badge de no leídos (aunque esté cerrado) + aviso de mensaje nuevo
+  // Último mensaje de cada chat (para la lista)
+  useEffect(() => {
+    if (!enabled || !open || view !== 'list') return;
+    let vivo = true;
+    const traer = async () => {
+      try {
+        const r = await fetch(`${B()}/messages/previews`, { headers: await authHeaders() });
+        if (r.ok && vivo) setPreviews((await r.json()).previews || {});
+      } catch { /* silencioso */ }
+    };
+    traer();
+    const t = setInterval(traer, 6000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [enabled, open, view]);
+
+  // Sondeo del badge de no leídos (aunque esté cerrado) + aviso de mensaje nuevo
   useEffect(() => {
     if (!enabled) return;
     const poll = async () => {
@@ -182,7 +309,6 @@ export default function TeamChat() {
         const r = await fetch(`${B()}/messages/unread?after=${encodeURIComponent(lastSeenRef.current)}`, { headers: await authHeaders() });
         if (!r.ok) return;
         const counts = (await r.json()).counts || {};
-        // Solo cuentan los canales que este rol puede ver
         const visibles = new Set(CANALES.filter(c => c.id === 'general' || c.id !== OWN_CHANNEL[getRole()]).map(c => c.id));
         const total = Object.entries(counts).reduce((a, [k, v]: any) => a + (visibles.has(k) ? v : 0), 0);
         if (total > prevTotalRef.current) {
@@ -200,48 +326,155 @@ export default function TeamChat() {
     return () => clearInterval(t);
   }, [enabled]);
 
-  // Cerrar el panel al hacer click fuera
+  // Al leer una conversación, se marca como vista
   useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (panelRef.current?.contains(e.target as Node) || btnRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
+    if (open && view === 'chat') { lastSeenRef.current = new Date().toISOString(); setUnread(u => ({ ...u, [canal]: 0 })); }
+  }, [open, view, canal, msgs.length]);
 
-  useEffect(() => { if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, open]);
+  // ── Mensajes visibles: lo del servidor + lo que se está enviando ──
+  const visibles = useMemo(() => [...msgs, ...pend.filter(p => p.canal === canal)], [msgs, pend, canal]);
+  const items = useMemo(() => agruparMensajes(visibles), [visibles]);
 
-  // Al abrir/cambiar de canal, marcar visto
+  const bajar = useCallback((suave: boolean) => {
+    const el = msgsRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: suave ? 'smooth' : 'auto' });
+  }, []);
+
+  // Después de pintar: primera carga → abajo sin animar; mensaje nuevo → baja si estabas abajo, si no, cuenta.
+  useLayoutEffect(() => {
+    if (view !== 'chat') return;
+    const n = visibles.length;
+    if (primeraCarga.current) {
+      if (n > 0) { bajar(false); primeraCarga.current = false; }
+    } else if (n > prevCantidad.current) {
+      if (pegado.current) bajar(true);
+      else {
+        const ultimo = visibles[n - 1];
+        if (ultimo && ultimo.author_id !== me && !ultimo.pending) setNuevosAbajo(x => x + (n - prevCantidad.current));
+      }
+    }
+    prevCantidad.current = n;
+  }, [visibles, view, me, bajar]);
+
+  // Si cambia el alto de la zona de mensajes (bandeja, campo que crece, teclado), se mantiene el final a la vista.
   useEffect(() => {
-    if (open) { lastSeenRef.current = new Date().toISOString(); setUnread(u => ({ ...u, [canal]: 0 })); }
-  }, [open, canal, msgs.length]);
+    const el = msgsRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { if (pegado.current) el.scrollTop = el.scrollHeight; });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [view, open]);
 
-  const enviar = async () => {
+  const alScrollMensajes = () => {
+    const el = msgsRef.current;
+    if (!el) return;
+    const cerca = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    pegado.current = cerca;
+    setBajarVisible(prev => (prev === !cerca ? prev : !cerca));
+    if (cerca) setNuevosAbajo(0);
+  };
+
+  // Altura del campo de texto (hasta ~5 líneas)
+  useLayoutEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+    if (cursorRef.current !== null) {
+      el.setSelectionRange(cursorRef.current, cursorRef.current);
+      cursorRef.current = null;
+    }
+  }, [text, view]);
+
+  // Al abrir una conversación en escritorio, el cursor queda listo para escribir
+  useEffect(() => {
+    if (!open || view !== 'chat' || esTactil()) return;
+    const t = setTimeout(() => areaRef.current?.focus({ preventScroll: true }), 380);
+    return () => clearTimeout(t);
+  }, [open, view, canal]);
+
+  // ── Envío ──
+  const publicar = useCallback(async (contenido: string, previo?: Msg) => {
+    const t = contenido.trim();
+    if (!t) return;
+    const clave = previo?.clave || `tmp-${Date.now()}-${++contador.current}`;
+    const tmp: Msg = { id: previo?.id || clave, clave, canal, author_id: me, content: t, created_at: previo?.created_at || new Date().toISOString(), pending: true };
+    pegado.current = true;
+    setPend(p => (previo ? p.map(x => (x.clave === clave ? { ...tmp } : x)) : [...p, tmp]));
+    try {
+      const r = await fetch(`${B()}/messages`, { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ canal, content: t }) });
+      if (!r.ok) throw new Error('no se envió');
+      const fila = await r.json();
+      const confirmado: Msg = { ...fila, canal, clave };
+      setPend(p => p.filter(x => x.clave !== clave));
+      setMsgs(m => {
+        if (m.some(x => x.id === confirmado.id)) return m.map(x => (x.id === confirmado.id ? { ...x, clave } : x));
+        const nueva = [...m, confirmado];
+        cacheRef.current[canal] = nueva;
+        firmaRef.current = `${canal}:${nueva.length}:${confirmado.id}`;
+        return nueva;
+      });
+      setPreviews(pr => ({ ...pr, [canal]: { content: t, created_at: confirmado.created_at, author_id: me } }));
+    } catch {
+      setPend(p => p.map(x => (x.clave === clave ? { ...x, pending: false, failed: true } : x)));
+    }
+  }, [canal, me]);
+
+  const enviarTexto = useCallback(() => {
     const t = text.trim();
     if (!t) return;
     setText('');
-    try {
-      await fetch(`${B()}/messages`, { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ canal, content: t }) });
-      cargar(canal);
-    } catch { setText(t); }
+    publicar(t);
+    if (!esTactil()) areaRef.current?.focus({ preventScroll: true });
+  }, [text, publicar]);
+
+  const enviarSticker = useCallback((id: string) => { publicar(codificarSticker(id)); }, [publicar]);
+
+  const insertarEmoji = useCallback((e: string) => {
+    const el = areaRef.current;
+    const ini = el?.selectionStart ?? text.length;
+    const fin = el?.selectionEnd ?? ini;
+    cursorRef.current = ini + e.length;
+    setText(text.slice(0, ini) + e + text.slice(fin));
+  }, [text]);
+
+  const alTeclear = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter envía; Shift+Enter hace salto de línea. En pantallas táctiles Enter es salto de línea (como WhatsApp en iPhone).
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !esTactil()) {
+      e.preventDefault();
+      enviarTexto();
+    }
+  };
+
+  const alternarBandeja = () => {
+    setBandeja(b => {
+      const abre = !b;
+      if (abre && esTactil()) areaRef.current?.blur(); // el teclado cede su lugar a la bandeja
+      if (!abre) areaRef.current?.focus({ preventScroll: true });
+      return abre;
+    });
+  };
+
+  const cerrar = () => { setOpen(false); setBandeja(false); };
+  const alTeclearPanel = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    if (bandeja) setBandeja(false); else cerrar();
   };
 
   if (!enabled) return null;
   const totalUnread = visibleCanales.reduce((a, c) => a + (unread[c.id] || 0), 0);
 
-  // Botón en la barra superior (con animación sutil constante) — se monta en el ancla del TopNav
+  // Botón en la barra superior — se monta en el ancla del TopNav
   const triggerBtn = (
-    <button ref={btnRef} onClick={() => { setOpen(o => !o); setView('list'); }}
-      title="Chat del equipo"
+    <button ref={btnRef} onClick={() => { setOpen(o => !o); }}
+      title="Chat del equipo" aria-pressed={open}
       className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all"
       style={{
         background: open ? '#00e5a0' : 'rgba(0,229,160,0.12)',
         color: open ? '#000' : '#00e5a0',
         border: '1px solid rgba(0,229,160,0.35)',
       }}>
-      {/* Punto "en vivo" con pulso sutil y constante */}
       <span className="relative flex h-2 w-2">
         <span className="absolute inline-flex h-full w-full rounded-full opacity-50" style={{ background: open ? '#000' : '#00e5a0', animation: 'apexPulse 2s ease-in-out infinite' }} />
         <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: open ? '#000' : '#00e5a0' }} />
@@ -254,6 +487,14 @@ export default function TeamChat() {
     </button>
   );
 
+  const identidad = canalIdentidad(canal, byRole);
+  const colorCanal = canal === 'general' ? undefined : (ROLE_COLOR[CHANNEL_ROLE[canal]] || '#7a95aa');
+  const inertSi = (cond: boolean) => (cond ? { inert: '' as any } : {});
+  const quien = (m: { author_id?: string; author_name?: string; author_role?: string }) => {
+    const perfil = m.author_id ? byId[m.author_id] : undefined;
+    return perfil?.display_name || m.author_name || ROLE_LABEL[sinAcentosRol(m.author_role)] || 'Alguien';
+  };
+
   return (
     <>
       {/* El botón vive en la barra superior; si aún no hay ancla, cae a una esquina discreta */}
@@ -261,97 +502,119 @@ export default function TeamChat() {
         <div className="fixed z-[90] top-3 right-3">{triggerBtn}</div>
       )}
 
-      {/* Panel — debajo de la barra superior, a la derecha */}
-      {open && (
-        <div ref={panelRef} className="fixed z-[95] top-16 right-3 w-[min(94vw,380px)] h-[min(72vh,560px)] bg-[#0d1520] border border-[#1e2d3d] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-
-          {/* ── VISTA LISTA: elige a quién escribir (filas full-width, sin scroll horizontal) ── */}
-          {view === 'list' && (
-            <>
-              <div className="px-4 py-3 border-b border-[#1e2d3d]">
-                <p className="text-sm font-semibold text-[#dde6ef]">Chat del equipo</p>
-                <p className="text-[11px] text-[#7a95aa]">Elige a quién escribir</p>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {visibleCanales.map(c => {
-                  const n = unread[c.id] || 0;
-                  const rol = CHANNEL_ROLE[c.id];
-                  const col = c.id === 'general' ? '#00e5a0' : (ROLE_COLOR[rol] || '#7a95aa');
-                  const info = canalIdentidad(c.id, byRole);
-                  return (
-                    <button key={c.id} onClick={() => { setCanal(c.id); setView('chat'); }}
-                      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-[#111820] transition text-left">
-                      {c.id === 'general'
-                        ? <span className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0" style={{ background: col + '22' }}>{c.icon}</span>
-                        : <Avatar name={info.titulo} photo={info.member?.photo_url} color={col} size={44} />}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-[#dde6ef] truncate">{info.titulo}</p>
-                        <p className="text-[11px] text-[#7a95aa] truncate">{info.sub}</p>
-                      </div>
-                      {n > 0 && <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#f43f5e] text-white text-[11px] font-bold flex items-center justify-center shrink-0">{n}</span>}
-                      <span className="text-[#3d5870] shrink-0">›</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {/* ── VISTA CONVERSACIÓN ── */}
-          {view === 'chat' && (
-            <>
-              <div className="px-3 py-3 border-b border-[#1e2d3d] flex items-center gap-2.5">
-                <button onClick={() => setView('list')} className="text-[#00e5a0] text-lg px-1" title="Volver">‹</button>
-                {(() => {
-                  const info = canalIdentidad(canal, byRole);
-                  const col = canal === 'general' ? '#00e5a0' : (ROLE_COLOR[CHANNEL_ROLE[canal]] || '#7a95aa');
-                  return canal === 'general'
-                    ? <><span className="text-lg">💬</span><p className="text-sm font-semibold text-[#dde6ef]">General</p></>
-                    : <><Avatar name={info.titulo} photo={info.member?.photo_url} color={col} size={32} /><p className="text-sm font-semibold text-[#dde6ef] truncate">{info.titulo}</p></>;
-                })()}
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-                {msgs.length === 0 && <p className="text-xs text-[#3d5870] text-center mt-8">Aún no hay mensajes. Escribe el primero.</p>}
-                {msgs.map(m => {
-                  const mine = m.author_id === me;
-                  const rol = m.author_role === 'admin' ? 'doctor' : (m.author_role || '');
-                  const color = ROLE_COLOR[rol] || '#7a95aa';
-                  const perfil = m.author_id ? byId[m.author_id] : undefined;
-                  const nombre = perfil?.display_name || m.author_name || ROLE_LABEL[rol] || 'Alguien';
-                  return (
-                    <div key={m.id} className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
-                      {!mine && <Avatar name={nombre} photo={perfil?.photo_url} color={color} size={28} />}
-                      <div className="max-w-[76%]">
-                        {!mine && (
-                          <p className="text-[10px] mb-0.5" style={{ color }}>
-                            {nombre} · {ROLE_LABEL[rol] || ''}
-                          </p>
-                        )}
-                        <div className="rounded-2xl px-3 py-2 text-sm"
-                          style={{ background: mine ? '#00e5a0' : '#111820', color: mine ? '#000' : '#dde6ef' }}>
-                          {m.content}
-                        </div>
-                        <p className="text-[9px] text-[#3d5870] mt-0.5" style={{ textAlign: mine ? 'right' : 'left' }}>
-                          {new Date(m.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
+      <div
+        className="wa wa-panel"
+        data-abierto={open}
+        role="dialog"
+        aria-label="Chat del equipo"
+        aria-hidden={!open}
+        onKeyDown={alTeclearPanel}
+        {...inertSi(!open)}
+      >
+        {/* ── LISTA DE CHATS ── */}
+        <section className="wa-capa wa-lista" data-atras={view === 'chat'} aria-hidden={view === 'chat'} {...inertSi(view === 'chat')}>
+          <header className="wa-head" style={{ paddingLeft: 12, minHeight: 56 }}>
+            <h2 className="flex-1" style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>Chats</h2>
+            <button type="button" className="wa-icono" data-gris="true" onClick={cerrar} aria-label="Cerrar chat"><Icon name="close" size={20} /></button>
+          </header>
+          <div className="flex-1 min-h-0 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
+            {visibleCanales.map(c => {
+              const n = unread[c.id] || 0;
+              const info = canalIdentidad(c.id, byRole);
+              const col = c.id === 'general' ? undefined : (ROLE_COLOR[CHANNEL_ROLE[c.id]] || '#7a95aa');
+              const pv = previews[c.id];
+              const mio = !!pv && !!me && pv.author_id === me;
+              const prefijo = !pv ? '' : mio ? 'Tú: ' : c.id === 'general' ? `${quien(pv).split(' ')[0]}: ` : '';
+              return (
+                <button key={c.id} type="button" className="wa-fila" onClick={() => entrarAlChat(c.id)}>
+                  <Avatar general={c.id === 'general'} nombre={info.titulo} foto={info.member?.photo_url} color={col} tamano={52} />
+                  <div className="wa-fila-cuerpo">
+                    <div className="wa-fila-arriba">
+                      <span className="wa-nombre">{info.titulo}</span>
+                      {pv && <span className="wa-hora" data-nuevo={n > 0}>{etiquetaLista(pv.created_at)}</span>}
                     </div>
-                  );
-                })}
-                <div ref={bottomRef} />
-              </div>
+                    <div className="wa-fila-abajo">
+                      <span className="wa-previa">
+                        {pv ? <>{mio && <span style={{ color: 'var(--wa-tick)', display: 'inline-flex' }}><Icon name="tick" size={15} /></span>}<span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{prefijo}{vistaPrevia(pv.content)}</span></> : info.sub}
+                      </span>
+                      {n > 0 && <span className="wa-insignia" aria-label={`${n} mensajes sin leer`}>{n}</span>}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
-              <div className="p-2.5 border-t border-[#1e2d3d] flex gap-2">
-                <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && enviar()}
-                  placeholder="Escribe un mensaje…"
-                  className="flex-1 bg-[#111820] border border-[#1e2d3d] rounded-xl px-3 py-2 text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0]" />
-                <button onClick={enviar} className="px-3.5 rounded-xl font-bold" style={{ background: '#00e5a0', color: '#000' }}>↑</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+        {/* ── CONVERSACIÓN ── */}
+        <section className="wa-capa wa-conv" data-visible={view === 'chat'} aria-hidden={view !== 'chat'} {...inertSi(view !== 'chat')}>
+          <header className="wa-head">
+            <button type="button" className="wa-icono" onClick={() => { setBandeja(false); setView('list'); }} aria-label="Volver a la lista de chats"><Icon name="back" size={24} /></button>
+            <Avatar general={canal === 'general'} nombre={identidad.titulo} foto={identidad.member?.photo_url} color={colorCanal} tamano={38} />
+            <div className="flex-1 min-w-0" style={{ lineHeight: 1.2 }}>
+              <div className="wa-nombre" style={{ fontSize: 16.5 }}>{identidad.titulo}</div>
+              <div className="wa-sub">{identidad.sub}</div>
+            </div>
+            <button type="button" className="wa-icono" data-gris="true" onClick={cerrar} aria-label="Cerrar chat"><Icon name="close" size={20} /></button>
+          </header>
+
+          <div className="relative flex-1 min-h-0 flex flex-col">
+            <div ref={msgsRef} className="wa-mensajes" role="log" aria-live="polite" aria-label={`Mensajes de ${identidad.titulo}`} onScroll={alScrollMensajes}>
+              {visibles.length === 0 && (
+                <div className="wa-aviso">
+                  {canal === 'general' ? 'Aún no hay mensajes. Lo que escribas aquí lo ve todo el equipo.' : 'Aún no hay mensajes. Escribe el primero.'}
+                </div>
+              )}
+              {items.map(it => it.tipo === 'dia' ? (
+                <div key={it.key} className="wa-dia">{it.etiqueta}</div>
+              ) : (
+                <Burbuja
+                  key={it.key}
+                  msg={it.msg as Msg}
+                  mio={!!it.msg.clave || (!!me && it.msg.author_id === me)}
+                  primero={it.primero}
+                  mostrarNombre={canal === 'general' && it.primero && !(it.msg.clave || (me && it.msg.author_id === me))}
+                  nombre={quien(it.msg as Msg)}
+                  colorIdx={indiceColor(it.msg.author_id)}
+                  nuevo={!!it.msg.clave || Date.now() - new Date(it.msg.created_at).getTime() < 6000}
+                  onReintentar={m => publicar(m.content, m)}
+                />
+              ))}
+            </div>
+            <button type="button" className="wa-bajar" data-visible={bajarVisible} onClick={() => bajar(true)} aria-label="Ir al último mensaje" tabIndex={bajarVisible ? 0 : -1}>
+              {nuevosAbajo > 0 && <span className="wa-bajar-n">{nuevosAbajo}</span>}
+              <Icon name="down" size={20} />
+            </button>
+          </div>
+
+          <div className="wa-barra">
+            <div className="wa-campo">
+              <button type="button" className="wa-icono" onClick={alternarBandeja} aria-label={bandeja ? 'Volver al teclado' : 'Emojis y stickers'} aria-expanded={bandeja}>
+                <Icon name={bandeja ? 'keyboard' : 'smile'} size={22} />
+              </button>
+              <textarea
+                ref={areaRef}
+                rows={1}
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={alTeclear}
+                onFocus={() => { if (bandeja && !esTactil()) return; if (bandeja) setBandeja(false); }}
+                placeholder="Mensaje"
+                aria-label="Escribe un mensaje"
+                enterKeyHint="enter"
+                className="wa-area"
+              />
+            </div>
+            <button type="button" className="wa-enviar" onClick={enviarTexto} disabled={!text.trim()} aria-label="Enviar mensaje">
+              <Icon name="send" size={22} />
+            </button>
+          </div>
+
+          <div className="wa-bandeja" data-abierta={bandeja}>
+            <BandejaEmojis abierta={bandeja && view === 'chat'} onEmoji={insertarEmoji} onSticker={enviarSticker} />
+          </div>
+        </section>
+      </div>
     </>
   );
 }
