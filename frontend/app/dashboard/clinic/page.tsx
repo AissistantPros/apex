@@ -211,6 +211,7 @@ export default function ClinicPage() {
             reload={loadAll}
             flash={flash}
             onOpenNuevo={() => setShowModalIngreso(true)}
+            esRecepcion={esRecepcion}
           />
         )}
 
@@ -222,6 +223,7 @@ export default function ClinicPage() {
             reload={loadAll}
             flash={flash}
             onOpenNuevo={() => setShowModalGasto(true)}
+            esRecepcion={esRecepcion}
           />
         )}
 
@@ -457,12 +459,14 @@ function IngresosTab({
   reload,
   flash,
   onOpenNuevo,
+  esRecepcion = false,
 }: {
   ov: any;
   sales: any[];
   reload: () => void;
   flash: (t: string) => void;
   onOpenNuevo: () => void;
+  esRecepcion?: boolean;
 }) {
   const [topModo, setTopModo] = useState<'cantidad' | 'ingreso'>('ingreso');
   const [filtroCobro, setFiltroCobro] = useState<'todos' | 'pendiente' | 'cobrado'>('todos');
@@ -473,6 +477,9 @@ function IngresosTab({
   const cuentasPorCobrar = ov?.cuentas_por_cobrar || [];
   const topCantidad = ov?.top_vendidos?.por_cantidad || [];
   const topIngreso = ov?.top_vendidos?.por_ingreso || [];
+
+  const totalCobradoRec = sales.filter(s => s.estado === 'cobrado').reduce((acc, s) => acc + (s.total || 0), 0);
+  const totalPendienteRec = sales.filter(s => s.estado === 'pendiente').reduce((acc, s) => acc + (s.total || 0), 0);
 
   const marcarComoPagado = async (item: any) => {
     try {
@@ -525,98 +532,120 @@ function IngresosTab({
       </div>
 
       {/* Cifras */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
-          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Vendido</p>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-[#00e5a0] mt-1">{money(rv.total_vendido || 0)}</p>
+      {esRecepcion ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Cobrado por Mí</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#00e5a0] mt-1">{money(totalCobradoRec)}</p>
+            <p className="text-[11px] text-[#7a95aa] mt-1">Líquido cobrado en mostrador</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Cobros Pendientes</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">{money(totalPendienteRec)}</p>
+            <p className="text-[11px] text-[#7a95aa] mt-1">Por liquidar con el paciente</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Cobros Registrados</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">{sales.length}</p>
+            <p className="text-[11px] text-[#7a95aa] mt-1">Atenciones registradas en turno</p>
+          </div>
         </div>
-        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
-          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Cobrado</p>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">{money(rv.total_cobrado || 0)}</p>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Vendido</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#00e5a0] mt-1">{money(rv.total_vendido || 0)}</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Cobrado</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">{money(rv.total_cobrado || 0)}</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Por Cobrar</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">{money(rv.total_por_cobrar || 0)}</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Comparativa Mes Ant.</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#dde6ef] mt-1">
+              {rv.variacion_mes_pct !== null && rv.variacion_mes_pct !== undefined
+                ? `${rv.variacion_mes_pct >= 0 ? '+' : ''}${rv.variacion_mes_pct}%`
+                : '—'}
+            </p>
+          </div>
         </div>
-        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
-          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Por Cobrar</p>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">{money(rv.total_por_cobrar || 0)}</p>
-        </div>
-        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
-          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Comparativa Mes Ant.</p>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-[#dde6ef] mt-1">
-            {rv.variacion_mes_pct !== null && rv.variacion_mes_pct !== undefined
-              ? `${rv.variacion_mes_pct >= 0 ? '+' : ''}${rv.variacion_mes_pct}%`
-              : '—'}
-          </p>
-        </div>
-      </div>
+      )}
 
-      {/* Qué se vende más & Sedes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#dde6ef]">Servicios más vendidos</h3>
-            <div className="flex gap-1 bg-[#111820] p-1 rounded-lg border border-[#1e2d3d]">
-              <button
-                onClick={() => setTopModo('ingreso')}
-                className="px-2.5 py-1 rounded text-xs font-semibold transition"
-                style={{
-                  background: topModo === 'ingreso' ? '#00e5a0' : 'transparent',
-                  color: topModo === 'ingreso' ? '#051b14' : '#7a95aa',
-                }}
-              >
-                Por Ingreso
-              </button>
-              <button
-                onClick={() => setTopModo('cantidad')}
-                className="px-2.5 py-1 rounded text-xs font-semibold transition"
-                style={{
-                  background: topModo === 'cantidad' ? '#00e5a0' : 'transparent',
-                  color: topModo === 'cantidad' ? '#051b14' : '#7a95aa',
-                }}
-              >
-                Por Cantidad
-              </button>
+      {/* Qué se vende más & Sedes (Solo para doctor y contabilidad) */}
+      {!esRecepcion && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#dde6ef]">Servicios más vendidos</h3>
+              <div className="flex gap-1 bg-[#111820] p-1 rounded-lg border border-[#1e2d3d]">
+                <button
+                  onClick={() => setTopModo('ingreso')}
+                  className="px-2.5 py-1 rounded text-xs font-semibold transition"
+                  style={{
+                    background: topModo === 'ingreso' ? '#00e5a0' : 'transparent',
+                    color: topModo === 'ingreso' ? '#051b14' : '#7a95aa',
+                  }}
+                >
+                  Por Ingreso
+                </button>
+                <button
+                  onClick={() => setTopModo('cantidad')}
+                  className="px-2.5 py-1 rounded text-xs font-semibold transition"
+                  style={{
+                    background: topModo === 'cantidad' ? '#00e5a0' : 'transparent',
+                    color: topModo === 'cantidad' ? '#051b14' : '#7a95aa',
+                  }}
+                >
+                  Por Cantidad
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              {(topModo === 'ingreso' ? topIngreso : topCantidad).slice(0, 5).map((item: any, i: number) => (
+                <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between text-xs">
+                  <span className="font-semibold text-[#dde6ef] truncate max-w-[200px]">{item.concepto}</span>
+                  <span className="font-mono text-[#00e5a0] font-bold">
+                    {money(item.total)} · <b className="text-[#7a95aa]">{item.cantidad} serv.</b>
+                  </span>
+                </div>
+              ))}
+              {topIngreso.length === 0 && (
+                <p className="text-xs text-[#7a95aa] py-3 text-center">Sin servicios registrados.</p>
+              )}
             </div>
           </div>
 
-          <div className="space-y-2.5">
-            {(topModo === 'ingreso' ? topIngreso : topCantidad).slice(0, 5).map((item: any, i: number) => (
-              <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between text-xs">
-                <span className="font-semibold text-[#dde6ef] truncate max-w-[200px]">{item.concepto}</span>
-                <span className="font-mono text-[#00e5a0] font-bold">
-                  {money(item.total)} · <b className="text-[#7a95aa]">{item.cantidad} serv.</b>
-                </span>
-              </div>
-            ))}
-            {topIngreso.length === 0 && (
-              <p className="text-xs text-[#7a95aa] py-3 text-center">Sin servicios registrados.</p>
-            )}
+          {/* Sedes */}
+          <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-[#dde6ef]">Ingresos por Sede o Hospital</h3>
+            <div className="space-y-2.5">
+              {sedes.map((s: any, i: number) => (
+                <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between text-xs">
+                  <div>
+                    <p className="font-semibold text-[#dde6ef]">{s.lugar}</p>
+                    <p className="text-[11px] text-[#7a95aa]">{s.cantidad} atenciones</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono font-bold text-[#00e5a0]">{money(s.total_ingreso)}</p>
+                    <p className="text-[10px] text-[#7a95aa]">{s.pct_ingreso}% del total</p>
+                  </div>
+                </div>
+              ))}
+              {sedes.length === 0 && (
+                <p className="text-xs text-[#7a95aa] py-3 text-center">Registra cobros asignando sede.</p>
+              )}
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Sedes */}
-        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-[#dde6ef]">Ingresos por Sede o Hospital</h3>
-          <div className="space-y-2.5">
-            {sedes.map((s: any, i: number) => (
-              <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between text-xs">
-                <div>
-                  <p className="font-semibold text-[#dde6ef]">{s.lugar}</p>
-                  <p className="text-[11px] text-[#7a95aa]">{s.cantidad} atenciones</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono font-bold text-[#00e5a0]">{money(s.total_ingreso)}</p>
-                  <p className="text-[10px] text-[#7a95aa]">{s.pct_ingreso}% del total</p>
-                </div>
-              </div>
-            ))}
-            {sedes.length === 0 && (
-              <p className="text-xs text-[#7a95aa] py-3 text-center">Registra cobros asignando sede.</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Cuentas por Cobrar */}
-      {cuentasPorCobrar.length > 0 && (
+      {/* Cuentas por Cobrar (Solo para doctor y contabilidad) */}
+      {!esRecepcion && cuentasPorCobrar.length > 0 && (
         <div className="bg-[#0d1520] border border-[#f59e0b]/40 rounded-2xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-[#dde6ef]">Cuentas por Cobrar</h3>
@@ -722,12 +751,14 @@ function GastosTab({
   reload,
   flash,
   onOpenNuevo,
+  esRecepcion = false,
 }: {
   ov: any;
   expenses: any[];
   reload: () => void;
   flash: (t: string) => void;
   onOpenNuevo: () => void;
+  esRecepcion?: boolean;
 }) {
   const ga = ov?.gastos_analisis || {};
   const categorias = ga.categorias || [];
@@ -762,45 +793,71 @@ function GastosTab({
       </div>
 
       {/* Cifras de Gastos */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5">
-        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
-          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Gastado</p>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-[#f43f5e] mt-1">
-            {money(ga.total_gastado || 0)}
-          </p>
+      {esRecepcion ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Gastos Registrados por Mí</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#f43f5e] mt-1">
+              {money(expenses.reduce((acc, e) => acc + (e.monto || 0), 0))}
+            </p>
+            <p className="text-[11px] text-[#7a95aa] mt-1">Caja chica / mostrador</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Con Factura</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">
+              {money(expenses.filter(e => e.facturado).reduce((s, e) => s + (e.monto || 0), 0))}
+            </p>
+            <p className="text-[11px] text-[#7a95aa] mt-1">Comprobante fiscal registrado</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Egresos Capturados</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#dde6ef] mt-1">{expenses.length}</p>
+            <p className="text-[11px] text-[#7a95aa] mt-1">Registros en el sistema</p>
+          </div>
         </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Total Gastado</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#f43f5e] mt-1">
+              {money(ga.total_gastado || 0)}
+            </p>
+          </div>
 
-        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
-          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Gastos Facturados</p>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">
-            {money(expenses.filter(e => e.facturado).reduce((s, e) => s + (e.monto || 0), 0))}
-          </p>
-        </div>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Gastos Facturados</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#38bdf8] mt-1">
+              {money(expenses.filter(e => e.facturado).reduce((s, e) => s + (e.monto || 0), 0))}
+            </p>
+          </div>
 
-        <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
-          <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Compras Menores (≤ $1,500)</p>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">
-            {money(hormiga.total || 0)}
-          </p>
-          <p className="text-[11px] text-[#7a95aa] mt-1">{hormiga.conteo || 0} compras</p>
+          <div className="p-4 rounded-xl bg-[#0d1520] border border-[#1e2d3d]">
+            <p className="text-[11px] font-mono text-[#7a95aa] uppercase">Compras Menores (≤ $1,500)</p>
+            <p className="text-xl sm:text-2xl font-bold font-mono text-[#f59e0b] mt-1">
+              {money(hormiga.total || 0)}
+            </p>
+            <p className="text-[11px] text-[#7a95aa] mt-1">{hormiga.conteo || 0} compras</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Categorías */}
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-3">
-        <h3 className="text-sm font-bold text-[#dde6ef]">Desglose de Gastos por Categoría</h3>
-        <div className="space-y-2 pt-1">
-          {categorias.map((c: any, i: number) => (
-            <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between text-xs">
-              <span className="font-semibold text-[#dde6ef]">{c.nombre}</span>
-              <span className="font-mono text-[#f43f5e] font-bold">{money(c.valor)}</span>
-            </div>
-          ))}
-          {categorias.length === 0 && (
-            <p className="text-xs text-[#7a95aa] py-3 text-center">Sin gastos registrados.</p>
-          )}
+      {/* Categorías (Solo para doctor y contabilidad) */}
+      {!esRecepcion && (
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-3">
+          <h3 className="text-sm font-bold text-[#dde6ef]">Desglose de Gastos por Categoría</h3>
+          <div className="space-y-2 pt-1">
+            {categorias.map((c: any, i: number) => (
+              <div key={i} className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between text-xs">
+                <span className="font-semibold text-[#dde6ef]">{c.nombre}</span>
+                <span className="font-mono text-[#f43f5e] font-bold">{money(c.valor)}</span>
+              </div>
+            ))}
+            {categorias.length === 0 && (
+              <p className="text-xs text-[#7a95aa] py-3 text-center">Sin gastos registrados.</p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Historial de Gastos */}
       <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5 space-y-4">

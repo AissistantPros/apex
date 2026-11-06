@@ -2,17 +2,33 @@
 
 import { useRef, useState, useEffect } from 'react';
 
-const OUTPUT_SIZE = 480;
-const MAX_BYTES = 250 * 1024;
+const DEFAULT_OUTPUT_SIZE = 800;
+const DEFAULT_MAX_BYTES = 80 * 1024; // 80 KB máximo para carga ultrarrápida
 const VIEWPORT = 280;
 
 function bytesOf(dataUrl: string) {
   return Math.ceil((dataUrl.length - dataUrl.indexOf(',') - 1) * 3 / 4);
 }
 
-export default function PhotoCropModal({ file, onCancel, onSave }: {
-  file: File; onCancel: () => void; onSave: (base64: string) => void;
-}) {
+interface PhotoCropModalProps {
+  file: File;
+  onCancel: () => void;
+  onSave: (base64OrBlob: string, blob?: Blob) => void;
+  maxDimension?: number;
+  maxBytes?: number;
+  format?: 'image/webp' | 'image/jpeg';
+  title?: string;
+}
+
+export default function PhotoCropModal({
+  file,
+  onCancel,
+  onSave,
+  maxDimension = DEFAULT_OUTPUT_SIZE,
+  maxBytes = DEFAULT_MAX_BYTES,
+  format = 'image/webp',
+  title = 'Enmarcar fotografía',
+}: PhotoCropModalProps) {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -41,7 +57,11 @@ export default function PhotoCropModal({ file, onCancel, onSave }: {
 
   const handleImgLoad = () => {
     const img = imgRef.current;
-    if (img) { setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight }); setPan({ x: 0, y: 0 }); setZoom(1); }
+    if (img) {
+      setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+      setPan({ x: 0, y: 0 });
+      setZoom(1);
+    }
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -65,43 +85,80 @@ export default function PhotoCropModal({ file, onCancel, onSave }: {
       const srcX = (dispW / 2 - VIEWPORT / 2 - pan.x) / scale;
       const srcY = (dispH / 2 - VIEWPORT / 2 - pan.y) / scale;
 
+      // El tamaño de salida es como máximo maxDimension (ej. 800px)
+      const targetSize = Math.min(maxDimension, 800);
       const canvas = document.createElement('canvas');
-      canvas.width = OUTPUT_SIZE;
-      canvas.height = OUTPUT_SIZE;
+      canvas.width = targetSize;
+      canvas.height = targetSize;
       const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(imgRef.current, srcX, srcY, srcSize, srcSize, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
 
-      let quality = 0.9;
-      let dataUrl = canvas.toDataURL('image/jpeg', quality);
-      while (bytesOf(dataUrl) > MAX_BYTES && quality > 0.35) {
-        quality -= 0.1;
-        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      // Fondo blanco en caso de transparencias
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, targetSize, targetSize);
+      ctx.drawImage(imgRef.current, srcX, srcY, srcSize, srcSize, 0, 0, targetSize, targetSize);
+
+      let quality = 0.82;
+      let mimeType = format;
+      let dataUrl = canvas.toDataURL(mimeType, quality);
+
+      // Si el navegador no soporta webp en canvas (raro), degradar a jpeg
+      if (!dataUrl.startsWith(`data:${mimeType}`)) {
+        mimeType = 'image/jpeg';
+        dataUrl = canvas.toDataURL(mimeType, quality);
       }
-      let outSize = OUTPUT_SIZE;
-      let src: HTMLCanvasElement = canvas;
-      while (bytesOf(dataUrl) > MAX_BYTES && outSize > 120) {
-        outSize = Math.round(outSize * 0.8);
+
+      // 1. Reducir calidad si excede maxBytes (80 KB)
+      while (bytesOf(dataUrl) > maxBytes && quality > 0.35) {
+        quality -= 0.08;
+        dataUrl = canvas.toDataURL(mimeType, quality);
+      }
+
+      // 2. Si todavía excede 80 KB, reducir dimensiones progresivamente
+      let outSize = targetSize;
+      let currentCanvas: HTMLCanvasElement = canvas;
+      while (bytesOf(dataUrl) > maxBytes && outSize > 240) {
+        outSize = Math.round(outSize * 0.85);
         const smaller = document.createElement('canvas');
-        smaller.width = outSize; smaller.height = outSize;
-        smaller.getContext('2d')!.drawImage(src, 0, 0, outSize, outSize);
-        src = smaller;
-        dataUrl = smaller.toDataURL('image/jpeg', 0.8);
+        smaller.width = outSize;
+        smaller.height = outSize;
+        const sCtx = smaller.getContext('2d')!;
+        sCtx.fillStyle = '#ffffff';
+        sCtx.fillRect(0, 0, outSize, outSize);
+        sCtx.drawImage(currentCanvas, 0, 0, outSize, outSize);
+        currentCanvas = smaller;
+        dataUrl = smaller.toDataURL(mimeType, quality);
       }
 
-      onSave(dataUrl);
+      // Crear Blob opcional
+      const [header, b64] = dataUrl.split(',');
+      const byteCharacters = atob(b64);
+      const byteArrays = new Uint8Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteArrays[i] = byteCharacters.charCodeAt(i);
+      }
+      const blob = new Blob([byteArrays], { type: mimeType });
+
+      onSave(dataUrl, blob);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-[#dde6ef] mb-1">Ajustar foto</h3>
-        <p className="text-xs text-[#3d5870] mb-4">Arrastra para reencuadrar. Se comprime automáticamente a menos de 250 KB.</p>
+    <div className="fixed inset-0 z-[130] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm" onClick={onCancel}>
+      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between pb-2 border-b border-[#1e2d3d]">
+          <h3 className="text-base font-bold text-[#dde6ef]">{title}</h3>
+          <button onClick={onCancel} className="text-[#7a95aa] hover:text-[#dde6ef] text-lg">✕</button>
+        </div>
 
+        <p className="text-xs text-[#7a95aa]">
+          Arrastra para centrar el rostro. La imagen se optimiza en <span className="text-[#00e5a0] font-semibold">WebP a máx. 800px (&lt;80 KB)</span> para carga instantánea.
+        </p>
+
+        {/* Viewport de recorte con marco circular visible */}
         <div
-          className="relative mx-auto rounded-xl overflow-hidden bg-black touch-none cursor-grab active:cursor-grabbing select-none"
+          className="relative mx-auto rounded-2xl overflow-hidden bg-black touch-none cursor-grab active:cursor-grabbing select-none"
           style={{ width: VIEWPORT, height: VIEWPORT }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -123,25 +180,43 @@ export default function PhotoCropModal({ file, onCancel, onSave }: {
               }}
             />
           )}
-          <div className="absolute inset-0 pointer-events-none rounded-xl ring-1 ring-white/20" />
+
+          {/* Guía visual circular y esquinas oscurecidas */}
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div className="w-[240px] h-[240px] rounded-full border-2 border-dashed border-[#00e5a0] shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]" />
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 mt-4">
-          <span className="text-xs text-[#3d5870]">🔍</span>
-          <input type="range" min={1} max={3} step={0.01} value={zoom}
+        <div className="flex items-center gap-3 pt-1">
+          <span className="text-sm text-[#7a95aa]">🔍</span>
+          <input
+            type="range"
+            min={1}
+            max={3.5}
+            step={0.01}
+            value={zoom}
             onChange={e => setZoom(parseFloat(e.target.value))}
             disabled={!naturalSize}
-            className="flex-1" />
+            className="flex-1 accent-[#00e5a0]"
+          />
+          <span className="text-xs font-mono text-[#7a95aa] w-10 text-right">{Math.round(zoom * 100)}%</span>
         </div>
 
-        <div className="flex gap-2 mt-5">
-          <button onClick={onCancel}
-            className="flex-1 px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition">
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 min-h-[44px] px-4 py-2.5 bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:border-[#38bdf8] transition active:scale-95"
+          >
             Cancelar
           </button>
-          <button onClick={handleSave} disabled={!naturalSize || saving}
-            className="flex-1 px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition disabled:opacity-50">
-            {saving ? 'Procesando…' : 'Guardar foto'}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!naturalSize || saving}
+            className="flex-1 min-h-[44px] px-4 py-2.5 bg-[#00e5a0] text-[#051b14] text-sm font-bold rounded-xl hover:opacity-95 transition disabled:opacity-50 active:scale-95 shadow-sm"
+          >
+            {saving ? 'Optimizando…' : '✓ Enmarcar foto'}
           </button>
         </div>
       </div>

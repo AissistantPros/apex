@@ -212,6 +212,10 @@ async def get_patient_visits(
 ):
     """Obtener todas las visitas de un paciente"""
     try:
+        from auth import get_actor
+        actor = get_actor(authorization)
+        if actor.get("role") == "receptionist":
+            return {"patient_id": patient_id, "total": 0, "visits": []}
         visits = list_patient_visits(patient_id)
         return {
             "patient_id": patient_id,
@@ -229,6 +233,10 @@ async def get_patient_visits(
 async def get_notes(patient_id: str, authorization: Optional[str] = Header(None)):
     """Listar todas las notas de un paciente"""
     try:
+        from auth import get_actor
+        actor = get_actor(authorization)
+        if actor.get("role") == "receptionist":
+            return {"notes": []}
         notes = get_patient_notes(patient_id)
         return {"notes": notes}
     except HTTPException:

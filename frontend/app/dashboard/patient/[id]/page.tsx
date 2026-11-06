@@ -337,38 +337,42 @@ export default function PatientPage() {
                   📎 Subir estudio / foto
                 </button>
               )}
-              <button
-                onClick={() => router.push(`/dashboard/patient/${patientId}/${lite ? 'consulta' : 'new-visit'}`)}
-                className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
-              >
-                {lite ? 'Nueva consulta' : 'Nueva visita'}
-              </button>
+              {role !== 'receptionist' && (
+                <button
+                  onClick={() => router.push(`/dashboard/patient/${patientId}/${lite ? 'consulta' : 'new-visit'}`)}
+                  className="px-4 py-2.5 bg-[#00e5a0] text-black text-sm font-bold rounded-xl hover:opacity-90 transition whitespace-nowrap"
+                >
+                  {lite ? 'Nueva consulta' : 'Nueva visita'}
+                </button>
+              )}
               <button
                 onClick={() => router.push(`/dashboard/new-patient/flow?patient_id=${patientId}&phase=1`)}
                 className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition"
               >
-                Editar
+                {role === 'receptionist' ? 'Editar datos de contacto' : 'Editar'}
               </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const s = await getSession().catch(() => null);
-                    const res = await fetch(`${BACKEND()}/patients/${patientId}/send-prescription`, {
-                      method: 'POST',
-                      headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {},
-                    });
-                    const d = await res.json().catch(() => ({}));
-                    if (!res.ok) { alert(d.detail || 'No se pudo enviar la prescripción'); return; }
-                    if (d.enviado) alert(`Prescripción enviada a ${d.to}`);
-                    else if (d.mailto) { window.location.href = d.mailto; }
-                    else alert('Prescripción lista para enviar');
-                  } catch { alert('Error al enviar la prescripción'); }
-                }}
-                className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition whitespace-nowrap"
-                title="Envía al paciente la última prescripción del médico"
-              >
-                Enviar prescripción
-              </button>
+              {role !== 'receptionist' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const s = await getSession().catch(() => null);
+                      const res = await fetch(`${BACKEND()}/patients/${patientId}/send-prescription`, {
+                        method: 'POST',
+                        headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {},
+                      });
+                      const d = await res.json().catch(() => ({}));
+                      if (!res.ok) { alert(d.detail || 'No se pudo enviar la prescripción'); return; }
+                      if (d.enviado) alert(`Prescripción enviada a ${d.to}`);
+                      else if (d.mailto) { window.location.href = d.mailto; }
+                      else alert('Prescripción lista para enviar');
+                    } catch { alert('Error al enviar la prescripción'); }
+                  }}
+                  className="px-4 py-2.5 bg-[#1e2d3d] text-[#dde6ef] text-sm font-semibold rounded-xl hover:bg-[#2a3a4d] transition whitespace-nowrap"
+                  title="Envía al paciente la última prescripción del médico"
+                >
+                  Enviar prescripción
+                </button>
+              )}
             </div>
           </div>
           {/* Datos rápidos — fila completa, repartida con etiquetas */}
@@ -732,21 +736,23 @@ export default function PatientPage() {
             </div>
             </>}
 
-            {/* Notas del equipo */}
-            <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
-              <h3 className="text-sm font-semibold text-[#dde6ef] flex items-center gap-2 mb-4">
-                 Notas del equipo
-                {patientNotes.length > 0 && (
-                  <span className="text-xs font-mono text-[#3d5870] font-normal">{patientNotes.length} nota{patientNotes.length>1?'s':''}</span>
-                )}
-              </h3>
-              <NoteThread
-                patientId={patientId}
-                notes={patientNotes}
-                onNoteAdded={n => setPatientNotes(prev => [...prev, n])}
-                onNoteDeleted={id => setPatientNotes(prev => prev.filter(n => n.id !== id))}
-              />
-            </div>
+            {/* Notas del equipo: solo médico y personal clínico (no recepción) */}
+            {role !== 'receptionist' && (
+              <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-[#dde6ef] flex items-center gap-2 mb-4">
+                  Notas del equipo
+                  {patientNotes.length > 0 && (
+                    <span className="text-xs font-mono text-[#3d5870] font-normal">{patientNotes.length} nota{patientNotes.length>1?'s':''}</span>
+                  )}
+                </h3>
+                <NoteThread
+                  patientId={patientId}
+                  notes={patientNotes}
+                  onNoteAdded={n => setPatientNotes(prev => [...prev, n])}
+                  onNoteDeleted={id => setPatientNotes(prev => prev.filter(n => n.id !== id))}
+                />
+              </div>
+            )}
 
             {/* Baja de expediente: si es el médico, borra directamente tras confirmación; si es staff, solicita autorización */}
             <div className="mt-2 border border-[#f43f5e]/20 rounded-2xl p-5 bg-[#f43f5e]/5">

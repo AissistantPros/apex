@@ -433,11 +433,15 @@ def _nombre_pacientes(did: str) -> dict:
 @router.get("/sales")
 async def list_sales(estado: Optional[str] = None, limit: int = 150,
                      authorization: Optional[str] = Header(None)):
-    did = get_actor(authorization)["doctor_id"]
+    actor = get_actor(authorization)
+    did = actor["doctor_id"]
     q = supabase.table("sales").select("*").eq("doctor_id", did)\
         .order("created_at", desc=True).limit(limit)
     if estado:
         q = q.eq("estado", estado)
+    if actor.get("role") == "receptionist":
+        # Recepcionista solo ve sus cobros / ingresos dados de alta o cobrados por ella
+        q = q.or_(f"created_by.eq.{actor['user_id']},charged_by.eq.{actor['user_id']}")
     ventas = q.execute().data or []
     nombres = _nombre_pacientes(did)
     out = []
@@ -627,8 +631,12 @@ async def list_expenses(limit: int = 250, authorization: Optional[str] = Header(
     actor = get_actor(authorization)
     require(actor, "doctor", "accounting", "receptionist")
     did = actor["doctor_id"]
-    r = supabase.table("expenses").select("*").eq("doctor_id", did)\
-        .order("fecha", desc=True).limit(limit).execute()
+    q = supabase.table("expenses").select("*").eq("doctor_id", did)\
+        .order("fecha", desc=True).limit(limit)
+    if actor.get("role") == "receptionist":
+        # Recepcionista solo ve los gastos que ella dio de alta
+        q = q.eq("created_by", actor["user_id"])
+    r = q.execute()
     out = [_unpack_row_meta(g, EXPENSE_META_DEFAULTS) for g in (r.data or [])]
     return {"expenses": out}
 

@@ -9,16 +9,18 @@ legible; después solo se puede REGENERAR (nunca ver la anterior).
 Roles: doctor | receptionist | nurse | accounting | marketing
 Permisos por área: { area: 'none' | 'view' | 'edit' }.
 """
+import io
 import re
 import secrets
 import unicodedata
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from auth import get_actor
 from db import supabase
+from services.imagenes import asegurar_bucket, _storage, BUCKET, url_publica
 
 router = APIRouter(prefix="/staff", tags=["staff"])
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -32,8 +34,8 @@ AREAS = ["pacientes", "historial", "enfermeria", "prescripcion",
 _N = {a: "none" for a in AREAS}
 DEFAULT_PERMS = {
     "doctor":       {a: "edit" for a in AREAS},
-    "receptionist": {**_N, "pacientes": "edit", "prescripcion": "edit",
-                     "cobros": "edit", "gastos": "edit"},
+    "receptionist": {**_N, "pacientes": "edit", "cobros": "edit", "gastos": "edit",
+                     "marketing_captura": "edit"},
     "nurse":        {**_N, "enfermeria": "edit", "pacientes": "view"},
     "accounting":   {**_N, "finanzas": "edit", "gastos": "edit",
                      "cobros": "view", "marketing": "view"},
@@ -135,6 +137,74 @@ async def list_staff(authorization: Optional[str] = Header(None)):
             perms = m.get("permissions") if isinstance(m.get("permissions"), dict) else {}
             m["birthday"] = perms.get("birthday") or ""
     return {"staff": staff, "areas": AREAS, "roles": ROLES, "locations": locations}
+
+
+@router.post("/upload-photo")
+async def upload_staff_photo(
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+):
+    """Sube y optimiza la foto del colaborador: recorte a máx. 800px, WebP y < 80 KB."""
+    actor = get_actor(authorization)
+    _require_manage(actor)
+    data = await file.read(12 * 1024 * 1024)
+    if not data:
+        raise HTTPException(400, "El archivo está vacío")
+    try:
+        from PIL import Image, ImageOps
+
+        im = Image.open(io.BytesIO(data))
+        im.load()
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+            base = Image.new("RGB", im.size, (255, 255, 255))
+            base.paste(im.convert("RGBA"), mask=im.convert("RGBA").split()[-1])
+            im = base
+        else:
+            im = im.convert("RGB")
+
+        # Máximo 800px en su lado más grande
+        max_dim = 800
+        if max(im.size) > max_dim:
+            im.thumbnail((max_dim, max_dim), Image.LANCZOS)
+
+        # Convertir a WebP asegurando < 80 KB
+        quality = 82
+        buf = io.BytesIO()
+        im.save(buf, format="WEBP", quality=quality, method=6)
+        webp_bytes = buf.getvalue()
+
+        while len(webp_bytes) > 80 * 1024 and quality > 35:
+            quality -= 8
+            buf = io.BytesIO()
+            im.save(buf, format="WEBP", quality=quality, method=6)
+            webp_bytes = buf.getvalue()
+
+        cur_w, cur_h = im.size
+        while len(webp_bytes) > 80 * 1024 and cur_w > 200:
+            cur_w = int(cur_w * 0.85)
+            cur_h = int(cur_h * 0.85)
+            im = im.resize((cur_w, cur_h), Image.LANCZOS)
+            buf = io.BytesIO()
+            im.save(buf, format="WEBP", quality=quality, method=6)
+            webp_bytes = buf.getvalue()
+
+        # Subir a Supabase Storage
+        asegurar_bucket()
+        uid_hex = secrets.token_hex(6)
+        clinic_id = actor.get("clinic_id") or actor.get("doctor_id") or "staff"
+        path = f"staff/{clinic_id}/avatar-{uid_hex}.webp"
+        _storage().from_(BUCKET).upload(
+            path, webp_bytes,
+            {"content-type": "image/webp", "cache-control": "31536000", "upsert": "true"}
+        )
+        url = url_publica(path)
+        return {"ok": True, "url": url, "bytes": len(webp_bytes), "width": im.width, "height": im.height}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] upload_staff_photo: {e}")
+        raise HTTPException(500, f"Error al procesar la fotografía: {str(e)[:150]}")
 
 
 @router.post("")

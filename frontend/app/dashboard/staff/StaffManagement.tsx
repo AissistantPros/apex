@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { getSession } from '@/app/lib/auth';
 import { ROLE_LABELS, ROLE_COLORS, AREA_LABELS, UserRole, Area, PermLevel } from '@/app/lib/role';
 import { mix } from '@/app/lib/ui';
+import PhotoCropModal from '@/app/components/PhotoCropModal';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -320,6 +321,7 @@ function AddStaffModal({ defaults, areas, locations, onClose, onCreated, flash }
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectRole = (r: UserRole) => {
@@ -328,20 +330,24 @@ function AddStaffModal({ defaults, areas, locations, onClose, onCreated, flash }
     setStep(2);
   };
 
-  const uploadPhoto = async (f: File) => {
+  const uploadPhoto = async (f: Blob) => {
     setUploading(true);
     try {
       const form = new FormData();
-      form.append('file', f);
+      form.append('file', f, 'avatar.webp');
       const s = await getSession().catch(() => null);
       const res = await fetch(`${B()}/staff/upload-photo`, {
         method: 'POST',
         headers: { ...(s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}) },
         body: form,
       });
-      if (!res.ok) throw new Error('Error al subir la fotografía');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al subir la fotografía');
+      }
       const data = await res.json();
       setPhotoUrl(data.url);
+      flash('✓ Fotografía recortada y optimizada en WebP (<80 KB)');
     } catch (e: any) {
       flash(e.message || 'No se pudo subir la foto');
     } finally {
@@ -375,124 +381,152 @@ function AddStaffModal({ defaults, areas, locations, onClose, onCreated, flash }
   };
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between pb-3 border-b border-[#1e2d3d]">
-          <div>
-            <span className="text-[10px] font-mono uppercase text-[#00e5a0]">Alta de Colaborador</span>
-            <h3 className="text-lg font-bold text-[#dde6ef] mt-0.5">
-              {step === 1 ? '1. Datos personales y puesto' : `2. Permisos para ${ROLE_LABELS[role as UserRole] || role}`}
-            </h3>
-          </div>
-          <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef] text-xl">✕</button>
-        </div>
-
-        {step === 1 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="w-16 h-16 rounded-full overflow-hidden bg-[#111820] border-2 border-dashed border-[#1e2d3d] hover:border-[#00e5a0] flex items-center justify-center cursor-pointer transition shrink-0 relative group"
-              >
-                {photoUrl ? (
-                  <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-xl text-[#7a95aa] group-hover:scale-110 transition">📷</span>
-                )}
-                {uploading && <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] text-white">...</div>}
-              </div>
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={e => {
-                const f = e.target.files?.[0];
-                if (f) uploadPhoto(f);
-              }} />
-              <div>
-                <p className="text-xs font-semibold text-[#dde6ef]">Foto del colaborador</p>
-                <p className="text-[11px] text-[#7a95aa]">Aparecerá en el chat interno y en la recepción.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">NOMBRE COMPLETO *</label>
-                <input className={inp} placeholder="Ej. Ana Patricia Morales" value={name} onChange={e => setName(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">TELÉFONO DE CONTACTO</label>
-                <input className={inp} placeholder="Ej. +52 998 123 4567" value={phone} onChange={e => setPhone(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">FECHA DE CUMPLEAÑOS 🎂</label>
-                <input type="date" className={inp} value={birthday} onChange={e => setBirthday(e.target.value)} />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">CORREO INSTITUCIONAL / LOGIN</label>
-                <input className={inp} placeholder="ejemplo@miclinica.com" value={email} onChange={e => setEmail(e.target.value)} />
-              </div>
-            </div>
-
+    <>
+      <div className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-5" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between pb-3 border-b border-[#1e2d3d]">
             <div>
-              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-2">SELECCIONA EL PUESTO *</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {ASSIGNABLE.map(p => (
-                  <button
-                    key={p.role}
-                    type="button"
-                    onClick={() => selectRole(p.role)}
-                    className="p-3 rounded-xl border text-left transition flex items-start gap-3 hover:border-[#00e5a0] bg-[#111820]"
-                    style={{ borderColor: role === p.role ? '#00e5a0' : '#1e2d3d' }}
-                  >
-                    <span className="text-2xl shrink-0 mt-0.5">{p.icon}</span>
-                    <div>
-                      <p className="text-xs font-bold text-[#dde6ef]">{p.title}</p>
-                      <p className="text-[11px] text-[#7a95aa] mt-0.5 leading-snug">{p.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <span className="text-[10px] font-mono uppercase text-[#00e5a0]">Alta de Colaborador</span>
+              <h3 className="text-lg font-bold text-[#dde6ef] mt-0.5">
+                {step === 1 ? '1. Datos personales y puesto' : `2. Permisos para ${ROLE_LABELS[role as UserRole] || role}`}
+              </h3>
             </div>
+            <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef] text-xl">✕</button>
           </div>
-        )}
 
-        {step === 2 && (
-          <div className="space-y-4">
-            <div className="bg-[#111820] border border-[#00e5a0]/30 rounded-xl p-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{ASSIGNABLE.find(p => p.role === role)?.icon}</span>
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-16 h-16 rounded-full overflow-hidden bg-[#111820] border-2 border-dashed border-[#1e2d3d] hover:border-[#00e5a0] flex items-center justify-center cursor-pointer transition shrink-0 relative group"
+                >
+                  {photoUrl ? (
+                    <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xl text-[#7a95aa] group-hover:scale-110 transition">📷</span>
+                  )}
+                  {uploading && <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] text-white">...</div>}
+                </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) setCropFile(f);
+                    e.target.value = '';
+                  }}
+                />
                 <div>
-                  <p className="text-xs font-bold text-[#dde6ef]">{name || 'Colaborador'}</p>
-                  <p className="text-[11px] text-[#00e5a0]">{ROLE_LABELS[role as UserRole]}</p>
+                  <p className="text-xs font-semibold text-[#dde6ef]">Foto del colaborador</p>
+                  <p className="text-[11px] text-[#7a95aa]">Haz clic para subir y reencuadrar el rostro (&lt;80 KB WebP).</p>
                 </div>
               </div>
-              <button onClick={() => setStep(1)} className="text-xs text-[#7a95aa] hover:text-[#00e5a0]">Cambiar puesto ←</button>
-            </div>
 
-            <div>
-              <p className="text-xs text-[#7a95aa] mb-2">
-                Hemos preconfigurado los permisos recomendados para este rol. Puedes ajustarlos según lo requieras:
-              </p>
-              <div className="space-y-2 border border-[#1e2d3d] rounded-xl p-3 bg-[#111820] max-h-56 overflow-y-auto">
-                {areas.map((a: any) => (
-                  <div key={a.id} className="flex items-center justify-between py-1.5 border-b border-[#1e2d3d]/50 last:border-0 text-xs">
-                    <span className="text-[#dde6ef] font-medium">{AREA_LABELS[a.id as Area] || a.name}</span>
-                    <LevelPicker
-                      value={perms[a.id] || 'none'}
-                      onChange={v => setPerms(prev => ({ ...prev, [a.id]: v }))}
-                    />
-                  </div>
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">NOMBRE COMPLETO *</label>
+                  <input className={inp} placeholder="Ej. Ana Patricia Morales" value={name} onChange={e => setName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">TELÉFONO DE CONTACTO</label>
+                  <input className={inp} placeholder="Ej. +52 998 123 4567" value={phone} onChange={e => setPhone(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">FECHA DE CUMPLEAÑOS 🎂</label>
+                  <input type="date" className={inp} value={birthday} onChange={e => setBirthday(e.target.value)} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">CORREO INSTITUCIONAL / LOGIN</label>
+                  <input className={inp} placeholder="ejemplo@miclinica.com" value={email} onChange={e => setEmail(e.target.value)} />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-2">SELECCIONA EL PUESTO *</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {ASSIGNABLE.map(p => (
+                    <button
+                      key={p.role}
+                      type="button"
+                      onClick={() => selectRole(p.role)}
+                      className="p-3 rounded-xl border text-left transition flex items-start gap-3 hover:border-[#00e5a0] bg-[#111820]"
+                      style={{ borderColor: role === p.role ? '#00e5a0' : '#1e2d3d' }}
+                    >
+                      <span className="text-2xl shrink-0 mt-0.5">{p.icon}</span>
+                      <div>
+                        <p className="text-xs font-bold text-[#dde6ef]">{p.title}</p>
+                        <p className="text-[11px] text-[#7a95aa] mt-0.5 leading-snug">{p.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
+          )}
 
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setStep(1)} className={`${btn} flex-1 bg-[#111820] border border-[#1e2d3d] text-[#dde6ef]`}>← Volver</button>
-              <button onClick={submit} disabled={busy} className={`${btn} flex-1 bg-[#00e5a0] text-[#051b14]`}>
-                {busy ? 'Generando acceso…' : '✓ Crear colaborador'}
-              </button>
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="bg-[#111820] border border-[#00e5a0]/30 rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{ASSIGNABLE.find(p => p.role === role)?.icon}</span>
+                  <div>
+                    <p className="text-xs font-bold text-[#dde6ef]">{name || 'Colaborador'}</p>
+                    <p className="text-[11px] text-[#00e5a0]">{ROLE_LABELS[role as UserRole]}</p>
+                  </div>
+                </div>
+                <button onClick={() => setStep(1)} className="text-xs text-[#7a95aa] hover:text-[#00e5a0]">Cambiar puesto ←</button>
+              </div>
+
+              <div>
+                <p className="text-xs text-[#7a95aa] mb-2">
+                  Hemos preconfigurado los permisos recomendados para este rol. Puedes ajustarlos según lo requieras:
+                </p>
+                <div className="space-y-2 border border-[#1e2d3d] rounded-xl p-3 bg-[#111820] max-h-56 overflow-y-auto">
+                  {areas.map((a: any) => {
+                    const areaKey = (typeof a === 'string' ? a : (a.id || a.name || '')) as Area;
+                    const label = AREA_LABELS[areaKey] || areaKey;
+                    return (
+                      <div key={areaKey} className="flex items-center justify-between py-2 border-b border-[#1e2d3d]/50 last:border-0 text-xs">
+                        <span className="text-[#dde6ef] font-medium">{label}</span>
+                        <LevelPicker
+                          value={perms[areaKey] || 'none'}
+                          onChange={v => setPerms(prev => ({ ...prev, [areaKey]: v }))}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setStep(1)} className={`${btn} flex-1 bg-[#111820] border border-[#1e2d3d] text-[#dde6ef]`}>← Volver</button>
+                <button onClick={submit} disabled={busy} className={`${btn} flex-1 bg-[#00e5a0] text-[#051b14]`}>
+                  {busy ? 'Generando acceso…' : '✓ Crear colaborador'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          maxDimension={800}
+          maxBytes={80 * 1024}
+          format="image/webp"
+          title="Enmarcar foto del colaborador"
+          onCancel={() => setCropFile(null)}
+          onSave={async (_, blob) => {
+            setCropFile(null);
+            if (blob) await uploadPhoto(blob);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -500,8 +534,37 @@ function EditStaffModal({ member: m, areas, locations, onClose, onSaved, flash }
   const [name, setName] = useState(m.display_name || '');
   const [phone, setPhone] = useState(m.phone || '');
   const [birthday, setBirthday] = useState(m.birthday || '');
+  const [photoUrl, setPhotoUrl] = useState(m.photo_url || '');
   const [perms, setPerms] = useState<Record<string, PermLevel>>(m.permissions || {});
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadPhoto = async (f: Blob) => {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', f, 'avatar.webp');
+      const s = await getSession().catch(() => null);
+      const res = await fetch(`${B()}/staff/upload-photo`, {
+        method: 'POST',
+        headers: { ...(s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}) },
+        body: form,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al subir la fotografía');
+      }
+      const data = await res.json();
+      setPhotoUrl(data.url);
+      flash('✓ Fotografía actualizada en WebP (<80 KB)');
+    } catch (e: any) {
+      flash(e.message || 'No se pudo subir la foto');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -512,6 +575,7 @@ function EditStaffModal({ member: m, areas, locations, onClose, onSaved, flash }
           display_name: name.trim(),
           phone: phone.trim() || undefined,
           birthday: birthday || undefined,
+          photo_url: photoUrl || undefined,
           permissions: perms,
         }),
       });
@@ -523,50 +587,100 @@ function EditStaffModal({ member: m, areas, locations, onClose, onSaved, flash }
   };
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between pb-2 border-b border-[#1e2d3d]">
-          <h3 className="text-base font-bold text-[#dde6ef]">Editar {m.display_name}</h3>
-          <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef]">✕</button>
-        </div>
+    <>
+      <div className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-[#0d1520] border border-[#1e2d3d] rounded-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between pb-2 border-b border-[#1e2d3d]">
+            <h3 className="text-base font-bold text-[#dde6ef]">Editar {m.display_name}</h3>
+            <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef]">✕</button>
+          </div>
 
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">NOMBRE</label>
-          <input className={inp} value={name} onChange={e => setName(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center gap-4">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="w-16 h-16 rounded-full overflow-hidden bg-[#111820] border-2 border-dashed border-[#1e2d3d] hover:border-[#00e5a0] flex items-center justify-center cursor-pointer transition shrink-0 relative group"
+            >
+              {photoUrl ? (
+                <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xl text-[#7a95aa] group-hover:scale-110 transition">📷</span>
+              )}
+              {uploading && <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] text-white">...</div>}
+            </div>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) setCropFile(f);
+                e.target.value = '';
+              }}
+            />
+            <div>
+              <p className="text-xs font-semibold text-[#dde6ef]">Foto del colaborador</p>
+              <p className="text-[11px] text-[#7a95aa]">Haz clic para cambiar y reencuadrar el rostro.</p>
+            </div>
+          </div>
+
           <div>
-            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">TELÉFONO</label>
-            <input className={inp} value={phone} onChange={e => setPhone(e.target.value)} />
+            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">NOMBRE</label>
+            <input className={inp} value={name} onChange={e => setName(e.target.value)} />
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">TELÉFONO</label>
+              <input className={inp} value={phone} onChange={e => setPhone(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">CUMPLEAÑOS 🎂</label>
+              <input type="date" className={inp} value={birthday} onChange={e => setBirthday(e.target.value)} />
+            </div>
+          </div>
+
           <div>
-            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">CUMPLEAÑOS 🎂</label>
-            <input type="date" className={inp} value={birthday} onChange={e => setBirthday(e.target.value)} />
+            <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">PERMISOS PERSONALIZADOS</label>
+            <div className="space-y-2 border border-[#1e2d3d] rounded-xl p-3 bg-[#111820] max-h-48 overflow-y-auto">
+              {areas.map((a: any) => {
+                const areaKey = (typeof a === 'string' ? a : (a.id || a.name || '')) as Area;
+                const label = AREA_LABELS[areaKey] || areaKey;
+                return (
+                  <div key={areaKey} className="flex items-center justify-between py-1.5 border-b border-[#1e2d3d]/40 last:border-0 text-xs">
+                    <span className="text-[#dde6ef]">{label}</span>
+                    <LevelPicker
+                      value={perms[areaKey] || 'none'}
+                      onChange={v => setPerms(prev => ({ ...prev, [areaKey]: v }))}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1.5">PERMISOS PERSONALIZADOS</label>
-          <div className="space-y-2 border border-[#1e2d3d] rounded-xl p-3 bg-[#111820] max-h-48 overflow-y-auto">
-            {areas.map((a: any) => (
-              <div key={a.id} className="flex items-center justify-between py-1 border-b border-[#1e2d3d]/40 last:border-0 text-xs">
-                <span className="text-[#dde6ef]">{AREA_LABELS[a.id as Area] || a.name}</span>
-                <LevelPicker
-                  value={perms[a.id] || 'none'}
-                  onChange={v => setPerms(prev => ({ ...prev, [a.id]: v }))}
-                />
-              </div>
-            ))}
+          <div className="flex gap-2 pt-2">
+            <button onClick={onClose} className={`${btn} flex-1 bg-[#111820] border border-[#1e2d3d] text-[#dde6ef]`}>Cancelar</button>
+            <button onClick={save} disabled={busy} className={`${btn} flex-1 bg-[#00e5a0] text-[#051b14]`}>
+              {busy ? 'Guardando…' : 'Guardar cambios'}
+            </button>
           </div>
-        </div>
-
-        <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className={`${btn} flex-1 bg-[#111820] border border-[#1e2d3d] text-[#dde6ef]`}>Cancelar</button>
-          <button onClick={save} disabled={busy} className={`${btn} flex-1 bg-[#00e5a0] text-[#051b14]`}>
-            {busy ? 'Guardando…' : 'Guardar cambios'}
-          </button>
         </div>
       </div>
-    </div>
+
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          maxDimension={800}
+          maxBytes={80 * 1024}
+          format="image/webp"
+          title="Enmarcar foto del colaborador"
+          onCancel={() => setCropFile(null)}
+          onSave={async (_, blob) => {
+            setCropFile(null);
+            if (blob) await uploadPhoto(blob);
+          }}
+        />
+      )}
+    </>
   );
 }

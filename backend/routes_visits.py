@@ -132,9 +132,13 @@ async def create_visit(
 @router.get("/{patient_id}")
 async def list_patient_visits(
     patient_id: str,
+    authorization: Optional[str] = Header(None),
 ):
     """Listar visitas de un paciente"""
     try:
+        actor = get_actor(authorization)
+        if actor.get("role") == "receptionist":
+            return {"total": 0, "visits": []}
         visits = db_list_patient_visits(patient_id)
 
         return {
@@ -171,9 +175,13 @@ async def update_visit_data(
 @router.get("/{visit_id}/detail")
 async def get_visit_detail(
     visit_id: str,
+    authorization: Optional[str] = Header(None),
 ):
     """Obtener detalles de una visita"""
     try:
+        actor = get_actor(authorization)
+        if actor.get("role") == "receptionist":
+            raise HTTPException(403, "Recepción no tiene acceso al historial clínico")
         visit = get_visit(visit_id)
 
         if not visit:
