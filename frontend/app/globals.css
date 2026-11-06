@@ -102,6 +102,45 @@
   --c-blue-25:    rgba(14, 165, 233, 0.25);
 }
 
+/* Apex Lite oscuro: "tinta" profunda (no negro con neón). El color principal y el de acento
+   los pone la marca del consultorio, aclarados para leerse sobre fondo oscuro. */
+[data-plan="lite"][data-theme="dark"] {
+  --c-bg:         #0f141c;
+  --c-card:       #161d28;
+  --c-subtle:     #1b2431;
+  --c-subtle-2:   #243043;
+  --c-deep:       #121821;
+  --c-hover:      #1b2431;
+  --c-nav:        #121923;
+  --c-border:     #273244;
+  --c-border-2:   #35425a;
+  --c-text:       #e8edf4;
+  --c-text-2:     #aab5c5;
+  --c-text-3:     #8591a5;
+  --c-primary:    #8db3e8;
+  --c-primary-fg: #0b1220;
+  --c-accent:     var(--c-primary);
+  --c-success:    #4cc38a;
+  --c-warn:       #e0a53a;
+  --c-danger:     #ff7a70;
+  --c-violet:     var(--c-primary);
+  --c-pink:       var(--c-primary);
+  --c-amber:      var(--c-warn);
+  --c-orange:     var(--c-warn);
+  --c-green:      var(--c-primary);
+  --c-green-fg:   var(--c-primary-fg);
+  --c-blue:       var(--c-primary);
+  --c-blue-fg:    var(--c-primary-fg);
+  --c-red:        var(--c-danger);
+  --c-green-10:   color-mix(in srgb, var(--c-primary) 12%, transparent);
+  --c-green-15:   color-mix(in srgb, var(--c-primary) 16%, transparent);
+  --c-green-20:   color-mix(in srgb, var(--c-primary) 22%, transparent);
+  --c-green-30:   color-mix(in srgb, var(--c-primary) 32%, transparent);
+  --c-blue-10:    color-mix(in srgb, var(--c-primary) 12%, transparent);
+  --c-blue-15:    color-mix(in srgb, var(--c-primary) 16%, transparent);
+  --c-blue-25:    color-mix(in srgb, var(--c-primary) 26%, transparent);
+}
+
 /* ── Base ── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -149,8 +188,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 /* Contenedor de página */
 .page-content { width: 100%; max-width: min(1200px, 92%); margin-left: auto; margin-right: auto; }
 
-/* El contenido empieza con aire bajo la barra de navegación (64px + filete de 3px) */
-.page-content.pt-16 { padding-top: 5.5rem !important; }
+/* El contenido empieza con aire bajo la barra de navegación (72px + filete de 3px) */
+.page-content.pt-16 { padding-top: 6.25rem !important; }
 
 /* Quien prefiere menos movimiento, no ve animaciones */
 @media (prefers-reduced-motion: reduce) {

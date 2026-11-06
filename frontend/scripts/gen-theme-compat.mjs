@@ -68,6 +68,7 @@ for (const f of walk(ROOT)) {
   }
 }
 
+const SCOPE = ':is([data-theme="light"], [data-plan="lite"])';
 const rules = [];
 for (const [cls, { variant, util, hex, alpha }] of [...seen].sort()) {
   const r = lookup(util, hex);
@@ -84,13 +85,13 @@ for (const [cls, { variant, util, hex, alpha }] of [...seen].sort()) {
     case 'accent': decl = `accent-color:${v} !important;`; break;
     case 'from': decl = `--tw-gradient-from:${v} var(--tw-gradient-from-position) !important;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to) !important;`; break;
     case 'to': decl = `--tw-gradient-to:${v} var(--tw-gradient-to-position) !important;`; break;
-    case 'divide': rules.push(`[data-theme="light"] ${c} > * + *{border-color:${v} !important;}`); continue;
-    case 'placeholder': rules.push(`[data-theme="light"] ${c}::placeholder{color:${v} !important;}`); continue;
+    case 'divide': rules.push(`${SCOPE} ${c} > * + *{border-color:${v} !important;}`); continue;
+    case 'placeholder': rules.push(`${SCOPE} ${c}::placeholder{color:${v} !important;}`); continue;
   }
-  rules.push(`[data-theme="light"] ${sel}{${decl}}`);
+  rules.push(`${SCOPE} ${sel}{${decl}}`);
 }
 
 const header = `/* GENERADO por scripts/gen-theme-compat.mjs — no editar a mano.
-   Redirige las clases con color fijo a los tokens del tema claro (Apex Lite). */\n`;
+   Redirige las clases con color fijo a los tokens del tema claro y de Apex Lite (claro y oscuro). */\n`;
 writeFileSync(OUT, header + rules.join('\n') + '\n');
 console.log(`${seen.size} clases encontradas → ${rules.length} reglas en app/theme-compat.css`);

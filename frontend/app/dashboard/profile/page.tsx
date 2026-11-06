@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, getSession } from '@/app/lib/auth';
 import { getRole, UserRole, ROLE_LABELS, ROLE_COLORS } from '@/app/lib/role';
 import { notifyDoctorProfileUpdated } from '@/app/lib/useDoctorProfile';
-import PhotoCropModal from '@/app/components/PhotoCropModal';
+import ImageUploader from '@/app/components/ImageUploader';
 import { mix } from '@/app/lib/ui';
 import { useEntitlements } from '@/app/lib/useEntitlements';
 
@@ -23,18 +23,8 @@ export default function ProfilePage() {
   // no la config del consultorio (membrete, clínica, IA). Separación por rol.
   const isStaff = activeRole === 'receptionist' || activeRole === 'nurse';
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [cropFile, setCropFile] = useState<File | null>(null);
-
-  const handlePhotoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { alert('Selecciona un archivo de imagen'); return; }
-    if (file.size > 25 * 1024 * 1024) { alert('La imagen no debe superar 25 MB'); return; }
-    setCropFile(file);
-  };
-
+  const [logoClinica, setLogoClinica] = useState<string | null>(null);
+  const [logoOscuro, setLogoOscuro] = useState<string | null>(null);
   const [form, setForm] = useState({
     display_name: '',
     email: '',
@@ -61,6 +51,15 @@ export default function ProfilePage() {
         // Staff lee SU propia identidad; el doctor lee la config completa del consultorio.
         const res = await fetch(`${BACKEND()}${staff ? '/staff/me' : '/doctor/profile'}`, { headers });
         const data = await res.json();
+        // El logotipo del consultorio vive en la clínica (no en el perfil): se lee de la marca.
+        try {
+          const wr = await fetch(`${BACKEND()}/staff/whoami`, { headers });
+          if (wr.ok) {
+            const w = await wr.json();
+            setLogoClinica(w?.clinic_brand?.logo_url || null);
+            setLogoOscuro(w?.clinic_brand?.brand?.logo_white_url || null);
+          }
+        } catch { /* sin marca: se muestran vacíos */ }
         setForm({
           display_name: data.display_name || u.user_metadata?.full_name || '',
           email: data.email || u.email || '',
@@ -165,64 +164,28 @@ export default function ProfilePage() {
             <Field label="Celular / WhatsApp">
               <input value={form.phone} onChange={e => set('phone', e.target.value)} className={inp} placeholder="+52 55 1234 5678" />
             </Field>
-            {/* Foto de perfil — visible para todos (es la que aparece en el chat) */}
-            <Field label="FOTO DE PERFIL">
-              <div className="flex items-center gap-4">
-                {/* Preview */}
-                <div className="flex-shrink-0">
-                  {form.photo_url ? (
-                    <img src={form.photo_url} alt="foto" className="w-16 h-16 rounded-xl object-cover border-2 border-[#00e5a0]/30" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-xl bg-[var(--c-primary)] text-[var(--c-primary-fg)] flex items-center justify-center text-2xl font-semibold">
-                      {displayName[0]?.toUpperCase() || 'D'}
-                    </div>
-                  )}
-                </div>
-                {/* Botón subir + input URL */}
-                <div className="flex-1 space-y-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handlePhotoFile}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full py-2 px-4 rounded-lg text-sm font-semibold border border-[#1e2d3d] text-[#0ea5e9] hover:border-[#0ea5e9] hover:bg-[rgba(14,165,233,.08)] transition"
-                  >
-                     Subir y recortar imagen
-                  </button>
-                  <input
-                    value={form.photo_url.startsWith('data:') ? '' : form.photo_url}
-                    onChange={e => set('photo_url', e.target.value)}
-                    className={inp}
-                    placeholder="O pega una URL de imagen..."
-                  />
-                </div>
-              </div>
-              {form.photo_url && (
-                <button type="button" onClick={() => set('photo_url', '')}
-                  className="mt-2 text-xs text-[#f43f5e] hover:underline">
-                  × Quitar foto
-                </button>
-              )}
-            </Field>
+            {/* Foto de perfil — visible para todos (es la que aparece en el chat y en las notas) */}
+            <ImageUploader kind="photo" label="Foto de perfil" value={form.photo_url}
+              onChange={url => set('photo_url', url || '')} inicial={displayName[0]?.toUpperCase()}
+              hint="Se encuadra y se reduce sola a 256×256 px en WebP: pesa unos 15 KB y carga al instante." />
           </Card>
 
           {/* Clínica — solo el doctor/admin configura el consultorio */}
           {!isStaff && (
             <Card title="Mi clínica" icon="">
-              <Field label="Correo electrónico">
-                <input value={form.email} onChange={e => set('email', e.target.value)} className={inp} placeholder="doctor@clinica.com" />
+              <Field label="Correo de acceso">
+                <input value={form.email} readOnly className={inp + ' opacity-70 cursor-not-allowed'} />
+                <p className="text-xs text-[#3d5870] mt-1">Es el correo con el que entras al sistema; lo cambia el administrador.</p>
               </Field>
               <Field label="Nombre de la clínica o consultorio">
                 <input value={form.clinic_name} onChange={e => set('clinic_name', e.target.value)} className={inp} placeholder="Clínica Longevidad, Consultorio García..." />
               </Field>
-              <Field label="URL del logo de la clínica (opcional)">
-                <input value={form.clinic_logo_url} onChange={e => set('clinic_logo_url', e.target.value)} className={inp} placeholder="https://..." />
-              </Field>
+              <ImageUploader kind="logo" label="Logotipo del consultorio" value={logoClinica}
+                onChange={u => { setLogoClinica(u); set('clinic_logo_url', u || ''); }} fondo="claro"
+                hint="Aparece arriba a la izquierda en todo el sistema. Mejor en PNG con fondo transparente; se reduce a 640 px de ancho como máximo." />
+              <ImageUploader kind="logo_dark" label="Logotipo para fondo oscuro (opcional)" value={logoOscuro}
+                onChange={setLogoOscuro} fondo="oscuro"
+                hint="La versión en blanco de tu logotipo. Se usa en la barra de color y en el tema oscuro." />
             </Card>
           )}
 
@@ -295,13 +258,6 @@ export default function ProfilePage() {
 
         </div>
       </main>
-      {cropFile && (
-        <PhotoCropModal
-          file={cropFile}
-          onCancel={() => setCropFile(null)}
-          onSave={(base64) => { setForm(prev => ({ ...prev, photo_url: base64 })); setCropFile(null); }}
-        />
-      )}
     </div>
   );
 }

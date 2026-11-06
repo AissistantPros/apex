@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, HTTPException, Header, Depends, File, Form, UploadFile
 from typing import Optional
 from datetime import datetime
 from auth import get_doctor_id_from_token
@@ -393,8 +393,114 @@ async def get_profile(authorization: Optional[str] = Header(None)):
     profile = get_doctor_profile(doctor_id) or {}
     return profile
 
+# Campos que el médico puede editar de su propio perfil. NUNCA role, clinic_id, permissions,
+# parent_doctor_id ni is_local_admin: antes cualquier clave del cuerpo se guardaba tal cual.
+PERFIL_EDITABLE = {"display_name", "phone", "clinic_name", "ai_name_preference", "letterhead"}
+
+
 @doctor_profile_router.put("/profile")
 async def save_profile(data: dict, authorization: Optional[str] = Header(None)):
     doctor_id = get_doctor_id_from_token(authorization)
-    result = upsert_doctor_profile(doctor_id, data)
+    # Las imágenes (foto y logos) NO se guardan por aquí: se suben con POST /doctor/images.
+    limpio = {k: v for k, v in (data or {}).items() if k in PERFIL_EDITABLE}
+    result = upsert_doctor_profile(doctor_id, limpio)
     return result or {"ok": True}
+
+
+# ── Imágenes de marca: foto del doctor y logotipos del consultorio ───────────
+
+@doctor_profile_router.post("/images")
+async def subir_imagen(
+    kind: str = Form(...),
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+):
+    """Recibe una imagen, la reduce y la convierte a WebP, la guarda en Storage y deja la URL
+    en el perfil (photo) o en el consultorio (logo, logo_dark)."""
+    from auth import get_actor
+    from services import imagenes
+    from db import supabase
+    actor = get_actor(authorization)
+    if kind not in imagenes.PERFILES:
+        raise HTTPException(400, "Tipo de imagen no válido.")
+    es_logo = kind in imagenes.LOGOS
+    if es_logo:
+        if actor["role"] != "doctor":
+            raise HTTPException(403, "Solo el médico puede cambiar el logotipo del consultorio.")
+        if not actor.get("clinic_id"):
+            raise HTTPException(400, "Tu cuenta no tiene un consultorio asignado.")
+
+    data = await file.read(imagenes.MAX_BYTES_ENTRADA + 1)
+    try:
+        webp, (w, h) = imagenes.procesar(data, kind)
+    except imagenes.ImagenInvalida as e:
+        raise HTTPException(400, str(e))
+
+    dueno = actor["clinic_id"] if es_logo else actor["user_id"]
+    path = imagenes.ruta(kind, dueno, webp)
+
+    # Valor anterior (para borrarlo del bucket después) y dónde se guarda la referencia
+    if kind == "photo":
+        previo = (supabase.table("doctor_profiles").select("photo_url").eq("id", actor["user_id"])
+                  .limit(1).execute().data or [{}])[0].get("photo_url")
+    elif kind == "logo":
+        previo = (supabase.table("clinics").select("logo_url").eq("id", actor["clinic_id"])
+                  .limit(1).execute().data or [{}])[0].get("logo_url")
+    else:
+        try:
+            marca = (supabase.table("clinics").select("brand").eq("id", actor["clinic_id"])
+                     .limit(1).execute().data or [{}])[0].get("brand") or {}
+        except Exception:
+            raise HTTPException(409, "Falta aplicar la migración de marca (columna clinics.brand) "
+                                     "para guardar el logotipo de fondo oscuro.")
+        previo = marca.get("logo_white_url")
+
+    try:
+        url = imagenes.subir(path, webp)
+    except Exception as e:
+        raise HTTPException(502, f"No se pudo guardar la imagen: {str(e)[:120]}")
+
+    if kind == "photo":
+        supabase.table("doctor_profiles").update({"photo_url": url}).eq("id", actor["user_id"]).execute()
+    elif kind == "logo":
+        supabase.table("clinics").update({"logo_url": url}).eq("id", actor["clinic_id"]).execute()
+        supabase.table("doctor_profiles").update({"clinic_logo_url": url}).eq("id", actor["user_id"]).execute()
+    else:
+        marca["logo_white_url"] = url
+        supabase.table("clinics").update({"brand": marca}).eq("id", actor["clinic_id"]).execute()
+
+    if previo and previo != url:
+        imagenes.quitar(previo)
+    return {"url": url, "kind": kind, "bytes": len(webp), "ancho": w, "alto": h}
+
+
+@doctor_profile_router.delete("/images/{kind}")
+async def quitar_imagen(kind: str, authorization: Optional[str] = Header(None)):
+    """Quita la foto o el logotipo (vuelve a mostrarse el valor por defecto)."""
+    from auth import get_actor
+    from services import imagenes
+    from db import supabase
+    actor = get_actor(authorization)
+    if kind not in imagenes.PERFILES:
+        raise HTTPException(400, "Tipo de imagen no válido.")
+    if kind in imagenes.LOGOS and actor["role"] != "doctor":
+        raise HTTPException(403, "Solo el médico puede cambiar el logotipo del consultorio.")
+    if kind == "photo":
+        previo = (supabase.table("doctor_profiles").select("photo_url").eq("id", actor["user_id"])
+                  .limit(1).execute().data or [{}])[0].get("photo_url")
+        supabase.table("doctor_profiles").update({"photo_url": None}).eq("id", actor["user_id"]).execute()
+    elif kind == "logo":
+        previo = (supabase.table("clinics").select("logo_url").eq("id", actor["clinic_id"])
+                  .limit(1).execute().data or [{}])[0].get("logo_url")
+        supabase.table("clinics").update({"logo_url": None}).eq("id", actor["clinic_id"]).execute()
+        supabase.table("doctor_profiles").update({"clinic_logo_url": None}).eq("id", actor["user_id"]).execute()
+    else:
+        try:
+            marca = (supabase.table("clinics").select("brand").eq("id", actor["clinic_id"])
+                     .limit(1).execute().data or [{}])[0].get("brand") or {}
+        except Exception:
+            return {"ok": True}
+        previo = marca.pop("logo_white_url", None)
+        supabase.table("clinics").update({"brand": marca}).eq("id", actor["clinic_id"]).execute()
+    imagenes.quitar(previo)
+    return {"ok": True}

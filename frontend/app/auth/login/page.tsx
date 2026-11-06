@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn, getSession, resetPassword } from '@/app/lib/auth';
 import { setRole, setPerms } from '@/app/lib/role';
+import ApexLogo from '@/app/components/ApexLogo';
+import { PRODUCTO, textoVersion } from '@/app/lib/producto';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -84,7 +86,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen flex items-center justify-center px-5 py-10" style={{ background: 'var(--c-bg)' }}>
       <div className="w-full max-w-[400px]">
-        <p className="text-[26px] font-semibold tracking-tight mb-8" style={{ color: 'var(--c-primary)' }}>Apex</p>
+        <div className="mb-8" style={{ color: 'var(--c-primary)' }}><ApexLogo plan="Lite" size="lg" /></div>
 
         <div className="rounded-xl p-7" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 1px 2px rgba(16,24,40,.04)' }}>
           {!forgotOpen ? (
@@ -160,6 +162,11 @@ export default function LoginPage() {
             </form>
           )}
         </div>
+
+        <p className="text-center text-[12px] mt-6" style={{ color: 'var(--c-text-3)' }}>
+          {PRODUCTO.descripcion} · {textoVersion()}<br />
+          Desarrollado por {PRODUCTO.desarrollador}
+        </p>
       </div>
     </main>
   );

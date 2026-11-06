@@ -13,7 +13,6 @@ Requiere en .env.local: SUPABASE_URL y SUPABASE_SERVICE_KEY. Nunca imprime llave
 La columna clinics.brand viene de migrations/2026-11-03_clinic_brand.sql; si aún no existe,
 todo lo demás se aplica y el script avisa que falta esa migración.
 """
-import base64
 import json
 import os
 import sys
@@ -32,19 +31,11 @@ PLAN = "apex_lite"
 DRY = "--dry-run" in sys.argv
 
 
-def data_url(path: str) -> str:
-    with open(path, "rb") as f:
-        return "data:image/png;base64," + base64.b64encode(f.read()).decode()
-
-
 def main():
     from services.plans import DEFAULT_LIMITS, PLAN_LABELS, preset_features  # importa db (cliente)
     from db import supabase
 
     brand = json.load(open(os.path.join(SEED, "brand.json"), encoding="utf-8"))
-    brand["logo_white_url"] = data_url(os.path.join(SEED, "logo-blanco.png"))
-    brand["avatar_url"] = data_url(os.path.join(SEED, "isotipo.png"))
-    logo = data_url(os.path.join(SEED, "logo.png"))
     contacto = brand["contacto"]
 
     row = {
@@ -52,7 +43,6 @@ def main():
         "website": "https://www." + contacto["web"],
         "address": contacto["direccion"],
         "phone": contacto["tel_citas"],
-        "logo_url": logo,
         "plan": PLAN,
         "features": preset_features(PLAN),
         "limits": DEFAULT_LIMITS[PLAN],
@@ -64,9 +54,8 @@ def main():
     print("Servicios activos:", ", ".join(k for k, v in row["features"].items() if v))
     print("Servicios apagados:", ", ".join(k for k, v in row["features"].items() if not v))
     print("Límites:", row["limits"], "| créditos IA:", row["ai_credits"])
-    print("Marca: %d colores, tipografías %s + %s, logo %d KB, logo blanco %d KB" % (
-        len(brand["palette"]), brand["fonts"]["heading"], brand["fonts"]["body"],
-        len(logo) // 1024, len(brand["logo_white_url"]) // 1024))
+    print("Marca: %d colores, tipografías %s + %s; logotipos se suben a Storage en WebP" % (
+        len(brand["palette"]), brand["fonts"]["heading"], brand["fonts"]["body"]))
 
     existing = supabase.table("clinics").select("id, name").eq("name", CLINIC_NAME).limit(1).execute().data
     if DRY:
@@ -82,6 +71,23 @@ def main():
         r = supabase.table("clinics").insert(row).execute()
         clinic_id = r.data[0]["id"]
         print("\nClínica creada:", clinic_id)
+
+    # Logotipos: se reducen y se guardan en Storage como WebP (nada de base64 en la base)
+    from services import imagenes
+    logo_web, _ = imagenes.procesar(open(os.path.join(SEED, "logo.png"), "rb").read(), "logo")
+    logo_bco, _ = imagenes.procesar(open(os.path.join(SEED, "logo-blanco.png"), "rb").read(), "logo_dark")
+    url_logo = imagenes.subir(imagenes.ruta("logo", clinic_id, logo_web), logo_web)
+    url_blanco = imagenes.subir(imagenes.ruta("logo_dark", clinic_id, logo_bco), logo_bco)
+    actual = supabase.table("clinics").select("logo_url").eq("id", clinic_id).limit(1).execute().data[0].get("logo_url")
+    if isinstance(actual, str) and actual.startswith("data:"):
+        carpeta = os.path.expanduser("~/.apex-backups"); os.makedirs(carpeta, exist_ok=True)
+        ruta = os.path.join(carpeta, f"logo-clinica-{clinic_id}.txt")
+        open(ruta, "w").write(actual); os.chmod(ruta, 0o600)
+        print("Logo anterior respaldado en", ruta)
+    supabase.table("clinics").update({"logo_url": url_logo}).eq("id", clinic_id).execute()
+    supabase.table("doctor_profiles").update({"clinic_logo_url": url_logo}).eq("clinic_id", clinic_id).eq("role", "doctor").execute()
+    print("Logotipo (WebP): %d KB · logotipo para fondo oscuro: %d KB" % (len(logo_web) // 1024, len(logo_bco) // 1024))
+    brand["logo_white_url"] = url_blanco
 
     try:
         supabase.table("clinics").update({"brand": brand}).eq("id", clinic_id).execute()

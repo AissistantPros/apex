@@ -1,7 +1,7 @@
 {
   "name": "apex-frontend",
-  "version": "0.1.0",
-  "description": "APEX Clinical Intelligence Platform - Frontend",
+  "version": "0.2.0",
+  "description": "Apex — administración de consultorios (Lite) y plataforma clínica (Pro)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

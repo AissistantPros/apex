@@ -4,14 +4,18 @@ import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from '@/app/lib/auth';
 import { getRole, setRole, setPerms, clearRoleCache, ROLE_LABELS, UserRole } from '@/app/lib/role';
 import { applyBrand, clearBrandCache, readCachedBrand, type ClinicBrand } from '@/app/lib/brand';
+import { planNombre } from '@/app/lib/producto';
 import Icon, { type IconName } from '@/app/components/Icon';
+import ApexLogo from '@/app/components/ApexLogo';
 import { clearEntitlementsCache } from '@/app/lib/useEntitlements';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface TopNavProps {
   userName?: string;
   photoUrl?: string | null;
 }
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
 
 // primary: se muestra siempre en la barra. El resto se agrupa en el menú "Más".
 const ALL_LINKS: Array<{ href: string; icon: IconName; label: string; roles: string[]; feature?: string; primary?: boolean }> = [
@@ -40,6 +44,11 @@ function applyTheme(theme: 'dark' | 'light') {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('apex-theme', theme);
 }
+function applyPlan(plan: string | null) {
+  const v = plan === 'apex_lite' ? 'lite' : 'pro';
+  document.documentElement.setAttribute('data-plan', v);
+  try { localStorage.setItem('apex_plan', v); } catch { /* sin storage */ }
+}
 
 const Badge = ({ n, tone = 'accent' }: { n: number; tone?: 'accent' | 'danger' }) => (
   <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold flex items-center justify-center text-white"
@@ -60,42 +69,43 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const [rechargeSent, setRechargeSent] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
+  // Rol, permisos, plan y marca REALES de la cuenta (los define el backend, no el navegador).
+  const cargarWhoami = useCallback(async () => {
+    try {
+      const { getSession } = await import('@/app/lib/auth');
+      const s = await getSession().catch(() => null);
+      if (!s?.access_token) return;
+      const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const r = await fetch(`${B}/staff/whoami`, { headers: { Authorization: `Bearer ${s.access_token}` } });
+      if (!r.ok) return;
+      const who = await r.json();
+      if (who?.role && ['admin', 'doctor', 'nurse', 'receptionist', 'accounting', 'marketing'].includes(who.role)) {
+        setRole(who.role); setRoleState(who.role);
+      }
+      if (who?.permissions) setPerms(who.permissions);
+      if (who?.entitlements?.features) setFeats(who.entitlements.features);
+      const ent = who?.entitlements;
+      if (ent?.plan) { setPlan(ent.plan); applyPlan(ent.plan); }
+      if (ent && typeof ent.ai_credits_remaining === 'number') {
+        setCredits({ remaining: ent.ai_credits_remaining, low: !!ent.ai_credits_low, empty: !!ent.ai_credits_empty });
+      }
+      if (who?.clinic_brand) { setBrand(who.clinic_brand); applyBrand(who.clinic_brand); }
+      else { setBrand(null); clearBrandCache(); }
+    } catch { /* silencioso */ }
+  }, []);
+
   useEffect(() => {
     setRoleState(getRole());
     const saved = getTheme();
     setThemeState(saved);
     applyTheme(saved);
     setBrand(readCachedBrand());           // sin parpadeo: lo último que se conocía
-    // Sincroniza el rol REAL desde el backend según la cuenta autenticada.
-    // Sin sesión válida no se cambia nada (el usuario será enviado al login por la página).
-    (async () => {
-      try {
-        const { getSession } = await import('@/app/lib/auth');
-        const s = await getSession().catch(() => null);
-        if (!s?.access_token) return;
-        const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-        const r = await fetch(`${B}/staff/whoami`, { headers: { Authorization: `Bearer ${s.access_token}` } });
-        if (!r.ok) return;
-        const who = await r.json();
-        if (who?.role && ['admin', 'doctor', 'nurse', 'receptionist', 'accounting', 'marketing'].includes(who.role)) {
-          setRole(who.role); setRoleState(who.role);
-        }
-        if (who?.permissions) setPerms(who.permissions);
-        if (who?.entitlements?.features) setFeats(who.entitlements.features);
-        const ent = who?.entitlements;
-        if (ent?.plan) {
-          setPlan(ent.plan);
-          // Apex Lite es siempre claro: el tema oscuro es de Pro.
-          if (ent.plan === 'apex_lite') { setThemeState('light'); applyTheme('light'); }
-        }
-        if (ent && typeof ent.ai_credits_remaining === 'number') {
-          setCredits({ remaining: ent.ai_credits_remaining, low: !!ent.ai_credits_low, empty: !!ent.ai_credits_empty });
-        }
-        if (who?.clinic_brand) { setBrand(who.clinic_brand); applyBrand(who.clinic_brand); }
-        else { setBrand(null); clearBrandCache(); }
-      } catch { /* silencioso */ }
-    })();
-  }, []);
+    cargarWhoami();
+    // Si el doctor cambia su logotipo o su foto, la barra se actualiza sin recargar.
+    const alCambiar = () => cargarWhoami();
+    window.addEventListener('apex:brand-updated', alCambiar);
+    return () => window.removeEventListener('apex:brand-updated', alCambiar);
+  }, [cargarWhoami]);
 
   const isLite = plan === 'apex_lite';
   const hasAI = !!feats && Object.entries(feats).some(([k, v]) => k.startsWith('ia_') && v);
@@ -188,26 +198,53 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
 
-  const planLabel = isLite ? 'Lite' : 'Pro';
-  const clinicLabel = brand?.name || null;
+  // ── Identidad visual del consultorio ──────────────────────────────────────────
+  const colores = brand?.brand?.colors || {};
+  const primario = HEX.test(colores.primary || '') ? colores.primary : null;
+  const acento = HEX.test(colores.accent || '') ? colores.accent : null;
+  const logoBlanco = brand?.brand?.logo_white_url || null;
+  const logoColor = brand?.logo_url || null;
+  const oscuro = theme === 'dark';
+  // Con colores de marca y logo en blanco, la barra se pinta del color del consultorio (membrete).
+  const banda = !oscuro && !!primario && !!logoBlanco;
+  const logoSrc = (banda || oscuro) && logoBlanco ? logoBlanco : logoColor;
+  const logoEnPlaca = !!logoSrc && !banda && oscuro && !logoBlanco;   // logo a color sobre fondo oscuro
+  const lineaActiva = banda
+    ? (acento && primario && acento.toLowerCase() !== primario.toLowerCase() ? 'var(--c-accent)' : '#ffffff')
+    : 'var(--c-primary)';
+  const fg      = banda ? '#ffffff' : 'var(--c-text)';
+  const fgSuave = banda ? 'rgba(255,255,255,0.78)' : 'var(--c-text-2)';
+  const fgActivo = banda ? '#ffffff' : 'var(--c-primary)';
+  const hoverBg = banda ? 'hover:bg-white/10' : 'hover:bg-[var(--c-subtle)]';
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 h-16 z-50 flex items-center px-4 md:px-6 gap-3"
-      style={{ background: 'var(--c-nav)', borderBottom: '1px solid var(--c-border)', borderTop: '3px solid var(--c-accent)' }}
+      className="fixed top-0 left-0 right-0 h-[72px] z-50 flex items-center px-4 md:px-6 gap-3"
+      style={{
+        background: banda ? 'var(--c-primary)' : 'var(--c-nav)',
+        borderBottom: banda ? 'none' : '1px solid var(--c-border)',
+        borderTop: '3px solid var(--c-accent)',
+        color: fg,
+      }}
     >
-      {/* Identidad: logo del consultorio (o el nombre de Apex) y el plan */}
-      <button onClick={() => router.push('/dashboard')} className="flex items-center gap-3 mr-2 flex-shrink-0" aria-label="Ir al inicio">
-        {brand?.logo_url ? (
-          <img src={brand.logo_url} alt={clinicLabel || 'Consultorio'} className="h-9 w-auto max-w-[170px] object-contain" />
+      {/* Identidad: logotipo COMPLETO del consultorio arriba a la izquierda + marca Apex */}
+      <button onClick={() => router.push('/dashboard')} className="flex items-center gap-4 mr-2 flex-shrink-0 h-full" aria-label="Ir al inicio">
+        {logoSrc ? (
+          logoEnPlaca ? (
+            <span className="rounded-md bg-white px-2.5 py-1.5 flex items-center">
+              <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[40px] w-auto max-w-[190px] object-contain" />
+            </span>
+          ) : (
+            <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[52px] w-auto max-w-[230px] object-contain" />
+          )
         ) : (
-          <span className="text-lg font-semibold tracking-tight" style={{ color: 'var(--c-primary)' }}>
-            {clinicLabel || 'Apex'}
+          <span className="text-[19px] font-semibold tracking-tight max-w-[220px] truncate" style={{ color: banda ? '#fff' : 'var(--c-primary)' }}>
+            {brand?.name || 'Apex'}
           </span>
         )}
-        <span className="hidden lg:flex items-center gap-3">
-          <span className="w-px h-5" style={{ background: 'var(--c-border-2)' }} />
-          <span className="text-[13px] font-medium" style={{ color: 'var(--c-text-2)' }}>Apex {planLabel}</span>
+        <span className="hidden lg:flex items-center gap-4">
+          <span className="w-px h-8" style={{ background: banda ? 'rgba(255,255,255,0.3)' : 'var(--c-border-2)' }} />
+          <span style={{ color: fgSuave }}><ApexLogo plan={planNombre(plan)} size="sm" /></span>
         </span>
       </button>
 
@@ -218,12 +255,12 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
           return (
             <button key={href + label} onClick={() => router.push(href)} title={label} aria-label={label}
               aria-current={active ? 'page' : undefined}
-              className="relative flex items-center gap-2 px-3 text-[14px] font-medium transition-colors"
-              style={{ color: active ? 'var(--c-primary)' : 'var(--c-text-2)' }}>
+              className={`relative flex items-center gap-2 px-3 text-[14px] font-medium transition-colors ${hoverBg}`}
+              style={{ color: active ? fgActivo : fgSuave }}>
               <Icon name={icon} size={18} />
               <span className="hidden md:inline">{label}</span>
               {href === '/dashboard/sala' && waitCount > 0 && <Badge n={waitCount} />}
-              {active && <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-full" style={{ background: 'var(--c-primary)' }} />}
+              {active && <span className="absolute left-2 right-2 bottom-0 h-[3px] rounded-t-full" style={{ background: lineaActiva }} />}
             </button>
           );
         })}
@@ -231,8 +268,8 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         {overflowLinks.length > 0 && (
           <div className="relative flex items-stretch" ref={moreRef}>
             <button onClick={() => setMoreOpen(o => !o)} aria-haspopup="menu" aria-expanded={moreOpen}
-              className="flex items-center gap-1.5 px-3 text-[14px] font-medium transition-colors"
-              style={{ color: moreOpen ? 'var(--c-primary)' : 'var(--c-text-2)' }}>
+              className={`flex items-center gap-1.5 px-3 text-[14px] font-medium transition-colors ${hoverBg}`}
+              style={{ color: moreOpen ? fgActivo : fgSuave }}>
               <Icon name="more" size={18} />
               <span className="hidden md:inline">Más</span>
               <Icon name="chevron" size={14} />
@@ -242,7 +279,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
             {moreOpen && (
               <div role="menu"
                 className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg py-1 z-50"
-                style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 8px 24px rgba(16,24,40,.12)' }}>
+                style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 8px 24px rgba(16,24,40,.18)' }}>
                 {overflowLinks.map(({ href, icon, label }) => (
                   <button key={href + label} role="menuitem" onClick={() => { setMoreOpen(false); router.push(href); }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] font-medium text-left transition-colors hover:bg-[var(--c-subtle)]"
@@ -266,7 +303,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
           onClick={role === 'admin' ? () => router.push('/admin') : requestRecharge}
           title={`Créditos de IA restantes: ${credits.remaining.toLocaleString('es-MX')}`}
           className="hidden sm:flex items-center gap-2 text-[13px] font-medium px-3 py-1.5 rounded-lg flex-shrink-0"
-          style={{ color: credits.empty ? 'var(--c-danger)' : 'var(--c-warn)', border: '1px solid currentColor' }}
+          style={{ color: credits.empty ? 'var(--c-danger)' : 'var(--c-warn)', border: '1px solid currentColor', background: 'var(--c-card)' }}
         >
           <span>{credits.empty ? 'Sin créditos de IA' : 'Créditos de IA bajos'}</span>
           <span style={{ opacity: .75 }}>· {role === 'admin' ? 'Recargar' : (rechargeSent ? 'Solicitud enviada' : 'Solicitar recarga')}</span>
@@ -276,36 +313,40 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
       {/* Ancla del chat del equipo — TeamChat monta aquí su botón (barra superior, siempre visible) */}
       <div className="apex-chat-slot flex items-center" />
 
-      {/* Tema: Lite es siempre claro, solo Pro puede cambiarlo */}
-      {!isLite && (
-        <button onClick={toggleTheme} className="px-3 py-1.5 rounded-lg text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-[var(--c-subtle)]"
-          style={{ color: 'var(--c-text-2)', border: '1px solid var(--c-border)' }}>
-          {theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
-        </button>
-      )}
+      {/* Tema claro / oscuro (Lite y Pro) */}
+      <button onClick={toggleTheme} aria-label={oscuro ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+        title={oscuro ? 'Tema claro' : 'Tema oscuro'}
+        className={`p-2 rounded-lg transition-colors ${hoverBg}`} style={{ color: fgSuave }}>
+        <Icon name={oscuro ? 'sun' : 'moon'} size={19} />
+      </button>
 
       {/* Persona: nombre, rol y acceso al perfil */}
       <button onClick={() => router.push('/dashboard/profile')} aria-label="Ver mi perfil"
-        className="flex items-center gap-3 pl-3 pr-2 py-1.5 rounded-lg transition-colors hover:bg-[var(--c-subtle)]">
+        className={`flex items-center gap-3 pl-3 pr-2 py-1.5 rounded-lg transition-colors ${hoverBg}`}>
         <div className="text-right hidden md:block leading-tight">
-          <p className="text-[14px] font-semibold" style={{ color: 'var(--c-text)' }}>{userName}</p>
-          <p className="text-[12px]" style={{ color: 'var(--c-text-2)' }}>{ROLE_LABELS[role]}</p>
+          <p className="text-[14px] font-semibold" style={{ color: fg }}>{userName}</p>
+          <p className="text-[12px]" style={{ color: fgSuave }}>{ROLE_LABELS[role]}</p>
         </div>
         {photoUrl ? (
-          <img src={photoUrl} alt="" className="w-9 h-9 rounded-full object-cover" style={{ border: '1px solid var(--c-border-2)' }} />
+          <img src={photoUrl} alt="" className="w-10 h-10 rounded-full object-cover"
+            style={{ border: banda ? '2px solid rgba(255,255,255,0.55)' : '1px solid var(--c-border-2)' }} />
         ) : (
-          <div className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-semibold"
-            style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-semibold"
+            style={banda ? { background: 'rgba(255,255,255,0.18)', color: '#fff' } : { background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}>
             {userName[0]?.toUpperCase() || 'D'}
           </div>
         )}
       </button>
 
       <button
-        onClick={async () => { clearRoleCache(); clearBrandCache(); clearEntitlementsCache(); await signOut(); router.push('/auth/login'); }}
+        onClick={async () => {
+          clearRoleCache(); clearBrandCache(); clearEntitlementsCache();
+          try { localStorage.removeItem('apex_plan'); document.documentElement.removeAttribute('data-plan'); } catch { /* sin storage */ }
+          await signOut(); router.push('/auth/login');
+        }}
         title="Cerrar sesión" aria-label="Cerrar sesión"
-        className="p-2 rounded-lg transition-colors hover:bg-[var(--c-subtle)]"
-        style={{ color: 'var(--c-text-2)' }}
+        className={`p-2 rounded-lg transition-colors ${hoverBg}`}
+        style={{ color: fgSuave }}
       >
         <Icon name="logout" size={18} />
       </button>

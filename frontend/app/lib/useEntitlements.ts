@@ -5,12 +5,12 @@ import { useEffect, useState } from 'react';
 import { getSession } from '@/app/lib/auth';
 import { usaConsultaLite } from '@/app/lib/consultaLite';
 
-let cache: Record<string, boolean> | null = null;
+let cache: { features: Record<string, boolean>; plan: string | null } | null = null;
 
 export function clearEntitlementsCache() { cache = null; }
 
 export function useEntitlements() {
-  const [features, setFeatures] = useState<Record<string, boolean> | null>(cache);
+  const [datos, setDatos] = useState(cache);
   useEffect(() => {
     if (cache) return;
     let vivo = true;
@@ -21,11 +21,13 @@ export function useEntitlements() {
         const B = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
         const r = await fetch(`${B}/staff/entitlements`, { headers: { Authorization: `Bearer ${s.access_token}` } });
         if (!r.ok) return;
-        cache = (await r.json()).features || {};
-        if (vivo) setFeatures(cache);
+        const j = await r.json();
+        cache = { features: j.features || {}, plan: j.plan || null };
+        if (vivo) setDatos(cache);
       } catch { /* sin datos del plan: se usa el flujo normal */ }
     })();
     return () => { vivo = false; };
   }, []);
-  return { features, lite: usaConsultaLite(features) };
+  const features = datos?.features ?? null;
+  return { features, plan: datos?.plan ?? null, lite: usaConsultaLite(features) };
 }

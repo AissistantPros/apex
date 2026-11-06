@@ -11,6 +11,8 @@ export const metadata: Metadata = {
 const initScript = `(function(){try{
 var t=localStorage.getItem('apex-theme')||'light';
 document.documentElement.setAttribute('data-theme',t);
+var p=localStorage.getItem('apex_plan');
+if(p){document.documentElement.setAttribute('data-plan',p);}
 var b=JSON.parse(localStorage.getItem('apex_brand')||'null');
 if(b&&typeof b.css==='string'){var s=document.createElement('style');s.id='apex-brand';s.textContent=b.css;document.head.appendChild(s);}
 }catch(e){}})();`;
