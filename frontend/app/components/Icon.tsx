@@ -17,6 +17,8 @@ const PATHS = {
   message: 'M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z',
   file: 'M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M9 13h6M9 17h6',
   plus: 'M12 5v14M5 12h14',
+  close: 'M6 6l12 12M18 6 6 18',
+  tick: 'm5 12.5 4.5 4.5L19 7',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
   chevron: 'm6 9 6 6 6-6',
   logout: 'M15 17l5-5-5-5M20 12H9M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4',

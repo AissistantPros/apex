@@ -85,7 +85,7 @@ async def check_duplicate(
 
 
 @router.get("/")
-async def get_all_patients(
+def get_all_patients(
     limit: int = 50,
     authorization: Optional[str] = Header(None),
 ):

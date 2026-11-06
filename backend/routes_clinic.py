@@ -23,7 +23,55 @@ router = APIRouter(prefix="/clinic", tags=["clinic"])
 MESES_ES = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
 import json
+import unicodedata
 from uuid import uuid4
+
+CATALOG_KINDS = ("proveedores", "clientes", "conceptos_gasto", "lugares")
+
+
+def _norm(txt) -> str:
+    """Minúsculas y sin acentos, para comparar nombres ('Clínica' == 'clinica')."""
+    t = unicodedata.normalize("NFD", str(txt or "").strip().lower())
+    return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+_REGLAS_CATEGORIA = (
+    ("publicidad", ("doctoralia", "meta", "facebook", "instagram", "google", "publicidad", "ads", "tiktok", "anuncio")),
+    ("renta", ("renta", "alquiler", "arrendamiento")),
+    ("sueldos", ("sueldo", "nomina", "salario", "honorarios")),
+    ("internet", ("luz", "cfe", "agua", "internet", "celular", "telefono", "telcel", "at&t", "izzi", "megacable", "software")),
+    ("insumos", ("insumo", "material", "farmacia", "papeleria", "medicamento", "limpieza")),
+)
+_CANALES_PUBLICIDAD = (("Doctoralia", "doctoralia"), ("Meta", "meta"), ("Meta", "facebook"), ("Meta", "instagram"),
+                       ("Google", "google"), ("TikTok", "tiktok"))
+
+
+def _inferir_categoria(concepto: str, proveedor: str = "") -> str:
+    """Categoría de un gasto a partir de lo que se escribió (el formulario ya no la pide)."""
+    t = _norm(f"{concepto} {proveedor}")
+    for cat, palabras in _REGLAS_CATEGORIA:
+        if any(w in t for w in palabras):
+            return cat
+    return "otros"
+
+
+def _inferir_canal(concepto: str, proveedor: str = "") -> Optional[str]:
+    t = _norm(f"{concepto} {proveedor}")
+    return next((canal for canal, w in _CANALES_PUBLICIDAD if w in t), None)
+
+
+def _catalog_add(cats: dict, kind: str, nombre: str, **extra) -> bool:
+    """Agrega `nombre` al catálogo si no existe (sin importar mayúsculas ni acentos)."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        return False
+    lista = list(cats.get(kind) or [])
+    if any(_norm(x.get("nombre")) == _norm(nombre) for x in lista):
+        return False
+    lista.append({"id": str(uuid4()), "nombre": nombre,
+                  "created_at": datetime.now(timezone.utc).isoformat(), **extra})
+    cats[kind] = lista
+    return True
 
 # Canales de publicidad que se miden como "publicidad de pago / online"
 CANALES_PAGO = ["Meta", "Google", "Doctoralia", "TikTok"]
@@ -77,7 +125,7 @@ def _unpack_row_meta(row: dict, defaults: Optional[dict] = None) -> dict:
 
 
 def _get_clinic_catalogs(clinic_id: Optional[str]) -> dict:
-    default_cat = {"proveedores": [], "clientes": [], "conceptos_gasto": []}
+    default_cat = {"proveedores": [], "clientes": [], "conceptos_gasto": [], "lugares": []}
     if not clinic_id:
         return default_cat
     try:
@@ -90,6 +138,7 @@ def _get_clinic_catalogs(clinic_id: Optional[str]) -> dict:
             "proveedores": list(cats.get("proveedores") or []),
             "clientes": list(cats.get("clientes") or []),
             "conceptos_gasto": list(cats.get("conceptos_gasto") or []),
+            "lugares": list(cats.get("lugares") or []),
         }
     except Exception:
         return default_cat
@@ -147,7 +196,8 @@ class SaleIn(BaseModel):
     indicaciones_mostrador: Optional[str] = None
     fecha_evento: Optional[str] = None
     destino_fondo: Optional[str] = None        # caja_consultorio | banco_consultorio | cuenta_doctor
-    guardar_cliente: bool = False
+    guardar_cliente: bool = False              # guarda `aseguradora` (quien paga) en el catálogo de clientes
+    guardar_lugar: bool = False                # guarda `lugar` en el catálogo de lugares
     tarjeta_nombre: Optional[str] = None
 
 class ChargeIn(BaseModel):
@@ -160,7 +210,7 @@ class ChargeIn(BaseModel):
     tarjeta_nombre: Optional[str] = None
 
 class ExpenseIn(BaseModel):
-    categoria: str
+    categoria: Optional[str] = None
     canal: Optional[str] = None
     concepto: Optional[str] = None
     monto: float
@@ -176,7 +226,7 @@ class ExpenseIn(BaseModel):
     guardar_proveedor: bool = False
 
 class CatalogItemIn(BaseModel):
-    kind: str                     # proveedores | clientes | conceptos_gasto
+    kind: str                     # proveedores | clientes | conceptos_gasto | lugares
     nombre: str
     tipo: Optional[str] = None    # aseguradora | hospital | cliente | proveedor | insumo
     categoria: Optional[str] = None
@@ -226,7 +276,7 @@ def _canal_paciente(p: dict) -> str:
 
 # ── Catálogos del consultorio (proveedores, clientes/aseguradoras, conceptos frecuentes) ──
 @router.get("/catalogs")
-async def get_catalogs(authorization: Optional[str] = Header(None)):
+def get_catalogs(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     cats = _get_clinic_catalogs(actor.get("clinic_id"))
     svcs = supabase.table("clinic_services").select("*").eq("doctor_id", actor["doctor_id"])\
@@ -240,9 +290,9 @@ async def get_catalogs(authorization: Optional[str] = Header(None)):
 
 
 @router.post("/catalogs/item")
-async def add_catalog_item(body: CatalogItemIn, authorization: Optional[str] = Header(None)):
+def add_catalog_item(body: CatalogItemIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
-    if body.kind not in ("proveedores", "clientes", "conceptos_gasto"):
+    if body.kind not in CATALOG_KINDS:
         raise HTTPException(400, "Tipo de catálogo inválido")
     nombre = (body.nombre or "").strip()
     if not nombre:
@@ -251,7 +301,7 @@ async def add_catalog_item(body: CatalogItemIn, authorization: Optional[str] = H
     cats = _get_clinic_catalogs(clinic_id)
     lista = list(cats.get(body.kind) or [])
     # Evitar duplicados por nombre (actualiza si ya existe)
-    existing = next((x for x in lista if (x.get("nombre") or "").strip().lower() == nombre.lower()), None)
+    existing = next((x for x in lista if _norm(x.get("nombre")) == _norm(nombre)), None)
     if existing:
         existing.update({
             "nombre": nombre,
@@ -284,9 +334,9 @@ async def add_catalog_item(body: CatalogItemIn, authorization: Optional[str] = H
 
 
 @router.delete("/catalogs/item/{kind}/{item_id}")
-async def remove_catalog_item(kind: str, item_id: str, authorization: Optional[str] = Header(None)):
+def remove_catalog_item(kind: str, item_id: str, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
-    if kind not in ("proveedores", "clientes", "conceptos_gasto"):
+    if kind not in CATALOG_KINDS:
         raise HTTPException(400, "Tipo de catálogo inválido")
     clinic_id = actor.get("clinic_id")
     cats = _get_clinic_catalogs(clinic_id)
@@ -297,7 +347,7 @@ async def remove_catalog_item(kind: str, item_id: str, authorization: Optional[s
 
 # ── Servicios y Prestaciones (Consultas, Estudios, Cirugías, Productos) ────────
 @router.get("/services")
-async def list_services(authorization: Optional[str] = Header(None)):
+def list_services(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     did = actor["doctor_id"]
     r = supabase.table("clinic_services").select("*").eq("doctor_id", did)\
@@ -326,7 +376,7 @@ async def list_services(authorization: Optional[str] = Header(None)):
     return {"services": out}
 
 @router.post("/services")
-async def create_service(body: ServiceIn, authorization: Optional[str] = Header(None)):
+def create_service(body: ServiceIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if actor["role"] == "receptionist":
         raise HTTPException(403, "Recepción no puede configurar servicios")
@@ -363,7 +413,7 @@ async def create_service(body: ServiceIn, authorization: Optional[str] = Header(
     }
 
 @router.put("/services/{sid}")
-async def update_service(sid: str, body: ServiceIn, authorization: Optional[str] = Header(None)):
+def update_service(sid: str, body: ServiceIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if actor["role"] == "receptionist":
         raise HTTPException(403, "Recepción no puede configurar servicios")
@@ -389,7 +439,7 @@ async def update_service(sid: str, body: ServiceIn, authorization: Optional[str]
     return {"ok": True}
 
 @router.delete("/services/{sid}")
-async def delete_service(sid: str, authorization: Optional[str] = Header(None)):
+def delete_service(sid: str, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if actor["role"] == "receptionist":
         raise HTTPException(403, "Recepción no puede configurar servicios")
@@ -431,7 +481,7 @@ def _nombre_pacientes(did: str) -> dict:
     return {p["id"]: p.get("full_name") for p in (r.data or [])}
 
 @router.get("/sales")
-async def list_sales(estado: Optional[str] = None, limit: int = 150,
+def list_sales(estado: Optional[str] = None, limit: int = 150,
                      authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     did = actor["doctor_id"]
@@ -452,7 +502,7 @@ async def list_sales(estado: Optional[str] = None, limit: int = 150,
     return {"sales": out}
 
 @router.get("/pending")
-async def pending_charges(authorization: Optional[str] = Header(None)):
+def pending_charges(authorization: Optional[str] = Header(None)):
     """Cola de recepción: cobros pendientes con nombre del paciente e indicaciones del médico."""
     did = get_actor(authorization)["doctor_id"]
     ventas = supabase.table("sales").select("*").eq("doctor_id", did)\
@@ -466,7 +516,7 @@ async def pending_charges(authorization: Optional[str] = Header(None)):
     return {"pending": out}
 
 @router.post("/sales")
-async def create_sale(body: SaleIn, authorization: Optional[str] = Header(None)):
+def create_sale(body: SaleIn, authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     if body.patient_id:
         assert_patient(actor, body.patient_id)   # el cobro solo se liga a pacientes de la clínica
@@ -503,26 +553,22 @@ async def create_sale(body: SaleIn, authorization: Optional[str] = Header(None))
     r = supabase.table("sales").insert(row).execute()
     created = r.data[0] if r.data else {}
 
-    # Guardar cliente / aseguradora / entidad automáticamente si se solicitó
-    if body.guardar_cliente:
-        nom_cliente = (body.aseguradora or body.lugar or "").strip()
-        if nom_cliente:
-            clinic_id = actor.get("clinic_id")
-            cats = _get_clinic_catalogs(clinic_id)
-            lista_cli = list(cats.get("clientes") or [])
-            if not any((x.get("nombre") or "").strip().lower() == nom_cliente.lower() for x in lista_cli):
-                lista_cli.append({
-                    "id": str(uuid4()),
-                    "nombre": nom_cliente,
-                    "categoria": "Aseguradora" if body.aseguradora else "Hospital / Sede",
-                })
-                cats["clientes"] = lista_cli
-                _save_clinic_catalogs(clinic_id, cats)
+    # Guardar en los catálogos lo que el usuario pidió (quien paga y/o el lugar)
+    if body.guardar_cliente or body.guardar_lugar:
+        clinic_id = actor.get("clinic_id")
+        cats = _get_clinic_catalogs(clinic_id)
+        changed = False
+        if body.guardar_cliente and not body.patient_id:
+            changed |= _catalog_add(cats, "clientes", body.aseguradora or "", categoria="Aseguradora / cliente")
+        if body.guardar_lugar:
+            changed |= _catalog_add(cats, "lugares", body.lugar or "")
+        if changed:
+            _save_clinic_catalogs(clinic_id, cats)
 
     return _unpack_row_meta(created, SALE_META_DEFAULTS) if created else {}
 
 @router.post("/sales/{sid}/charge")
-async def charge_sale(sid: str, body: ChargeIn, authorization: Optional[str] = Header(None)):
+def charge_sale(sid: str, body: ChargeIn, authorization: Optional[str] = Header(None)):
     """Recepción cobra un pendiente."""
     actor = get_actor(authorization)
     venta = supabase.table("sales").select("*").eq("id", sid)\
@@ -559,7 +605,7 @@ async def charge_sale(sid: str, body: ChargeIn, authorization: Optional[str] = H
     return {"ok": True, "total": total}
 
 @router.post("/sales/{sid}/liquidate-insurance")
-async def liquidate_insurance_sale(sid: str, authorization: Optional[str] = Header(None)):
+def liquidate_insurance_sale(sid: str, authorization: Optional[str] = Header(None)):
     """Liquida en 1 clic un cobro que estaba en trámite con aseguradora/hospital."""
     actor = get_actor(authorization)
     venta = supabase.table("sales").select("*").eq("id", sid)\
@@ -589,7 +635,7 @@ async def liquidate_insurance_sale(sid: str, authorization: Optional[str] = Head
 
 
 @router.post("/reimburse-doctor")
-async def reimburse_doctor(body: dict, authorization: Optional[str] = Header(None)):
+def reimburse_doctor(body: dict, authorization: Optional[str] = Header(None)):
     """Registra la liquidación / reembolso de gastos que el médico pagó de su propio dinero."""
     actor = get_actor(authorization)
     monto = float(body.get("monto") or 0)
@@ -618,7 +664,7 @@ async def reimburse_doctor(body: dict, authorization: Optional[str] = Header(Non
 
 
 @router.post("/sales/{sid}/cancel")
-async def cancel_sale(sid: str, authorization: Optional[str] = Header(None)):
+def cancel_sale(sid: str, authorization: Optional[str] = Header(None)):
     did = get_actor(authorization)["doctor_id"]
     supabase.table("sales").update({"estado": "cancelado"}).eq("id", sid).eq("doctor_id", did).execute()
     return {"ok": True}
@@ -626,7 +672,7 @@ async def cancel_sale(sid: str, authorization: Optional[str] = Header(None)):
 
 # ── Gastos ───────────────────────────────────────────────────────────────────────
 @router.get("/expenses")
-async def list_expenses(limit: int = 250, authorization: Optional[str] = Header(None)):
+def list_expenses(limit: int = 250, authorization: Optional[str] = Header(None)):
     from access import require
     actor = get_actor(authorization)
     require(actor, "doctor", "accounting", "receptionist")
@@ -641,7 +687,7 @@ async def list_expenses(limit: int = 250, authorization: Optional[str] = Header(
     return {"expenses": out}
 
 @router.post("/expenses")
-async def create_expense(body: ExpenseIn, authorization: Optional[str] = Header(None)):
+def create_expense(body: ExpenseIn, authorization: Optional[str] = Header(None)):
     from access import require
     actor = get_actor(authorization)
     require(actor, "doctor", "accounting", "receptionist")
@@ -657,12 +703,13 @@ async def create_expense(body: ExpenseIn, authorization: Optional[str] = Header(
         "facturado": body.facturado,
         "tarjeta_nombre": body.tarjeta_nombre or "",
     })
+    categoria = body.categoria or _inferir_categoria(body.concepto or "", body.proveedor or "")
     row = {
         "doctor_id": actor["doctor_id"],
         "created_by": actor["user_id"],
-        "categoria": body.categoria or "otros",
-        "canal": body.canal,
-        "concepto": (body.concepto or "").strip() or body.categoria,
+        "categoria": categoria,
+        "canal": body.canal or (_inferir_canal(body.concepto or "", body.proveedor or "") if categoria == "publicidad" else None),
+        "concepto": (body.concepto or "").strip() or categoria,
         "monto": body.monto,
         "proveedor": (body.proveedor or "").strip() or None,
         "recurrente": body.recurrente,
@@ -679,39 +726,19 @@ async def create_expense(body: ExpenseIn, authorization: Optional[str] = Header(
         clinic_id = actor.get("clinic_id")
         cats = _get_clinic_catalogs(clinic_id)
         changed = False
-        if body.guardar_concepto and (body.concepto or "").strip():
-            c_txt = body.concepto.strip()
-            lista_c = list(cats.get("conceptos_gasto") or [])
-            if not any((x.get("nombre") or "").strip().lower() == c_txt.lower() for x in lista_c):
-                lista_c.append({
-                    "id": str(uuid4()),
-                    "nombre": c_txt,
-                    "categoria": body.categoria or "insumos",
-                    "monto_sugerido": body.monto,
-                    "notas": body.proveedor or "",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                })
-                cats["conceptos_gasto"] = lista_c
-                changed = True
-        if body.guardar_proveedor and (body.proveedor or "").strip():
-            p_txt = body.proveedor.strip()
-            lista_p = list(cats.get("proveedores") or [])
-            if not any((x.get("nombre") or "").strip().lower() == p_txt.lower() for x in lista_p):
-                lista_p.append({
-                    "id": str(uuid4()),
-                    "nombre": p_txt,
-                    "categoria": body.categoria or "insumos",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                })
-                cats["proveedores"] = lista_p
-                changed = True
+        if body.guardar_concepto:
+            changed |= _catalog_add(cats, "conceptos_gasto", body.concepto or "",
+                                    categoria=categoria, monto_sugerido=body.monto,
+                                    notas=body.proveedor or "")
+        if body.guardar_proveedor:
+            changed |= _catalog_add(cats, "proveedores", body.proveedor or "", categoria=categoria)
         if changed:
             _save_clinic_catalogs(clinic_id, cats)
 
     return _unpack_row_meta(created, EXPENSE_META_DEFAULTS) if created else {}
 
 @router.delete("/expenses/{eid}")
-async def delete_expense(eid: str, authorization: Optional[str] = Header(None)):
+def delete_expense(eid: str, authorization: Optional[str] = Header(None)):
     did = get_actor(authorization)["doctor_id"]
     supabase.table("expenses").delete().eq("id", eid).eq("doctor_id", did).execute()
     return {"ok": True}
@@ -1195,7 +1222,7 @@ def _build_financial_overview(actor: dict) -> dict:
 
 
 @router.get("/overview")
-async def overview(authorization: Optional[str] = Header(None)):
+def overview(authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     from access import require
     require(actor, "doctor", "accounting")
@@ -1207,7 +1234,7 @@ class FinancialAiIn(BaseModel):
 
 
 @router.post("/ai-analysis")
-async def clinic_ai_analysis(body: FinancialAiIn, authorization: Optional[str] = Header(None)):
+def clinic_ai_analysis(body: FinancialAiIn, authorization: Optional[str] = Header(None)):
     """Analiza la contabilidad del consultorio con IA: ingresos del mes vs promedio,
     flujo de efectivo y dónde está el dinero (caja vs banco vs desembolsos del médico),
     aseguradoras, procedimientos/cirugías, gastos y recomendaciones."""

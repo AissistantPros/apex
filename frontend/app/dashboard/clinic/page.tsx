@@ -2,35 +2,11 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
 import { useEntitlements } from '@/app/lib/useEntitlements';
 import StaffManagement from '../staff/StaffManagement';
-
-const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-const money = (n: number) => '$' + Math.round(n || 0).toLocaleString('es-MX');
-
-const SEDES_PREDEFINIDAS = [
-  'Consultorio Propio',
-  'Hospital Amerimed Cancún',
-  'Hospital Amerimed Playa del Carmen',
-  'Hospital Joya Cancún',
-  'Hospital Galenia',
-];
-
-async function authHeaders(): Promise<Record<string, string>> {
-  const s = await getSession().catch(() => null);
-  return { 'Content-Type': 'application/json', ...(s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}) };
-}
-
-async function api(path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${B()}${path}`, { ...opts, headers: { ...(await authHeaders()), ...(opts.headers || {}) } });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.detail || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
+import { ModalRegistrarIngreso, ModalRegistrarGasto } from './ModalesCaja';
+import { B, money, authHeaders, api, CATALOGOS_VACIOS, type Catalogos } from './clinicApi';
 
 // Estilos móviles táctiles Apple HIG: inputs base 16px para evitar zoom safari en iPhone
 const inp = 'w-full bg-[#111820] border border-[#1e2d3d] rounded-xl px-3.5 py-3 text-base sm:text-sm text-[#dde6ef] outline-none focus:border-[#00e5a0] transition placeholder-[#486581]';
@@ -52,12 +28,10 @@ export default function ClinicPage() {
   const [services, setServices] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [catalogs, setCatalogs] = useState<{ proveedores: any[]; clientes: any[]; conceptos_gasto: any[] }>({
-    proveedores: [],
-    clientes: [],
-    conceptos_gasto: [],
-  });
+  const [catalogs, setCatalogs] = useState<Catalogos>(CATALOGOS_VACIOS);
   const [patients, setPatients] = useState<any[]>([]);
+  // Las listas de las ventanas de ingreso/gasto se piden aparte y primero: no esperan al resumen.
+  const [listasListas, setListasListas] = useState(false);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
@@ -65,24 +39,31 @@ export default function ClinicPage() {
   const [showModalIngreso, setShowModalIngreso] = useState(false);
   const [showModalGasto, setShowModalGasto] = useState(false);
 
+  // Catálogos (clientes, proveedores, lugares, conceptos): ligeros, se refrescan al guardar.
+  const loadCatalogs = useCallback(async () => {
+    const cat = await api('/clinic/catalogs').catch(() => null);
+    if (cat) {
+      setCatalogs({
+        proveedores: cat.proveedores || [],
+        clientes: cat.clientes || [],
+        conceptos_gasto: cat.conceptos_gasto || [],
+        lugares: cat.lugares || [],
+      });
+    }
+  }, []);
+
   const loadAll = useCallback(async () => {
     try {
-      const [o, s, sl, ex, cat] = await Promise.all([
+      const [o, s, sl, ex] = await Promise.all([
         api('/clinic/overview').catch(() => null),
         api('/clinic/services').catch(() => ({ services: [] })),
         api('/clinic/sales').catch(() => ({ sales: [] })),
         api('/clinic/expenses').catch(() => ({ expenses: [] })),
-        api('/clinic/catalogs').catch(() => ({ proveedores: [], clientes: [], conceptos_gasto: [] })),
       ]);
       setOv(o);
       setServices(s.services || []);
       setSales(sl.sales || []);
       setExpenses(ex.expenses || []);
-      setCatalogs({
-        proveedores: cat.proveedores || [],
-        clientes: cat.clientes || [],
-        conceptos_gasto: cat.conceptos_gasto || [],
-      });
     } catch (e: any) {
       setMsg(e.message);
     } finally {
@@ -94,15 +75,18 @@ export default function ClinicPage() {
     const r = getRole();
     setRole(r as any);
     if (r === 'receptionist') setTab('ingresos');
-    loadAll();
 
-    authHeaders().then(headers => {
-      fetch(`${B()}/patients/?limit=250`, { headers })
-        .then(res => res.json())
+    // 1º lo que necesitan las ventanas de ingreso/gasto (pacientes y catálogos), 2º el resto.
+    const listas = Promise.all([
+      loadCatalogs(),
+      authHeaders()
+        .then(headers => fetch(`${B()}/patients/?limit=1000`, { headers }))
+        .then(res => (res.ok ? res.json() : { patients: [] }))
         .then(d => setPatients(d.patients || []))
-        .catch(() => {});
-    });
-  }, [loadAll]);
+        .catch(() => {}),
+    ]).finally(() => setListasListas(true));
+    listas.then(() => loadAll());
+  }, [loadAll, loadCatalogs]);
 
   // Manejar query params de entrada para pestañas y modales directos (ej. ?tab=ingresos&action=nuevo)
   useEffect(() => {
@@ -250,11 +234,13 @@ export default function ClinicPage() {
           patients={patients}
           services={services}
           catalogs={catalogs}
+          cargando={!listasListas}
           onClose={() => setShowModalIngreso(false)}
           onSuccess={() => {
             setShowModalIngreso(false);
-            flash('✓ Ingreso registrado');
+            flash('Ingreso registrado');
             loadAll();
+            loadCatalogs();
           }}
         />
       )}
@@ -262,11 +248,14 @@ export default function ClinicPage() {
       {/* ── MODAL: REGISTRAR GASTO ── */}
       {showModalGasto && (
         <ModalRegistrarGasto
+          catalogs={catalogs}
+          cargando={!listasListas}
           onClose={() => setShowModalGasto(false)}
           onSuccess={() => {
             setShowModalGasto(false);
-            flash('✓ Gasto registrado');
+            flash('Gasto registrado');
             loadAll();
+            loadCatalogs();
           }}
         />
       )}
@@ -1081,417 +1070,6 @@ function ServiciosTab({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODAL: REGISTRAR INGRESO (SENCILLO)
-// ─────────────────────────────────────────────────────────────────────────────
-function ModalRegistrarIngreso({
-  patients,
-  services,
-  catalogs,
-  onClose,
-  onSuccess,
-}: {
-  patients: any[];
-  services: any[];
-  catalogs: any;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [monto, setMonto] = useState<number>(0);
-  const [concepto, setConcepto] = useState('');
-  const [pacienteQuery, setPacienteQuery] = useState('');
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [showPatientList, setShowPatientList] = useState(false);
-  const [lugar, setLugar] = useState('Consultorio Propio');
-  const [facturada, setFacturada] = useState(false);
-  const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta' | 'transferencia' | 'pendiente'>('efectivo');
-  const [tarjetaNombre, setTarjetaNombre] = useState('');
-  const [guardarCliente, setGuardarCliente] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  const pacientesFiltrados = useMemo(() => {
-    if (!pacienteQuery.trim()) return patients.slice(0, 6);
-    const q = pacienteQuery.toLowerCase();
-    return patients.filter((p: any) =>
-      `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase().includes(q)
-    ).slice(0, 6);
-  }, [patients, pacienteQuery]);
-
-  const seleccionarPaciente = (p: any) => {
-    const full = `${p.first_name || ''} ${p.last_name || ''}`.trim();
-    setSelectedPatientId(p.id);
-    setPacienteQuery(full);
-    setShowPatientList(false);
-  };
-
-  const seleccionarServicioChip = (srv: any) => {
-    setConcepto(srv.nombre);
-    if (srv.precio_tipo === 'fijo' && srv.precio > 0) {
-      setMonto(srv.precio);
-    }
-  };
-
-  const enviarCobro = async () => {
-    if (!monto || monto <= 0) return setErr('Indica un monto válido.');
-    if (!concepto.trim()) return setErr('Indica el concepto del cobro.');
-
-    setSaving(true);
-    setErr('');
-    try {
-      const modo = metodoPago === 'pendiente' ? 'pendiente' : 'cobrado';
-      await api('/clinic/sales', {
-        method: 'POST',
-        body: JSON.stringify({
-          patient_id: selectedPatientId,
-          items: [{ concepto: concepto.trim(), precio: monto, cantidad: 1, precio_tipo: 'variable' }],
-          estado: modo,
-          metodo_pago: modo === 'cobrado' ? metodoPago : null,
-          facturada: modo === 'cobrado' ? facturada : false,
-          lugar: lugar.trim() || 'Consultorio',
-          aseguradora: !selectedPatientId && pacienteQuery.trim() ? pacienteQuery.trim() : null,
-          procedimiento: concepto.trim(),
-          tarjeta_nombre: metodoPago === 'tarjeta' ? tarjetaNombre.trim() : null,
-          guardar_cliente: guardarCliente,
-        }),
-      });
-      onSuccess();
-    } catch (e: any) {
-      setErr(e.message || 'Error');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
-      <div className="bg-[#0d1520] border border-[#00e5a0]/40 rounded-2xl p-5 sm:p-6 w-full max-w-lg space-y-4 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between pb-2 border-b border-[#1e2d3d]">
-          <h3 className="text-lg font-bold text-[#dde6ef]">Registrar Ingreso</h3>
-          <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef] text-xl font-bold">×</button>
-        </div>
-
-        {err && <div className="p-3 rounded-xl bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-xs text-[#f43f5e]">{err}</div>}
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Monto ($ MXN) *</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            className={`${inp} text-xl font-bold font-mono text-[#00e5a0]`}
-            placeholder="0"
-            value={monto || ''}
-            onChange={e => setMonto(+e.target.value || 0)}
-            autoFocus
-          />
-        </div>
-
-        <div className="relative">
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">¿A quién se cobró?</label>
-          <input
-            className={inp}
-            placeholder="Buscar paciente o escribir aseguradora/particular…"
-            value={pacienteQuery}
-            onFocus={() => setShowPatientList(true)}
-            onChange={e => {
-              setPacienteQuery(e.target.value);
-              setSelectedPatientId(null);
-              setShowPatientList(true);
-            }}
-          />
-          {showPatientList && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-[#111820] border border-[#1e2d3d] rounded-xl shadow-2xl max-h-48 overflow-y-auto z-50 divide-y divide-[#1e2d3d]">
-              {pacientesFiltrados.map((p: any) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => seleccionarPaciente(p)}
-                  className="w-full text-left p-2.5 hover:bg-[#162231] text-xs text-[#dde6ef]"
-                >
-                  {p.first_name} {p.last_name}
-                </button>
-              ))}
-              {pacienteQuery.trim() && (
-                <button
-                  type="button"
-                  onClick={() => setShowPatientList(false)}
-                  className="w-full text-left p-2.5 bg-[#0d1520] text-xs text-[#00e5a0] font-semibold"
-                >
-                  + Usar "{pacienteQuery}"
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Concepto *</label>
-          <input
-            className={inp}
-            placeholder="Ej. Consulta Médica, Holter, Cirugía…"
-            value={concepto}
-            onChange={e => setConcepto(e.target.value)}
-          />
-          {services.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {services.slice(0, 5).map((s: any) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => seleccionarServicioChip(s)}
-                  className="px-2.5 py-1 rounded-lg text-xs bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#00e5a0]"
-                >
-                  {s.nombre} {s.precio > 0 ? `(${money(s.precio)})` : ''}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Sede / Hospital</label>
-          <select className={inp} value={lugar} onChange={e => setLugar(e.target.value)}>
-            {SEDES_PREDEFINIDAS.map((sed, i) => (
-              <option key={i} value={sed}>{sed}</option>
-            ))}
-            <option value="Otro">Otro</option>
-          </select>
-        </div>
-
-        <div className="flex items-center justify-between p-3 rounded-xl bg-[#111820] border border-[#1e2d3d]">
-          <span className="text-xs text-[#dde6ef]">¿Emitimos factura?</span>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => setFacturada(false)}
-              className="px-3 py-1 rounded-lg text-xs"
-              style={{ background: !facturada ? '#1e2d3d' : 'transparent', color: !facturada ? '#dde6ef' : '#7a95aa' }}
-            >
-              No
-            </button>
-            <button
-              type="button"
-              onClick={() => setFacturada(true)}
-              className="px-3 py-1 rounded-lg text-xs"
-              style={{ background: facturada ? '#00e5a0' : 'transparent', color: facturada ? '#051b14' : '#7a95aa' }}
-            >
-              Sí
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Forma de Pago</label>
-          <div className="grid grid-cols-4 gap-1.5">
-            {[
-              { id: 'efectivo', l: 'Efectivo' },
-              { id: 'tarjeta', l: 'Tarjeta' },
-              { id: 'transferencia', l: 'Transf.' },
-              { id: 'pendiente', l: 'Por cobrar' },
-            ].map(m => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setMetodoPago(m.id as any)}
-                className="py-2 rounded-xl text-xs font-semibold transition"
-                style={{
-                  background: metodoPago === m.id ? '#00e5a0' : '#111820',
-                  color: metodoPago === m.id ? '#051b14' : '#dde6ef',
-                  border: `1px solid ${metodoPago === m.id ? '#00e5a0' : '#1e2d3d'}`,
-                }}
-              >
-                {m.l}
-              </button>
-            ))}
-          </div>
-
-          {metodoPago === 'tarjeta' && (
-            <input
-              className={`${inp} mt-2 text-xs`}
-              placeholder="¿Qué tarjeta? (Ej. Débito BBVA, Terminal Clip…)"
-              value={tarjetaNombre}
-              onChange={e => setTarjetaNombre(e.target.value)}
-            />
-          )}
-        </div>
-
-        <div className="flex gap-2 pt-2 border-t border-[#1e2d3d]">
-          <button onClick={onClose} className={`${btnSecondary} flex-1`}>Cancelar</button>
-          <button onClick={enviarCobro} disabled={saving} className={`${btnPrimary} bg-[#00e5a0] text-[#051b14] flex-1`}>
-            {saving ? 'Guardando…' : 'Guardar Ingreso'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODAL: REGISTRAR GASTO (SENCILLO: SOLO GASTO)
-// ─────────────────────────────────────────────────────────────────────────────
-function ModalRegistrarGasto({
-  onClose,
-  onSuccess,
-}: {
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [monto, setMonto] = useState<number>(0);
-  const [concepto, setConcepto] = useState('');
-  const [proveedor, setProveedor] = useState('');
-  const [facturado, setFacturado] = useState(false);
-  const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
-  const [tarjetaNombre, setTarjetaNombre] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  const enviarGasto = async () => {
-    if (!monto || monto <= 0) return setErr('Indica un monto válido.');
-    if (!concepto.trim()) return setErr('Indica en qué se gastó.');
-
-    setSaving(true);
-    setErr('');
-    try {
-      await api('/clinic/expenses', {
-        method: 'POST',
-        body: JSON.stringify({
-          concepto: concepto.trim(),
-          monto,
-          proveedor: proveedor.trim() || null,
-          fecha: new Date().toISOString().slice(0, 10),
-          facturado,
-          tarjeta_nombre: formaPago === 'tarjeta' ? tarjetaNombre.trim() : null,
-        }),
-      });
-      onSuccess();
-    } catch (e: any) {
-      setErr(e.message || 'Error');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
-      <div className="bg-[#0d1520] border border-[#f43f5e]/40 rounded-2xl p-5 sm:p-6 w-full max-w-lg space-y-4 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between pb-2 border-b border-[#1e2d3d]">
-          <h3 className="text-lg font-bold text-[#dde6ef]">Registrar Gasto</h3>
-          <button onClick={onClose} className="text-[#7a95aa] hover:text-[#dde6ef] text-xl font-bold">×</button>
-        </div>
-
-        {err && <div className="p-3 rounded-xl bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-xs text-[#f43f5e]">{err}</div>}
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Monto ($ MXN) *</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            className={`${inp} text-xl font-bold font-mono text-[#f43f5e]`}
-            placeholder="0"
-            value={monto || ''}
-            onChange={e => setMonto(+e.target.value || 0)}
-            autoFocus
-          />
-        </div>
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">¿En qué se gastó? *</label>
-          <input
-            className={inp}
-            placeholder="Ej. Renta, Insumos médicos, Doctoralia, Ads Meta, Luz…"
-            value={concepto}
-            onChange={e => setConcepto(e.target.value)}
-          />
-
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {['Renta Consultorio', 'Insumos Médicos', 'Doctoralia', 'Publicidad Meta', 'Internet / Celular', 'Papelería'].map((c, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setConcepto(c)}
-                className="px-2.5 py-1 rounded-lg text-xs bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] hover:border-[#f43f5e]"
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Proveedor / Comercio (Opcional)</label>
-          <input
-            className={inp}
-            placeholder="Ej. Farmacia, CFE, Propietario, Telcel…"
-            value={proveedor}
-            onChange={e => setProveedor(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center justify-between p-3 rounded-xl bg-[#111820] border border-[#1e2d3d]">
-          <span className="text-xs text-[#dde6ef]">¿Se facturó el gasto?</span>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => setFacturado(false)}
-              className="px-3 py-1 rounded-lg text-xs"
-              style={{ background: !facturado ? '#1e2d3d' : 'transparent', color: !facturado ? '#dde6ef' : '#7a95aa' }}
-            >
-              No
-            </button>
-            <button
-              type="button"
-              onClick={() => setFacturado(true)}
-              className="px-3 py-1 rounded-lg text-xs"
-              style={{ background: facturado ? '#38bdf8' : 'transparent', color: facturado ? '#051b14' : '#7a95aa' }}
-            >
-              Sí
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-[10px] font-mono text-[#7a95aa] uppercase block mb-1">Método de Pago</label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'efectivo', l: 'Efectivo' },
-              { id: 'transferencia', l: 'Transferencia' },
-              { id: 'tarjeta', l: 'Tarjeta' },
-            ].map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setFormaPago(p.id as any)}
-                className="py-2.5 rounded-xl text-xs font-semibold transition"
-                style={{
-                  background: formaPago === p.id ? '#1e2d3d' : '#111820',
-                  color: formaPago === p.id ? '#dde6ef' : '#7a95aa',
-                  border: `1px solid ${formaPago === p.id ? '#00e5a0' : '#1e2d3d'}`,
-                }}
-              >
-                {p.l}
-              </button>
-            ))}
-          </div>
-
-          {formaPago === 'tarjeta' && (
-            <input
-              className={`${inp} mt-2 text-xs`}
-              placeholder="¿Qué tarjeta? (Ej. Débito, Crédito…)"
-              value={tarjetaNombre}
-              onChange={e => setTarjetaNombre(e.target.value)}
-            />
-          )}
-        </div>
-
-        <div className="flex gap-2 pt-2 border-t border-[#1e2d3d]">
-          <button onClick={onClose} className={`${btnSecondary} flex-1`}>Cancelar</button>
-          <button onClick={enviarGasto} disabled={saving} className={`${btnPrimary} bg-[#f43f5e] text-white flex-1 hover:bg-[#e11d48]`}>
-            {saving ? 'Guardando…' : 'Guardar Gasto'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
