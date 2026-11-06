@@ -368,6 +368,7 @@ export default function ChatBubble() {
       {/* ── Burbuja flotante ─────────────────────────────────────────────── */}
       <button
         onClick={() => setOpen(o => !o)}
+        data-chat-bubble
         className="fixed z-[9999] flex items-center justify-center transition-all duration-200"
         style={{
           bottom: '24px',

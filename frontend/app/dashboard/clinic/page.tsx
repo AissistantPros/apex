@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getRole } from '@/app/lib/role';
 import { useEntitlements } from '@/app/lib/useEntitlements';
 import StaffManagement from '../staff/StaffManagement';
@@ -15,7 +16,18 @@ const btnSecondary = 'min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-semibold 
 
 type TabKey = 'resumen' | 'ingresos' | 'gastos' | 'equipo' | 'servicios';
 
+// `useSearchParams` pide un Suspense por encima para que Next pueda construir la página.
 export default function ClinicPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClinicContenido />
+    </Suspense>
+  );
+}
+
+function ClinicContenido() {
+  const router = useRouter();
+  const params = useSearchParams();
   const { features } = useEntitlements();
   const [role, setRole] = useState<string>('doctor');
   const esRecepcion = role === 'receptionist';
@@ -88,26 +100,23 @@ export default function ClinicPage() {
     listas.then(() => loadAll());
   }, [loadAll, loadCatalogs]);
 
-  // Manejar query params de entrada para pestañas y modales directos (ej. ?tab=ingresos&action=nuevo)
+  // Entradas por URL desde el menú: ?tab=ingresos&action=nuevo abre la ventana de ingreso.
+  // `useSearchParams` reacciona a cada navegación (también estando ya en esta página) y, una vez
+  // abierta la ventana, se quita `action` de la URL: así el mismo botón del menú puede volver a
+  // abrirla después de cerrarla (antes la URL quedaba igual y no pasaba nada).
   useEffect(() => {
-    const checkParams = () => {
-      if (typeof window !== 'undefined') {
-        const p = new URLSearchParams(window.location.search);
-        const t = p.get('tab');
-        const act = p.get('action');
-        if (t && ['resumen', 'insights', 'ingresos', 'gastos', 'equipo', 'servicios'].includes(t)) {
-          setTab(t === 'insights' ? 'resumen' : (t as TabKey));
-        }
-        if (act === 'nuevo') {
-          if (t === 'ingresos' || (!t && esRecepcion)) setShowModalIngreso(true);
-          else if (t === 'gastos') setShowModalGasto(true);
-        }
-      }
-    };
-    checkParams();
-    window.addEventListener('popstate', checkParams);
-    return () => window.removeEventListener('popstate', checkParams);
-  }, [esRecepcion]);
+    const t = params.get('tab');
+    const act = params.get('action');
+    if (t && ['resumen', 'insights', 'ingresos', 'gastos', 'equipo', 'servicios'].includes(t)) {
+      setTab(t === 'insights' ? 'resumen' : (t as TabKey));
+    }
+    if (act === 'nuevo') {
+      if (t === 'ingresos' || (!t && esRecepcion)) setShowModalIngreso(true);
+      else if (t === 'gastos') setShowModalGasto(true);
+      else return;
+      router.replace(t ? `/dashboard/clinic?tab=${encodeURIComponent(t)}` : '/dashboard/clinic', { scroll: false });
+    }
+  }, [params, esRecepcion, router]);
 
   const flash = (t: string) => {
     setMsg(t);

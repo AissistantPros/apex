@@ -58,26 +58,26 @@ function Hoja({
         role="dialog"
         aria-modal="true"
         aria-labelledby={tituloId}
-        className="flex max-h-[94dvh] w-full flex-col rounded-t-2xl border border-[var(--c-border)] bg-[var(--c-card)] shadow-[0_20px_50px_rgba(15,23,42,0.25)] sm:max-h-[90dvh] sm:max-w-[480px] sm:rounded-xl"
+        className="flex max-h-[94dvh] w-full flex-col rounded-t-2xl border border-[var(--c-border)] bg-[var(--c-card)] shadow-[0_20px_50px_rgba(15,23,42,0.25)] sm:max-h-[90dvh] sm:max-w-[520px] sm:rounded-2xl"
       >
-        <header className="flex items-start justify-between gap-3 px-5 pb-2 pt-5">
+        <header className="flex items-start justify-between gap-3 px-6 pb-3 pt-6">
           <div>
             <h2 id={tituloId} className="text-xl font-semibold text-[var(--c-text)]">{titulo}</h2>
-            {subtitulo && <p className="mt-0.5 text-[13px] text-[var(--c-text-3)]">{subtitulo}</p>}
+            {subtitulo && <p className="mt-1 text-sm text-[var(--c-text-3)]">{subtitulo}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="-mr-2 -mt-1 flex h-11 w-11 items-center justify-center rounded-lg text-[var(--c-text-3)] transition hover:bg-[var(--c-hover)] hover:text-[var(--c-text)]"
+            className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[var(--c-text-3)] transition hover:bg-[var(--c-hover)] hover:text-[var(--c-text)]"
           >
             <Icon name="close" size={20} />
           </button>
         </header>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-3">{children}</div>
+        <div className="min-w-0 flex-1 space-y-6 overflow-y-auto overflow-x-hidden px-6 py-4">{children}</div>
 
-        <footer className="flex items-center justify-end gap-2 border-t border-[var(--c-border)] px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">{pie}</footer>
+        <footer className="flex items-center justify-end gap-3 border-t border-[var(--c-border)] px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">{pie}</footer>
       </div>
     </div>
   );
@@ -87,11 +87,11 @@ function CampoMonto({ value, onChange }: { value: string; onChange: (v: string) 
   const id = useId();
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-[var(--c-text-2)]">
+      <label htmlFor={id} className="mb-2 block text-sm font-medium text-[var(--c-text-2)]">
         Monto<span className="text-[var(--c-danger)]"> *</span>
       </label>
-      <div className="flex h-14 items-center rounded-lg border border-[var(--c-border-2)] bg-[var(--c-card)] px-3 transition focus-within:border-[var(--c-primary)] focus-within:shadow-[0_0_0_3px_var(--c-green-15)]">
-        <span className="text-xl text-[var(--c-text-3)]">$</span>
+      <div className="flex h-16 items-center rounded-xl border border-[var(--c-border-2)] bg-[var(--c-card)] px-3 transition focus-within:border-[var(--c-primary)] focus-within:shadow-[0_0_0_3px_var(--c-green-15)]">
+        <span className="pl-1 text-xl text-[var(--c-text-3)]">$</span>
         <input
           id={id}
           type="text"
@@ -101,9 +101,9 @@ function CampoMonto({ value, onChange }: { value: string; onChange: (v: string) 
           placeholder="0.00"
           value={value}
           onChange={e => onChange(e.target.value.replace(/[^0-9.,]/g, ''))}
-          className="w-full bg-transparent px-2 text-2xl font-semibold tabular-nums text-[var(--c-text)] outline-none placeholder:font-normal placeholder:text-[var(--c-text-3)]"
+          className="min-w-0 flex-1 bg-transparent px-2 text-2xl font-semibold tabular-nums text-[var(--c-text)] outline-none placeholder:font-normal placeholder:text-[var(--c-text-3)]"
         />
-        <span className="text-[13px] text-[var(--c-text-3)]">MXN</span>
+        <span className="pr-1 text-sm text-[var(--c-text-3)]">MXN</span>
       </div>
     </div>
   );
@@ -114,8 +114,8 @@ function Opciones<T extends string>({
 }: { label: string; value: T; onChange: (v: T) => void; items: { id: T; l: string }[]; columnas: string }) {
   return (
     <div>
-      <div className="mb-1.5 text-[13px] font-medium text-[var(--c-text-2)]">{label}</div>
-      <div role="radiogroup" aria-label={label} className={`grid gap-2 ${columnas}`}>
+      <div className="mb-2 text-sm font-medium text-[var(--c-text-2)]">{label}</div>
+      <div role="radiogroup" aria-label={label} className={`grid gap-2.5 ${columnas}`}>
         {items.map(it => {
           const on = it.id === value;
           return (
@@ -125,7 +125,7 @@ function Opciones<T extends string>({
               role="radio"
               aria-checked={on}
               onClick={() => onChange(it.id)}
-              className={`h-11 rounded-lg border px-1 text-[14px] transition ${
+              className={`h-12 min-w-0 rounded-xl border px-2 text-[14px] transition ${
                 on
                   ? 'border-[var(--c-primary)] bg-[var(--c-green-10)] font-semibold text-[var(--c-primary)]'
                   : 'border-[var(--c-border-2)] bg-[var(--c-card)] text-[var(--c-text-2)] hover:bg-[var(--c-hover)]'
@@ -142,10 +142,10 @@ function Opciones<T extends string>({
 
 function Interruptor({ label, ayuda, value, onChange }: { label: string; ayuda?: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
+    <div className="flex items-center justify-between gap-4 py-1">
+      <div className="min-w-0">
         <div className="text-[15px] text-[var(--c-text)]">{label}</div>
-        {ayuda && <div className="text-[13px] text-[var(--c-text-3)]">{ayuda}</div>}
+        {ayuda && <div className="mt-0.5 text-sm text-[var(--c-text-3)]">{ayuda}</div>}
       </div>
       <button
         type="button"
@@ -165,7 +165,7 @@ function Aviso({ texto }: { texto: string }) {
   return (
     <p
       role="alert"
-      className="rounded-lg border border-[color-mix(in_srgb,var(--c-danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--c-danger)_8%,transparent)] px-3 py-2.5 text-[14px] text-[var(--c-danger)]"
+      className="rounded-xl border border-[color-mix(in_srgb,var(--c-danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--c-danger)_8%,transparent)] px-4 py-3 text-[14px] text-[var(--c-danger)]"
     >
       {texto}
     </p>
@@ -173,11 +173,11 @@ function Aviso({ texto }: { texto: string }) {
 }
 
 const campoTexto =
-  'h-11 w-full rounded-lg border border-[var(--c-border-2)] bg-[var(--c-card)] px-3 text-base text-[var(--c-text)] placeholder:text-[var(--c-text-3)] outline-none transition focus:border-[var(--c-primary)] focus:shadow-[0_0_0_3px_var(--c-green-15)]';
+  'h-12 w-full rounded-xl border border-[var(--c-border-2)] bg-[var(--c-card)] px-3.5 text-base text-[var(--c-text)] placeholder:text-[var(--c-text-3)] outline-none transition focus:border-[var(--c-primary)] focus:shadow-[0_0_0_3px_var(--c-green-15)]';
 const botonSec =
-  'h-11 rounded-lg px-4 text-[15px] font-medium text-[var(--c-text-2)] transition hover:bg-[var(--c-hover)] disabled:opacity-50';
+  'h-12 rounded-xl px-5 text-[15px] font-medium text-[var(--c-text-2)] transition hover:bg-[var(--c-hover)] disabled:opacity-50';
 const botonPri =
-  'h-11 min-w-[148px] rounded-lg bg-[var(--c-primary)] px-5 text-[15px] font-semibold text-[var(--c-primary-fg)] transition hover:opacity-90 active:scale-[0.99] disabled:opacity-50';
+  'h-12 min-w-[148px] rounded-xl bg-[var(--c-primary)] px-6 text-[15px] font-semibold text-[var(--c-primary-fg)] transition hover:opacity-90 active:scale-[0.99] disabled:opacity-50';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REGISTRAR INGRESO
@@ -331,7 +331,7 @@ export function ModalRegistrarIngreso({
         nuevo={{ nombre: 'lugar', guardar: guardarLugar, onGuardar: setGuardarLugar }}
       />
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         <Opciones<PagoIngreso>
           label="Forma de pago"
           value={pago}
@@ -480,7 +480,7 @@ export function ModalRegistrarGasto({
         nuevo={{ nombre: 'proveedor', guardar: guardarProveedor, onGuardar: setGuardarProveedor }}
       />
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         <Opciones<PagoGasto>
           label="Forma de pago"
           value={pago}

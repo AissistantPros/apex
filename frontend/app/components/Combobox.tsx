@@ -144,7 +144,7 @@ export default function Combobox({
 
   return (
     <div>
-      <label htmlFor={inputId} className="block text-[13px] font-medium text-[var(--c-text-2)] mb-1.5">
+      <label htmlFor={inputId} className="block text-sm font-medium text-[var(--c-text-2)] mb-2">
         {label}{requerido && <span className="text-[var(--c-danger)]"> *</span>}
       </label>
 
@@ -172,9 +172,9 @@ export default function Combobox({
             setAbierto(true);
           }}
           onKeyDown={onKey}
-          className="h-11 w-full rounded-lg border border-[var(--c-border-2)] bg-[var(--c-card)] pl-3 pr-9 text-base text-[var(--c-text)] placeholder:text-[var(--c-text-3)] outline-none transition focus:border-[var(--c-primary)] focus:shadow-[0_0_0_3px_var(--c-green-15)]"
+          className="h-12 w-full rounded-xl border border-[var(--c-border-2)] bg-[var(--c-card)] pl-3.5 pr-10 text-base text-[var(--c-text)] placeholder:text-[var(--c-text-3)] outline-none transition focus:border-[var(--c-primary)] focus:shadow-[0_0_0_3px_var(--c-green-15)]"
         />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-text-3)]">
+        <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--c-text-3)]">
           {exacta
             ? <Icon name="tick" size={16} className="text-[var(--c-success)]" title="En tu lista" />
             : <Icon name="chevron" size={16} />}
@@ -187,17 +187,17 @@ export default function Combobox({
           role="listbox"
           aria-label={label}
           style={{ position: 'fixed', left: pos!.left, width: pos!.width, top: pos!.top, bottom: pos!.bottom, maxHeight: ESPACIO_LISTA }}
-          className="z-[200] overflow-y-auto rounded-lg border border-[var(--c-border-2)] bg-[var(--c-card)] py-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)]"
+          className="z-[200] overflow-y-auto overflow-x-hidden rounded-xl border border-[var(--c-border-2)] bg-[var(--c-card)] py-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)]"
         >
           {cargando && filas.length === 0 && (
-            <li className="px-3 py-2.5 text-[13px] text-[var(--c-text-3)]">Cargando…</li>
+            <li className="px-4 py-3 text-sm text-[var(--c-text-3)]">Cargando…</li>
           )}
           {filas.map((f, i) => {
             const g = grupoDe(i);
             const esActivo = i === activo;
             return (
               <li key={f.tipo === 'op' ? f.op.id : 'otro'} role="presentation">
-                {g && <div className="px-3 pt-2 pb-1 text-[12px] font-medium text-[var(--c-text-3)]">{g}</div>}
+                {g && <div className="px-4 pt-3 pb-1 text-xs font-medium text-[var(--c-text-3)]">{g}</div>}
                 <div
                   id={`${listaId}-${i}`}
                   role="option"
@@ -205,14 +205,14 @@ export default function Combobox({
                   onMouseDown={e => e.preventDefault()}
                   onClick={() => (f.tipo === 'op' ? elegir(f.op) : elegirOtro())}
                   onMouseEnter={() => setActivo(i)}
-                  className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-[15px] ${
+                  className={`flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-[15px] ${
                     esActivo ? 'bg-[var(--c-hover)]' : ''
                   } ${f.tipo === 'otro' ? 'border-t border-[var(--c-border)] text-[var(--c-primary)] font-medium' : 'text-[var(--c-text)]'}`}
                 >
                   {f.tipo === 'op' ? (
                     <>
                       <span className="truncate">{f.op.label}</span>
-                      {f.op.hint && <span className="shrink-0 text-[13px] text-[var(--c-text-3)]">{f.op.hint}</span>}
+                      {f.op.hint && <span className="shrink-0 text-sm text-[var(--c-text-3)]">{f.op.hint}</span>}
                     </>
                   ) : (
                     <span className="flex items-center gap-2"><Icon name="plus" size={15} />Otro {nuevo!.nombre}…</span>
@@ -226,21 +226,21 @@ export default function Combobox({
       )}
 
       {esNuevo && nuevo && (
-        <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-lg bg-[var(--c-subtle)] px-3 py-2.5 text-[14px] text-[var(--c-text)]">
+        <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl bg-[var(--c-subtle)] px-4 py-3 text-[14px] text-[var(--c-text)]">
           <input
             type="checkbox"
             checked={nuevo.guardar}
             onChange={e => nuevo.onGuardar(e.target.checked)}
-            className="mt-0.5 shrink-0 accent-[var(--c-primary)]"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--c-primary)]"
           />
-          <span>
+          <span className="min-w-0">
             {nuevo.etiquetaGuardar ?? `Guardar este ${nuevo.nombre} para la próxima vez`}
-            <span className="block text-[13px] text-[var(--c-text-3)]">«{value.trim()}» aún no está en tu lista.</span>
+            <span className="mt-0.5 block break-words text-[13px] text-[var(--c-text-3)]">«{value.trim()}» aún no está en tu lista.</span>
           </span>
         </label>
       )}
 
-      {ayuda && !esNuevo && <p className="mt-1.5 text-[13px] text-[var(--c-text-3)]">{ayuda}</p>}
+      {ayuda && !esNuevo && <p className="mt-2 text-[13px] text-[var(--c-text-3)]">{ayuda}</p>}
     </div>
   );
 }

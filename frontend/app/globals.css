@@ -198,3 +198,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
     transition-duration: 0.01ms !important; scroll-behavior: auto !important;
   }
 }
+
+/* Con una ventana modal abierta, la burbuja del asistente no debe tapar sus botones (en el celular cubría "Guardar"). */
+body:has([role="dialog"][aria-modal="true"]) [data-chat-bubble] {
+  display: none;
+}
