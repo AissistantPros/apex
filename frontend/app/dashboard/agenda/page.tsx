@@ -6,8 +6,8 @@ import { mix } from '@/app/lib/ui';
 import Icon from '@/app/components/Icon';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-const HOUR_PX = 64; // 64px por hora: altura amplia y legible de Google Calendar
-const SNAP = 5;     // Salto a 5 minutos al arrastrar
+const HOUR_PX = 64;  // 64px por hora: cada cuarto de 15 minutos mide exactamente 16px
+const SNAP_MIN = 15; // Snapping exacto a bloques de 15 minutos (:00, :15, :30, :45)
 const DIAS_CORTO = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const DIAS_COL = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
 const DIAS_LARGO = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -67,6 +67,23 @@ const hm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const minToHM = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const wdOf = (d: Date) => (d.getDay() + 6) % 7; // Lun=0, Dom=6
 
+/**
+ * Snapping exacto a bloques de 15 minutos:
+ * - 0 a 14 min (< :15)   -> :00
+ * - 15 a 29 min (< :30)  -> :15
+ * - 30 a 44 min (< :45)  -> :30
+ * - 45 a 59 min (< sig)  -> :45
+ */
+function snapToQuarterMin(relY: number, minH: number, maxH: number): number {
+  const maxRelY = Math.max(0, (maxH - minH) * HOUR_PX - 1);
+  const clampedY = Math.max(0, Math.min(maxRelY, relY));
+  const hourIdx = Math.floor(clampedY / HOUR_PX);
+  const frac = (clampedY % HOUR_PX) / HOUR_PX;
+  const quarter = Math.min(3, Math.max(0, Math.floor(frac * 4)));
+  const totalMin = (minH + hourIdx) * 60 + quarter * 15;
+  return Math.max(minH * 60, Math.min(maxH * 60, totalMin));
+}
+
 type Appt = {
   id: string;
   starts_at: string;
@@ -121,14 +138,36 @@ export default function AgendaPage() {
   const [fDoc, setFDoc] = useState('');
   const [fStatus, setFStatus] = useState<string>('todos'); // 'todos' | 'pendientes' | 'confirmadas_ia' | 'confirmadas_manual'
   const [busqueda, setBusqueda] = useState('');
-  const [blockMode, setBlockMode] = useState(false);
   const [msg, setMsg] = useState('');
   const [modal, setModal] = useState<any>(null); // Slide panel derecho que compacta el calendario
   const [hoursModal, setHoursModal] = useState(false);
 
-  // Drag para crear rango en vacío
+  // Menú contextual flotante con clic derecho (Google Calendar Look & Feel)
+  type CtxMenu = {
+    visible: boolean;
+    x: number;
+    y: number;
+    type: 'slot' | 'header' | 'appt' | 'block';
+    day?: Date;
+    startMin?: number;
+    endMin?: number;
+    appt?: Appt;
+    block?: Block;
+  };
+  const [contextMenu, setContextMenu] = useState<CtxMenu>({ visible: false, x: 0, y: 0, type: 'slot' });
+
+  // Cerrar menú contextual al hacer clic en cualquier parte de la ventana
+  useEffect(() => {
+    const closeMenu = () => {
+      if (contextMenu.visible) setContextMenu(prev => ({ ...prev, visible: false }));
+    };
+    window.addEventListener('click', closeMenu);
+    return () => window.removeEventListener('click', closeMenu);
+  }, [contextMenu.visible]);
+
+  // Drag para crear rango en vacío con snapping exacto de 15 minutos
   const [sel, setSel] = useState<{ day: string; a: number; b: number } | null>(null);
-  const dragRef = useRef<{ day: Date; startY: number; col: HTMLElement } | null>(null);
+  const dragRef = useRef<{ day: Date; startMin: number; col: HTMLElement; startClientY: number } | null>(null);
 
   // Drag & drop fluido de citas estilo Google Calendar
   const gridRef = useRef<HTMLDivElement>(null);
@@ -300,8 +339,8 @@ export default function AgendaPage() {
     const colW = (rect.width - timeGutterW) / visibleDays.length;
     let di = Math.floor((clientX - rect.left - timeGutterW) / colW);
     di = Math.max(0, Math.min(visibleDays.length - 1, di));
-    let min = minH * 60 + ((clientY - rect.top) / HOUR_PX) * 60;
-    min = Math.max(minH * 60, Math.min(maxH * 60, Math.round(min / SNAP) * SNAP));
+    const relY = clientY - rect.top;
+    const min = snapToQuarterMin(relY, minH, maxH);
     return { di, min };
   }, [visibleDays, minH, maxH]);
 
@@ -384,17 +423,16 @@ export default function AgendaPage() {
   const locColor = (id?: string) => ctx?.locations.find(l => l.id === id)?.color || 'var(--c-blue)';
   const docName = (id?: string) => ctx?.doctors.find(d => d.id === id)?.display_name || '';
 
-  const yToMin = (col: HTMLElement, clientY: number) => {
-    const rect = col.getBoundingClientRect();
-    const m = minH * 60 + ((clientY - rect.top) / HOUR_PX) * 60;
-    return Math.max(minH * 60, Math.min(maxH * 60, Math.round(m / SNAP) * SNAP));
-  };
-
+  // Inicio de selección por clic o arrastre
   const onDown = (day: Date, e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Solo clic principal izquierdo
     const col = e.currentTarget as HTMLElement;
-    const y = yToMin(col, e.clientY);
-    dragRef.current = { day, startY: y, col };
-    setSel({ day: ymd(day), a: y, b: y + (blockMode ? 30 : 30) });
+    const rect = col.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    const startMin = snapToQuarterMin(relY, minH, maxH);
+    dragRef.current = { day, startMin, col, startClientY: e.clientY };
+    setSel({ day: ymd(day), a: startMin, b: Math.min(maxH * 60, startMin + 30) });
+    if (contextMenu.visible) setContextMenu(prev => ({ ...prev, visible: false }));
   };
 
   const onMove = (e: React.MouseEvent) => {
@@ -405,7 +443,8 @@ export default function AgendaPage() {
         setMove({ appt: chipDragRef.current.appt, offsetMin: chipDragRef.current.offsetMin });
         const pt = pointToTime(e.clientX, e.clientY);
         if (pt) {
-          const startMin = Math.round((pt.min - chipDragRef.current.offsetMin) / SNAP) * SNAP;
+          const rawStart = pt.min - chipDragRef.current.offsetMin;
+          const startMin = Math.round(rawStart / SNAP_MIN) * SNAP_MIN;
           setPreview({ di: pt.di, startMin, ok: canPlace(chipDragRef.current.appt, visibleDays[pt.di], startMin) });
         }
       }
@@ -413,10 +452,25 @@ export default function AgendaPage() {
     }
 
     if (!dragRef.current) return;
-    const y = yToMin(dragRef.current.col, e.clientY);
-    const a = Math.min(dragRef.current.startY, y),
-      b = Math.max(dragRef.current.startY, y);
-    setSel({ day: ymd(dragRef.current.day), a, b: Math.max(b, a + SNAP) });
+    const distY = Math.abs(e.clientY - dragRef.current.startClientY);
+    if (distY > 6) {
+      const rect = dragRef.current.col.getBoundingClientRect();
+      const relY = e.clientY - rect.top;
+      const currMin = snapToQuarterMin(relY, minH, maxH);
+      if (currMin >= dragRef.current.startMin) {
+        setSel({
+          day: ymd(dragRef.current.day),
+          a: dragRef.current.startMin,
+          b: Math.min(maxH * 60, currMin + 15),
+        });
+      } else {
+        setSel({
+          day: ymd(dragRef.current.day),
+          a: Math.max(minH * 60, currMin),
+          b: dragRef.current.startMin + 15,
+        });
+      }
+    }
   };
 
   const onUp = async () => {
@@ -445,45 +499,27 @@ export default function AgendaPage() {
     const d = dragRef.current;
     dragRef.current = null;
     if (!d || !sel) return;
-    const dur = Math.max(SNAP, sel.b - sel.a);
-    const day = d.day;
-    const start = new Date(day);
+
+    const start = new Date(d.day);
     start.setHours(0, 0, 0, 0);
     start.setMinutes(sel.a);
-    const end = new Date(day);
+    const end = new Date(d.day);
     end.setHours(0, 0, 0, 0);
-    end.setMinutes(sel.a + (dur < SNAP * 2 ? 30 : dur));
+    end.setMinutes(sel.b);
 
-    if (blockMode) {
-      const reason = prompt('Bloquear este horario. Razón (opcional):', '') ?? '';
-      try {
-        await api('/appointments/blocks', {
-          method: 'POST',
-          body: JSON.stringify({
-            starts_at: start.toISOString(),
-            ends_at: end.toISOString(),
-            location_id: fLoc || null,
-            reason,
-          }),
-        });
-        setSel(null);
-        load();
-      } catch (e: any) {
-        flash(e.message);
-        setSel(null);
-      }
-    } else {
-      openCreateRange(start, end);
-      setSel(null);
-    }
+    openCreateRange(start, end, 'appointment');
+    setSel(null);
   };
 
-  const openCreateRange = (start: Date, end: Date) => {
+  // Abrir panel lateral para agendar cita o bloquear horario
+  const openCreateRange = (start: Date, end: Date, tab: 'appointment' | 'block' = 'appointment') => {
     const dur = Math.max(15, Math.round((+end - +start) / 60000));
     setModal({
       mode: 'create',
+      tab,
       fecha: ymd(start),
       hora: hm(start),
+      hora_fin: hm(end),
       dur,
       doctor_id: fDoc || ctx?.doctors[0]?.id || '',
       location_id: fLoc || ctx?.locations[0]?.id || '',
@@ -495,6 +531,181 @@ export default function AgendaPage() {
       status: 'scheduled',
       notify_email: false,
       notify_whatsapp: false,
+      all_day: false,
+    });
+  };
+
+  // Abrir directamente en la pestaña de bloqueo
+  const openCreateBlock = (day: Date, startMin: number, endMin: number, allDay = false) => {
+    const start = new Date(day);
+    start.setHours(0, 0, 0, 0);
+    start.setMinutes(startMin);
+    const end = new Date(day);
+    end.setHours(0, 0, 0, 0);
+    end.setMinutes(endMin);
+    setModal({
+      mode: 'create',
+      tab: 'block',
+      fecha: ymd(day),
+      hora: hm(start),
+      hora_fin: hm(end),
+      dur: Math.max(15, endMin - startMin),
+      all_day: allDay,
+      doctor_id: fDoc || '',
+      location_id: fLoc || ctx?.locations[0]?.id || '',
+      patient_name: '',
+      reason: '',
+      notes: '',
+      status: 'scheduled',
+    });
+  };
+
+  // Abrir inspector para ver o eliminar un bloqueo existente
+  const openViewBlock = (b: Block) => {
+    const s = new Date(b.starts_at);
+    const e = new Date(b.ends_at);
+    setModal({
+      mode: 'view_block',
+      id: b.id,
+      block: b,
+      reason: b.reason || 'Horario bloqueado',
+      fecha: ymd(s),
+      hora: hm(s),
+      hora_fin: hm(e),
+      all_day: b.all_day || false,
+      location_id: b.location_id || '',
+    });
+  };
+
+  // Guardar bloqueo de horario en backend
+  const saveBlock = async () => {
+    const m = modal;
+    const start = m.all_day
+      ? new Date(`${m.fecha}T00:00:00`)
+      : new Date(`${m.fecha}T${m.hora}`);
+    const end = m.all_day
+      ? new Date(`${m.fecha}T23:59:59`)
+      : new Date(+start + (m.dur || 60) * 60000);
+
+    const payload = {
+      starts_at: start.toISOString(),
+      ends_at: end.toISOString(),
+      location_id: m.location_id || null,
+      doctor_id: m.doctor_id || null,
+      all_day: Boolean(m.all_day),
+      reason: (m.reason || '').trim() || 'Horario bloqueado',
+    };
+
+    try {
+      await api('/appointments/blocks', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      setModal(null);
+      load();
+      flash('✓ Horario bloqueado con éxito.');
+    } catch (e: any) {
+      setModal({ ...m, error: e.message });
+    }
+  };
+
+  // Eliminar bloqueo de horario
+  const deleteBlockById = async (blockId: string) => {
+    try {
+      await api(`/appointments/blocks/${blockId}`, { method: 'DELETE' });
+      if (modal?.id === blockId) setModal(null);
+      load();
+      flash('Bloqueo eliminado correctamente.');
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+
+  // Bloqueo rápido de 1 clic desde el menú contextual
+  const quickBlockRange = async (day: Date, startMin: number, endMin: number, reason = 'Horario bloqueado') => {
+    const start = new Date(day);
+    start.setHours(0, 0, 0, 0);
+    start.setMinutes(startMin);
+    const end = new Date(day);
+    end.setHours(0, 0, 0, 0);
+    end.setMinutes(endMin);
+    try {
+      await api('/appointments/blocks', {
+        method: 'POST',
+        body: JSON.stringify({
+          starts_at: start.toISOString(),
+          ends_at: end.toISOString(),
+          location_id: fLoc || null,
+          reason,
+        }),
+      });
+      flash(`✓ Bloqueado ${minToHM(startMin)} - ${minToHM(endMin)}.`);
+      load();
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+
+  // Manejadores de menú contextual de clic derecho
+  const handleColContextMenu = (day: Date, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const col = e.currentTarget as HTMLElement;
+    const rect = col.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    const clickedMin = snapToQuarterMin(relY, minH, maxH);
+    let a = clickedMin;
+    let b = Math.min(maxH * 60, clickedMin + 30);
+    if (sel && sel.day === ymd(day) && clickedMin >= sel.a && clickedMin <= sel.b) {
+      a = sel.a;
+      b = sel.b;
+    } else {
+      setSel({ day: ymd(day), a, b });
+    }
+    setContextMenu({
+      visible: true,
+      x: Math.min(window.innerWidth - 250, e.clientX),
+      y: Math.min(window.innerHeight - 280, e.clientY),
+      type: 'slot',
+      day,
+      startMin: a,
+      endMin: b,
+    });
+  };
+
+  const handleHeaderContextMenu = (day: Date, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: Math.min(window.innerWidth - 250, e.clientX),
+      y: Math.min(window.innerHeight - 220, e.clientY),
+      type: 'header',
+      day,
+    });
+  };
+
+  const handleApptContextMenu = (appt: Appt, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: Math.min(window.innerWidth - 250, e.clientX),
+      y: Math.min(window.innerHeight - 280, e.clientY),
+      type: 'appt',
+      appt,
+    });
+  };
+
+  const handleBlockContextMenu = (block: Block, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: Math.min(window.innerWidth - 250, e.clientX),
+      y: Math.min(window.innerHeight - 200, e.clientY),
+      type: 'block',
+      block,
     });
   };
 
@@ -545,41 +756,6 @@ export default function AgendaPage() {
       if (modal && modal.id === apptId) {
         setModal({ ...modal, notify_whatsapp: true, notes: r.notes || modal.notes });
       }
-      load();
-    } catch (e: any) {
-      flash(e.message);
-    }
-  };
-
-  const blockWholeDay = async (day: Date) => {
-    if (!ctx?.can_manage) return;
-    const reason = prompt(`Bloquear todo el ${DIAS_LARGO[wdOf(day)]} ${day.getDate()}. Razón (opcional):`, '') ?? '';
-    const start = new Date(day);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(day);
-    end.setHours(23, 59, 0, 0);
-    try {
-      await api('/appointments/blocks', {
-        method: 'POST',
-        body: JSON.stringify({
-          starts_at: start.toISOString(),
-          ends_at: end.toISOString(),
-          all_day: true,
-          location_id: fLoc || null,
-          reason,
-        }),
-      });
-      load();
-    } catch (e: any) {
-      flash(e.message);
-    }
-  };
-
-  const delBlock = async (b: Block) => {
-    if (!ctx?.can_manage) return;
-    if (!confirm('¿Quitar este bloqueo?')) return;
-    try {
-      await api(`/appointments/blocks/${b.id}`, { method: 'DELETE' });
       load();
     } catch (e: any) {
       flash(e.message);
@@ -838,10 +1014,21 @@ export default function AgendaPage() {
           <button
             type="button"
             onClick={() => openCreateRange(new Date(), new Date(Date.now() + 30 * 60000))}
-            className="w-full flex items-center justify-center gap-3 py-3 px-5 rounded-full bg-[#00e5a0] text-[#051b14] font-bold text-sm shadow-[0_4px_16px_rgba(0,229,160,0.3)] hover:shadow-[0_6px_22px_rgba(0,229,160,0.45)] hover:scale-[1.02] active:scale-95 transition-all cursor-pointer mb-5"
+            className="w-full flex items-center justify-center gap-3 py-3 px-5 rounded-full bg-[#00e5a0] text-[#051b14] font-bold text-sm shadow-[0_4px_16px_rgba(0,229,160,0.3)] hover:shadow-[0_6px_22px_rgba(0,229,160,0.45)] hover:scale-[1.02] active:scale-95 transition-all cursor-pointer mb-2"
           >
             <span className="text-2xl font-black leading-none">+</span>
             <span className="tracking-wide">Crear cita</span>
+          </button>
+
+          {/* Botón secundario para bloquear horario o día de forma intuitiva */}
+          <button
+            type="button"
+            onClick={() => openCreateBlock(currentDate, 9 * 60, 10 * 60)}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full bg-[#111820] hover:bg-[#162231] text-[#f43f5e] border border-[#f43f5e]/30 text-xs font-bold transition cursor-pointer mb-5"
+            title="Bloquear un horario específico o el día completo"
+          >
+            <span>🚫</span>
+            <span>Bloquear horario / día</span>
           </button>
 
           {/* Mini Calendario Mensual Interactivo (Google Calendar Signature Widget) */}
@@ -1070,16 +1257,12 @@ export default function AgendaPage() {
             <div className="mt-auto pt-3 border-t border-[#1e2d3d]/60 space-y-1.5">
               <button
                 type="button"
-                onClick={() => setBlockMode(v => !v)}
-                className="w-full py-1.5 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center justify-between"
-                style={{
-                  background: blockMode ? 'var(--c-red)' : '#111820',
-                  borderColor: blockMode ? 'var(--c-red)' : '#1e2d3d',
-                  color: blockMode ? '#fff' : '#f43f5e',
-                }}
+                onClick={() => openCreateBlock(currentDate, 9 * 60, 10 * 60)}
+                className="w-full py-2 px-3 rounded-xl text-xs font-semibold bg-[#111820] hover:bg-[#162231] border border-[#f43f5e]/30 text-[#f43f5e] transition cursor-pointer flex items-center justify-between"
+                title="Bloquear un horario o día completo"
               >
-                <span>{blockMode ? '● Bloqueo Activo' : 'Bloquear horarios'}</span>
-                <span className="text-[10px] font-mono opacity-80">{blockMode ? 'ON' : 'OFF'}</span>
+                <span>🚫 Bloquear horarios</span>
+                <span className="text-[10px] font-mono text-[#7a95aa]">+</span>
               </button>
 
               <button
@@ -1122,15 +1305,12 @@ export default function AgendaPage() {
                     <div
                       key={idx}
                       onClick={() => {
-                        if (blockMode) {
-                          blockWholeDay(day);
-                          return;
-                        }
                         const start = new Date(day);
                         start.setHours(9, 0, 0, 0);
                         const end = new Date(+start + 30 * 60000);
-                        openCreateRange(start, end);
+                        openCreateRange(start, end, 'appointment');
                       }}
+                      onContextMenu={e => handleHeaderContextMenu(day, e)}
                       className={`min-h-[105px] border-b border-r last:border-r-0 border-[#1e2d3d] p-1.5 flex flex-col gap-1 cursor-pointer hover:bg-[#111820]/70 transition ${
                         !inMonth ? 'opacity-30 bg-[#070a0e]/40' : ''
                       }`}
@@ -1158,8 +1338,16 @@ export default function AgendaPage() {
                       </div>
 
                       {dayBlocks.length > 0 && (
-                        <div className="text-[9px] px-1.5 py-0.5 rounded bg-[#f43f5e]/15 text-[#f43f5e] border border-[#f43f5e]/30 truncate">
-                          Bloqueado
+                        <div
+                          onClick={e => {
+                            e.stopPropagation();
+                            openViewBlock(dayBlocks[0]);
+                          }}
+                          onContextMenu={e => handleBlockContextMenu(dayBlocks[0], e)}
+                          className="text-[9px] px-1.5 py-0.5 rounded bg-[#f43f5e]/15 text-[#f43f5e] border border-[#f43f5e]/30 truncate hover:bg-[#f43f5e]/25 cursor-pointer"
+                          title="Clic para ver o eliminar este bloqueo"
+                        >
+                          🚫 {dayBlocks[0].reason || 'Bloqueado'}
                         </div>
                       )}
 
@@ -1329,10 +1517,8 @@ export default function AgendaPage() {
                     return (
                       <div
                         key={i}
-                        onClick={() => blockMode && blockWholeDay(d)}
-                        className={`border-r last:border-r-0 border-[#1e2d3d] py-2 px-1 text-center select-none ${
-                          blockMode ? 'cursor-pointer hover:bg-[#f43f5e]/10' : ''
-                        }`}
+                        onContextMenu={e => handleHeaderContextMenu(d, e)}
+                        className="border-r last:border-r-0 border-[#1e2d3d] py-2 px-1 text-center select-none"
                       >
                         <p className={`text-[11px] font-bold uppercase tracking-wider ${isToday ? 'text-[#00e5a0]' : 'text-[#7a95aa]'}`}>
                           {DIAS_COL[wdOf(d)]}
@@ -1382,6 +1568,7 @@ export default function AgendaPage() {
                           className="relative border-r last:border-r-0 border-[#1e2d3d]"
                           style={{ height: gridH }}
                           onMouseDown={e => onDown(day, e)}
+                          onContextMenu={e => handleColContextMenu(day, e)}
                         >
                           {/* Líneas horizontales de horas (sólida para hora, sutil para media hora) */}
                           {hoursRows.map(h => (
@@ -1418,8 +1605,8 @@ export default function AgendaPage() {
                               style={{
                                 top: ((sel.a - minH * 60) / 60) * HOUR_PX,
                                 height: Math.max(8, ((sel.b - sel.a) / 60) * HOUR_PX),
-                                background: blockMode ? mix('var(--c-red)', 30) : mix('var(--c-green)', 25),
-                                border: `1.5px dashed ${blockMode ? 'var(--c-red)' : 'var(--c-green)'}`,
+                                background: modal?.tab === 'block' ? mix('var(--c-red)', 30) : mix('var(--c-green)', 25),
+                                border: `1.5px dashed ${modal?.tab === 'block' ? 'var(--c-red)' : 'var(--c-green)'}`,
                               }}
                             />
                           )}
@@ -1431,24 +1618,29 @@ export default function AgendaPage() {
                               const s = new Date(b.starts_at);
                               const e = new Date(b.ends_at);
                               const top = (s.getHours() + s.getMinutes() / 60 - minH) * HOUR_PX;
-                              const height = Math.max(12, ((+e - +s) / 3600000) * HOUR_PX);
+                              const height = Math.max(16, ((+e - +s) / 3600000) * HOUR_PX);
+                              const isSelected = modal?.id === b.id;
                               return (
                                 <div
                                   key={b.id}
                                   onMouseDown={ev => ev.stopPropagation()}
-                                  onClick={() => delBlock(b)}
-                                  title={ctx?.can_manage ? 'Clic para quitar este bloqueo' : ''}
-                                  className="absolute left-1 right-1 rounded-lg overflow-hidden cursor-pointer z-10"
+                                  onClick={() => openViewBlock(b)}
+                                  onContextMenu={ev => handleBlockContextMenu(b, ev)}
+                                  title="Clic para ver o eliminar este bloqueo (o clic derecho para opciones)"
+                                  className={`absolute left-1 right-1 rounded-lg overflow-hidden cursor-pointer z-10 transition hover:brightness-125 ${
+                                    isSelected ? 'ring-2 ring-[#f43f5e] shadow-lg' : ''
+                                  }`}
                                   style={{
                                     top: Math.max(0, top),
                                     height,
                                     background:
                                       'repeating-linear-gradient(45deg,#f43f5e22,#f43f5e22 6px,#0d152080 6px,#0d152080 12px)',
-                                    border: '1px solid #f43f5e55',
+                                    border: '1px solid #f43f5e77',
                                   }}
                                 >
-                                  <p className="text-[10px] font-semibold text-[#f43f5e] px-1.5 pt-0.5 truncate">
-                                    {b.reason || 'Horario bloqueado'}
+                                  <p className="text-[10px] font-semibold text-[#f43f5e] px-1.5 pt-0.5 truncate flex items-center gap-1">
+                                    <span>🚫</span>
+                                    <span>{b.reason || 'Horario bloqueado'}</span>
                                   </p>
                                 </div>
                               );
@@ -1471,6 +1663,7 @@ export default function AgendaPage() {
                                 <div
                                   key={a.id}
                                   onMouseDown={e => startMoveAppt(a, e)}
+                                  onContextMenu={e => handleApptContextMenu(a, e)}
                                   className={`absolute left-1 right-1 rounded-xl px-2.5 py-1 text-left overflow-hidden cursor-grab active:cursor-grabbing transition-all select-none shadow-sm hover:brightness-110 ${
                                     isSelected ? 'ring-2 ring-[#00e5a0] shadow-xl z-20' : 'hover:shadow-md'
                                   }`}
@@ -1560,6 +1753,8 @@ export default function AgendaPage() {
               modal={modal}
               setModal={setModal}
               onSave={save}
+              onSaveBlock={saveBlock}
+              onDeleteBlock={deleteBlockById}
               onCancel={cancelar}
               onConfirmManual={() => confirmarAMano(modal.id)}
               onConfirmAgent={() => confirmarConAgente(modal.id)}
@@ -1568,6 +1763,232 @@ export default function AgendaPage() {
           )}
         </aside>
       </div>
+
+      {/* ── MENÚ CONTEXTUAL FLOTANTE (CLIC DERECHO) ESTILO GOOGLE CALENDAR ── */}
+      {contextMenu.visible && (
+        <div
+          className="fixed z-50 bg-[#0d1520] border border-[#1e2d3d] rounded-2xl shadow-2xl py-1.5 w-60 text-xs backdrop-blur-md animate-in fade-in select-none"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={e => e.stopPropagation()}
+        >
+          {contextMenu.type === 'slot' && (
+            <>
+              <div className="px-3 py-1.5 border-b border-[#1e2d3d]/60 text-[10px] font-mono text-[#7a95aa] flex items-center justify-between">
+                <span>{contextMenu.day ? `${DIAS_CORTO[wdOf(contextMenu.day)]} ${contextMenu.day.getDate()}` : ''}</span>
+                <span className="font-bold text-[#dde6ef]">
+                  {minToHM(contextMenu.startMin || 0)} - {minToHM(contextMenu.endMin || 0)}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const day = contextMenu.day || currentDate;
+                  const start = new Date(day);
+                  start.setHours(0, 0, 0, 0);
+                  start.setMinutes(contextMenu.startMin || 0);
+                  const end = new Date(day);
+                  end.setHours(0, 0, 0, 0);
+                  end.setMinutes(contextMenu.endMin || (contextMenu.startMin || 0) + 30);
+                  openCreateRange(start, end, 'appointment');
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#dde6ef] hover:bg-[#162231] hover:text-[#00e5a0] flex items-center gap-2 font-semibold transition cursor-pointer"
+              >
+                <span>🩺</span>
+                <span>Agendar cita médica</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const day = contextMenu.day || currentDate;
+                  openCreateBlock(day, contextMenu.startMin || 0, contextMenu.endMin || (contextMenu.startMin || 0) + 60);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#f43f5e] hover:bg-[#f43f5e]/15 flex items-center gap-2 font-semibold transition cursor-pointer"
+              >
+                <span>🚫</span>
+                <span>Bloquear este horario</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const day = contextMenu.day || currentDate;
+                  quickBlockRange(day, contextMenu.startMin || 0, contextMenu.endMin || (contextMenu.startMin || 0) + 60);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] flex items-center gap-2 transition cursor-pointer text-[11px]"
+              >
+                <span>⚡</span>
+                <span>Bloqueo rápido 1-clic</span>
+              </button>
+
+              <div className="border-t border-[#1e2d3d]/60 my-1" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  const day = contextMenu.day || currentDate;
+                  openCreateBlock(day, 0, 24 * 60, true);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] flex items-center gap-2 transition cursor-pointer"
+              >
+                <span>📅</span>
+                <span>Bloquear todo el día</span>
+              </button>
+            </>
+          )}
+
+          {contextMenu.type === 'header' && (
+            <>
+              <div className="px-3 py-1.5 border-b border-[#1e2d3d]/60 text-[10px] font-mono text-[#7a95aa]">
+                {contextMenu.day ? `${DIAS_LARGO[wdOf(contextMenu.day)]} ${contextMenu.day.getDate()}` : ''}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const day = contextMenu.day || currentDate;
+                  openCreateBlock(day, 0, 24 * 60, true);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#f43f5e] hover:bg-[#f43f5e]/15 flex items-center gap-2 font-semibold transition cursor-pointer"
+              >
+                <span>📅</span>
+                <span>Bloquear todo el día</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const day = contextMenu.day || currentDate;
+                  const start = new Date(day);
+                  start.setHours(9, 0, 0, 0);
+                  const end = new Date(+start + 30 * 60000);
+                  openCreateRange(start, end, 'appointment');
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#dde6ef] hover:bg-[#162231] hover:text-[#00e5a0] flex items-center gap-2 transition cursor-pointer"
+              >
+                <span>🩺</span>
+                <span>Agendar cita a las 09:00</span>
+              </button>
+            </>
+          )}
+
+          {contextMenu.type === 'appt' && contextMenu.appt && (
+            <>
+              <div className="px-3 py-1.5 border-b border-[#1e2d3d]/60 text-[10px] font-mono text-[#7a95aa] truncate">
+                {contextMenu.appt.patient_name}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (contextMenu.appt) confirmarAMano(contextMenu.appt.id);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#38bdf8] hover:bg-[#38bdf8]/15 flex items-center gap-2 font-semibold transition cursor-pointer"
+              >
+                <span>👤</span>
+                <span>Confirmar a mano</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (contextMenu.appt) confirmarConAgente(contextMenu.appt.id);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#00e5a0] hover:bg-[#00e5a0]/15 flex items-center gap-2 font-semibold transition cursor-pointer"
+              >
+                <span>🤖</span>
+                <span>Confirmar con Agente IA</span>
+              </button>
+              {contextMenu.appt.patient_phone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cleanPhone = (contextMenu.appt?.patient_phone || '').replace(/\D/g, '');
+                    const s = new Date(contextMenu.appt?.starts_at || '');
+                    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+                      `Hola ${contextMenu.appt?.patient_name || ''}, te escribimos de Consultorio APEX para confirmar tu cita médica programada para el día ${ymd(s)} a las ${hm(s)} hrs.`
+                    )}`;
+                    window.open(url, '_blank');
+                    setContextMenu(prev => ({ ...prev, visible: false }));
+                  }}
+                  className="w-full text-left px-3 py-2 text-[#25D366] hover:bg-[#25D366]/15 flex items-center gap-2 font-semibold transition cursor-pointer"
+                >
+                  <span>💬</span>
+                  <span>WhatsApp directo</span>
+                </button>
+              )}
+              <div className="border-t border-[#1e2d3d]/60 my-1" />
+              <button
+                type="button"
+                onClick={() => {
+                  if (contextMenu.appt) openEdit(contextMenu.appt);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#dde6ef] hover:bg-[#162231] flex items-center gap-2 transition cursor-pointer"
+              >
+                <span>✏️</span>
+                <span>Ver y editar detalles</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (contextMenu.appt && confirm(`¿Cancelar la cita de ${contextMenu.appt.patient_name}?`)) {
+                    try {
+                      await api(`/appointments/${contextMenu.appt.id}`, { method: 'DELETE' });
+                      flash('Cita cancelada.');
+                      load();
+                    } catch (err: any) {
+                      flash(err.message);
+                    }
+                  }
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#f43f5e] hover:bg-[#f43f5e]/15 flex items-center gap-2 transition cursor-pointer"
+              >
+                <span>🗑️</span>
+                <span>Cancelar cita</span>
+              </button>
+            </>
+          )}
+
+          {contextMenu.type === 'block' && contextMenu.block && (
+            <>
+              <div className="px-3 py-1.5 border-b border-[#1e2d3d]/60 text-[10px] font-mono text-[#f43f5e] truncate">
+                {contextMenu.block.reason || 'Bloqueo'}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (contextMenu.block) openViewBlock(contextMenu.block);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#dde6ef] hover:bg-[#162231] flex items-center gap-2 font-semibold transition cursor-pointer"
+              >
+                <span>ℹ️</span>
+                <span>Ver detalles</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (contextMenu.block) {
+                    await deleteBlockById(contextMenu.block.id);
+                  }
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full text-left px-3 py-2 text-[#f43f5e] hover:bg-[#f43f5e]/15 flex items-center gap-2 font-semibold transition cursor-pointer"
+              >
+                <span>🗑️</span>
+                <span>Eliminar bloqueo</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Modal de Horario de Consultas */}
       {hoursModal && ctx && (
@@ -1616,12 +2037,14 @@ function ClosedOverlays({ minH, maxH, intervals }: { minH: number; maxH: number;
   );
 }
 
-// ── SLIDE POPUP INSPECTOR: CONFIRMACIÓN A MANO + CONFIRMACIÓN POR AGENTE IA ──
+// ── SLIDE POPUP INSPECTOR: CITAS MÉDICAS + BLOQUEO DE HORARIOS ESTILO GOOGLE CALENDAR ──
 function ApptSlidePanel({
   ctx,
   modal,
   setModal,
   onSave,
+  onSaveBlock,
+  onDeleteBlock,
   onCancel,
   onConfirmManual,
   onConfirmAgent,
@@ -1631,6 +2054,8 @@ function ApptSlidePanel({
   modal: any;
   setModal: (m: any) => void;
   onSave: () => void;
+  onSaveBlock: () => void;
+  onDeleteBlock: (id: string) => void;
   onCancel: () => void;
   onConfirmManual: () => void;
   onConfirmAgent: () => void;
@@ -1683,20 +2108,106 @@ function ApptSlidePanel({
     return `https://wa.me/${cleanPhone}?text=${msg}`;
   }, [modal.patient_phone, modal.patient_name, modal.fecha, modal.hora]);
 
+  // Si estamos inspeccionando un bloqueo existente
+  if (modal.mode === 'view_block') {
+    const locName = ctx?.locations.find(l => l.id === modal.location_id)?.name || 'Todas las sedes';
+    return (
+      <div className="flex flex-col h-full bg-[#0d1520]">
+        <div className="p-4 border-b border-[#1e2d3d] flex items-center justify-between gap-3 bg-[#111820]/80 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-[#f43f5e]/15 text-[#f43f5e]">
+              <span className="text-base">🚫</span>
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-[#dde6ef]">Horario Bloqueado</h2>
+              <p className="text-[11px] text-[#7a95aa]">Espacio reservado en agenda</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer"
+            title="Cerrar panel (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+          <div className="p-4 rounded-2xl bg-[#111820] border border-[#1e2d3d] space-y-3">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#7a95aa]">
+              Motivo del Bloqueo
+            </span>
+            <p className="text-base font-bold text-[#dde6ef]">
+              {modal.reason || 'Sin motivo especificado'}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-[#111820] border border-[#1e2d3d] space-y-2.5">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#7a95aa]">
+              Fecha y Horario
+            </span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#dde6ef]">
+              <span>📅 {modal.fecha}</span>
+              <span className="text-[#7a95aa]">·</span>
+              <span>{modal.all_day ? 'Todo el día' : `${modal.hora} a ${modal.hora_fin} hrs`}</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-[#111820] border border-[#1e2d3d] space-y-2.5">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#7a95aa]">
+              Sede Aplicable
+            </span>
+            <p className="text-xs font-semibold text-[#dde6ef] flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#f43f5e]" />
+              <span>{locName}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-[#1e2d3d] bg-[#111820]/80 flex items-center justify-between gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => onDeleteBlock(modal.id)}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-[#f43f5e] bg-[#f43f5e]/15 border border-[#f43f5e]/30 hover:bg-[#f43f5e]/25 transition cursor-pointer flex items-center gap-1.5"
+          >
+            <span>🗑️</span>
+            <span>Eliminar bloqueo</span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isBlockTab = modal.tab === 'block';
+
   return (
     <div className="flex flex-col h-full bg-[#0d1520]">
       {/* Cabecera del Panel */}
       <div className="p-4 border-b border-[#1e2d3d] flex items-center justify-between gap-3 bg-[#111820]/80 shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-[#00e5a0]/15 text-[#00e5a0]">
-            <Icon name="calendar" size={17} />
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+            isBlockTab ? 'bg-[#f43f5e]/15 text-[#f43f5e]' : 'bg-[#00e5a0]/15 text-[#00e5a0]'
+          }`}>
+            {isBlockTab ? <span className="text-base">🚫</span> : <Icon name="calendar" size={17} />}
           </div>
           <div>
             <h2 className="text-sm font-bold text-[#dde6ef]">
-              {modal.mode === 'create' ? 'Nueva Cita Médica' : 'Detalles de la Cita'}
+              {modal.mode === 'create'
+                ? isBlockTab ? 'Bloquear Horario o Día' : 'Nueva Cita Médica'
+                : 'Detalles de la Cita'}
             </h2>
             <p className="text-[11px] text-[#7a95aa]">
-              {modal.mode === 'create' ? 'Programa una nueva atención' : 'Gestiona y confirma la cita'}
+              {modal.mode === 'create'
+                ? isBlockTab ? 'Inhabilita citas para cirugías o descansos' : 'Programa una nueva atención'
+                : 'Gestiona y confirma la cita'}
             </p>
           </div>
         </div>
@@ -1712,286 +2223,474 @@ function ApptSlidePanel({
 
       {/* Contenido con scroll */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-        {/* ── SECCIÓN ESTELAR: CONFIRMACIÓN DE CITA (MANUAL VS AGENTE IA) ── */}
-        {modal.mode === 'edit' && (
-          <div className="p-3.5 rounded-2xl bg-[#111820] border border-[#1e2d3d] space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#7a95aa]">
-                Confirmación de Asistencia
-              </span>
-              <span
-                className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1"
-                style={{ background: confInfo.color + '22', color: confInfo.color }}
-              >
-                <span>{confInfo.tipo === 'agent' ? '🤖' : confInfo.tipo === 'manual' ? '👤' : '⏳'}</span>
-                <span>{confInfo.etiqueta}</span>
-              </span>
+        {/* Selector de Pestañas estilo Google Calendar cuando se crea nuevo evento */}
+        {modal.mode === 'create' && (
+          <div className="flex rounded-xl bg-[#111820] p-1 border border-[#1e2d3d]">
+            <button
+              type="button"
+              onClick={() => setModal({ ...modal, tab: 'appointment' })}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                !isBlockTab ? 'bg-[#00e5a0] text-[#051b14] shadow' : 'text-[#7a95aa] hover:text-[#dde6ef]'
+              }`}
+            >
+              <span>🩺 Cita médica</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModal({ ...modal, tab: 'block' })}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                isBlockTab ? 'bg-[#f43f5e] text-[#fff] shadow' : 'text-[#7a95aa] hover:text-[#dde6ef]'
+              }`}
+            >
+              <span>🚫 Bloquear horario</span>
+            </button>
+          </div>
+        )}
+
+        {/* ── MODO BLOQUEO DE HORARIO O DÍA ── */}
+        {isBlockTab ? (
+          <div className="space-y-4 animate-in fade-in">
+            {/* Motivo del Bloqueo + Chips rápidos */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                Motivo del Bloqueo *
+              </label>
+              <input
+                className={inp}
+                placeholder="Razón (ej. Cirugía, Congreso, Descanso)"
+                value={modal.reason || ''}
+                onChange={e => setModal({ ...modal, reason: e.target.value, error: '' })}
+              />
+
+              {/* Chips rápidos de motivos comunes */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[
+                  { label: '🏥 Cirugía', val: 'Cirugía programada' },
+                  { label: '👥 Reunión / Ateneo', val: 'Reunión médica / Ateneo' },
+                  { label: '🍽️ Comida / Personal', val: 'Horario de comida / Asunto personal' },
+                  { label: '📑 Trámites', val: 'Trámites administrativos' },
+                  { label: '🌴 Vacaciones', val: 'Vacaciones / Descanso' },
+                  { label: '🚨 Urgencia', val: 'Atención de urgencia' },
+                ].map(chip => (
+                  <button
+                    key={chip.val}
+                    type="button"
+                    onClick={() => setModal({ ...modal, reason: chip.val, error: '' })}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
+                      modal.reason === chip.val
+                        ? 'bg-[#f43f5e]/20 border-[#f43f5e] text-[#f43f5e]'
+                        : 'bg-[#111820] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] hover:border-[#4b6377]'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Botones de acción rápida: A mano y Con Agente */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={onConfirmManual}
-                className="py-2 px-3 rounded-xl bg-[#38bdf8]/10 hover:bg-[#38bdf8]/20 border border-[#38bdf8]/30 text-[#38bdf8] text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
-                title="Confirmar inmediatamente en el sistema que el paciente asistirá"
-              >
-                <span>👤</span>
-                <span>Confirmar a mano</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onConfirmAgent}
-                className="py-2 px-3 rounded-xl bg-[#00e5a0]/10 hover:bg-[#00e5a0]/20 border border-[#00e5a0]/30 text-[#00e5a0] text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
-                title="Enviar mensaje de WhatsApp interactivo para que el Agente IA confirme"
-              >
-                <span>🤖</span>
-                <span>Confirmar con Agente</span>
-              </button>
+            {/* Checkbox de Todo el Día */}
+            <div className="p-3 rounded-xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between cursor-pointer" onClick={() => setModal({ ...modal, all_day: !modal.all_day })}>
+              <div>
+                <p className="text-xs font-bold text-[#dde6ef]">Bloquear todo el día</p>
+                <p className="text-[11px] text-[#7a95aa]">Inhabilita todo el día para citas</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(modal.all_day)}
+                onChange={e => setModal({ ...modal, all_day: e.target.checked })}
+                className="w-4 h-4 accent-[#f43f5e] cursor-pointer"
+              />
             </div>
 
-            {/* Vista previa del mensaje del Agente IA y enlace WhatsApp */}
-            <div className="flex items-center justify-between text-[11px] pt-1">
-              <button
-                type="button"
-                onClick={() => setShowAgentPreview(p => !p)}
-                className="text-[#7a95aa] hover:text-[#00e5a0] underline transition cursor-pointer"
-              >
-                {showAgentPreview ? 'Ocultar plantilla del Agente' : 'Ver mensaje del Agente IA'}
-              </button>
+            {/* Fecha y Horario */}
+            <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                Fecha y Horario *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[#7a95aa]">Fecha</label>
+                  <input
+                    type="date"
+                    className={inp}
+                    value={modal.fecha}
+                    onChange={e => setModal({ ...modal, fecha: e.target.value, error: '' })}
+                  />
+                </div>
+                {!modal.all_day ? (
+                  <div>
+                    <label className="text-[10px] text-[#7a95aa]">Hora de inicio</label>
+                    <input
+                      type="time"
+                      className={inp}
+                      value={modal.hora}
+                      onChange={e => setModal({ ...modal, hora: e.target.value, error: '' })}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center text-xs text-[#00e5a0] font-mono font-semibold pt-5">
+                    ✓ 00:00 a 23:59 hrs
+                  </div>
+                )}
+              </div>
 
-              {whatsappUrl && (
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#25D366] hover:underline flex items-center gap-1 font-semibold"
-                >
-                  <span>💬 WhatsApp directo</span>
-                </a>
+              {!modal.all_day && (
+                <div>
+                  <label className="text-[10px] text-[#7a95aa]">Duración del bloqueo</label>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    {[
+                      { d: 30, lbl: '30m' },
+                      { d: 60, lbl: '1h' },
+                      { d: 120, lbl: '2h' },
+                      { d: 240, lbl: '4h' },
+                      { d: 480, lbl: '8h' },
+                    ].map(({ d, lbl }) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setModal({ ...modal, dur: d, error: '' })}
+                        className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer"
+                        style={{
+                          background: modal.dur === d ? '#f43f5e' : '#111820',
+                          borderColor: modal.dur === d ? '#f43f5e' : '#1e2d3d',
+                          color: modal.dur === d ? '#fff' : '#dde6ef',
+                        }}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
-            {showAgentPreview && (
-              <div className="p-2.5 rounded-xl bg-[#070a0e] border border-[#1e2d3d] text-[11px] text-[#7a95aa] leading-relaxed space-y-1">
-                <p className="text-[#dde6ef] font-semibold text-[10px] uppercase font-mono">Mensaje automático WhatsApp:</p>
-                <p>
-                  &ldquo;Hola <b>{modal.patient_name || 'Paciente'}</b>, te escribimos de Consultorio APEX para confirmar tu cita médica agendada para el <b>{modal.fecha}</b> a las <b>{modal.hora} hrs</b>.
-                  <br />Responde: <b>1</b> para Confirmar o <b>2</b> para Reprogramar.&rdquo;
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Paciente y Contacto */}
-        <div className="space-y-2.5">
-          <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
-            Paciente *
-          </label>
-          <div className="relative">
-            <input
-              className={inp}
-              placeholder="Escribe el nombre del paciente (busca existente)"
-              value={modal.patient_name}
-              onChange={e => searchPatient(e.target.value)}
-              onFocus={() => sug.length > 0 && setOpenSug(true)}
-            />
-            {openSug && sug.length > 0 && (
-              <div className="absolute z-40 left-0 right-0 mt-1 bg-[#111820] border border-[#1e2d3d] rounded-xl shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
-                {sug.map(p => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => pick(p)}
-                    className="w-full text-left px-3 py-2.5 hover:bg-[#162231] text-xs text-[#dde6ef] border-b last:border-b-0 border-[#1e2d3d]/50 flex items-center justify-between cursor-pointer"
-                  >
-                    <span className="font-semibold">{p.full_name}</span>
-                    <span className="text-[11px] text-[#7a95aa] font-mono">{p.phone || p.email || ''}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {modal.patient_id && (
-              <p className="text-[10px] text-[#00e5a0] mt-1 flex items-center gap-1 font-semibold">
-                <span>✓</span> Paciente registrado en el sistema
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa]">Teléfono</label>
-              <input
-                className={inp}
-                placeholder="Teléfono (para WhatsApp)"
-                value={modal.patient_phone || ''}
-                onChange={e => setModal({ ...modal, patient_phone: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa]">Correo</label>
-              <input
-                className={inp}
-                placeholder="Correo electrónico"
-                value={modal.patient_email || ''}
-                onChange={e => setModal({ ...modal, patient_email: e.target.value })}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Fecha y Horario */}
-        <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
-          <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
-            Fecha y Horario *
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-[#7a95aa]">Fecha</label>
-              <input
-                type="date"
-                className={inp}
-                value={modal.fecha}
-                onChange={e => setModal({ ...modal, fecha: e.target.value, error: '' })}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] text-[#7a95aa]">Hora de inicio</label>
-              <input
-                type="time"
-                className={inp}
-                value={modal.hora}
-                onChange={e => setModal({ ...modal, hora: e.target.value, error: '' })}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[10px] text-[#7a95aa]">Duración</label>
-            <div className="flex flex-wrap items-center gap-1.5 mt-1">
-              {[15, 20, 30, 45, 60].map(d => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => setModal({ ...modal, dur: d, error: '' })}
-                  className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer"
-                  style={{
-                    background: modal.dur === d ? 'var(--c-green)' : '#111820',
-                    borderColor: modal.dur === d ? 'var(--c-green)' : '#1e2d3d',
-                    color: modal.dur === d ? 'var(--c-primary-fg)' : '#dde6ef',
-                  }}
+            {/* Sede y Profesional */}
+            <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                Alcance del Bloqueo
+              </label>
+              <div>
+                <label className="text-[10px] text-[#7a95aa]">Sede / Consultorio</label>
+                <select
+                  className={inp}
+                  value={modal.location_id || ''}
+                  onChange={e => setModal({ ...modal, location_id: e.target.value })}
                 >
-                  {d}m
-                </button>
-              ))}
-              <div className="flex items-center gap-1 ml-1">
+                  <option value="">— Todas las sedes de la clínica —</option>
+                  {ctx?.locations.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {ctx && ctx.doctors.length > 0 && (
+                <div>
+                  <label className="text-[10px] text-[#7a95aa]">Médico afectado (opcional)</label>
+                  <select
+                    className={inp}
+                    value={modal.doctor_id || ''}
+                    onChange={e => setModal({ ...modal, doctor_id: e.target.value })}
+                  >
+                    <option value="">— Toda la clínica / Sin médico específico —</option>
+                    {ctx.doctors.map(d => (
+                      <option key={d.id} value={d.id}>{d.display_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {modal.error && (
+              <div className="text-xs text-[#f43f5e] bg-[#f43f5e]/10 border border-[#f43f5e]/30 rounded-xl p-3">
+                {modal.error}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── MODO CITA MÉDICA HABITUAL ── */
+          <>
+            {/* ── SECCIÓN ESTELAR: CONFIRMACIÓN DE CITA (MANUAL VS AGENTE IA) ── */}
+            {modal.mode === 'edit' && (
+              <div className="p-3.5 rounded-2xl bg-[#111820] border border-[#1e2d3d] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#7a95aa]">
+                    Confirmación de Asistencia
+                  </span>
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1"
+                    style={{ background: confInfo.color + '22', color: confInfo.color }}
+                  >
+                    <span>{confInfo.tipo === 'agent' ? '🤖' : confInfo.tipo === 'manual' ? '👤' : '⏳'}</span>
+                    <span>{confInfo.etiqueta}</span>
+                  </span>
+                </div>
+
+                {/* Botones de acción rápida: A mano y Con Agente */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={onConfirmManual}
+                    className="py-2 px-3 rounded-xl bg-[#38bdf8]/10 hover:bg-[#38bdf8]/20 border border-[#38bdf8]/30 text-[#38bdf8] text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                    title="Confirmar inmediatamente en el sistema que el paciente asistirá"
+                  >
+                    <span>👤</span>
+                    <span>Confirmar a mano</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onConfirmAgent}
+                    className="py-2 px-3 rounded-xl bg-[#00e5a0]/10 hover:bg-[#00e5a0]/20 border border-[#00e5a0]/30 text-[#00e5a0] text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                    title="Enviar mensaje de WhatsApp interactivo para que el Agente IA confirme"
+                  >
+                    <span>🤖</span>
+                    <span>Confirmar con Agente</span>
+                  </button>
+                </div>
+
+                {/* Vista previa del mensaje del Agente IA y enlace WhatsApp */}
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAgentPreview(p => !p)}
+                    className="text-[#7a95aa] hover:text-[#00e5a0] underline transition cursor-pointer"
+                  >
+                    {showAgentPreview ? 'Ocultar plantilla del Agente' : 'Ver mensaje del Agente IA'}
+                  </button>
+
+                  {whatsappUrl && (
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#25D366] hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <span>💬 WhatsApp directo</span>
+                    </a>
+                  )}
+                </div>
+
+                {showAgentPreview && (
+                  <div className="p-2.5 rounded-xl bg-[#070a0e] border border-[#1e2d3d] text-[11px] text-[#7a95aa] leading-relaxed space-y-1">
+                    <p className="text-[#dde6ef] font-semibold text-[10px] uppercase font-mono">Mensaje automático WhatsApp:</p>
+                    <p>
+                      &ldquo;Hola <b>{modal.patient_name || 'Paciente'}</b>, te escribimos de Consultorio APEX para confirmar tu cita médica agendada para el <b>{modal.fecha}</b> a las <b>{modal.hora} hrs</b>.
+                      <br />Responde: <b>1</b> para Confirmar o <b>2</b> para Reprogramar.&rdquo;
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Paciente y Contacto */}
+            <div className="space-y-2.5">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                Paciente *
+              </label>
+              <div className="relative">
                 <input
-                  type="number"
-                  min={5}
-                  step={5}
-                  value={modal.dur}
-                  onChange={e => setModal({ ...modal, dur: Math.max(5, +e.target.value || 20), error: '' })}
-                  className="w-16 px-2 py-1 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-xs text-center outline-none focus:border-[#00e5a0]"
+                  className={inp}
+                  placeholder="Escribe el nombre del paciente (busca existente)"
+                  value={modal.patient_name}
+                  onChange={e => searchPatient(e.target.value)}
+                  onFocus={() => sug.length > 0 && setOpenSug(true)}
                 />
-                <span className="text-[11px] text-[#7a95aa]">min</span>
+                {openSug && sug.length > 0 && (
+                  <div className="absolute z-40 left-0 right-0 mt-1 bg-[#111820] border border-[#1e2d3d] rounded-xl shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
+                    {sug.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => pick(p)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-[#162231] text-xs text-[#dde6ef] border-b last:border-b-0 border-[#1e2d3d]/50 flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="font-semibold">{p.full_name}</span>
+                        <span className="text-[11px] text-[#7a95aa] font-mono">{p.phone || p.email || ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {modal.patient_id && (
+                  <p className="text-[10px] text-[#00e5a0] mt-1 flex items-center gap-1 font-semibold">
+                    <span>✓</span> Paciente registrado en el sistema
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa]">Teléfono</label>
+                  <input
+                    className={inp}
+                    placeholder="Teléfono (para WhatsApp)"
+                    value={modal.patient_phone || ''}
+                    onChange={e => setModal({ ...modal, patient_phone: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa]">Correo</label>
+                  <input
+                    className={inp}
+                    placeholder="Correo electrónico"
+                    value={modal.patient_email || ''}
+                    onChange={e => setModal({ ...modal, patient_email: e.target.value })}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Profesional y Sede */}
-        <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
-          <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
-            Profesional y Sede *
-          </label>
-          {ctx && ctx.doctors.length > 0 && (
-            <div>
-              <label className="text-[10px] text-[#7a95aa]">Médico / Especialista</label>
-              <select
-                className={inp}
-                value={modal.doctor_id}
-                onChange={e => setModal({ ...modal, doctor_id: e.target.value, error: '' })}
-              >
-                <option value="">— Sin asignar —</option>
-                {ctx.doctors.map(d => (
-                  <option key={d.id} value={d.id}>{d.display_name}</option>
-                ))}
-              </select>
+            {/* Fecha y Horario */}
+            <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                Fecha y Horario *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[#7a95aa]">Fecha</label>
+                  <input
+                    type="date"
+                    className={inp}
+                    value={modal.fecha}
+                    onChange={e => setModal({ ...modal, fecha: e.target.value, error: '' })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#7a95aa]">Hora de inicio</label>
+                  <input
+                    type="time"
+                    className={inp}
+                    value={modal.hora}
+                    onChange={e => setModal({ ...modal, hora: e.target.value, error: '' })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-[#7a95aa]">Duración</label>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  {[15, 20, 30, 45, 60].map(d => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setModal({ ...modal, dur: d, error: '' })}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer"
+                      style={{
+                        background: modal.dur === d ? 'var(--c-green)' : '#111820',
+                        borderColor: modal.dur === d ? 'var(--c-green)' : '#1e2d3d',
+                        color: modal.dur === d ? 'var(--c-primary-fg)' : '#dde6ef',
+                      }}
+                    >
+                      {d}m
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1 ml-1">
+                    <input
+                      type="number"
+                      min={5}
+                      step={5}
+                      value={modal.dur}
+                      onChange={e => setModal({ ...modal, dur: Math.max(5, +e.target.value || 20), error: '' })}
+                      className="w-16 px-2 py-1 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-xs text-center outline-none focus:border-[#00e5a0]"
+                    />
+                    <span className="text-[11px] text-[#7a95aa]">min</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
 
-          <div>
-            <label className="text-[10px] text-[#7a95aa]">Sede / Consultorio *</label>
-            <select
-              className={inp}
-              value={modal.location_id}
-              onChange={e => setModal({ ...modal, location_id: e.target.value, error: '' })}
-            >
-              <option value="">— Elige la sede —</option>
-              {ctx?.locations.map(l => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Motivo y Notas */}
-        <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
-          <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
-            Detalles y Notas
-          </label>
-          <input
-            className={inp}
-            placeholder="Motivo de consulta (ej. Primera vez, Control)"
-            value={modal.reason || ''}
-            onChange={e => setModal({ ...modal, reason: e.target.value })}
-          />
-          <textarea
-            className={inp}
-            placeholder="Notas internas de recepción o historial de confirmación..."
-            rows={2}
-            value={modal.notes || ''}
-            onChange={e => setModal({ ...modal, notes: e.target.value })}
-          />
-        </div>
-
-        {/* Selector de Estado */}
-        {modal.mode === 'edit' && (
-          <div className="space-y-2 pt-2 border-t border-[#1e2d3d]/60">
-            <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
-              Estado de la Cita
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {Object.entries(ESTADO).map(([k, v]) => {
-                const active = modal.status === k;
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setModal({ ...modal, status: k })}
-                    className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center gap-1.5"
-                    style={{
-                      background: active ? v.bg : '#111820',
-                      borderColor: active ? v.color : '#1e2d3d',
-                      color: active ? v.color : '#7a95aa',
-                    }}
+            {/* Profesional y Sede */}
+            <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                Profesional y Sede *
+              </label>
+              {ctx && ctx.doctors.length > 0 && (
+                <div>
+                  <label className="text-[10px] text-[#7a95aa]">Médico / Especialista</label>
+                  <select
+                    className={inp}
+                    value={modal.doctor_id}
+                    onChange={e => setModal({ ...modal, doctor_id: e.target.value, error: '' })}
                   >
-                    <span className="w-2 h-2 rounded-full" style={{ background: v.color }} />
-                    <span className="truncate">{v.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                    <option value="">— Sin asignar —</option>
+                    {ctx.doctors.map(d => (
+                      <option key={d.id} value={d.id}>{d.display_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-        {/* Error */}
-        {modal.error && (
-          <div className="text-xs text-[#f43f5e] bg-[#f43f5e]/10 border border-[#f43f5e]/30 rounded-xl p-3">
-            {modal.error}
-          </div>
+              <div>
+                <label className="text-[10px] text-[#7a95aa]">Sede / Consultorio *</label>
+                <select
+                  className={inp}
+                  value={modal.location_id}
+                  onChange={e => setModal({ ...modal, location_id: e.target.value, error: '' })}
+                >
+                  <option value="">— Elige la sede —</option>
+                  {ctx?.locations.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Motivo y Notas */}
+            <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                Detalles y Notas
+              </label>
+              <input
+                className={inp}
+                placeholder="Motivo de consulta (ej. Primera vez, Control)"
+                value={modal.reason || ''}
+                onChange={e => setModal({ ...modal, reason: e.target.value })}
+              />
+              <textarea
+                className={inp}
+                placeholder="Notas internas de recepción o historial de confirmación..."
+                rows={2}
+                value={modal.notes || ''}
+                onChange={e => setModal({ ...modal, notes: e.target.value })}
+              />
+            </div>
+
+            {/* Selector de Estado */}
+            {modal.mode === 'edit' && (
+              <div className="space-y-2 pt-2 border-t border-[#1e2d3d]/60">
+                <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                  Estado de la Cita
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {Object.entries(ESTADO).map(([k, v]) => {
+                    const active = modal.status === k;
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setModal({ ...modal, status: k })}
+                        className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center gap-1.5"
+                        style={{
+                          background: active ? v.bg : '#111820',
+                          borderColor: active ? v.color : '#1e2d3d',
+                          color: active ? v.color : '#7a95aa',
+                        }}
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ background: v.color }} />
+                        <span className="truncate">{v.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Error */}
+            {modal.error && (
+              <div className="text-xs text-[#f43f5e] bg-[#f43f5e]/10 border border-[#f43f5e]/30 rounded-xl p-3">
+                {modal.error}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -2014,14 +2713,24 @@ function ApptSlidePanel({
         >
           Cerrar
         </button>
-        <button
-          type="button"
-          onClick={onSave}
-          className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-md"
-          style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}
-        >
-          {modal.mode === 'create' ? 'Agendar cita' : 'Guardar cambios'}
-        </button>
+        {isBlockTab ? (
+          <button
+            type="button"
+            onClick={onSaveBlock}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#f43f5e] hover:bg-[#e11d48] transition cursor-pointer shadow-md"
+          >
+            🚫 Guardar bloqueo
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onSave}
+            className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-md"
+            style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}
+          >
+            {modal.mode === 'create' ? 'Agendar cita' : 'Guardar cambios'}
+          </button>
+        )}
       </div>
     </div>
   );
