@@ -508,23 +508,11 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
                 window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
               }}
               title="Chat del equipo"
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-left transition-all"
-              style={{
-                background: chatOpen ? 'rgba(37, 211, 102, 0.12)' : 'transparent',
-                color: chatOpen ? '#25D366' : 'var(--c-text-2)',
-              }}
-              onMouseEnter={e => {
-                if (!chatOpen) {
-                  e.currentTarget.style.color = '#25D366';
-                  e.currentTarget.style.background = 'rgba(37, 211, 102, 0.08)';
-                }
-              }}
-              onMouseLeave={e => {
-                if (!chatOpen) {
-                  e.currentTarget.style.color = 'var(--c-text-2)';
-                  e.currentTarget.style.background = 'transparent';
-                }
-              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-left transition-all ${
+                chatOpen
+                  ? 'bg-[rgba(37,211,102,0.12)] text-[#25D366]'
+                  : 'text-[var(--c-text-2)] hover:text-[#25D366] hover:bg-[rgba(37,211,102,0.08)]'
+              }`}
             >
               <div className="relative flex items-center justify-center text-[#25D366]">
                 <Icon name="message" size={17} />

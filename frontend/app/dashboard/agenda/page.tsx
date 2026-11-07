@@ -194,7 +194,11 @@ export default function AgendaPage() {
   }, [ctx, fLoc]);
 
   const openWeekdays = useMemo(() => new Set(scopeHours.map(h => h.weekday)), [scopeHours]);
-  const days = useMemo(() => days7.filter(d => openWeekdays.has(wdOf(d))), [days7, openWeekdays]);
+  const days = useMemo(() => {
+    if (openWeekdays.size === 0) return days7;
+    const filtered = days7.filter(d => openWeekdays.has(wdOf(d)));
+    return filtered.length > 0 ? filtered : days7;
+  }, [days7, openWeekdays]);
 
   const [minH, maxH] = useMemo(() => {
     if (!scopeHours.length) return [8, 20];

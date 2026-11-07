@@ -218,6 +218,16 @@ export default function TeamChat() {
     if (!visibleCanales.some(c => c.id === canal)) setCanal('general');
   }, [visibleCanales, canal]);
 
+  const totalUnread = useMemo(
+    () => visibleCanales.reduce((a, c) => a + (unread[c.id] || 0), 0),
+    [visibleCanales, unread]
+  );
+
+  // Sincronizar conteo de no leídos con el menú lateral
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('apex:chat-unread', { detail: { count: totalUnread } }));
+  }, [totalUnread]);
+
   // Sonido corto (Web Audio) al llegar un mensaje nuevo
   const beep = () => {
     try {
@@ -452,12 +462,6 @@ export default function TeamChat() {
   };
 
   if (!enabled) return null;
-  const totalUnread = visibleCanales.reduce((a, c) => a + (unread[c.id] || 0), 0);
-
-  // Sincronizar conteo de no leídos con el menú lateral
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent('apex:chat-unread', { detail: { count: totalUnread } }));
-  }, [totalUnread]);
 
   const identidad = canalIdentidad(canal, byRole);
   const colorCanal = canal === 'general' ? undefined : (ROLE_COLOR[CHANNEL_ROLE[canal]] || '#7a95aa');
