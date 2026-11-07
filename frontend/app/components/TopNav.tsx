@@ -19,12 +19,11 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 
 // Menú principal: Inicio, Sala de espera, Pacientes, Agenda, Chat, Estadísticas, Mi Consultorio.
 // Soporte se ubica pegado al fondo (separado del menú principal).
-const ALL_LINKS: Array<{ href: string; icon: IconName; label: string; roles: string[]; feature?: string; isChat?: boolean }> = [
+const ALL_LINKS: Array<{ href: string; icon: IconName; label: string; roles: string[]; feature?: string }> = [
   { href: '/dashboard',            icon: 'home',      label: 'Inicio',         roles: ['admin','doctor','nurse','receptionist','accounting','marketing'] },
   { href: '/dashboard/sala',       icon: 'bell',      label: 'Sala de espera', roles: ['admin','doctor','nurse','receptionist'] },
   { href: '/dashboard/patients',   icon: 'users',     label: 'Pacientes',      roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes' },
   { href: '/dashboard/agenda',     icon: 'calendar',  label: 'Agenda',         roles: ['doctor','nurse','receptionist'], feature: 'agenda' },
-  { href: '#chat',                 icon: 'message',   label: 'Chat',           roles: ['admin','doctor','nurse','receptionist'], isChat: true },
   { href: '/dashboard/stats',      icon: 'activity',  label: 'Estadísticas',   roles: ['admin','doctor'] },
   { href: '/dashboard/clinic',     icon: 'building',  label: 'Mi Consultorio', roles: ['admin','doctor','receptionist','accounting'], feature: 'contabilidad' },
 ];
@@ -65,6 +64,19 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
   const [teamCount, setTeamCount] = useState<number>(1);
   const [rechargeSent, setRechargeSent] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+
+  useEffect(() => {
+    const onState = (e: any) => setChatOpen(!!e?.detail?.open);
+    const onUnread = (e: any) => setChatUnread(e?.detail?.count || 0);
+    window.addEventListener('apex:chat-state', onState);
+    window.addEventListener('apex:chat-unread', onUnread);
+    return () => {
+      window.removeEventListener('apex:chat-state', onState);
+      window.removeEventListener('apex:chat-unread', onUnread);
+    };
+  }, []);
 
   // Rol, permisos, plan y marca REALES de la cuenta (los define el backend, no el navegador).
   const cargarWhoami = useCallback(async () => {
@@ -303,9 +315,6 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
           </button>
         )}
 
-        {/* Ancla del chat del equipo — TeamChat monta aquí su botón (barra superior, siempre visible) */}
-        <div className="apex-chat-slot flex items-center" />
-
         {/* Tema claro / oscuro (Lite y Pro) */}
         <button onClick={toggleTheme} aria-label={oscuro ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
           title={oscuro ? 'Tema claro' : 'Tema oscuro'}
@@ -370,18 +379,13 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
             </p>
             {clinicalLinks.map((linkItem) => {
               const { href, icon, label } = linkItem;
-              const isChatLink = (linkItem as any).isChat;
-              const active = !isChatLink && isActive(href);
+              const active = isActive(href);
               return (
                 <button
                   key={href + label}
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    if (isChatLink) {
-                      window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
-                    } else {
-                      router.push(href);
-                    }
+                    router.push(href);
                   }}
                   aria-current={active ? 'page' : undefined}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium text-left transition-all"
@@ -410,18 +414,13 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
               <div className="space-y-0.5">
                 {adminLinks.map((linkItem) => {
                   const { href, icon, label } = linkItem;
-                  const isChatLink = (linkItem as any).isChat;
-                  const active = !isChatLink && isActive(href);
+                  const active = isActive(href);
                   return (
                     <button
                       key={href + label}
                       onClick={() => {
                         setMobileMenuOpen(false);
-                        if (isChatLink) {
-                          window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
-                        } else {
-                          router.push(href);
-                        }
+                        router.push(href);
                       }}
                       aria-current={active ? 'page' : undefined}
                       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium text-left transition-all"
@@ -501,6 +500,58 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
             </button>
           )}
 
+          {/* Chat del equipo — estilo WhatsApp sutil y destello suave */}
+          {['admin', 'doctor', 'nurse', 'receptionist'].includes(role) && (
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                window.dispatchEvent(new CustomEvent('apex:toggle-chat'));
+              }}
+              title="Chat del equipo"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-left transition-all"
+              style={{
+                background: chatOpen ? 'rgba(37, 211, 102, 0.12)' : 'transparent',
+                color: chatOpen ? '#25D366' : 'var(--c-text-2)',
+              }}
+              onMouseEnter={e => {
+                if (!chatOpen) {
+                  e.currentTarget.style.color = '#25D366';
+                  e.currentTarget.style.background = 'rgba(37, 211, 102, 0.08)';
+                }
+              }}
+              onMouseLeave={e => {
+                if (!chatOpen) {
+                  e.currentTarget.style.color = 'var(--c-text-2)';
+                  e.currentTarget.style.background = 'transparent';
+                }
+              }}
+            >
+              <div className="relative flex items-center justify-center text-[#25D366]">
+                <Icon name="message" size={17} />
+                {/* Destello muy sutil */}
+                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                  <span
+                    className="absolute inline-flex h-full w-full rounded-full opacity-25"
+                    style={{
+                      background: '#25D366',
+                      animation: 'apexPulseSubtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }}
+                  />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ background: '#25D366', opacity: 0.85 }} />
+                </span>
+              </div>
+              <span className="flex-1 truncate">Chat</span>
+              {chatUnread > 0 && (
+                <span
+                  className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
+                  style={{ background: '#25D366' }}
+                >
+                  {chatUnread}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Soporte hasta abajo pegado al fondo (fuera del menú principal) */}
           <button
             onClick={() => { setMobileMenuOpen(false); router.push('/dashboard/soporte'); }}
@@ -509,6 +560,7 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
             <Icon name="message" size={17} />
             <span className="flex-1">Soporte</span>
           </button>
+          <style>{`@keyframes apexPulseSubtle{0%,100%{transform:scale(1);opacity:.2}50%{transform:scale(1.7);opacity:0}}`}</style>
         </div>
       </aside>
     </>

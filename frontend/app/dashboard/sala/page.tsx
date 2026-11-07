@@ -87,16 +87,19 @@ export default function SalaPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <main className="page-content pt-16 px-4 sm:px-6 py-8 max-w-3xl mx-auto">
-        <div className="flex items-center justify-between gap-3 mb-1">
-          <h1 className="text-2xl font-serif font-semibold text-[#dde6ef]"> Sala de espera</h1>
+      <main className="page-content pt-16 px-4 sm:px-6 py-6 max-w-3xl mx-auto">
+        {/* Cabecera Principal Estandarizada */}
+        <div className="pb-3 border-b border-[#1e2d3d]/60 mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#dde6ef]">Sala de espera</h1>
+            <p className="text-xs sm:text-sm text-[#7a95aa] mt-1">Pacientes en atención ahora mismo, en orden de llegada. La lista se actualiza sola.</p>
+          </div>
           {waiting.length > 0 && (
-            <span className="text-xs font-mono px-2.5 py-1 rounded-full" style={{ color: 'var(--c-green)', background: 'var(--c-green-10)', border: '1px solid var(--c-green-30)' }}>
+            <span className="text-xs font-mono px-3 py-1 rounded-full font-semibold" style={{ color: 'var(--c-green)', background: 'var(--c-green-10)', border: '1px solid var(--c-green-30)' }}>
               {waiting.length} esperando
             </span>
           )}
         </div>
-        <p className="text-sm text-[#7a95aa] mb-5">Pacientes en atención ahora mismo, en orden de llegada. La lista se actualiza sola.</p>
         {msg && <div className="mb-4 text-sm px-4 py-2.5 rounded-xl bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-[#f43f5e]">{msg}</div>}
 
         {loading ? <p className="text-[#7a95aa] text-sm">Cargando…</p> : waiting.length === 0 ? (

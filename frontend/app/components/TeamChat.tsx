@@ -6,7 +6,6 @@
 // Enter envía y Shift+Enter hace salto de línea, con emojis y stickers.
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { getSession } from '@/app/lib/auth';
 import { getRole } from '@/app/lib/role';
 import Icon from '@/app/components/Icon';
@@ -142,11 +141,9 @@ export default function TeamChat() {
   const [bandeja, setBandeja] = useState(false);
   const [bajarVisible, setBajarVisible] = useState(false);
   const [nuevosAbajo, setNuevosAbajo] = useState(0);
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
 
   const lastSeenRef = useRef<string>(new Date(Date.now() - 86400000).toISOString());
   const prevTotalRef = useRef<number>(0);
-  const btnRef = useRef<HTMLButtonElement>(null);
   const msgsRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const cursorRef = useRef<number | null>(null);
@@ -157,18 +154,10 @@ export default function TeamChat() {
   const prevCantidad = useRef(0);
   const contador = useRef(0);
 
-  // El botón vive en la barra superior visible. Algunas páginas tienen su propio header que
-  // tapa la barra estándar; como sus anclas aparecen DESPUÉS en el DOM, tomamos la ÚLTIMA visible.
+  // Sincronizar estado abierto con la app (TopNav)
   useEffect(() => {
-    const find = () => {
-      const slots = Array.from(document.querySelectorAll<HTMLElement>('.apex-chat-slot')).filter(el => el.offsetParent !== null);
-      const nuevo = slots[slots.length - 1] || null;
-      setSlot(prev => (prev === nuevo ? prev : nuevo));
-    };
-    find();
-    const t = setInterval(find, 800);
-    return () => clearInterval(t);
-  }, []);
+    window.dispatchEvent(new CustomEvent('apex:chat-state', { detail: { open } }));
+  }, [open]);
 
   // Botón "Chat" del menú lateral
   useEffect(() => {
@@ -465,27 +454,10 @@ export default function TeamChat() {
   if (!enabled) return null;
   const totalUnread = visibleCanales.reduce((a, c) => a + (unread[c.id] || 0), 0);
 
-  // Botón en la barra superior — se monta en el ancla del TopNav
-  const triggerBtn = (
-    <button ref={btnRef} onClick={() => { setOpen(o => !o); }}
-      title="Chat del equipo" aria-pressed={open}
-      className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all"
-      style={{
-        background: open ? '#00e5a0' : 'rgba(0,229,160,0.12)',
-        color: open ? '#000' : '#00e5a0',
-        border: '1px solid rgba(0,229,160,0.35)',
-      }}>
-      <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full rounded-full opacity-50" style={{ background: open ? '#000' : '#00e5a0', animation: 'apexPulse 2s ease-in-out infinite' }} />
-        <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: open ? '#000' : '#00e5a0' }} />
-      </span>
-      <span>Chat</span>
-      {!open && totalUnread > 0 && (
-        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-bold flex items-center justify-center">{totalUnread}</span>
-      )}
-      <style>{`@keyframes apexPulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(2.2);opacity:0}}`}</style>
-    </button>
-  );
+  // Sincronizar conteo de no leídos con el menú lateral
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('apex:chat-unread', { detail: { count: totalUnread } }));
+  }, [totalUnread]);
 
   const identidad = canalIdentidad(canal, byRole);
   const colorCanal = canal === 'general' ? undefined : (ROLE_COLOR[CHANNEL_ROLE[canal]] || '#7a95aa');
@@ -496,21 +468,15 @@ export default function TeamChat() {
   };
 
   return (
-    <>
-      {/* El botón vive en la barra superior; si aún no hay ancla, cae a una esquina discreta */}
-      {slot ? createPortal(triggerBtn, slot) : (
-        <div className="fixed z-[90] top-3 right-3">{triggerBtn}</div>
-      )}
-
-      <div
-        className="wa wa-panel"
-        data-abierto={open}
-        role="dialog"
-        aria-label="Chat del equipo"
-        aria-hidden={!open}
-        onKeyDown={alTeclearPanel}
-        {...inertSi(!open)}
-      >
+    <div
+      className="wa wa-panel"
+      data-abierto={open}
+      role="dialog"
+      aria-label="Chat del equipo"
+      aria-hidden={!open}
+      onKeyDown={alTeclearPanel}
+      {...inertSi(!open)}
+    >
         {/* ── LISTA DE CHATS ── */}
         <section className="wa-capa wa-lista" data-atras={view === 'chat'} aria-hidden={view === 'chat'} {...inertSi(view === 'chat')}>
           <header className="wa-head" style={{ paddingLeft: 12, minHeight: 56 }}>
@@ -615,6 +581,5 @@ export default function TeamChat() {
           </div>
         </section>
       </div>
-    </>
   );
 }

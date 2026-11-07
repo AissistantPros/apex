@@ -72,22 +72,23 @@ export default function PatientsPage() {
 
   return (
     <div className="min-h-screen bg-[#070a0e]">
-      <main className="page-content pt-16 px-6 py-10">
+      <main className="page-content pt-16 px-4 sm:px-6 py-6 max-w-7xl mx-auto">
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        {/* Cabecera Principal Estandarizada */}
+        <div className="pb-3 border-b border-[#1e2d3d]/60 mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-[#dde6ef]">Pacientes</h1>
-            <p className="text-[#7a95aa] text-sm mt-1">
-              {patients.length} paciente{patients.length !== 1 ? 's' : ''} registrado{patients.length !== 1 ? 's' : ''}
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#dde6ef]">Pacientes</h1>
+            <p className="text-xs sm:text-sm text-[#7a95aa] mt-1">
+              {patients.length} paciente{patients.length !== 1 ? 's' : ''} registrado{patients.length !== 1 ? 's' : ''} en el sistema
             </p>
           </div>
           <button
             onClick={() => router.push('/dashboard/new-patient/flow')}
-            className="px-5 py-2.5 text-sm font-bold rounded-xl hover:opacity-90 transition"
+            className="px-5 py-2.5 text-sm font-bold rounded-xl hover:opacity-90 transition flex items-center gap-2 cursor-pointer shadow-sm"
             style={{ background: 'var(--c-green)', color: 'var(--c-green-fg)' }}
           >
-            Nuevo paciente
+            <span className="text-base font-bold">+</span>
+            <span>Nuevo paciente</span>
           </button>
         </div>
 
