@@ -6,8 +6,6 @@ import { mix } from '@/app/lib/ui';
 import Icon from '@/app/components/Icon';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-const HOUR_PX = 64;  // 64px por hora: cada cuarto de 15 minutos mide exactamente 16px
-const SNAP_MIN = 15; // Snapping exacto a bloques de 15 minutos (:00, :15, :30, :45)
 const DIAS_CORTO = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const DIAS_COL = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
 const DIAS_LARGO = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -67,21 +65,38 @@ const hm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const minToHM = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const wdOf = (d: Date) => (d.getDay() + 6) % 7; // Lun=0, Dom=6
 
+const HOUR_PX = 64;  // 64px por hora: cada media hora mide exactamente 32px
+const SNAP_MIN = 30; // Snapping exacto a bloques claros de 30 minutos (:00 y :30)
+
 /**
- * Snapping exacto a bloques de 15 minutos:
- * - 0 a 14 min (< :15)   -> :00
- * - 15 a 29 min (< :30)  -> :15
- * - 30 a 44 min (< :45)  -> :30
- * - 45 a 59 min (< sig)  -> :45
+ * Snapping exacto a bloques de 30 minutos:
+ * - 0 a 29 min (< :30) -> :00
+ * - 30 a 59 min (>= :30) -> :30
  */
-function snapToQuarterMin(relY: number, minH: number, maxH: number): number {
+function snapToHalfHourMin(relY: number, minH: number, maxH: number): number {
   const maxRelY = Math.max(0, (maxH - minH) * HOUR_PX - 1);
   const clampedY = Math.max(0, Math.min(maxRelY, relY));
   const hourIdx = Math.floor(clampedY / HOUR_PX);
   const frac = (clampedY % HOUR_PX) / HOUR_PX;
-  const quarter = Math.min(3, Math.max(0, Math.floor(frac * 4)));
-  const totalMin = (minH + hourIdx) * 60 + quarter * 15;
+  const half = frac < 0.5 ? 0 : 1;
+  const totalMin = (minH + hourIdx) * 60 + half * 30;
   return Math.max(minH * 60, Math.min(maxH * 60, totalMin));
+}
+
+function formatoDuracion(min: number): string {
+  if (!min || min <= 0) return '30 min';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h} hr${h > 1 ? 's' : ''}`;
+  return `${m} min`;
+}
+
+function calcularHoraFin(horaInicio: string, durMin: number): string {
+  if (!horaInicio) return '';
+  const [h, m] = horaInicio.split(':').map(Number);
+  const totalMin = (h || 0) * 60 + (m || 0) + (durMin || 30);
+  return minToHM(totalMin);
 }
 
 type Appt = {
@@ -340,7 +355,7 @@ export default function AgendaPage() {
     let di = Math.floor((clientX - rect.left - timeGutterW) / colW);
     di = Math.max(0, Math.min(visibleDays.length - 1, di));
     const relY = clientY - rect.top;
-    const min = snapToQuarterMin(relY, minH, maxH);
+    const min = snapToHalfHourMin(relY, minH, maxH);
     return { di, min };
   }, [visibleDays, minH, maxH]);
 
@@ -423,13 +438,13 @@ export default function AgendaPage() {
   const locColor = (id?: string) => ctx?.locations.find(l => l.id === id)?.color || 'var(--c-blue)';
   const docName = (id?: string) => ctx?.doctors.find(d => d.id === id)?.display_name || '';
 
-  // Inicio de selección por clic o arrastre
+  // Inicio de selección por clic o arrastre (bloques de 30 minutos)
   const onDown = (day: Date, e: React.MouseEvent) => {
     if (e.button !== 0) return; // Solo clic principal izquierdo
     const col = e.currentTarget as HTMLElement;
     const rect = col.getBoundingClientRect();
     const relY = e.clientY - rect.top;
-    const startMin = snapToQuarterMin(relY, minH, maxH);
+    const startMin = snapToHalfHourMin(relY, minH, maxH);
     dragRef.current = { day, startMin, col, startClientY: e.clientY };
     setSel({ day: ymd(day), a: startMin, b: Math.min(maxH * 60, startMin + 30) });
     if (contextMenu.visible) setContextMenu(prev => ({ ...prev, visible: false }));
@@ -456,18 +471,18 @@ export default function AgendaPage() {
     if (distY > 6) {
       const rect = dragRef.current.col.getBoundingClientRect();
       const relY = e.clientY - rect.top;
-      const currMin = snapToQuarterMin(relY, minH, maxH);
+      const currMin = snapToHalfHourMin(relY, minH, maxH);
       if (currMin >= dragRef.current.startMin) {
         setSel({
           day: ymd(dragRef.current.day),
           a: dragRef.current.startMin,
-          b: Math.min(maxH * 60, currMin + 15),
+          b: Math.min(maxH * 60, currMin + 30),
         });
       } else {
         setSel({
           day: ymd(dragRef.current.day),
           a: Math.max(minH * 60, currMin),
-          b: dragRef.current.startMin + 15,
+          b: dragRef.current.startMin + 30,
         });
       }
     }
@@ -507,13 +522,16 @@ export default function AgendaPage() {
     end.setHours(0, 0, 0, 0);
     end.setMinutes(sel.b);
 
+    // Abrimos el panel para el rango seleccionado exacto
+    // IMPORTANTE: NO hacemos setSel(null) aquí: la selección se queda fija en el calendario
+    // para que el usuario vea exactamente el bloque que apartó (ej. de 10am a 2pm / 4 horas)
     openCreateRange(start, end, 'appointment');
-    setSel(null);
   };
 
   // Abrir panel lateral para agendar cita o bloquear horario
   const openCreateRange = (start: Date, end: Date, tab: 'appointment' | 'block' = 'appointment') => {
-    const dur = Math.max(15, Math.round((+end - +start) / 60000));
+    const dur = Math.max(30, Math.round((+end - +start) / 60000));
+    const startMin = start.getHours() * 60 + start.getMinutes();
     setModal({
       mode: 'create',
       tab,
@@ -533,6 +551,33 @@ export default function AgendaPage() {
       notify_whatsapp: false,
       all_day: false,
     });
+    setSel({ day: ymd(start), a: startMin, b: startMin + dur });
+  };
+
+  // Sincronización cuando el usuario cambia la duración o la hora desde el panel
+  const handlePanelDurationChange = (newDur: number) => {
+    if (!modal) return;
+    const horaFin = calcularHoraFin(modal.hora, newDur);
+    setModal((prev: any) => ({ ...prev, dur: newDur, hora_fin: horaFin }));
+    if (sel) {
+      setSel(prev => (prev ? { ...prev, b: prev.a + newDur } : null));
+    }
+  };
+
+  const handlePanelHoraChange = (newHora: string) => {
+    if (!modal) return;
+    const horaFin = calcularHoraFin(newHora, modal.dur);
+    const [h, m] = newHora.split(':').map(Number);
+    const startMin = (h || 0) * 60 + (m || 0);
+    setModal((prev: any) => ({ ...prev, hora: newHora, hora_fin: horaFin }));
+    if (sel) {
+      setSel(prev => (prev ? { ...prev, a: startMin, b: startMin + modal.dur } : null));
+    }
+  };
+
+  const closeModal = () => {
+    setModal(null);
+    setSel(null);
   };
 
   // Abrir directamente en la pestaña de bloqueo
@@ -543,13 +588,14 @@ export default function AgendaPage() {
     const end = new Date(day);
     end.setHours(0, 0, 0, 0);
     end.setMinutes(endMin);
+    const dur = Math.max(30, endMin - startMin);
     setModal({
       mode: 'create',
       tab: 'block',
       fecha: ymd(day),
       hora: hm(start),
       hora_fin: hm(end),
-      dur: Math.max(15, endMin - startMin),
+      dur,
       all_day: allDay,
       doctor_id: fDoc || '',
       location_id: fLoc || ctx?.locations[0]?.id || '',
@@ -558,6 +604,9 @@ export default function AgendaPage() {
       notes: '',
       status: 'scheduled',
     });
+    if (!allDay) {
+      setSel({ day: ymd(day), a: startMin, b: endMin });
+    }
   };
 
   // Abrir inspector para ver o eliminar un bloqueo existente
@@ -602,6 +651,7 @@ export default function AgendaPage() {
         body: JSON.stringify(payload),
       });
       setModal(null);
+      setSel(null);
       load();
       flash('✓ Horario bloqueado con éxito.');
     } catch (e: any) {
@@ -614,6 +664,7 @@ export default function AgendaPage() {
     try {
       await api(`/appointments/blocks/${blockId}`, { method: 'DELETE' });
       if (modal?.id === blockId) setModal(null);
+      setSel(null);
       load();
       flash('Bloqueo eliminado correctamente.');
     } catch (e: any) {
@@ -640,6 +691,7 @@ export default function AgendaPage() {
         }),
       });
       flash(`✓ Bloqueado ${minToHM(startMin)} - ${minToHM(endMin)}.`);
+      setSel(null);
       load();
     } catch (e: any) {
       flash(e.message);
@@ -653,7 +705,7 @@ export default function AgendaPage() {
     const col = e.currentTarget as HTMLElement;
     const rect = col.getBoundingClientRect();
     const relY = e.clientY - rect.top;
-    const clickedMin = snapToQuarterMin(relY, minH, maxH);
+    const clickedMin = snapToHalfHourMin(relY, minH, maxH);
     let a = clickedMin;
     let b = Math.min(maxH * 60, clickedMin + 30);
     if (sel && sel.day === ymd(day) && clickedMin >= sel.a && clickedMin <= sel.b) {
@@ -1013,22 +1065,16 @@ export default function AgendaPage() {
           {/* Botón Flotante Icónico de Google Calendar "+ Crear cita" en la barra lateral */}
           <button
             type="button"
-            onClick={() => openCreateRange(new Date(), new Date(Date.now() + 30 * 60000))}
-            className="w-full flex items-center justify-center gap-3 py-3 px-5 rounded-full bg-[#00e5a0] text-[#051b14] font-bold text-sm shadow-[0_4px_16px_rgba(0,229,160,0.3)] hover:shadow-[0_6px_22px_rgba(0,229,160,0.45)] hover:scale-[1.02] active:scale-95 transition-all cursor-pointer mb-2"
+            onClick={() => {
+              const start = new Date(currentDate);
+              start.setHours(9, 0, 0, 0);
+              const end = new Date(+start + 30 * 60000);
+              openCreateRange(start, end, 'appointment');
+            }}
+            className="w-full flex items-center justify-center gap-3 py-3 px-5 rounded-full bg-[#00e5a0] text-[#051b14] font-bold text-sm shadow-[0_4px_16px_rgba(0,229,160,0.3)] hover:shadow-[0_6px_22px_rgba(0,229,160,0.45)] hover:scale-[1.02] active:scale-95 transition-all cursor-pointer mb-5"
           >
             <span className="text-2xl font-black leading-none">+</span>
             <span className="tracking-wide">Crear cita</span>
-          </button>
-
-          {/* Botón secundario para bloquear horario o día de forma intuitiva */}
-          <button
-            type="button"
-            onClick={() => openCreateBlock(currentDate, 9 * 60, 10 * 60)}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full bg-[#111820] hover:bg-[#162231] text-[#f43f5e] border border-[#f43f5e]/30 text-xs font-bold transition cursor-pointer mb-5"
-            title="Bloquear un horario específico o el día completo"
-          >
-            <span>🚫</span>
-            <span>Bloquear horario / día</span>
           </button>
 
           {/* Mini Calendario Mensual Interactivo (Google Calendar Signature Widget) */}
@@ -1257,18 +1303,8 @@ export default function AgendaPage() {
             <div className="mt-auto pt-3 border-t border-[#1e2d3d]/60 space-y-1.5">
               <button
                 type="button"
-                onClick={() => openCreateBlock(currentDate, 9 * 60, 10 * 60)}
-                className="w-full py-2 px-3 rounded-xl text-xs font-semibold bg-[#111820] hover:bg-[#162231] border border-[#f43f5e]/30 text-[#f43f5e] transition cursor-pointer flex items-center justify-between"
-                title="Bloquear un horario o día completo"
-              >
-                <span>🚫 Bloquear horarios</span>
-                <span className="text-[10px] font-mono text-[#7a95aa]">+</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setHoursModal(true)}
-                className="w-full py-1.5 px-3 rounded-xl text-xs font-semibold bg-[#111820] border border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] hover:border-[#4b6377] transition cursor-pointer flex items-center justify-between"
+                className="w-full py-2 px-3 rounded-xl text-xs font-semibold bg-[#111820] border border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] hover:border-[#4b6377] transition cursor-pointer flex items-center justify-between"
               >
                 <span>Configurar horario</span>
                 <span>⚙</span>
@@ -1598,18 +1634,42 @@ export default function AgendaPage() {
                             </div>
                           )}
 
-                          {/* Rango en selección al arrastrar en vacío */}
-                          {sel && sel.day === ymd(day) && (
-                            <div
-                              className="absolute left-1 right-1 rounded-xl pointer-events-none z-10"
-                              style={{
-                                top: ((sel.a - minH * 60) / 60) * HOUR_PX,
-                                height: Math.max(8, ((sel.b - sel.a) / 60) * HOUR_PX),
-                                background: modal?.tab === 'block' ? mix('var(--c-red)', 30) : mix('var(--c-green)', 25),
-                                border: `1.5px dashed ${modal?.tab === 'block' ? 'var(--c-red)' : 'var(--c-green)'}`,
-                              }}
-                            />
-                          )}
+                          {/* Rango en selección visible: PERMANECE en el calendario marcando el bloque exacto */}
+                          {sel && sel.day === ymd(day) && (() => {
+                            const durMin = Math.max(30, sel.b - sel.a);
+                            const top = ((sel.a - minH * 60) / 60) * HOUR_PX;
+                            const height = Math.max(28, (durMin / 60) * HOUR_PX);
+                            const isBlock = modal?.tab === 'block';
+                            const accentColor = isBlock ? '#f43f5e' : '#00e5a0';
+
+                            return (
+                              <div
+                                className="absolute left-1 right-1 rounded-xl pointer-events-none z-20 shadow-2xl overflow-hidden animate-in fade-in transition-all flex flex-col justify-between p-2"
+                                style={{
+                                  top,
+                                  height,
+                                  background: isBlock ? 'rgba(244, 63, 94, 0.22)' : 'rgba(0, 229, 160, 0.22)',
+                                  border: `2px solid ${accentColor}`,
+                                }}
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded-md text-white bg-[#0d1520]/95 shadow-sm flex items-center gap-1">
+                                    <span>{isBlock ? '🚫' : '🩺'}</span>
+                                    <span>{minToHM(sel.a)} – {minToHM(sel.b)}</span>
+                                  </span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ color: accentColor, background: '#0d1520' }}>
+                                    {formatoDuracion(durMin)}
+                                  </span>
+                                </div>
+
+                                {height > 55 && (
+                                  <p className="text-[11px] font-semibold text-[#dde6ef] drop-shadow truncate">
+                                    {isBlock ? 'Horario a bloquear' : 'Apartando cita / estudio médico'}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           {/* Bloqueos de agenda */}
                           {blocks
@@ -1752,13 +1812,15 @@ export default function AgendaPage() {
               ctx={ctx}
               modal={modal}
               setModal={setModal}
+              onDurationChange={handlePanelDurationChange}
+              onHoraChange={handlePanelHoraChange}
               onSave={save}
               onSaveBlock={saveBlock}
               onDeleteBlock={deleteBlockById}
               onCancel={cancelar}
               onConfirmManual={() => confirmarAMano(modal.id)}
               onConfirmAgent={() => confirmarConAgente(modal.id)}
-              onClose={() => setModal(null)}
+              onClose={closeModal}
             />
           )}
         </aside>
@@ -2042,6 +2104,8 @@ function ApptSlidePanel({
   ctx,
   modal,
   setModal,
+  onDurationChange,
+  onHoraChange,
   onSave,
   onSaveBlock,
   onDeleteBlock,
@@ -2053,6 +2117,8 @@ function ApptSlidePanel({
   ctx: Ctx | null;
   modal: any;
   setModal: (m: any) => void;
+  onDurationChange?: (dur: number) => void;
+  onHoraChange?: (hora: string) => void;
   onSave: () => void;
   onSaveBlock: () => void;
   onDeleteBlock: (id: string) => void;
@@ -2065,6 +2131,8 @@ function ApptSlidePanel({
   const [openSug, setOpenSug] = useState(false);
   const [showAgentPreview, setShowAgentPreview] = useState(false);
   const tRef = useRef<any>(null);
+
+  const horaFinActual = modal.hora_fin || calcularHoraFin(modal.hora, modal.dur);
 
   const searchPatient = (q: string) => {
     setModal({ ...modal, patient_name: q, patient_id: null, error: '' });
@@ -2201,12 +2269,12 @@ function ApptSlidePanel({
           <div>
             <h2 className="text-sm font-bold text-[#dde6ef]">
               {modal.mode === 'create'
-                ? isBlockTab ? 'Bloquear Horario o Día' : 'Nueva Cita Médica'
+                ? isBlockTab ? 'Bloquear Horario en Agenda' : 'Apartar Cita o Estudio'
                 : 'Detalles de la Cita'}
             </h2>
             <p className="text-[11px] text-[#7a95aa]">
               {modal.mode === 'create'
-                ? isBlockTab ? 'Inhabilita citas para cirugías o descansos' : 'Programa una nueva atención'
+                ? isBlockTab ? 'Inhabilita citas para cirugías o descansos' : 'Programa una consulta o estudio médico'
                 : 'Gestiona y confirma la cita'}
             </p>
           </div>
@@ -2223,27 +2291,70 @@ function ApptSlidePanel({
 
       {/* Contenido con scroll */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-        {/* Selector de Pestañas estilo Google Calendar cuando se crea nuevo evento */}
+        {/* PREGUNTA Y SELECTOR ESTELAR CUANDO SE SELECCIONA UN BLOQUE EN EL CALENDARIO */}
         {modal.mode === 'create' && (
-          <div className="flex rounded-xl bg-[#111820] p-1 border border-[#1e2d3d]">
-            <button
-              type="button"
-              onClick={() => setModal({ ...modal, tab: 'appointment' })}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                !isBlockTab ? 'bg-[#00e5a0] text-[#051b14] shadow' : 'text-[#7a95aa] hover:text-[#dde6ef]'
-              }`}
-            >
-              <span>🩺 Cita médica</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setModal({ ...modal, tab: 'block' })}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                isBlockTab ? 'bg-[#f43f5e] text-[#fff] shadow' : 'text-[#7a95aa] hover:text-[#dde6ef]'
-              }`}
-            >
-              <span>🚫 Bloquear horario</span>
-            </button>
+          <div className="p-3.5 rounded-2xl bg-[#111820] border border-[#1e2d3d] space-y-3 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#7a95aa]">
+                Bloque seleccionado
+              </span>
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-[#070a0e] text-[#00e5a0] border border-[#00e5a0]/30">
+                {formatoDuracion(modal.dur)}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#dde6ef]">
+              <span>📅 {modal.fecha}</span>
+              <span className="text-[#7a95aa]">·</span>
+              <span className="font-mono text-[#00e5a0]">{modal.hora}</span>
+              <span className="text-[#7a95aa]">a</span>
+              <span className="font-mono text-[#00e5a0]">{horaFinActual} hrs</span>
+            </div>
+
+            <div className="pt-2 border-t border-[#1e2d3d]/60">
+              <p className="text-[11px] font-bold text-[#dde6ef] mb-2">
+                ¿Qué deseas hacer con este bloque de tiempo?
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModal({ ...modal, tab: 'appointment' })}
+                  className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                    !isBlockTab
+                      ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#dde6ef] shadow-md ring-1 ring-[#00e5a0]'
+                      : 'bg-[#0d1520] border-[#1e2d3d] text-[#7a95aa] hover:border-[#4b6377] hover:text-[#dde6ef]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-base">🩺</span>
+                    {!isBlockTab && <span className="text-xs text-[#00e5a0] font-bold">✓</span>}
+                  </div>
+                  <p className="text-xs font-bold leading-tight text-[#dde6ef]">Cita o Estudio</p>
+                  <p className="text-[10px] text-[#7a95aa] mt-0.5 leading-snug">
+                    Apartar para paciente o estudio clínico (1h, 2h, 3h, 4h)
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModal({ ...modal, tab: 'block' })}
+                  className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                    isBlockTab
+                      ? 'bg-[#f43f5e]/15 border-[#f43f5e] text-[#dde6ef] shadow-md ring-1 ring-[#f43f5e]'
+                      : 'bg-[#0d1520] border-[#1e2d3d] text-[#7a95aa] hover:border-[#4b6377] hover:text-[#dde6ef]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-base">🚫</span>
+                    {isBlockTab && <span className="text-xs text-[#f43f5e] font-bold">✓</span>}
+                  </div>
+                  <p className="text-xs font-bold leading-tight text-[#dde6ef]">Bloquear Horario</p>
+                  <p className="text-[10px] text-[#7a95aa] mt-0.5 leading-snug">
+                    Inhabilitar para cirugías, comida o descanso
+                  </p>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2304,9 +2415,16 @@ function ApptSlidePanel({
 
             {/* Fecha y Horario */}
             <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
-              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
-                Fecha y Horario *
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                  Fecha y Horario *
+                </label>
+                {!modal.all_day && (
+                  <span className="text-[11px] font-mono text-[#f43f5e] font-semibold">
+                    Término: {horaFinActual} ({formatoDuracion(modal.dur)})
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-[#7a95aa]">Fecha</label>
@@ -2324,7 +2442,10 @@ function ApptSlidePanel({
                       type="time"
                       className={inp}
                       value={modal.hora}
-                      onChange={e => setModal({ ...modal, hora: e.target.value, error: '' })}
+                      onChange={e => {
+                        if (onHoraChange) onHoraChange(e.target.value);
+                        else setModal({ ...modal, hora: e.target.value, error: '' });
+                      }}
                     />
                   </div>
                 ) : (
@@ -2336,19 +2457,26 @@ function ApptSlidePanel({
 
               {!modal.all_day && (
                 <div>
-                  <label className="text-[10px] text-[#7a95aa]">Duración del bloqueo</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] text-[#7a95aa]">Duración del bloqueo</label>
+                    <span className="text-[10px] text-[#7a95aa] font-mono">Total: {formatoDuracion(modal.dur)}</span>
+                  </div>
                   <div className="flex flex-wrap items-center gap-1.5 mt-1">
                     {[
                       { d: 30, lbl: '30m' },
                       { d: 60, lbl: '1h' },
                       { d: 120, lbl: '2h' },
+                      { d: 180, lbl: '3h' },
                       { d: 240, lbl: '4h' },
                       { d: 480, lbl: '8h' },
                     ].map(({ d, lbl }) => (
                       <button
                         key={d}
                         type="button"
-                        onClick={() => setModal({ ...modal, dur: d, error: '' })}
+                        onClick={() => {
+                          if (onDurationChange) onDurationChange(d);
+                          else setModal({ ...modal, dur: d, error: '' });
+                        }}
                         className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer"
                         style={{
                           background: modal.dur === d ? '#f43f5e' : '#111820',
@@ -2407,7 +2535,7 @@ function ApptSlidePanel({
             )}
           </div>
         ) : (
-          /* ── MODO CITA MÉDICA HABITUAL ── */
+          /* ── MODO CITA MÉDICA / ESTUDIO ── */
           <>
             {/* ── SECCIÓN ESTELAR: CONFIRMACIÓN DE CITA (MANUAL VS AGENTE IA) ── */}
             {modal.mode === 'edit' && (
@@ -2539,11 +2667,16 @@ function ApptSlidePanel({
               </div>
             </div>
 
-            {/* Fecha y Horario */}
+            {/* Fecha y Horario (Soporta consultas y estudios clínicos largos de 1h, 2h, 3h, 4h) */}
             <div className="space-y-2.5 pt-2 border-t border-[#1e2d3d]/60">
-              <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
-                Fecha y Horario *
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold">
+                  Fecha y Horario *
+                </label>
+                <span className="text-[11px] font-mono text-[#00e5a0] font-semibold">
+                  Término: {horaFinActual} hrs ({formatoDuracion(modal.dur)})
+                </span>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-[#7a95aa]">Fecha</label>
@@ -2560,37 +2693,61 @@ function ApptSlidePanel({
                     type="time"
                     className={inp}
                     value={modal.hora}
-                    onChange={e => setModal({ ...modal, hora: e.target.value, error: '' })}
+                    onChange={e => {
+                      if (onHoraChange) onHoraChange(e.target.value);
+                      else setModal({ ...modal, hora: e.target.value, error: '' });
+                    }}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] text-[#7a95aa]">Duración</label>
-                <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                  {[15, 20, 30, 45, 60].map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setModal({ ...modal, dur: d, error: '' })}
-                      className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer"
-                      style={{
-                        background: modal.dur === d ? 'var(--c-green)' : '#111820',
-                        borderColor: modal.dur === d ? 'var(--c-green)' : '#1e2d3d',
-                        color: modal.dur === d ? 'var(--c-primary-fg)' : '#dde6ef',
-                      }}
-                    >
-                      {d}m
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-[#7a95aa]">Duración (consultas y estudios largos)</label>
+                  <span className="text-[10px] text-[#7a95aa] font-mono">Total: {formatoDuracion(modal.dur)}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  {[
+                    { d: 30, lbl: '30m' },
+                    { d: 45, lbl: '45m' },
+                    { d: 60, lbl: '1h' },
+                    { d: 90, lbl: '1.5h' },
+                    { d: 120, lbl: '2h' },
+                    { d: 180, lbl: '3h' },
+                    { d: 240, lbl: '4h' },
+                  ].map(({ d, lbl }) => {
+                    const active = modal.dur === d;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => {
+                          if (onDurationChange) onDurationChange(d);
+                          else setModal({ ...modal, dur: d, error: '' });
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                          active
+                            ? 'bg-[#00e5a0] text-[#051b14] border-[#00e5a0] shadow-sm font-bold'
+                            : 'bg-[#111820] border-[#1e2d3d] text-[#dde6ef] hover:border-[#4b6377]'
+                        }`}
+                      >
+                        {lbl}
+                      </button>
+                    );
+                  })}
                   <div className="flex items-center gap-1 ml-1">
                     <input
                       type="number"
-                      min={5}
-                      step={5}
+                      min={10}
+                      step={15}
                       value={modal.dur}
-                      onChange={e => setModal({ ...modal, dur: Math.max(5, +e.target.value || 20), error: '' })}
+                      onChange={e => {
+                        const val = Math.max(10, +e.target.value || 30);
+                        if (onDurationChange) onDurationChange(val);
+                        else setModal({ ...modal, dur: val, error: '' });
+                      }}
                       className="w-16 px-2 py-1 bg-[#111820] border border-[#1e2d3d] rounded-lg text-[#dde6ef] text-xs text-center outline-none focus:border-[#00e5a0]"
+                      title="Minutos personalizados"
                     />
                     <span className="text-[11px] text-[#7a95aa]">min</span>
                   </div>
@@ -2641,7 +2798,7 @@ function ApptSlidePanel({
               </label>
               <input
                 className={inp}
-                placeholder="Motivo de consulta (ej. Primera vez, Control)"
+                placeholder="Motivo de consulta o estudio (ej. Tomografía 3h, Primera vez, Control)"
                 value={modal.reason || ''}
                 onChange={e => setModal({ ...modal, reason: e.target.value })}
               />
@@ -2717,18 +2874,24 @@ function ApptSlidePanel({
           <button
             type="button"
             onClick={onSaveBlock}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#f43f5e] hover:bg-[#e11d48] transition cursor-pointer shadow-md"
+            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#f43f5e] hover:bg-[#e11d48] transition cursor-pointer shadow-md flex items-center gap-1.5"
           >
-            🚫 Guardar bloqueo
+            <span>🚫</span>
+            <span>Guardar bloqueo ({formatoDuracion(modal.dur)})</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={onSave}
-            className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-md"
+            className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-md flex items-center gap-1.5"
             style={{ background: 'var(--c-green)', color: 'var(--c-primary-fg)' }}
           >
-            {modal.mode === 'create' ? 'Agendar cita' : 'Guardar cambios'}
+            <span>{modal.mode === 'create' ? '🩺' : '✓'}</span>
+            <span>
+              {modal.mode === 'create'
+                ? `Apartar cita / estudio (${formatoDuracion(modal.dur)})`
+                : 'Guardar cambios'}
+            </span>
           </button>
         )}
       </div>
