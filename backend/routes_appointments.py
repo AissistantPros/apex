@@ -138,11 +138,16 @@ async def patient_search(q: str, authorization: Optional[str] = Header(None)):
     if len(q) < 2:
         return {"results": []}
     clinic = _clinic_of(actor)
-    rows = supabase.table("patients").select("id, full_name, phone, email, clinic_id, doctor_id")\
-        .ilike("full_name", f"%{q}%").limit(20).execute().data or []
+    rows = supabase.table("patients").select("id, full_name, phone, email, date_of_birth, birth_date, clinic_id, doctor_id")\
+        .or_(f"full_name.ilike.%{q}%,phone.ilike.%{q}%").limit(20).execute().data or []
     # Solo pacientes de esta clínica
-    out = [{"id": r["id"], "full_name": r.get("full_name"), "phone": r.get("phone"), "email": r.get("email")}
-           for r in rows if patient_belongs(actor, r)][:8]
+    out = [{
+        "id": r["id"],
+        "full_name": r.get("full_name"),
+        "phone": r.get("phone"),
+        "email": r.get("email"),
+        "date_of_birth": r.get("date_of_birth") or r.get("birth_date"),
+    } for r in rows if patient_belongs(actor, r)][:8]
     return {"results": out}
 
 

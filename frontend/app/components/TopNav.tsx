@@ -21,6 +21,7 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 // Soporte se ubica pegado al fondo (separado del menú principal).
 const ALL_LINKS: Array<{ href: string; icon: IconName; label: string; roles: string[]; feature?: string }> = [
   { href: '/dashboard',            icon: 'home',      label: 'Inicio',         roles: ['admin','doctor','nurse','receptionist','accounting','marketing'] },
+  { href: '/dashboard/check-in',   icon: 'check',     label: 'Registrar visita', roles: ['admin','doctor','nurse','receptionist'] },
   { href: '/dashboard/sala',       icon: 'bell',      label: 'Sala de espera', roles: ['admin','doctor','nurse','receptionist'] },
   { href: '/dashboard/patients',   icon: 'users',     label: 'Pacientes',      roles: ['admin','doctor','nurse','receptionist'], feature: 'pacientes' },
   { href: '/dashboard/agenda',     icon: 'calendar',  label: 'Agenda',         roles: ['doctor','nurse','receptionist'], feature: 'agenda' },

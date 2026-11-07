@@ -6,6 +6,7 @@ import { getUser, getSession } from '@/app/lib/auth';
 import Icon from '@/app/components/Icon';
 import { useEntitlements } from '@/app/lib/useEntitlements';
 import { getRole } from '@/app/lib/role';
+import CheckInModal from '@/app/components/CheckInModal';
 
 export default function PatientsPage() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function PatientsPage() {
   const [viewMode, setViewMode] = useState<'tabla' | 'tarjetas'>('tabla');
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [checkInOpen, setCheckInOpen] = useState(false);
 
   useEffect(() => {
     setRole(getRole());
@@ -148,14 +150,25 @@ export default function PatientsPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard/new-patient/flow')}
-            className="px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl text-[#051b14] bg-[#00e5a0] hover:bg-[#00c98c] transition flex items-center gap-2 cursor-pointer shadow-[0_4px_16px_rgba(0,229,160,0.25)] active:scale-95"
-          >
-            <span className="text-base font-extrabold leading-none">+</span>
-            <span>Nuevo paciente</span>
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setCheckInOpen(true)}
+              className="px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl text-[#00e5a0] bg-[#00e5a0]/15 border border-[#00e5a0]/40 hover:bg-[#00e5a0]/25 transition flex items-center gap-2 cursor-pointer shadow-sm active:scale-95"
+            >
+              <span>📥</span>
+              <span>Registrar Visita / Check-in</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard/new-patient')}
+              className="px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl text-[#051b14] bg-[#00e5a0] hover:bg-[#00c98c] transition flex items-center gap-2 cursor-pointer shadow-[0_4px_16px_rgba(0,229,160,0.25)] active:scale-95"
+            >
+              <span className="text-base font-extrabold leading-none">+</span>
+              <span>Nuevo paciente</span>
+            </button>
+          </div>
         </div>
 
         {/* ── 2. KPIS DEL DIRECTORIO DE PACIENTES ── */}
@@ -291,7 +304,7 @@ export default function PatientsPage() {
             {!search && (
               <button
                 type="button"
-                onClick={() => router.push('/dashboard/new-patient/flow')}
+                onClick={() => router.push('/dashboard/new-patient')}
                 className="mt-3 px-5 py-2.5 rounded-xl text-xs font-bold text-[#051b14] bg-[#00e5a0] hover:bg-[#00c98c] transition cursor-pointer inline-block"
               >
                 Dar de alta paciente
@@ -564,6 +577,20 @@ export default function PatientsPage() {
         )}
 
       </main>
+
+      {/* Modal de Check-in y Filtro de Llegada */}
+      <CheckInModal
+        isOpen={checkInOpen}
+        onClose={() => setCheckInOpen(false)}
+        onSuccess={(name) => {
+          fetchPatients();
+          router.push('/dashboard/sala');
+        }}
+        onOpenNewPatient={(prefillName) => {
+          setCheckInOpen(false);
+          router.push(`/dashboard/new-patient?name=${encodeURIComponent(prefillName || '')}`);
+        }}
+      />
     </div>
   );
 }

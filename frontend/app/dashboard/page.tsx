@@ -137,9 +137,23 @@ export default function DashboardPage() {
             <h1 className="mt-1" style={{ color: 'var(--c-text)' }}>{saludo()}, {displayName}</h1>
             {clinicName && <p className="text-[14px] mt-0.5" style={{ color: 'var(--c-text-2)' }}>{clinicName}</p>}
           </div>
-          <button onClick={() => router.push('/dashboard/new-patient/flow')} className={primaryBtn} style={primaryStyle}>
-            <Icon name="plus" size={18} /> Nuevo paciente
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => router.push('/dashboard/check-in')}
+              className="px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm active:scale-95 border"
+              style={{
+                background: 'color-mix(in srgb, var(--c-primary) 12%, transparent)',
+                color: 'var(--c-primary)',
+                borderColor: 'color-mix(in srgb, var(--c-primary) 35%, transparent)',
+              }}
+            >
+              <span>📥</span>
+              <span>Registrar Visita</span>
+            </button>
+            <button onClick={() => router.push('/dashboard/new-patient')} className={primaryBtn} style={primaryStyle}>
+              <Icon name="plus" size={18} /> Nuevo paciente
+            </button>
+          </div>
         </header>
 
         {/* ── Buscador ── */}
@@ -209,7 +223,7 @@ export default function DashboardPage() {
               <div className="p-10 text-center">
                 <p className="font-medium" style={{ color: 'var(--c-text)' }}>Todavía no hay pacientes</p>
                 <p className="text-[14px] mt-1" style={{ color: 'var(--c-text-2)' }}>Registra al primero para empezar a llevar su expediente.</p>
-                <button onClick={() => router.push('/dashboard/new-patient/flow')} className={`${primaryBtn} mt-4`} style={primaryStyle}>
+                <button onClick={() => router.push('/dashboard/new-patient')} className={`${primaryBtn} mt-4`} style={primaryStyle}>
                   <Icon name="plus" size={18} /> Nuevo paciente
                 </button>
               </div>

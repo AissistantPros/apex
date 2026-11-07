@@ -17,6 +17,7 @@ import { getRole } from '@/app/lib/role';
 import { useEntitlements } from '@/app/lib/useEntitlements';
 import { mix } from '@/app/lib/ui';
 import Icon from '@/app/components/Icon';
+import CheckInModal from '@/app/components/CheckInModal';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -77,6 +78,7 @@ export default function SalaPage() {
   const [brief, setBrief] = useState<any>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [doctorStatus, setDoctorStatus] = useState<'disponible' | 'en_consulta' | 'receso'>('disponible');
+  const [checkInModalOpen, setCheckInModalOpen] = useState(false);
 
   // Pizarra de notas rápidas de sala (persistida en localStorage)
   const [notasPizarra, setNotasPizarra] = useState<string>(() => {
@@ -245,6 +247,16 @@ export default function SalaPage() {
                 <span>En pausa</span>
               </button>
             </div>
+
+            {/* Botón estelar: Registrar Visita / Check-in */}
+            <button
+              type="button"
+              onClick={() => setCheckInModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-[#00e5a0] text-[#051b14] text-xs font-bold hover:bg-[#00c98c] transition cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95"
+            >
+              <span>📥</span>
+              <span>Registrar Visita / Check-in</span>
+            </button>
 
             {/* Botón de refresco manual */}
             <button
@@ -805,6 +817,20 @@ export default function SalaPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Check-in y Filtro de Llegada */}
+      <CheckInModal
+        isOpen={checkInModalOpen}
+        onClose={() => setCheckInModalOpen(false)}
+        onSuccess={(name) => {
+          flash(`✓ ${name} registrado en sala de espera.`);
+          load();
+        }}
+        onOpenNewPatient={(prefillName) => {
+          setCheckInModalOpen(false);
+          router.push(`/dashboard/new-patient?name=${encodeURIComponent(prefillName || '')}`);
+        }}
+      />
     </div>
   );
 }
