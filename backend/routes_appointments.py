@@ -335,7 +335,8 @@ def _waitroom_rows(clinic: str, stages: set) -> list:
     from datetime import timedelta
     desde = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     cols = ("id, full_name, date_of_birth, birth_date, care_type, registration_phase, "
-            "updated_at, created_at, allergies_medications, allergies_foods, clinic_id, doctor_id")
+            "updated_at, created_at, allergies_medications, allergies_foods, chronic_diseases, "
+            "sexo_biologico, phone, email, clinic_id, doctor_id")
     # El paciente puede estar anclado por clinic_id (multi-tenant) o, en cuentas de
     # doctor solo, por doctor_id — se aceptan ambos, igual que patient_brief.
     rows = supabase.table("patients").select(cols)\
@@ -373,14 +374,83 @@ async def waitroom(authorization: Optional[str] = Header(None)):
         nota_recepcion = next((x.get("content") for x in notes_by_pid.get(r["id"], [])
                                if (x.get("author_role") == "receptionist")), None)
         waiting.append({
-            "id": r["id"], "full_name": r.get("full_name"), "edad": _edad(r),
+            "id": r["id"],
+            "full_name": r.get("full_name"),
+            "edad": _edad(r),
+            "sexo": r.get("sexo_biologico"),
+            "phone": r.get("phone"),
+            "email": r.get("email"),
+            "chronic_diseases": r.get("chronic_diseases"),
             "care_type": r.get("care_type"),
             "stage": _STAGE_BY_PHASE.get(r.get("registration_phase")),
             "esperando_desde": r.get("updated_at") or r.get("created_at"),
             "alergias": _alergias(r),
             "nota_recepcion": nota_recepcion,
         })
-    return {"waiting": waiting, "stages": sorted(stages)}
+
+    # Citas del día para el Cockpit Clínico (Programados hoy + Atendidos hoy)
+    from datetime import timedelta
+    today_utc = datetime.now(timezone.utc)
+    # Cubre 16 horas antes y después para abarcar husos horarios de México (UTC-6 a UTC-8)
+    desde_hoy = (today_utc - timedelta(hours=16)).strftime("%Y-%m-%dT00:00:00Z")
+    hasta_hoy = (today_utc + timedelta(hours=16)).strftime("%Y-%m-%dT23:59:59Z")
+
+    appts_today = supabase.table("appointments").select("*")\
+        .eq("clinic_id", clinic)\
+        .gte("starts_at", desde_hoy).lte("starts_at", hasta_hoy)\
+        .order("starts_at").execute().data or []
+
+    scheduled_today = []
+    attended_today = []
+
+    for a in appts_today:
+        st = a.get("status")
+        if st in ("scheduled", "confirmed"):
+            scheduled_today.append(a)
+        elif st == "done":
+            attended_today.append(a)
+
+    stats = {
+        "waiting": len(waiting),
+        "scheduled_today": len(scheduled_today),
+        "attended_today": len(attended_today),
+        "total_today": len(appts_today),
+    }
+
+    return {
+        "waiting": waiting,
+        "scheduled_today": scheduled_today,
+        "attended_today": attended_today,
+        "stats": stats,
+        "stages": sorted(stages)
+    }
+
+
+@router.post("/{appt_id}/check-in")
+async def check_in_appointment(appt_id: str, authorization: Optional[str] = Header(None)):
+    """Marca que el paciente de una cita programada llegó a la clínica (lo pasa a sala de espera)."""
+    actor = _require_agenda(authorization)
+    clinic = _clinic_of(actor)
+    cur = supabase.table("appointments").select("*").eq("id", appt_id).limit(1).execute().data
+    if not cur or cur[0].get("clinic_id") != clinic:
+        raise HTTPException(404, "Cita no encontrada")
+
+    appt = cur[0]
+    pid = appt.get("patient_id")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    supabase.table("appointments").update({
+        "status": "arrived",
+        "updated_at": now_iso
+    }).eq("id", appt_id).execute()
+
+    if pid:
+        supabase.table("patients").update({
+            "registration_phase": "reception",
+            "updated_at": now_iso
+        }).eq("id", pid).execute()
+
+    return {"ok": True, "status": "arrived", "patient_id": pid}
 
 
 @router.get("/waitroom/count")
