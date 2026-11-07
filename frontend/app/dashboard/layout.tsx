@@ -7,8 +7,11 @@ import AppFooter from '@/app/components/AppFooter';
 import { useDoctorProfile } from '@/app/lib/useDoctorProfile';
 import { getRole } from '@/app/lib/role';
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAgenda = pathname === '/dashboard/agenda';
   const { displayName, photoUrl } = useDoctorProfile();
   const [isDoctor, setIsDoctor] = useState(false);
 
@@ -19,9 +22,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <>
       <TopNav userName={displayName} photoUrl={photoUrl} />
-      <div className="md:pl-[232px] print:pl-0">
+      <div className={`md:pl-[232px] print:pl-0 ${isAgenda ? 'h-screen overflow-hidden flex flex-col' : ''}`}>
         {children}
-        <AppFooter />
+        {!isAgenda && <AppFooter />}
       </div>
       <TeamChat />
       {isDoctor && <ChatBubble />}

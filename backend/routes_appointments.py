@@ -521,6 +521,73 @@ async def update_appointment(appt_id: str, body: dict, authorization: Optional[s
     return {"ok": True, **patch}
 
 
+@router.post("/{appt_id}/confirm")
+async def confirm_appointment(appt_id: str, body: dict = {}, authorization: Optional[str] = Header(None)):
+    """Confirmar cita médica: de forma manual (recepción/doctor) o vía Agente IA (WhatsApp)."""
+    actor = _require_agenda(authorization)
+    clinic = _clinic_of(actor)
+    cur = supabase.table("appointments").select("*").eq("id", appt_id).limit(1).execute().data
+    if not cur or cur[0].get("clinic_id") != clinic:
+        raise HTTPException(404, "Cita no encontrada")
+
+    method = body.get("method", "manual")  # "manual" | "agent"
+    now_iso = datetime.now(timezone.utc).strftime("%d/%m %H:%M")
+    tag = f"[Confirmada por Agente IA · {now_iso}]" if method == "agent" else f"[Confirmada a mano por {actor.get('display_name') or 'Recepción'} · {now_iso}]"
+
+    existing_notes = (cur[0].get("notes") or "").strip()
+    updated_notes = f"{tag}\n{existing_notes}".strip() if tag not in existing_notes else existing_notes
+
+    patch = {
+        "status": "confirmed",
+        "notes": updated_notes,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    supabase.table("appointments").update(patch).eq("id", appt_id).execute()
+    return {"ok": True, "status": "confirmed", "method": method, "notes": updated_notes}
+
+
+@router.post("/{appt_id}/agent-dispatch")
+async def agent_dispatch(appt_id: str, authorization: Optional[str] = Header(None)):
+    """Envía la solicitud de confirmación al paciente a través del Agente IA por WhatsApp."""
+    actor = _require_agenda(authorization)
+    clinic = _clinic_of(actor)
+    cur = supabase.table("appointments").select("*").eq("id", appt_id).limit(1).execute().data
+    if not cur or cur[0].get("clinic_id") != clinic:
+        raise HTTPException(404, "Cita no encontrada")
+
+    appt = cur[0]
+    paciente = appt.get("patient_name") or "Paciente"
+    fecha = appt.get("starts_at")[:10] if appt.get("starts_at") else ""
+    hora = appt.get("starts_at")[11:16] if appt.get("starts_at") and len(appt.get("starts_at")) >= 16 else ""
+
+    now_iso = datetime.now(timezone.utc).strftime("%d/%m %H:%M")
+    tag = f"[Agente IA envió recordatorio WhatsApp · {now_iso}]"
+    existing_notes = (appt.get("notes") or "").strip()
+    updated_notes = f"{tag}\n{existing_notes}".strip() if tag not in existing_notes else existing_notes
+
+    patch = {
+        "notify_whatsapp": True,
+        "notes": updated_notes,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    supabase.table("appointments").update(patch).eq("id", appt_id).execute()
+
+    msg_preview = (
+        f"Hola {paciente}, te escribimos de Consultorio APEX para confirmar tu cita médica agendada "
+        f"para el {fecha} a las {hora} hrs. Por favor responde:\n"
+        f"1️⃣ Para CONFIRMAR tu asistencia\n"
+        f"2️⃣ Para REPROGRAMAR"
+    )
+
+    return {
+        "ok": True,
+        "dispatched": True,
+        "patient_phone": appt.get("patient_phone"),
+        "message_preview": msg_preview,
+        "notes": updated_notes
+    }
+
+
 @router.delete("/{appt_id}")
 async def cancel_appointment(appt_id: str, authorization: Optional[str] = Header(None)):
     actor = _require_agenda(authorization)
