@@ -254,17 +254,17 @@ export default function TopNav({ userName = 'Doctor', photoUrl }: TopNavProps) {
         </button>
 
         {/* Identidad: logotipo COMPLETO del consultorio arriba a la izquierda + marca Apex */}
-        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-4 mr-2 flex-shrink-0 h-full" aria-label="Ir al inicio">
+        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-2 sm:gap-4 mr-1 sm:mr-2 flex-shrink-0 h-full" aria-label="Ir al inicio">
           {logoSrc ? (
             logoEnPlaca ? (
-              <span className="rounded-md bg-white px-2.5 py-1.5 flex items-center">
-                <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[40px] w-auto max-w-[190px] object-contain" />
+              <span className="rounded-md bg-white px-2 py-1 sm:px-2.5 sm:py-1.5 flex items-center">
+                <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[32px] sm:h-[40px] w-auto max-w-[130px] sm:max-w-[190px] object-contain" />
               </span>
             ) : (
-              <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[52px] w-auto max-w-[230px] object-contain" />
+              <img src={logoSrc} alt={brand?.name || 'Consultorio'} className="h-[38px] sm:h-[52px] w-auto max-w-[140px] sm:max-w-[230px] object-contain" />
             )
           ) : (
-            <span className="text-[19px] font-semibold tracking-tight max-w-[220px] truncate" style={{ color: banda ? '#fff' : 'var(--c-primary)' }}>
+            <span className="text-[17px] sm:text-[19px] font-semibold tracking-tight max-w-[160px] sm:max-w-[220px] truncate" style={{ color: banda ? '#fff' : 'var(--c-primary)' }}>
               {brand?.name || 'Apex'}
             </span>
           )}

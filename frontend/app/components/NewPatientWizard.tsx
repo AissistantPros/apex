@@ -1,13 +1,14 @@
 'use client';
 
 /**
- * WIZARD DE NUEVO PACIENTE (APEX ADAPTIVE BENTO SLIDES)
+ * WIZARD DE NUEVO PACIENTE (APEX MEDICAL REGISTRATION)
  * Formulario modular por slides con auto-guardado en tiempo real:
- * - Slide 1: Identificación y Canales de Contacto (con cálculo reactivo de edad).
- * - Slide 2: Contacto de Emergencia y Origen / Referencia.
- * - Slide 3: Facturación Fiscal (CFDI) y Pase Inmediato a Sala de Espera.
- * - Cero "aire muerto": distribución Bento Grid en pantalla completa auto-ajustable.
- * - Auto-guardado continuo en localStorage para evitar pérdida de datos.
+ * - Slide 1: Identificación Personal y Canales de Contacto Directo.
+ * - Slide 2: Seguro de Gastos Médicos Mayores (SGMM en México) y Contacto de Emergencia.
+ * - Slide 3: Origen y Marketing Digital (Multiselección en cuadrículas estrictas, no mosaico).
+ * - Slide 4: Facturación Fiscal (CFDI) y Pase Inmediato a Sala de Espera.
+ * - Layout ergonómico: botones centrados que nunca son tapados por el chat flotante.
+ * - Cero "aire muerto" y cero textos recortados.
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -17,7 +18,7 @@ import Icon from '@/app/components/Icon';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-const STORAGE_KEY = 'apex_draft_new_patient';
+const STORAGE_KEY = 'apex_draft_new_patient_v2';
 
 async function authHeaders(): Promise<Record<string, string>> {
   const s = await getSession().catch(() => null);
@@ -38,33 +39,76 @@ async function api(path: string, opts: RequestInit = {}) {
   return r.json();
 }
 
-// Chips de opciones comunes
-const PARENTESCOS = ['Cónyuge', 'Madre', 'Padre', 'Hijo/a', 'Hermano/a', 'Amigo/a', 'Otro'];
-const ORIGENES = [
-  'Recomendación de paciente',
-  'Recomendación médica',
-  'Redes sociales',
-  'Google Maps',
-  'Doctoralia',
-  'Página web',
-  'Otro',
+// ── CATÁLOGOS Y OPCIONES RIGUROSAS ──
+const ASEGURADORAS_MEXICO = [
+  'GNP Seguros',
+  'AXA Seguros',
+  'MetLife México',
+  'Seguros Monterrey New York Life',
+  'Mapfre México',
+  'Bupa México',
+  'Allianz México',
+  'Seguros Banorte',
+  'Seguros Inbursa',
+  'Zurich México',
+  'Plan Seguro',
+  'Seguros Atlas',
+  'Chubb Seguros',
+  'AIG Seguros',
+  'Otra aseguradora',
 ];
+
+const PARENTESCOS = [
+  'Cónyuge / Pareja',
+  'Madre',
+  'Padre',
+  'Hijo / Hija',
+  'Hermano / Hermana',
+  'Familiar directo',
+  'Amigo / Conocido',
+  'Tutor legal',
+];
+
+const FUENTES_MARKETING = [
+  { id: 'rec_paciente', label: 'Recomendación de paciente' },
+  { id: 'rec_medico', label: 'Recomendación de otro médico' },
+  { id: 'google_search', label: 'Búsqueda en Google / Web' },
+  { id: 'google_maps', label: 'Google Maps / Mi Negocio (GMN)' },
+  { id: 'redes_sociales', label: 'Redes Sociales (Insta, FB, TikTok)' },
+  { id: 'ubicacion_fisica', label: 'Ubicación física / Pasó por la clínica' },
+  { id: 'convenio_empresa', label: 'Convenio de empresa / Aseguradora' },
+  { id: 'doctoralia', label: 'Doctoralia / Directorio médico' },
+];
+
+const CANALES_DIGITALES = [
+  { id: 'web', label: 'Página Web Oficial', icon: '🌐' },
+  { id: 'gmn', label: 'Google Maps / GMN', icon: '📍' },
+  { id: 'instagram', label: 'Instagram', icon: '📸' },
+  { id: 'facebook', label: 'Facebook', icon: '📘' },
+  { id: 'tiktok', label: 'TikTok', icon: '🎵' },
+  { id: 'youtube', label: 'YouTube', icon: '▶️' },
+  { id: 'doctoralia', label: 'Doctoralia', icon: '⭐' },
+  { id: 'whatsapp', label: 'WhatsApp del Consultorio', icon: '💬' },
+];
+
 const MOTIVOS_PRIMERA_VEZ = [
   'Primera consulta general',
   'Chequeo preventivo / Check-up',
   'Dolencia aguda / Síntomas',
   'Revisión de estudios / Labs',
   'Segunda opinión médica',
-  'Seguimiento de padecimiento',
+  'Procedimiento o curación',
 ];
+
 const REGIMENES_SAT = [
-  { code: '605', label: '605 - Sueldos y Salarios e Ingresos Asimilados a Salarios' },
+  { code: '605', label: '605 - Sueldos y Salarios e Ingresos Asimilados' },
   { code: '612', label: '612 - Personas Físicas con Actividades Empresariales y Profesionales' },
   { code: '626', label: '626 - Régimen Simplificado de Confianza (RESICO)' },
   { code: '601', label: '601 - General de Ley Personas Morales' },
   { code: '606', label: '606 - Arrendamiento' },
   { code: '616', label: '616 - Sin obligaciones fiscales' },
 ];
+
 const USOS_CFDI = [
   { code: 'D01', label: 'D01 - Honorarios médicos, dentales y gastos hospitalarios' },
   { code: 'G03', label: 'G03 - Gastos en general' },
@@ -85,15 +129,24 @@ export interface NewPatientFormData {
   email: string;
   reception_notes: string;
 
-  // Slide 2: Emergencia y Origen
+  // Slide 2: Seguro Médico y Contacto de Emergencia
+  seguro_tiene: boolean;
+  seguro_aseguradora: string;
+  seguro_otra: string;
+  seguro_poliza: string;
+  seguro_usara_hoy: 'pago_directo' | 'reembolso' | 'particular';
+
   emergency_name: string;
   emergency_relationship: string;
   emergency_phone: string;
   emergency_email: string;
-  referred_type: string;
+
+  // Slide 3: Marketing y Canales Digitales (Multiselección)
+  marketing_fuentes: string[];
+  marketing_canales: string[];
   referred_by: string;
 
-  // Slide 3: Facturación Fiscal y Pase a Sala
+  // Slide 4: Facturación Fiscal y Pase a Sala
   factura_requiere: boolean;
   factura_rfc: string;
   factura_razon_social: string;
@@ -102,7 +155,6 @@ export interface NewPatientFormData {
   factura_cp: string;
   factura_email: string;
 
-  // Pase a sala
   enviar_a_sala: boolean;
   doctor_id: string;
   location_id: string;
@@ -121,11 +173,19 @@ const INITIAL_FORM: NewPatientFormData = {
   email: '',
   reception_notes: '',
 
+  seguro_tiene: false,
+  seguro_aseguradora: 'GNP Seguros',
+  seguro_otra: '',
+  seguro_poliza: '',
+  seguro_usara_hoy: 'pago_directo',
+
   emergency_name: '',
-  emergency_relationship: 'Cónyuge',
+  emergency_relationship: 'Cónyuge / Pareja',
   emergency_phone: '',
   emergency_email: '',
-  referred_type: 'Recomendación de paciente',
+
+  marketing_fuentes: ['Recomendación de paciente'],
+  marketing_canales: ['Página Web Oficial'],
   referred_by: '',
 
   factura_requiere: false,
@@ -142,10 +202,9 @@ const INITIAL_FORM: NewPatientFormData = {
   motivo_visita: 'Primera consulta general',
 };
 
-// Estilos de inputs compartidos
 const inpClass =
-  'w-full px-3.5 py-2.5 bg-[#070a0e] border border-[#1e2d3d] rounded-xl text-[#dde6ef] text-xs sm:text-sm outline-none placeholder-[#3d5870] focus:border-[#00e5a0] transition shadow-inner';
-const labelClass = 'text-[11px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold block mb-1';
+  'w-full px-3.5 py-2.5 bg-[#070a0e] border border-[#1e2d3d] rounded-xl text-[#dde6ef] text-sm outline-none placeholder-[#4b6377] focus:border-[#00e5a0] transition shadow-inner';
+const labelClass = 'text-[11px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold block mb-1.5';
 
 interface NewPatientWizardProps {
   initialPrefillName?: string;
@@ -161,7 +220,7 @@ export default function NewPatientWizard({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Paso actual (1, 2 o 3)
+  // Paso actual (1, 2, 3 o 4)
   const [currentStep, setCurrentStep] = useState(1);
 
   // Formulario reactivo
@@ -179,7 +238,6 @@ export default function NewPatientWizard({
 
   // 1. Inicialización y restauración de borrador
   useEffect(() => {
-    // Si viene nombre pre-llenado desde query string o prop
     const queryName = searchParams?.get('name') || initialPrefillName || '';
 
     // Cargar doctores y sedes de la clínica
@@ -195,21 +253,20 @@ export default function NewPatientWizard({
       })
       .catch(() => {});
 
-    // Intentar restaurar borrador guardado en localStorage
+    // Restaurar borrador de localStorage
     try {
       const savedDraft = localStorage.getItem(STORAGE_KEY);
       if (savedDraft) {
         const parsed = JSON.parse(savedDraft);
         setFormData(prev => ({ ...prev, ...parsed }));
         setDraftRestored(true);
-        setLastSavedTime('Recuperado de sesión anterior');
+        setLastSavedTime('Recuperado');
         return;
       }
     } catch {
-      // Ignorar errores de parseo
+      // Ignorar errores
     }
 
-    // Si no había borrador pero sí un queryName, separar en first_name y last_name
     if (queryName.trim()) {
       const parts = queryName.trim().split(' ');
       if (parts.length === 1) {
@@ -222,7 +279,7 @@ export default function NewPatientWizard({
     }
   }, []); // eslint-disable-line
 
-  // 2. Auto-guardado en tiempo real en localStorage al cambiar cualquier campo
+  // 2. Auto-guardado continuo en tiempo real
   const saveTimeoutRef = useRef<any>(null);
   const updateField = (field: keyof NewPatientFormData, value: any) => {
     setFormData(prev => {
@@ -236,13 +293,24 @@ export default function NewPatientWizard({
         } catch {
           /* noop */
         }
-      }, 350);
+      }, 300);
       return updated;
     });
     setErrorMessage('');
   };
 
-  // Descartar borrador y empezar de cero
+  // Toggle para selecciones múltiples de marketing
+  const toggleArrayItem = (field: 'marketing_fuentes' | 'marketing_canales', item: string) => {
+    setFormData(prev => {
+      const list = prev[field] || [];
+      const updatedList = list.includes(item)
+        ? list.filter(i => i !== item)
+        : [...list, item];
+      return { ...prev, [field]: updatedList };
+    });
+    setErrorMessage('');
+  };
+
   const handleDiscardDraft = () => {
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -254,7 +322,7 @@ export default function NewPatientWizard({
     setLastSavedTime('');
   };
 
-  // 3. Cálculo dinámico de edad según fecha de nacimiento
+  // 3. Cálculo de edad automático
   const edadCalculada = useMemo(() => {
     if (!formData.date_of_birth) return null;
     const dob = new Date(formData.date_of_birth);
@@ -265,7 +333,7 @@ export default function NewPatientWizard({
     return age;
   }, [formData.date_of_birth]);
 
-  // Link de WhatsApp para el celular
+  // Enlace WhatsApp para el celular
   const whatsappUrl = useMemo(() => {
     if (!formData.phone) return null;
     const clean = formData.phone.replace(/\D/g, '');
@@ -302,6 +370,9 @@ export default function NewPatientWizard({
     } else if (currentStep === 2) {
       setCurrentStep(3);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (currentStep === 3) {
+      setCurrentStep(4);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -325,7 +396,18 @@ export default function NewPatientWizard({
     setErrorMessage('');
 
     try {
-      // 1. Preparar payload de creación de paciente
+      // 1. Aseguradora formateada
+      const aseguradoraTexto = formData.seguro_tiene
+        ? (formData.seguro_aseguradora === 'Otra aseguradora' ? formData.seguro_otra : formData.seguro_aseguradora)
+        : '';
+
+      const seguroNota = formData.seguro_tiene
+        ? `[SEGURO MÉDICO]: ${aseguradoraTexto || 'SGMM'} | Póliza: ${formData.seguro_poliza || 'S/N'} | Uso en visita: ${formData.seguro_usara_hoy}`
+        : '[SEGURO MÉDICO]: Atención particular (Sin SGMM)';
+
+      const notasCombinadas = [formData.reception_notes.trim(), seguroNota].filter(Boolean).join('\n\n');
+
+      // 2. Preparar payload de creación de paciente
       const patientPayload: Record<string, any> = {
         first_name: formData.first_name.trim(),
         last_name: formData.last_name.trim(),
@@ -336,16 +418,23 @@ export default function NewPatientWizard({
         phone: formData.phone.trim(),
         phone_landline: formData.phone_landline.trim(),
         email: formData.email.trim(),
-        reception_notes: formData.reception_notes.trim(),
+        notes_reception: notasCombinadas,
 
         emergency_contact_name: formData.emergency_name.trim(),
         emergency_contact_relationship: formData.emergency_relationship,
         emergency_contact_phone: formData.emergency_phone.trim(),
         emergency_contact_email: formData.emergency_email.trim(),
 
-        referred_type: formData.referred_type,
+        // Marketing estructurado compatible con los dashboards de clínica
+        sources_of_contact: formData.marketing_fuentes,
+        referred_type: formData.marketing_fuentes.join(', '),
         referred_by: formData.referred_by.trim(),
+        prev_web: formData.marketing_canales.includes('Página Web Oficial'),
+        prev_gmaps: formData.marketing_canales.includes('Google Maps / GMN') || formData.marketing_fuentes.includes('Google Maps / Google Mi Negocio (GMN)'),
+        prev_redes: formData.marketing_canales.some(c => ['Instagram', 'Facebook', 'TikTok', 'YouTube'].includes(c)),
+        social_network: formData.marketing_canales.filter(c => ['Instagram', 'Facebook', 'TikTok', 'YouTube'].includes(c)).join(', '),
 
+        // Facturación
         factura_requiere: Boolean(formData.factura_requiere),
         factura_rfc: formData.factura_rfc.trim().toUpperCase(),
         factura_razon_social: formData.factura_razon_social.trim(),
@@ -354,7 +443,6 @@ export default function NewPatientWizard({
         factura_cp: formData.factura_cp.trim(),
         factura_email: formData.factura_email.trim(),
 
-        // Estado inicial de recepción
         registration_phase: 'reception',
       };
 
@@ -366,21 +454,22 @@ export default function NewPatientWizard({
       const newPatientId = resPatient.id;
       const newFullName = resPatient.full_name || `${formData.first_name} ${formData.last_name}`;
 
-      // 2. Si se activó "Enviar a sala de espera inmediatamente", crear la visita
+      // 3. Si se marcó pase a sala, registrar la visita inicial
       if (formData.enviar_a_sala && newPatientId) {
         const nowIso = new Date().toISOString();
+        const motivoFinal = `${formData.motivo_visita || 'Primera consulta'}${formData.seguro_tiene && aseguradoraTexto ? ` (Seguro: ${aseguradoraTexto})` : ''}`;
+
         await api('/visits', {
           method: 'POST',
           body: JSON.stringify({
             patient_id: newPatientId,
             doctor_id: formData.doctor_id || null,
             location_id: formData.location_id || null,
-            motivo_visita: formData.motivo_visita || 'Primera consulta general',
+            motivo_visita: motivoFinal,
             created_at: nowIso,
           }),
         });
 
-        // Asegurar ancla en recepción
         await api(`/patients/${newPatientId}`, {
           method: 'PUT',
           body: JSON.stringify({
@@ -390,7 +479,7 @@ export default function NewPatientWizard({
         });
       }
 
-      // 3. Limpiar borrador guardado en localStorage
+      // Limpiar borrador
       try {
         localStorage.removeItem(STORAGE_KEY);
       } catch {
@@ -411,40 +500,42 @@ export default function NewPatientWizard({
 
   return (
     <div className="flex flex-col min-h-screen bg-[#070a0e] text-[#dde6ef] select-none">
-      {/* ── 1. CABECERA Y STEPPER SUPERIOR (PROGRESO CLARO) ── */}
+      {/* ── 1. CABECERA Y STEPPER SUPERIOR (RESPONSIVE Y FLUIDO) ── */}
       <header className="sticky top-0 z-30 bg-[#0d1520]/95 backdrop-blur-md border-b border-[#1e2d3d] px-4 sm:px-8 py-3.5">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Título y subtítulo */}
-          <div className="flex items-center gap-3">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Título y estado */}
+          <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
               onClick={onCancel || (() => router.back())}
-              className="p-2 rounded-xl text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer"
+              className="p-2 rounded-xl text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer shrink-0"
               title="Volver atrás"
             >
               <Icon name="back" size={18} />
             </button>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold text-[#dde6ef] flex items-center gap-2">
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-bold text-[#dde6ef] flex items-center gap-2 truncate">
                 <span>Alta de Nuevo Paciente</span>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#00e5a0]/15 text-[#00e5a0]">
-                  Paso {currentStep} de 3
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#00e5a0]/15 text-[#00e5a0] border border-[#00e5a0]/30 shrink-0">
+                  {currentStep} / 4 · {currentStep * 25}%
                 </span>
               </h1>
-              <p className="text-[11px] text-[#7a95aa]">
-                {currentStep === 1 && 'Identificación básica y canales de comunicación'}
-                {currentStep === 2 && 'Contacto de emergencia y fuente de recomendación'}
-                {currentStep === 3 && 'Datos fiscales para factura y pase a sala de espera'}
+              <p className="text-[11px] text-[#7a95aa] truncate">
+                {currentStep === 1 && '1. Identificación Personal y Canales de Contacto'}
+                {currentStep === 2 && '2. Seguro Médico (SGMM) y Contacto de Emergencia'}
+                {currentStep === 3 && '3. Origen, Recomendación y Canales Digitales'}
+                {currentStep === 4 && '4. Facturación CFDI y Pase a Sala de Espera'}
               </p>
             </div>
           </div>
 
-          {/* Stepper interactivo de 3 pasos (clicable) */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Stepper interactivo de 4 pasos (Píldoras adaptables) */}
+          <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 shrink-0">
             {[
               { step: 1, label: 'Identidad', icon: '👤' },
-              { step: 2, label: 'Emergencia', icon: '🚨' },
-              { step: 3, label: 'Facturación & Pase', icon: '🧾' },
+              { step: 2, label: 'Seguro', icon: '🛡️' },
+              { step: 3, label: 'Marketing', icon: '🌐' },
+              { step: 4, label: 'Sala', icon: '🩺' },
             ].map(s => {
               const isActive = currentStep === s.step;
               const isPast = currentStep > s.step;
@@ -454,38 +545,39 @@ export default function NewPatientWizard({
                   key={s.step}
                   type="button"
                   onClick={() => {
-                    if (s.step === 1 || (s.step === 2 && validateStep1()) || (s.step === 3 && validateStep1())) {
+                    if (s.step === 1 || validateStep1()) {
                       setCurrentStep(s.step);
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                  className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
                     isActive
-                      ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#00e5a0] shadow-sm ring-1 ring-[#00e5a0]'
+                      ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#00e5a0] shadow-sm font-bold ring-1 ring-[#00e5a0]'
                       : isPast
                       ? 'bg-[#111820] border-[#1e2d3d] text-[#dde6ef] hover:border-[#4b6377]'
-                      : 'bg-[#070a0e] border-transparent text-[#4b6377] hover:text-[#7a95aa]'
+                      : 'bg-[#070a0e] border-[#1e2d3d]/50 text-[#4b6377] hover:text-[#7a95aa]'
                   }`}
                 >
-                  <span>{isPast ? '✓' : s.icon}</span>
+                  <span className="text-xs">{isPast ? '✓' : s.icon}</span>
                   <span className="hidden md:inline">{s.label}</span>
+                  <span className="md:hidden font-mono text-[11px] font-bold">{s.step}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Barra de progreso porcentual visual */}
-        <div className="max-w-6xl mx-auto mt-2 h-1 bg-[#162231] rounded-full overflow-hidden">
+        {/* Barra de progreso visual suave */}
+        <div className="max-w-5xl mx-auto mt-2 h-1 bg-[#162231] rounded-full overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-[#00e5a0] to-[#38bdf8] transition-all duration-300"
-            style={{ width: `${(currentStep / 3) * 100}%` }}
+            style={{ width: `${(currentStep / 4) * 100}%` }}
           />
         </div>
       </header>
 
       {/* ── AVISO DE BORRADOR RECUPERADO (SI APLICA) ── */}
       {draftRestored && (
-        <div className="max-w-6xl mx-auto w-full px-4 sm:px-8 pt-3">
+        <div className="max-w-5xl mx-auto w-full px-4 sm:px-8 pt-3">
           <div className="p-2.5 rounded-xl bg-[#38bdf8]/10 border border-[#38bdf8]/30 flex items-center justify-between text-xs text-[#38bdf8]">
             <span className="flex items-center gap-1.5">
               <span>💾</span> Se restauró un borrador previo no guardado.
@@ -501,8 +593,8 @@ export default function NewPatientWizard({
         </div>
       )}
 
-      {/* ── 2. CONTENIDO PRINCIPAL: BENTO GRID FULL SCREEN POR SLIDE ── */}
-      <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-8 space-y-6 pb-28">
+      {/* ── 2. CONTENIDO PRINCIPAL (CUADRÍCULA ESTRICTA, SIN AIRE MUERTO NI RECORTES) ── */}
+      <main className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-8 space-y-6 pb-32">
         {errorMessage && (
           <div className="p-3.5 rounded-2xl bg-[#f43f5e]/15 border border-[#f43f5e]/40 text-xs text-[#f43f5e] font-semibold animate-in fade-in">
             {errorMessage}
@@ -510,11 +602,11 @@ export default function NewPatientWizard({
         )}
 
         {/* ════════════════════════════════════════════════════════════════════════
-            SLIDE 1: IDENTIDAD BÁSICA Y CANALES DE CONTACTO
+            SLIDE 1: IDENTIDAD Y CANALES DE CONTACTO
            ════════════════════════════════════════════════════════════════════════ */}
         {currentStep === 1 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 animate-in fade-in">
-            {/* MÓDULO 1: IDENTIFICACIÓN DEL PACIENTE */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
+            {/* MÓDULO 1: IDENTIFICACIÓN PERSONAL */}
             <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
                 <div className="flex items-center gap-2.5">
@@ -529,14 +621,14 @@ export default function NewPatientWizard({
                   </div>
                 </div>
                 {edadCalculada !== null && (
-                  <span className="px-2.5 py-1 rounded-xl text-xs font-mono font-bold bg-[#00e5a0]/15 text-[#00e5a0] border border-[#00e5a0]/30">
+                  <span className="px-3 py-1 rounded-xl text-xs font-mono font-bold bg-[#00e5a0]/15 text-[#00e5a0] border border-[#00e5a0]/30">
                     🎂 {edadCalculada} años
                   </span>
                 )}
               </div>
 
               {/* Nombre y Apellidos */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className={labelClass}>
                     Nombre(s) <span className="text-[#f43f5e]">*</span>
@@ -565,7 +657,7 @@ export default function NewPatientWizard({
               </div>
 
               {/* Fecha de Nacimiento y Sexo Biológico */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className={labelClass}>
                     Fecha de nacimiento <span className="text-[#f43f5e]">*</span>
@@ -579,16 +671,16 @@ export default function NewPatientWizard({
                 </div>
                 <div>
                   <label className={labelClass}>Sexo biológico</label>
-                  <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+                  <div className="flex rounded-xl bg-[#070a0e] border border-[#1e2d3d] p-1 gap-1">
                     {['Femenino', 'Masculino', 'Otro'].map(g => (
                       <button
                         key={g}
                         type="button"
                         onClick={() => updateField('gender', g)}
-                        className={`py-2 px-1 rounded-xl text-xs font-semibold border transition cursor-pointer text-center ${
+                        className={`flex-1 py-2 px-1 text-xs font-semibold rounded-lg transition cursor-pointer text-center whitespace-nowrap ${
                           formData.gender === g
-                            ? 'bg-[#00e5a0]/20 border-[#00e5a0] text-[#00e5a0] font-bold'
-                            : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                            ? 'bg-[#00e5a0]/20 text-[#00e5a0] font-bold border border-[#00e5a0]/40 shadow-sm'
+                            : 'text-[#7a95aa] hover:text-[#dde6ef]'
                         }`}
                       >
                         {g}
@@ -598,28 +690,27 @@ export default function NewPatientWizard({
                 </div>
               </div>
 
-              {/* Ocupación y Ciudad */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={labelClass}>Ocupación / Profesión</label>
-                  <input
-                    type="text"
-                    value={formData.occupation}
-                    onChange={e => updateField('occupation', e.target.value)}
-                    placeholder="Ej. Ingeniero de software, Docente"
-                    className={inpClass}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Ciudad / Municipio</label>
-                  <input
-                    type="text"
-                    value={formData.city}
-                    onChange={e => updateField('city', e.target.value)}
-                    placeholder="Ej. Cancún, Quintana Roo"
-                    className={inpClass}
-                  />
-                </div>
+              {/* Ocupación y Ciudad (Ancho completo para evitar recortes) */}
+              <div>
+                <label className={labelClass}>Ocupación / Profesión</label>
+                <input
+                  type="text"
+                  value={formData.occupation}
+                  onChange={e => updateField('occupation', e.target.value)}
+                  placeholder="Ej. Ingeniero de software, Docente, Contador"
+                  className={inpClass}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Ciudad / Municipio de residencia</label>
+                <input
+                  type="text"
+                  value={formData.city}
+                  onChange={e => updateField('city', e.target.value)}
+                  placeholder="Ej. Cancún, Quintana Roo"
+                  className={inpClass}
+                />
               </div>
             </div>
 
@@ -668,7 +759,7 @@ export default function NewPatientWizard({
                 </div>
 
                 {/* Teléfono Fijo y Correo Electrónico */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className={labelClass}>Teléfono fijo / Alternativo</label>
                     <input
@@ -704,20 +795,147 @@ export default function NewPatientWizard({
                 </div>
               </div>
 
-              <div className="pt-2 text-[11px] text-[#7a95aa] flex items-center gap-1.5">
+              <div className="pt-2 text-[11px] text-[#7a95aa] flex items-center gap-1.5 border-t border-[#1e2d3d]/60">
                 <span>💡</span>
-                <span>Los campos con (*) son requeridos para la ficha básica de admisión.</span>
+                <span>Los campos con (*) son indispensables para aperturar el expediente clínico.</span>
               </div>
             </div>
           </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════════════════
-            SLIDE 2: CONTACTO DE EMERGENCIA Y ORIGEN / REFERENCIA
+            SLIDE 2: SEGURO MÉDICO (SGMM) Y CONTACTO DE EMERGENCIA
            ════════════════════════════════════════════════════════════════════════ */}
         {currentStep === 2 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 animate-in fade-in">
-            {/* MÓDULO 3: CONTACTO DE EMERGENCIA */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
+            {/* MÓDULO 3: SEGURO DE GASTOS MÉDICOS MAYORES (MÉXICO) */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
+              <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-8 h-8 rounded-xl bg-[#00e5a0]/15 text-[#00e5a0] flex items-center justify-center font-bold text-sm">
+                    🛡️
+                  </span>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                      Seguro de Gastos Médicos (SGMM)
+                    </h2>
+                    <p className="text-[11px] text-[#7a95aa]">Aseguradora y cobertura de la consulta</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pregunta: ¿Cuenta con seguro médico? */}
+              <div>
+                <label className={labelClass}>¿El paciente cuenta con Seguro Médico (SGMM)?</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => updateField('seguro_tiene', true)}
+                    className={`p-3 rounded-2xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-2 ${
+                      formData.seguro_tiene
+                        ? 'bg-[#00e5a0]/20 border-[#00e5a0] text-[#00e5a0] shadow-md ring-1 ring-[#00e5a0]'
+                        : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                    }`}
+                  >
+                    <span>✓ Sí, cuenta con seguro</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateField('seguro_tiene', false)}
+                    className={`p-3 rounded-2xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-2 ${
+                      !formData.seguro_tiene
+                        ? 'bg-[#38bdf8]/20 border-[#38bdf8] text-[#38bdf8] shadow-md ring-1 ring-[#38bdf8]'
+                        : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                    }`}
+                  >
+                    <span>Particular (Sin seguro)</span>
+                  </button>
+                </div>
+              </div>
+
+              {formData.seguro_tiene ? (
+                <div className="space-y-3.5 pt-2 border-t border-[#1e2d3d]/60 animate-in fade-in">
+                  {/* Nombre de la Aseguradora */}
+                  <div>
+                    <label className={labelClass}>Aseguradora en México</label>
+                    <select
+                      value={formData.seguro_aseguradora}
+                      onChange={e => updateField('seguro_aseguradora', e.target.value)}
+                      className={inpClass}
+                    >
+                      {ASEGURADORAS_MEXICO.map(aseg => (
+                        <option key={aseg} value={aseg}>{aseg}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {formData.seguro_aseguradora === 'Otra aseguradora' && (
+                    <div>
+                      <label className={labelClass}>Especifica el nombre de la aseguradora / fondo</label>
+                      <input
+                        type="text"
+                        value={formData.seguro_otra}
+                        onChange={e => updateField('seguro_otra', e.target.value)}
+                        placeholder="Ej. Pemex, Seguro Extranjero (BlueCross), etc."
+                        className={inpClass}
+                        autoFocus
+                      />
+                    </div>
+                  )}
+
+                  {/* Número de Póliza */}
+                  <div>
+                    <label className={labelClass}>Número de Póliza / Certificado (opcional)</label>
+                    <input
+                      type="text"
+                      value={formData.seguro_poliza}
+                      onChange={e => updateField('seguro_poliza', e.target.value)}
+                      placeholder="Ej. POL-987654321"
+                      className={inpClass}
+                    />
+                  </div>
+
+                  {/* ¿Usará su seguro en esta visita? Cuadrícula estricta */}
+                  <div>
+                    <label className={labelClass}>¿Usará su seguro para esta visita / consulta?</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        { id: 'pago_directo', label: 'Pago Directo / Convenio' },
+                        { id: 'reembolso', label: 'Formato de Reembolso' },
+                        { id: 'particular', label: 'No, pago particular' },
+                      ].map(opt => {
+                        const active = formData.seguro_usara_hoy === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => updateField('seguro_usara_hoy', opt.id)}
+                            className={`p-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer text-center ${
+                              active
+                                ? 'bg-[#00e5a0]/20 border-[#00e5a0] text-[#00e5a0] font-bold'
+                                : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-[#111820]/60 border border-dashed border-[#1e2d3d] text-center space-y-1">
+                  <p className="text-xs text-[#7a95aa]">
+                    Atención médica privada por cuenta propia.
+                  </p>
+                  <p className="text-[11px] text-[#4b6377]">
+                    Se cobrará directamente al paciente. Puede registrar su aseguradora en cualquier visita futura.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* MÓDULO 4: CONTACTO DE EMERGENCIA */}
             <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
               <div className="flex items-center gap-2.5 border-b border-[#1e2d3d]/80 pb-3">
                 <span className="w-8 h-8 rounded-xl bg-[#f43f5e]/15 text-[#f43f5e] flex items-center justify-center font-bold text-sm">
@@ -731,7 +949,6 @@ export default function NewPatientWizard({
                 </div>
               </div>
 
-              {/* Nombre de Contacto */}
               <div>
                 <label className={labelClass}>Nombre completo del familiar / contacto</label>
                 <input
@@ -740,33 +957,35 @@ export default function NewPatientWizard({
                   onChange={e => updateField('emergency_name', e.target.value)}
                   placeholder="Ej. María Elena Torres"
                   className={inpClass}
-                  autoFocus
                 />
               </div>
 
-              {/* Parentesco (Chips táctiles) */}
+              {/* Parentesco en cuadrícula estricta y ordenada (CERO MOSAICO) */}
               <div>
                 <label className={labelClass}>Parentesco con el paciente</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {PARENTESCOS.map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => updateField('emergency_relationship', p)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                        formData.emergency_relationship === p
-                          ? 'bg-[#f43f5e]/20 border-[#f43f5e] text-[#f43f5e]'
-                          : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {PARENTESCOS.map(p => {
+                    const active = formData.emergency_relationship === p;
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => updateField('emergency_relationship', p)}
+                        className={`py-2.5 px-2 rounded-xl text-xs font-semibold border transition cursor-pointer text-center leading-tight min-h-[42px] flex items-center justify-center ${
+                          active
+                            ? 'bg-[#f43f5e]/20 border-[#f43f5e] text-[#f43f5e] font-bold shadow-sm'
+                            : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Teléfono y Correo de Emergencia */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className={labelClass}>Teléfono de emergencia</label>
                   <input
@@ -789,79 +1008,134 @@ export default function NewPatientWizard({
                 </div>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* MÓDULO 4: ¿CÓMO CONOCIÓ LA CLÍNICA? (REFERENCIA) */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2.5 border-b border-[#1e2d3d]/80 pb-3">
+        {/* ════════════════════════════════════════════════════════════════════════
+            SLIDE 3: MARKETING, ORIGEN Y CANALES DIGITALES (CUADRÍCULAS ESTRICTAS)
+           ════════════════════════════════════════════════════════════════════════ */}
+        {currentStep === 3 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
+            {/* MÓDULO 5: ¿CÓMO SE ENTERÓ DEL DOCTOR? (MULTISELECCIÓN) */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
+              <div className="border-b border-[#1e2d3d]/80 pb-3">
+                <div className="flex items-center gap-2.5">
                   <span className="w-8 h-8 rounded-xl bg-[#a78bfa]/15 text-[#a78bfa] flex items-center justify-center font-bold text-sm">
-                    🌐
+                    1️⃣
                   </span>
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
-                      Fuente de Llegada / Referencia
+                      ¿Cómo se enteró del Doctor / Consultorio?
                     </h2>
-                    <p className="text-[11px] text-[#7a95aa]">¿Cómo conoció el consultorio o clínica?</p>
+                    <p className="text-[11px] text-[#7a95aa]">Selecciona todas las opciones que apliquen</p>
                   </div>
-                </div>
-
-                {/* Chips de origen */}
-                <div>
-                  <label className={labelClass}>Canal de procedencia</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {ORIGENES.map(orig => {
-                      const selected = formData.referred_type === orig;
-                      return (
-                        <button
-                          key={orig}
-                          type="button"
-                          onClick={() => updateField('referred_type', orig)}
-                          className={`p-2.5 rounded-xl text-left border text-xs font-semibold transition cursor-pointer flex items-center justify-between ${
-                            selected
-                              ? 'bg-[#a78bfa]/20 border-[#a78bfa] text-[#a78bfa] shadow-sm'
-                              : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
-                          }`}
-                        >
-                          <span className="truncate">{orig}</span>
-                          {selected && <span className="text-xs">✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Persona que recomendó */}
-                <div>
-                  <label className={labelClass}>
-                    Nombre de quien recomendó o detalle (opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.referred_by}
-                    onChange={e => updateField('referred_by', e.target.value)}
-                    placeholder="Ej. Dr. Mario Soto, Familia Gutiérrez, Instagram…"
-                    className={inpClass}
-                  />
-                  <p className="text-[10px] text-[#7a95aa] mt-1">
-                    Permite atribuir métricas de recomendación y agradecer al colega o paciente que refirió.
-                  </p>
                 </div>
               </div>
 
-              <div className="pt-2 text-[11px] text-[#7a95aa] flex items-center gap-1.5">
-                <span>📊</span>
-                <span>Estos datos alimentan los indicadores de retorno de inversión de la clínica.</span>
+              {/* Cuadrícula estricta de 2 columnas (CERO MOSAICO) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {FUENTES_MARKETING.map(item => {
+                  const checked = formData.marketing_fuentes.includes(item.label);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => toggleArrayItem('marketing_fuentes', item.label)}
+                      className={`p-3 rounded-2xl text-left border text-xs font-semibold transition cursor-pointer flex items-center justify-between min-h-[46px] ${
+                        checked
+                          ? 'bg-[#a78bfa]/20 border-[#a78bfa] text-[#dde6ef] shadow-sm'
+                          : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] hover:border-[#4b6377]'
+                      }`}
+                    >
+                      <span className="leading-snug pr-2">{item.label}</span>
+                      <span className={`w-4 h-4 rounded-md border flex items-center justify-center text-[10px] shrink-0 ${
+                        checked ? 'bg-[#a78bfa] border-[#a78bfa] text-white font-bold' : 'border-[#4b6377]'
+                      }`}>
+                        {checked ? '✓' : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Nombre de la persona o médico que recomendó */}
+              <div className="pt-2 border-t border-[#1e2d3d]/60">
+                <label className={labelClass}>
+                  Nombre de la persona, médico o recomendación (si aplica)
+                </label>
+                <input
+                  type="text"
+                  value={formData.referred_by}
+                  onChange={e => updateField('referred_by', e.target.value)}
+                  placeholder="Ej. Dr. Mario Soto, Familia Gutiérrez, Amigo del trabajo…"
+                  className={inpClass}
+                />
+              </div>
+            </div>
+
+            {/* MÓDULO 6: CANALES DIGITALES VISITADOS (MULTISELECCIÓN) */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="border-b border-[#1e2d3d]/80 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 rounded-xl bg-[#38bdf8]/15 text-[#38bdf8] flex items-center justify-center font-bold text-sm">
+                      2️⃣
+                    </span>
+                    <div>
+                      <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                        Canales Digitales Consultados
+                      </h2>
+                      <p className="text-[11px] text-[#7a95aa]">
+                        ¿Qué perfiles o canales ha visitado para llegar con el Doctor?
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cuadrícula estricta y simétrica (2x4 o 4x2) */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  {CANALES_DIGITALES.map(item => {
+                    const checked = formData.marketing_canales.includes(item.label);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => toggleArrayItem('marketing_canales', item.label)}
+                        className={`p-3 rounded-2xl text-left border text-xs font-semibold transition cursor-pointer flex items-center justify-between min-h-[48px] ${
+                          checked
+                            ? 'bg-[#38bdf8]/20 border-[#38bdf8] text-[#dde6ef] shadow-sm'
+                            : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] hover:border-[#4b6377]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 pr-1">
+                          <span className="text-sm shrink-0">{item.icon}</span>
+                          <span className="leading-tight text-xs font-semibold">{item.label}</span>
+                        </div>
+                        <span className={`w-4 h-4 rounded-md border flex items-center justify-center text-[10px] shrink-0 ${
+                          checked ? 'bg-[#38bdf8] border-[#38bdf8] text-[#051b14] font-bold' : 'border-[#4b6377]'
+                        }`}>
+                          {checked ? '✓' : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pt-3 text-[11px] text-[#7a95aa] flex items-center gap-2 border-t border-[#1e2d3d]/60">
+                <span>📈</span>
+                <span>Permite atribuir con exactitud el ROI de cada red social y canal publicitario.</span>
               </div>
             </div>
           </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════════════════
-            SLIDE 3: FACTURACIÓN FISCAL (CFDI) Y ASIGNACIÓN INMEDIATA A SALA
+            SLIDE 4: FACTURACIÓN FISCAL (CFDI) Y PASE A SALA DE ESPERA
            ════════════════════════════════════════════════════════════════════════ */}
-        {currentStep === 3 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 animate-in fade-in">
-            {/* MÓDULO 5: FACTURACIÓN FISCAL (CFDI) */}
+        {currentStep === 4 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
+            {/* MÓDULO 7: FACTURACIÓN FISCAL (CFDI) */}
             <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
                 <div className="flex items-center gap-2.5">
@@ -876,7 +1150,6 @@ export default function NewPatientWizard({
                   </div>
                 </div>
 
-                {/* Toggle Requiere Factura */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <span className="text-xs font-semibold text-[#dde6ef]">¿Requiere factura?</span>
                   <input
@@ -889,8 +1162,8 @@ export default function NewPatientWizard({
               </div>
 
               {formData.factura_requiere ? (
-                <div className="space-y-3 animate-in fade-in">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-3.5 animate-in fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className={labelClass}>RFC del Paciente / Empresa</label>
                       <input
@@ -921,12 +1194,12 @@ export default function NewPatientWizard({
                       type="text"
                       value={formData.factura_razon_social}
                       onChange={e => updateField('factura_razon_social', e.target.value)}
-                      placeholder="Nombre exacto como aparece en la constancia de situación fiscal"
+                      placeholder="Nombre exacto según constancia de situación fiscal"
                       className={inpClass}
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className={labelClass}>Régimen Fiscal</label>
                       <select
@@ -970,13 +1243,13 @@ export default function NewPatientWizard({
                     El paciente no requiere factura en este momento.
                   </p>
                   <p className="text-[11px] text-[#4b6377]">
-                    Se registrarán las notas de cobro al público en general. Podrá agregarse un RFC en cualquier momento posterior.
+                    Se registrarán las notas de cobro al público en general. Podrá agregarse su RFC en cualquier momento posterior.
                   </p>
                 </div>
               )}
             </div>
 
-            {/* MÓDULO 6: PASE DIRECTO A SALA DE ESPERA */}
+            {/* MÓDULO 8: PASE DIRECTO A SALA DE ESPERA */}
             <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl flex flex-col justify-between">
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
@@ -1004,8 +1277,8 @@ export default function NewPatientWizard({
                 </div>
 
                 {formData.enviar_a_sala ? (
-                  <div className="space-y-3 animate-in fade-in">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-3.5 animate-in fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div>
                         <label className={labelClass}>Médico que atenderá</label>
                         <select
@@ -1041,15 +1314,17 @@ export default function NewPatientWizard({
                         placeholder="Ej. Chequeo preventivo general..."
                         className={`${inpClass} mb-2`}
                       />
-                      <div className="flex flex-wrap gap-1.5">
+
+                      {/* Cuadrícula estricta de motivos rápidos */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {MOTIVOS_PRIMERA_VEZ.map(mot => (
                           <button
                             key={mot}
                             type="button"
                             onClick={() => updateField('motivo_visita', mot)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition cursor-pointer ${
+                            className={`p-2.5 rounded-xl text-xs font-medium border transition cursor-pointer text-center leading-snug min-h-[44px] flex items-center justify-center ${
                               formData.motivo_visita === mot
-                                ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#00e5a0]'
+                                ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#00e5a0] font-bold'
                                 : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
                             }`}
                           >
@@ -1076,61 +1351,69 @@ export default function NewPatientWizard({
                 )}
               </div>
 
-              <div className="pt-2 text-[11px] text-[#7a95aa] flex items-center gap-1.5">
+              <div className="pt-2 text-[11px] text-[#7a95aa] flex items-center gap-1.5 border-t border-[#1e2d3d]/60">
                 <span>🔒</span>
-                <span>Todos los datos clínicos y personales se almacenan con encriptación y aislamiento de clínica.</span>
+                <span>Datos resguardados con encriptación y aislamiento multi-tenant por clínica.</span>
               </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* ── 3. BARRA INFERIOR FIJA (STICKY ACTION BAR) ── */}
-      <footer className="fixed bottom-0 left-0 right-0 z-30 bg-[#0d1520]/95 backdrop-blur-md border-t border-[#1e2d3d] px-4 sm:px-8 py-3.5">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-          {/* Botón Anterior / Cancelar */}
-          <button
-            type="button"
-            onClick={handleBack}
-            className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer flex items-center gap-1.5"
-          >
-            <Icon name="back" size={16} />
-            <span>{currentStep === 1 ? 'Cancelar' : 'Anterior'}</span>
-          </button>
-
-          {/* Indicador de estado de auto-guardado en tiempo real */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#00e5a0] font-mono">
-            <span className="w-2 h-2 rounded-full bg-[#00e5a0] animate-pulse" />
-            <span>{lastSavedTime || 'Borrador guardado automáticamente'}</span>
+      {/* ── 3. BARRA INFERIOR FIJA: BOTONES PERFECTAMENTE CENTRADOS Y EMPAREJADOS ── */}
+      <footer className="fixed bottom-0 left-0 md:left-[232px] right-0 z-30 bg-[#0d1520]/95 backdrop-blur-md border-t border-[#1e2d3d] px-4 sm:px-8 py-3.5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+          {/* LADO IZQUIERDO (flex-1): Auto-guardado en tiempo real */}
+          <div className="flex-1 hidden sm:flex items-center gap-2 text-xs font-mono text-[#00e5a0]">
+            <span className="w-2 h-2 rounded-full bg-[#00e5a0] animate-pulse shrink-0" />
+            <span className="truncate">{lastSavedTime || 'Borrador guardado automáticamente'}</span>
           </div>
 
-          {/* Botón Siguiente / Registrar */}
-          {currentStep < 3 ? (
+          {/* CENTRO: BOTONES DE NAVEGACIÓN ANTERIOR Y SIGUIENTE CENTRADOS Y BALANCEADOS */}
+          <div className="flex items-center justify-center gap-3 w-full sm:w-auto">
+            {/* Botón Anterior / Cancelar */}
             <button
               type="button"
-              onClick={handleNext}
-              className="px-6 py-2.5 rounded-xl text-xs font-bold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition cursor-pointer shadow-md flex items-center gap-2"
+              onClick={handleBack}
+              className="px-5 sm:px-6 py-2.5 rounded-xl text-xs font-semibold text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer flex items-center justify-center gap-2 border border-[#1e2d3d] flex-1 sm:flex-none"
             >
-              <span>Siguiente Paso</span>
-              <span className="rotate-180 inline-block"><Icon name="back" size={16} /></span>
+              <Icon name="back" size={16} />
+              <span>{currentStep === 1 ? 'Cancelar' : 'Anterior'}</span>
             </button>
-          ) : (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={handleFinalSubmit}
-              className="px-7 py-2.5 rounded-xl text-xs font-bold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition cursor-pointer shadow-lg flex items-center gap-2"
-            >
-              {saving ? (
-                <span>Guardando paciente...</span>
-              ) : (
-                <>
-                  <span>✓</span>
-                  <span>{formData.enviar_a_sala ? 'Registrar Paciente y Pasar a Sala' : 'Registrar Paciente'}</span>
-                </>
-              )}
-            </button>
-          )}
+
+            {/* Botón Siguiente / Registrar */}
+            {currentStep < 4 ? (
+              <button
+                type="button"
+                onClick={handleNext}
+                className="px-6 sm:px-8 py-2.5 rounded-xl text-xs font-bold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition cursor-pointer shadow-md flex items-center justify-center gap-2 flex-1 sm:flex-none"
+              >
+                <span>Siguiente Paso</span>
+                <span className="rotate-180 inline-block"><Icon name="back" size={16} /></span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleFinalSubmit}
+                className="px-6 sm:px-8 py-2.5 rounded-xl text-xs font-bold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition cursor-pointer shadow-lg flex items-center justify-center gap-2 flex-1 sm:flex-none"
+              >
+                {saving ? (
+                  <span>Guardando...</span>
+                ) : (
+                  <>
+                    <span>✓</span>
+                    <span>{formData.enviar_a_sala ? 'Registrar y Pasar a Sala' : 'Registrar Paciente'}</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* LADO DERECHO (flex-1): Contador de progreso para balance simétrico exacto */}
+          <div className="flex-1 hidden sm:flex justify-end items-center gap-2 text-xs text-[#7a95aa] font-mono">
+            <span>Paso {currentStep} de 4 ({currentStep * 25}%)</span>
+          </div>
         </div>
       </footer>
     </div>

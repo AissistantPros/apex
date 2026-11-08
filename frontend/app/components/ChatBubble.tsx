@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { getSession } from '@/app/lib/auth';
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -42,6 +43,26 @@ export default function ChatBubble() {
   const chatEndRef  = useRef<HTMLDivElement>(null);
   const imageRef    = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pathname    = usePathname();
+
+  // Detectar si la pantalla actual tiene una barra de acciones fija al fondo (sticky footer)
+  // para que la burbuja de IA flote limpiamente por encima y NUNCA tape botones principales.
+  const [hasBottomBar, setHasBottomBar] = useState(false);
+  useEffect(() => {
+    const checkFooter = () => {
+      const isKnownRoute =
+        pathname?.includes('/new-patient') ||
+        pathname?.includes('/consulta') ||
+        pathname?.includes('/visit') ||
+        pathname?.includes('/analysis') ||
+        pathname?.includes('/new-visit');
+      const domFooter = typeof document !== 'undefined' && document.querySelector('footer.fixed, div.fixed.bottom-0');
+      setHasBottomBar(Boolean(isKnownRoute || domFooter));
+    };
+    checkFooter();
+    const t = setTimeout(checkFooter, 300);
+    return () => clearTimeout(t);
+  }, [pathname]);
 
   // Cargar ficha del médico y contador diario de IA
   useEffect(() => {
@@ -171,8 +192,8 @@ export default function ChatBubble() {
       <div
         className="fixed z-[9998] transition-all duration-300 ease-out"
         style={{
-          bottom: '96px',
-          right: '24px',
+          bottom: hasBottomBar ? '146px' : '88px',
+          right: '20px',
           width: '400px',
           maxWidth: 'calc(100vw - 32px)',
           maxHeight: open ? '620px' : '0',
@@ -369,12 +390,13 @@ export default function ChatBubble() {
       <button
         onClick={() => setOpen(o => !o)}
         data-chat-bubble
+        title="APEX AI · Asistente Médico"
         className="fixed z-[9999] flex items-center justify-center transition-all duration-200"
         style={{
-          bottom: '24px',
-          right: '24px',
-          width: '60px',
-          height: '60px',
+          bottom: hasBottomBar ? '84px' : '20px',
+          right: '20px',
+          width: '52px',
+          height: '52px',
           borderRadius: '50%',
           background: open
             ? 'var(--c-hover)'
