@@ -22,10 +22,76 @@ router = APIRouter(prefix="/patients", tags=["patients"], dependencies=[Depends(
 # Campos de tipo date en patients — strings vacíos causan error
 DATE_PATIENT_FIELDS = {"date_of_birth", "birth_date"}
 
+# Columnas reales soportadas en la tabla 'patients' de Supabase
+KNOWN_PATIENT_COLUMNS = {
+    'alcohol_amount', 'alcohol_cantidad', 'alcohol_notes', 'alcohol_since',
+    'alcohol_status', 'alcohol_tipo', 'alcohol_type', 'allergies_environmental',
+    'allergies_foods', 'allergies_medications', 'billing', 'birth_date',
+    'births', 'care_type', 'childhood_antibiotics', 'childhood_diseases',
+    'childhood_infections', 'childhood_residence_exposure', 'children',
+    'chronic_diseases', 'ciclos_regulares', 'cigarettes_per_day', 'city',
+    'clinic_id', 'colpo_ultima', 'contraceptive', 'created_at', 'date_of_birth',
+    'dental_amalgams', 'doctor_id', 'dx_psiquiatrico', 'email',
+    'emergency_contact_email', 'emergency_contact_name', 'emergency_contact_phone',
+    'emergency_contact_relationship', 'entrevista_funcional_completa',
+    'erectile_dysfunction', 'family_history_table', 'family_other_history',
+    'first_name', 'fractures', 'full_name', 'func_intake', 'genero_identidad',
+    'hospitalizations', 'id', 'last_name', 'libido_basal', 'masto_ultima',
+    'med_notas', 'med_psiquiatrica', 'medications', 'menarca_age', 'menopausal',
+    'menopausal_age', 'menopausal_tipo', 'miscarriages', 'notes_doctor',
+    'notes_nurse', 'notes_reception', 'occupation', 'pap_ultimo',
+    'personal_history_notes', 'phases_completed', 'phone', 'phone_landline',
+    'photo_url', 'pregnancies', 'prev_gmaps', 'prev_redes', 'prev_web',
+    'psa_ultimo', 'psa_valor', 'referred_by', 'referred_other', 'referred_type',
+    'registration_phase', 'remote_history_notes', 'salud_sexual_notas',
+    'secondhand_smoke_exposure', 'sexo_biologico', 'smoking_count', 'smoking_notes',
+    'smoking_since', 'smoking_status', 'smoking_until', 'smoking_years',
+    'social_network', 'sources_of_contact', 'surgeries', 'sust_recreativas',
+    'tattoos_piercings', 'testosterone_detalle', 'testosterone_use',
+    'toxic_exposure_occupational', 'transfusions', 'trauma_relevante',
+    'updated_at', 'vaping', 'vaping_nicotine_mg', 'vaping_since'
+}
+
 def clean_patient_data(data: dict) -> dict:
-    """Convierte strings vacíos en campos date a None."""
+    """
+    Limpia y normaliza datos para la tabla 'patients':
+    1. Si se envían campos sueltos de facturación (factura_*), se agrupan en el JSONB 'billing'.
+    2. Normaliza 'gender' o 'sex' hacia 'sexo_biologico'.
+    3. Convierte strings vacíos en campos date a None.
+    4. Descarta cualquier campo inexistente en el esquema para evitar errores PGRST204.
+    """
+    data_copy = dict(data)
+
+    # Agrupar campos de facturación en el JSONB 'billing' si vienen planos
+    if any(k.startswith("factura_") for k in data_copy):
+        existing_billing = data_copy.get("billing")
+        if not isinstance(existing_billing, dict):
+            existing_billing = {}
+        data_copy["billing"] = {
+            "requiere": bool(data_copy.pop("factura_requiere", existing_billing.get("requiere", False))),
+            "rfc": str(data_copy.pop("factura_rfc", existing_billing.get("rfc", "")) or "").strip(),
+            "razon_social": str(data_copy.pop("factura_razon_social", existing_billing.get("razon_social", "")) or "").strip(),
+            "regimen": str(data_copy.pop("factura_regimen", existing_billing.get("regimen", "")) or "").strip(),
+            "uso_cfdi": str(data_copy.pop("factura_uso_cfdi", existing_billing.get("uso_cfdi", "")) or "").strip(),
+            "cp": str(data_copy.pop("factura_cp", existing_billing.get("cp", "")) or "").strip(),
+            "email": str(data_copy.pop("factura_email", existing_billing.get("email", "")) or "").strip(),
+            "direccion": str(data_copy.pop("factura_direccion", existing_billing.get("direccion", "")) or "").strip(),
+        }
+
+    # Normalizar gender/sex a sexo_biologico
+    if "gender" in data_copy:
+        val = data_copy.pop("gender")
+        if "sexo_biologico" not in data_copy and val:
+            data_copy["sexo_biologico"] = val
+    if "sex" in data_copy:
+        val = data_copy.pop("sex")
+        if "sexo_biologico" not in data_copy and val:
+            data_copy["sexo_biologico"] = val
+
     cleaned = {}
-    for k, v in data.items():
+    for k, v in data_copy.items():
+        if k not in KNOWN_PATIENT_COLUMNS:
+            continue
         if k in DATE_PATIENT_FIELDS and v == "":
             cleaned[k] = None
         else:

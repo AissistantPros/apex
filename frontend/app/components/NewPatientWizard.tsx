@@ -34,7 +34,17 @@ async function api(path: string, opts: RequestInit = {}) {
   }
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
-    throw new Error(d.detail || `Error ${r.status}`);
+    let msg = 'Error en la solicitud';
+    if (typeof d.detail === 'string') {
+      msg = d.detail;
+    } else if (d.detail && typeof d.detail === 'object') {
+      msg = d.detail.message || JSON.stringify(d.detail);
+    } else if (d.message) {
+      msg = typeof d.message === 'string' ? d.message : JSON.stringify(d.message);
+    } else {
+      msg = `Error ${r.status}`;
+    }
+    throw new Error(msg);
   }
   return r.json();
 }
@@ -407,12 +417,12 @@ export default function NewPatientWizard({
 
       const notasCombinadas = [formData.reception_notes.trim(), seguroNota].filter(Boolean).join('\n\n');
 
-      // 2. Preparar payload de creación de paciente
+      // 2. Preparar payload de creación de paciente (esquema estricto compatible con Supabase)
       const patientPayload: Record<string, any> = {
         first_name: formData.first_name.trim(),
         last_name: formData.last_name.trim(),
         date_of_birth: formData.date_of_birth,
-        gender: formData.gender,
+        sexo_biologico: formData.gender,
         occupation: formData.occupation.trim(),
         city: formData.city.trim(),
         phone: formData.phone.trim(),
@@ -434,14 +444,17 @@ export default function NewPatientWizard({
         prev_redes: formData.marketing_canales.some(c => ['Instagram', 'Facebook', 'TikTok', 'YouTube'].includes(c)),
         social_network: formData.marketing_canales.filter(c => ['Instagram', 'Facebook', 'TikTok', 'YouTube'].includes(c)).join(', '),
 
-        // Facturación
-        factura_requiere: Boolean(formData.factura_requiere),
-        factura_rfc: formData.factura_rfc.trim().toUpperCase(),
-        factura_razon_social: formData.factura_razon_social.trim(),
-        factura_regimen: formData.factura_regimen,
-        factura_uso_cfdi: formData.factura_uso_cfdi,
-        factura_cp: formData.factura_cp.trim(),
-        factura_email: formData.factura_email.trim(),
+        // Facturación en JSONB nativo `billing` de Supabase
+        billing: {
+          requiere: Boolean(formData.factura_requiere),
+          rfc: formData.factura_rfc.trim().toUpperCase(),
+          razon_social: formData.factura_razon_social.trim(),
+          regimen: formData.factura_regimen,
+          uso_cfdi: formData.factura_uso_cfdi,
+          cp: formData.factura_cp.trim(),
+          email: formData.factura_email.trim(),
+          direccion: '',
+        },
 
         registration_phase: 'reception',
       };
@@ -596,8 +609,16 @@ export default function NewPatientWizard({
       {/* ── 2. CONTENIDO PRINCIPAL (CUADRÍCULA ESTRICTA, SIN AIRE MUERTO NI RECORTES) ── */}
       <main className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-8 space-y-6 pb-32">
         {errorMessage && (
-          <div className="p-3.5 rounded-2xl bg-[color-mix(in_srgb,var(--c-danger)_12%,transparent)] border border-[color-mix(in_srgb,var(--c-danger)_35%,transparent)] text-xs text-[var(--c-danger)] font-semibold animate-in fade-in">
-            {errorMessage}
+          <div className="p-3.5 rounded-2xl bg-[color-mix(in_srgb,var(--c-danger)_12%,transparent)] border border-[color-mix(in_srgb,var(--c-danger)_35%,transparent)] text-xs text-[var(--c-danger)] font-semibold flex items-center justify-between gap-3 animate-in fade-in">
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage('')}
+              className="px-2 py-0.5 rounded-lg text-xs hover:bg-[color-mix(in_srgb,var(--c-danger)_20%,transparent)] transition cursor-pointer shrink-0 font-bold"
+              title="Cerrar aviso"
+            >
+              ✕
+            </button>
           </div>
         )}
 
