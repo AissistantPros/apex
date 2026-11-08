@@ -208,22 +208,22 @@ export default function CheckInModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in select-none">
       <div
-        className="w-full max-w-2xl bg-[#0d1520] border border-[#1e2d3d] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-all"
+        className="w-full max-w-2xl bg-[var(--c-card)] border border-[var(--c-border)] text-[var(--c-text)] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-all"
         onClick={e => e.stopPropagation()}
       >
         {/* ── CABECERA ── */}
-        <div className="p-4 sm:p-5 border-b border-[#1e2d3d] bg-[#111820]/80 flex items-center justify-between gap-3 shrink-0">
+        <div className="p-4 sm:p-5 border-b border-[var(--c-border)] bg-[var(--c-subtle)] flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#00e5a0]/15 text-[#00e5a0] flex items-center justify-center font-bold text-lg shadow-sm">
+            <div className="w-10 h-10 rounded-2xl bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] flex items-center justify-center font-bold text-lg shadow-sm">
               <Icon name="bell" size={20} />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-[#dde6ef] tracking-tight">
+              <h2 className="text-base sm:text-lg font-bold text-[var(--c-text)] tracking-tight">
                 Registrar Visita / Check-in
               </h2>
-              <p className="text-xs text-[#7a95aa]">
+              <p className="text-xs text-[var(--c-text-2)]">
                 Filtro inicial de llegada. Busca al paciente o regístralo si es primera vez.
               </p>
             </div>
@@ -231,7 +231,7 @@ export default function CheckInModal({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle-2)] transition cursor-pointer"
             title="Cerrar ventana (Esc)"
           >
             ✕
@@ -241,18 +241,18 @@ export default function CheckInModal({
         {/* ── CONTENIDO ── */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-[#f43f5e]/10 border border-[#f43f5e]/30 text-xs text-[#f43f5e]">
+            <div className="p-3 rounded-xl bg-[color-mix(in_srgb,var(--c-danger)_12%,transparent)] border border-[color-mix(in_srgb,var(--c-danger)_35%,transparent)] text-xs text-[var(--c-danger)]">
               {errorMsg}
             </div>
           )}
 
           {/* BUSCADOR INTELIGENTE PRINCIPAL */}
           <div className="relative">
-            <label className="text-[11px] font-mono uppercase tracking-wider text-[#7a95aa] font-bold block mb-1.5">
+            <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--c-text-2)] font-bold block mb-1.5">
               1. Buscar paciente por Nombre o Celular WhatsApp
             </label>
             <div className="relative flex items-center">
-              <span className="absolute left-3.5 text-[#7a95aa] pointer-events-none">
+              <span className="absolute left-3.5 text-[var(--c-text-3)] pointer-events-none">
                 <Icon name="search" size={18} />
               </span>
               <input
@@ -264,7 +264,7 @@ export default function CheckInModal({
                   if (selectedPatient) setSelectedPatient(null);
                 }}
                 placeholder="Escribe ej. Carlos Méndez o 55 1234 5678..."
-                className="w-full pl-10 pr-10 py-3 rounded-2xl bg-[#111820] border border-[#1e2d3d] text-[#dde6ef] placeholder-[#4b6377] text-sm sm:text-base outline-none focus:border-[#00e5a0] transition shadow-inner"
+                className="w-full pl-10 pr-10 py-3 rounded-2xl bg-[var(--c-bg)] border border-[var(--c-border)] text-[var(--c-text)] placeholder-[var(--c-text-3)] text-sm sm:text-base outline-none focus:border-[var(--c-primary)] transition shadow-sm"
               />
               {query && (
                 <button
@@ -275,7 +275,7 @@ export default function CheckInModal({
                     setSelectedPatient(null);
                     searchInputRef.current?.focus();
                   }}
-                  className="absolute right-3 p-1 rounded-lg text-[#7a95aa] hover:text-[#dde6ef] transition cursor-pointer text-xs"
+                  className="absolute right-3 p-1 rounded-lg text-[var(--c-text-3)] hover:text-[var(--c-text)] transition cursor-pointer text-xs"
                 >
                   ✕
                 </button>
@@ -285,20 +285,23 @@ export default function CheckInModal({
 
           {/* ── CASO A: PACIENTE SELECCIONADO PARA DAR ENTRADA EXPRESS ── */}
           {selectedPatient ? (
-            <div className="p-4 sm:p-5 rounded-2xl bg-[#111820] border border-[#00e5a0]/50 space-y-4 shadow-lg animate-in fade-in">
-              <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
+            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-primary)] space-y-4 shadow-md animate-in fade-in">
+              <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-[#00e5a0] text-[#051b14] flex items-center justify-center font-bold text-base shadow">
+                  <div
+                    style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                    className="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-base shadow"
+                  >
                     {selectedPatient.full_name?.[0]?.toUpperCase() || 'P'}
                   </div>
                   <div>
-                    <span className="text-[10px] font-mono text-[#00e5a0] font-bold uppercase tracking-wider">
+                    <span className="text-[10px] font-mono text-[var(--c-primary)] font-bold uppercase tracking-wider">
                       ✓ Paciente Identificado
                     </span>
-                    <h3 className="text-base font-bold text-[#dde6ef]">
+                    <h3 className="text-base font-bold text-[var(--c-text)]">
                       {selectedPatient.full_name}
                     </h3>
-                    <p className="text-xs text-[#7a95aa] font-mono">
+                    <p className="text-xs text-[var(--c-text-2)] font-mono">
                       {selectedPatient.phone ? `📱 ${selectedPatient.phone}` : 'Sin teléfono'} · {selectedPatient.email || 'Sin correo'}
                     </p>
                   </div>
@@ -306,7 +309,7 @@ export default function CheckInModal({
                 <button
                   type="button"
                   onClick={() => setSelectedPatient(null)}
-                  className="text-xs text-[#7a95aa] hover:text-[#00e5a0] underline transition cursor-pointer"
+                  className="text-xs text-[var(--c-text-2)] hover:text-[var(--c-primary)] underline transition cursor-pointer"
                 >
                   Cambiar paciente
                 </button>
@@ -315,31 +318,35 @@ export default function CheckInModal({
               {/* Parámetros de la visita de hoy */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold block mb-1">
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-[var(--c-text-2)] font-semibold block mb-1">
                     Médico de atención
                   </label>
                   <select
                     value={selectedDoctorId}
                     onChange={e => setSelectedDoctorId(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#070a0e] border border-[#1e2d3d] rounded-xl text-xs text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+                    className="w-full px-3 py-2 bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl text-xs text-[var(--c-text)] outline-none focus:border-[var(--c-primary)] cursor-pointer"
                   >
                     {doctors.map(d => (
-                      <option key={d.id} value={d.id}>{d.display_name}</option>
+                      <option key={d.id} value={d.id} className="bg-[var(--c-card)] text-[var(--c-text)]">
+                        {d.display_name}
+                      </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold block mb-1">
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-[var(--c-text-2)] font-semibold block mb-1">
                     Sede / Consultorio
                   </label>
                   <select
                     value={selectedLocationId}
                     onChange={e => setSelectedLocationId(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#070a0e] border border-[#1e2d3d] rounded-xl text-xs text-[#dde6ef] outline-none focus:border-[#00e5a0]"
+                    className="w-full px-3 py-2 bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl text-xs text-[var(--c-text)] outline-none focus:border-[var(--c-primary)] cursor-pointer"
                   >
                     {locations.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
+                      <option key={l.id} value={l.id} className="bg-[var(--c-card)] text-[var(--c-text)]">
+                        {l.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -347,7 +354,7 @@ export default function CheckInModal({
 
               {/* Motivo de la visita */}
               <div>
-                <label className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold block mb-1">
+                <label className="text-[10px] font-mono uppercase tracking-wider text-[var(--c-text-2)] font-semibold block mb-1">
                   Motivo de la visita de hoy
                 </label>
                 <input
@@ -355,7 +362,7 @@ export default function CheckInModal({
                   value={motivo}
                   onChange={e => setMotivo(e.target.value)}
                   placeholder="Ej. Control de presión arterial, Trae estudios..."
-                  className="w-full px-3 py-2 bg-[#070a0e] border border-[#1e2d3d] rounded-xl text-xs text-[#dde6ef] outline-none focus:border-[#00e5a0] mb-2"
+                  className="w-full px-3 py-2 bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl text-xs text-[var(--c-text)] outline-none focus:border-[var(--c-primary)] mb-2"
                 />
                 <div className="flex flex-wrap gap-1.5">
                   {CHIPS_MOTIVO.map(chip => (
@@ -365,8 +372,8 @@ export default function CheckInModal({
                       onClick={() => setMotivo(chip)}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer border ${
                         motivo === chip
-                          ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#00e5a0]'
-                          : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                          ? 'bg-[color-mix(in_srgb,var(--c-primary)_15%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-primary)] font-bold'
+                          : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)]'
                       }`}
                     >
                       {chip}
@@ -376,11 +383,11 @@ export default function CheckInModal({
               </div>
 
               {/* Botón de acción final para el paciente existente */}
-              <div className="pt-2 flex justify-end gap-2 border-t border-[#1e2d3d]/60">
+              <div className="pt-2 flex justify-end gap-2 border-t border-[var(--c-border)]">
                 <button
                   type="button"
                   onClick={() => setSelectedPatient(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[#7a95aa] hover:text-[#dde6ef] transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--c-text-2)] hover:text-[var(--c-text)] transition cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -388,7 +395,8 @@ export default function CheckInModal({
                   type="button"
                   disabled={savingVisit}
                   onClick={handleRegistrarVisitaExistente}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition cursor-pointer shadow-md flex items-center gap-1.5"
+                  style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-md flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50"
                 >
                   {savingVisit ? (
                     <span>Registrando...</span>
@@ -404,7 +412,7 @@ export default function CheckInModal({
           ) : query.trim().length >= 2 ? (
             /* ── CASO B: RESULTADOS DE BÚSQUEDA ── */
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-[#7a95aa]">
+              <div className="flex items-center justify-between text-xs text-[var(--c-text-2)]">
                 <span>
                   {searching ? 'Buscando en base de datos...' : `${results.length} paciente(s) encontrado(s)`}
                 </span>
@@ -417,24 +425,28 @@ export default function CheckInModal({
                     <div
                       key={p.id}
                       onClick={() => setSelectedPatient(p)}
-                      className="p-3 rounded-2xl bg-[#111820] border border-[#1e2d3d] hover:border-[#00e5a0]/60 hover:bg-[#162231] transition cursor-pointer flex items-center justify-between gap-3 group"
+                      className="p-3 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] hover:border-[var(--c-primary)] transition cursor-pointer flex items-center justify-between gap-3 group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-[#162231] text-[#00e5a0] group-hover:bg-[#00e5a0] group-hover:text-[#051b14] flex items-center justify-center font-bold text-sm shrink-0 transition">
+                        <div
+                          style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                          className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 transition"
+                        >
                           {p.full_name?.[0]?.toUpperCase() || 'P'}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-[#dde6ef] truncate group-hover:text-[#00e5a0] transition">
+                          <p className="text-xs font-bold text-[var(--c-text)] truncate group-hover:text-[var(--c-primary)] transition">
                             {p.full_name}
                           </p>
-                          <p className="text-[11px] text-[#7a95aa] font-mono truncate">
+                          <p className="text-[11px] text-[var(--c-text-2)] font-mono truncate">
                             {p.phone ? `📱 ${p.phone}` : 'Sin cel'} {p.email ? `· ✉ ${p.email}` : ''}
                           </p>
                         </div>
                       </div>
                       <button
                         type="button"
-                        className="px-3 py-1.5 rounded-xl bg-[#00e5a0]/15 text-[#00e5a0] group-hover:bg-[#00e5a0] group-hover:text-[#051b14] text-xs font-bold transition shrink-0"
+                        style={{ color: 'var(--c-primary)' }}
+                        className="px-3 py-1.5 rounded-xl bg-[color-mix(in_srgb,var(--c-primary)_12%,transparent)] text-xs font-bold transition shrink-0"
                       >
                         Seleccionar →
                       </button>
@@ -443,22 +455,23 @@ export default function CheckInModal({
                 </div>
               ) : !searching ? (
                 /* No se encontró paciente con esa búsqueda */
-                <div className="p-5 rounded-2xl bg-[#111820] border border-dashed border-[#1e2d3d] text-center space-y-3">
-                  <div className="w-10 h-10 rounded-full bg-[#162231] text-[#7a95aa] flex items-center justify-center mx-auto text-lg">
+                <div className="p-5 rounded-2xl bg-[var(--c-subtle)] border border-dashed border-[var(--c-border)] text-center space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-[var(--c-card)] text-[var(--c-text-2)] flex items-center justify-center mx-auto text-lg shadow-sm">
                     🔍
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-[#dde6ef]">
+                    <p className="text-xs font-bold text-[var(--c-text)]">
                       No se encontró ningún paciente con &ldquo;{query}&rdquo;
                     </p>
-                    <p className="text-[11px] text-[#7a95aa] mt-0.5">
+                    <p className="text-[11px] text-[var(--c-text-2)] mt-0.5">
                       Probablemente sea su primera visita en la clínica.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={handleIrANuevoPaciente}
-                    className="px-4 py-2.5 rounded-xl bg-[#00e5a0] text-[#051b14] text-xs font-bold hover:bg-[#00c98c] transition cursor-pointer shadow-md inline-flex items-center gap-2"
+                    style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-md inline-flex items-center gap-2 hover:opacity-90"
                   >
                     <span>+</span>
                     <span>Registrar &ldquo;{query}&rdquo; como Nuevo Paciente</span>
@@ -468,11 +481,11 @@ export default function CheckInModal({
 
               {/* Botón flotante al pie para forzar nuevo paciente si no es el que busca */}
               {results.length > 0 && (
-                <div className="pt-2 text-center border-t border-[#1e2d3d]/60">
+                <div className="pt-2 text-center border-t border-[var(--c-border)]">
                   <button
                     type="button"
                     onClick={handleIrANuevoPaciente}
-                    className="text-xs text-[#7a95aa] hover:text-[#00e5a0] underline transition cursor-pointer font-medium"
+                    className="text-xs text-[var(--c-text-2)] hover:text-[var(--c-primary)] underline transition cursor-pointer font-medium"
                   >
                     ¿Es un paciente distinto? Registrar como nuevo paciente &ldquo;{query}&rdquo; →
                   </button>
@@ -485,14 +498,14 @@ export default function CheckInModal({
               {/* Acceso Rápido 1: Citas programadas para hoy */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#7a95aa] font-bold flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--c-text-2)] font-bold flex items-center gap-1.5">
                     <span>📅</span> Citas de hoy pendientes de llegada ({citasHoy.length})
                   </span>
-                  <span className="text-[10px] text-[#7a95aa]">Check-in de 1 clic</span>
+                  <span className="text-[10px] text-[var(--c-text-3)]">Check-in de 1 clic</span>
                 </div>
 
                 {loadingCitas ? (
-                  <p className="text-xs text-[#7a95aa] italic py-2">Cargando citas de hoy...</p>
+                  <p className="text-xs text-[var(--c-text-3)] italic py-2">Cargando citas de hoy...</p>
                 ) : citasHoy.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
                     {citasHoy.map(c => {
@@ -502,16 +515,16 @@ export default function CheckInModal({
                       return (
                         <div
                           key={c.id}
-                          className="p-3 rounded-2xl bg-[#111820] border border-[#1e2d3d] flex items-center justify-between gap-2.5 hover:border-[#38bdf8]/50 transition"
+                          className="p-3 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] flex items-center justify-between gap-2.5 hover:border-[var(--c-primary)] transition"
                         >
                           <div className="min-w-0">
-                            <span className="text-[10px] font-mono font-bold text-[#38bdf8] bg-[#38bdf8]/10 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] font-mono font-bold text-[var(--c-primary)] bg-[color-mix(in_srgb,var(--c-primary)_12%,transparent)] px-1.5 py-0.5 rounded">
                               {hora} hrs
                             </span>
-                            <p className="text-xs font-bold text-[#dde6ef] truncate mt-1">
+                            <p className="text-xs font-bold text-[var(--c-text)] truncate mt-1">
                               {c.patient_name}
                             </p>
-                            <p className="text-[10px] text-[#7a95aa] truncate">
+                            <p className="text-[10px] text-[var(--c-text-2)] truncate">
                               {c.reason || 'Consulta'}
                             </p>
                           </div>
@@ -519,7 +532,8 @@ export default function CheckInModal({
                             type="button"
                             disabled={isChecking}
                             onClick={() => handleCheckInCita(c.id, c.patient_name)}
-                            className="px-2.5 py-1.5 rounded-xl bg-[#00e5a0]/15 hover:bg-[#00e5a0] text-[#00e5a0] hover:text-[#051b14] text-xs font-bold transition cursor-pointer shrink-0 shadow-sm"
+                            style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                            className="px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 shadow-sm hover:opacity-90 disabled:opacity-50"
                             title="Dar entrada y mandar a sala de espera"
                           >
                             {isChecking ? '...' : '✓ Llegó'}
@@ -529,8 +543,8 @@ export default function CheckInModal({
                     })}
                   </div>
                 ) : (
-                  <div className="p-3.5 rounded-2xl bg-[#111820]/60 border border-[#1e2d3d] text-center">
-                    <p className="text-xs text-[#7a95aa]">
+                  <div className="p-3.5 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] text-center">
+                    <p className="text-xs text-[var(--c-text-3)]">
                       No hay citas programadas pendientes para hoy.
                     </p>
                   </div>
@@ -538,19 +552,20 @@ export default function CheckInModal({
               </div>
 
               {/* Acceso Rápido 2: Botón directo para crear nuevo paciente */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-[#111820] to-[#162231] border border-[#1e2d3d] flex items-center justify-between gap-3">
+              <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] flex items-center justify-between gap-3">
                 <div>
-                  <h4 className="text-xs font-bold text-[#dde6ef]">
+                  <h4 className="text-xs font-bold text-[var(--c-text)]">
                     ¿El paciente viene por primera vez?
                   </h4>
-                  <p className="text-[11px] text-[#7a95aa]">
+                  <p className="text-[11px] text-[var(--c-text-2)]">
                     Abre el formulario guiado por slides para darlo de alta en el sistema.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleIrANuevoPaciente}
-                  className="px-4 py-2 rounded-xl bg-[#00e5a0] text-[#051b14] text-xs font-bold hover:bg-[#00c98c] transition cursor-pointer shadow-md shrink-0 flex items-center gap-1.5"
+                  style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-md shrink-0 flex items-center gap-1.5 hover:opacity-90"
                 >
                   <span>+</span>
                   <span>Nuevo Paciente</span>
@@ -561,12 +576,12 @@ export default function CheckInModal({
         </div>
 
         {/* ── FOOTER ── */}
-        <div className="p-3.5 border-t border-[#1e2d3d] bg-[#111820]/80 flex items-center justify-between text-xs text-[#7a95aa] shrink-0">
-          <span>APEX Intake & Check-in System</span>
+        <div className="p-3.5 border-t border-[var(--c-border)] bg-[var(--c-subtle)] flex items-center justify-between text-xs text-[var(--c-text-2)] shrink-0">
+          <span className="font-mono">APEX Intake & Check-in System</span>
           <button
             type="button"
             onClick={onClose}
-            className="hover:text-[#dde6ef] underline transition cursor-pointer"
+            className="hover:text-[var(--c-text)] underline transition cursor-pointer font-medium"
           >
             Cerrar
           </button>

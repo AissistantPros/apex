@@ -203,8 +203,8 @@ const INITIAL_FORM: NewPatientFormData = {
 };
 
 const inpClass =
-  'w-full px-3.5 py-2.5 bg-[#070a0e] border border-[#1e2d3d] rounded-xl text-[#dde6ef] text-sm outline-none placeholder-[#4b6377] focus:border-[#00e5a0] transition shadow-inner';
-const labelClass = 'text-[11px] font-mono uppercase tracking-wider text-[#7a95aa] font-semibold block mb-1.5';
+  'w-full px-3.5 py-2.5 bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl text-[var(--c-text)] text-sm outline-none placeholder-[var(--c-text-3)] focus:border-[var(--c-primary)] transition shadow-sm';
+const labelClass = 'text-[11px] font-mono uppercase tracking-wider text-[var(--c-text-2)] font-semibold block mb-1.5';
 
 interface NewPatientWizardProps {
   initialPrefillName?: string;
@@ -499,28 +499,28 @@ export default function NewPatientWizard({
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#070a0e] text-[#dde6ef] select-none">
+    <div className="flex flex-col min-h-screen bg-[var(--c-bg)] text-[var(--c-text)] select-none">
       {/* ── 1. CABECERA Y STEPPER SUPERIOR (RESPONSIVE Y FLUIDO) ── */}
-      <header className="sticky top-0 z-30 bg-[#0d1520]/95 backdrop-blur-md border-b border-[#1e2d3d] px-4 sm:px-8 py-3.5">
+      <header className="sticky top-0 z-30 bg-[var(--c-card)]/95 backdrop-blur-md border-b border-[var(--c-border)] px-4 sm:px-8 py-3.5 shadow-sm">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Título y estado */}
           <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
               onClick={onCancel || (() => router.back())}
-              className="p-2 rounded-xl text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer shrink-0"
+              className="p-2 rounded-xl text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)] transition cursor-pointer shrink-0"
               title="Volver atrás"
             >
               <Icon name="back" size={18} />
             </button>
             <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-bold text-[#dde6ef] flex items-center gap-2 truncate">
+              <h1 className="text-sm sm:text-base font-bold text-[var(--c-text)] flex items-center gap-2 truncate">
                 <span>Alta de Nuevo Paciente</span>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#00e5a0]/15 text-[#00e5a0] border border-[#00e5a0]/30 shrink-0">
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] border border-[color-mix(in_srgb,var(--c-primary)_30%,transparent)] shrink-0">
                   {currentStep} / 4 · {currentStep * 25}%
                 </span>
               </h1>
-              <p className="text-[11px] text-[#7a95aa] truncate">
+              <p className="text-[11px] text-[var(--c-text-2)] truncate">
                 {currentStep === 1 && '1. Identificación Personal y Canales de Contacto'}
                 {currentStep === 2 && '2. Seguro Médico (SGMM) y Contacto de Emergencia'}
                 {currentStep === 3 && '3. Origen, Recomendación y Canales Digitales'}
@@ -551,10 +551,10 @@ export default function NewPatientWizard({
                   }}
                   className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
                     isActive
-                      ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#00e5a0] shadow-sm font-bold ring-1 ring-[#00e5a0]'
+                      ? 'bg-[color-mix(in_srgb,var(--c-primary)_15%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-primary)] shadow-sm font-bold ring-1 ring-[var(--c-primary)]'
                       : isPast
-                      ? 'bg-[#111820] border-[#1e2d3d] text-[#dde6ef] hover:border-[#4b6377]'
-                      : 'bg-[#070a0e] border-[#1e2d3d]/50 text-[#4b6377] hover:text-[#7a95aa]'
+                      ? 'bg-[var(--c-subtle)] border-[var(--c-border)] text-[var(--c-text)] hover:border-[var(--c-text-2)]'
+                      : 'bg-[var(--c-card)] border-[var(--c-border)] text-[var(--c-text-3)] hover:text-[var(--c-text-2)]'
                   }`}
                 >
                   <span className="text-xs">{isPast ? '✓' : s.icon}</span>
@@ -567,9 +567,9 @@ export default function NewPatientWizard({
         </div>
 
         {/* Barra de progreso visual suave */}
-        <div className="max-w-5xl mx-auto mt-2 h-1 bg-[#162231] rounded-full overflow-hidden">
+        <div className="max-w-5xl mx-auto mt-2 h-1 bg-[var(--c-subtle-2)] rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-[#00e5a0] to-[#38bdf8] transition-all duration-300"
+            className="h-full bg-gradient-to-r from-[var(--c-primary)] to-[var(--c-accent)] transition-all duration-300"
             style={{ width: `${(currentStep / 4) * 100}%` }}
           />
         </div>
@@ -578,14 +578,14 @@ export default function NewPatientWizard({
       {/* ── AVISO DE BORRADOR RECUPERADO (SI APLICA) ── */}
       {draftRestored && (
         <div className="max-w-5xl mx-auto w-full px-4 sm:px-8 pt-3">
-          <div className="p-2.5 rounded-xl bg-[#38bdf8]/10 border border-[#38bdf8]/30 flex items-center justify-between text-xs text-[#38bdf8]">
-            <span className="flex items-center gap-1.5">
+          <div className="p-2.5 rounded-xl bg-[color-mix(in_srgb,var(--c-primary)_10%,transparent)] border border-[color-mix(in_srgb,var(--c-primary)_30%,transparent)] flex items-center justify-between text-xs text-[var(--c-primary)]">
+            <span className="flex items-center gap-1.5 font-medium">
               <span>💾</span> Se restauró un borrador previo no guardado.
             </span>
             <button
               type="button"
               onClick={handleDiscardDraft}
-              className="text-xs text-[#38bdf8] underline hover:text-[#fff] transition cursor-pointer"
+              className="text-xs text-[var(--c-primary)] underline hover:opacity-80 transition cursor-pointer font-semibold"
             >
               Descartar borrador y empezar en blanco
             </button>
@@ -596,7 +596,7 @@ export default function NewPatientWizard({
       {/* ── 2. CONTENIDO PRINCIPAL (CUADRÍCULA ESTRICTA, SIN AIRE MUERTO NI RECORTES) ── */}
       <main className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-8 space-y-6 pb-32">
         {errorMessage && (
-          <div className="p-3.5 rounded-2xl bg-[#f43f5e]/15 border border-[#f43f5e]/40 text-xs text-[#f43f5e] font-semibold animate-in fade-in">
+          <div className="p-3.5 rounded-2xl bg-[color-mix(in_srgb,var(--c-danger)_12%,transparent)] border border-[color-mix(in_srgb,var(--c-danger)_35%,transparent)] text-xs text-[var(--c-danger)] font-semibold animate-in fade-in">
             {errorMessage}
           </div>
         )}
@@ -607,21 +607,21 @@ export default function NewPatientWizard({
         {currentStep === 1 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
             {/* MÓDULO 1: IDENTIFICACIÓN PERSONAL */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
-              <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm">
+              <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-8 h-8 rounded-xl bg-[#00e5a0]/15 text-[#00e5a0] flex items-center justify-center font-bold text-sm">
+                  <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] flex items-center justify-center font-bold text-sm">
                     👤
                   </span>
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                    <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                       Identificación Personal
                     </h2>
-                    <p className="text-[11px] text-[#7a95aa]">Datos demográficos principales</p>
+                    <p className="text-[11px] text-[var(--c-text-2)]">Datos demográficos principales</p>
                   </div>
                 </div>
                 {edadCalculada !== null && (
-                  <span className="px-3 py-1 rounded-xl text-xs font-mono font-bold bg-[#00e5a0]/15 text-[#00e5a0] border border-[#00e5a0]/30">
+                  <span className="px-3 py-1 rounded-xl text-xs font-mono font-bold bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] border border-[color-mix(in_srgb,var(--c-primary)_30%,transparent)]">
                     🎂 {edadCalculada} años
                   </span>
                 )}
@@ -631,7 +631,7 @@ export default function NewPatientWizard({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className={labelClass}>
-                    Nombre(s) <span className="text-[#f43f5e]">*</span>
+                    Nombre(s) <span className="text-[var(--c-danger)]">*</span>
                   </label>
                   <input
                     type="text"
@@ -644,7 +644,7 @@ export default function NewPatientWizard({
                 </div>
                 <div>
                   <label className={labelClass}>
-                    Apellidos <span className="text-[#f43f5e]">*</span>
+                    Apellidos <span className="text-[var(--c-danger)]">*</span>
                   </label>
                   <input
                     type="text"
@@ -660,7 +660,7 @@ export default function NewPatientWizard({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className={labelClass}>
-                    Fecha de nacimiento <span className="text-[#f43f5e]">*</span>
+                    Fecha de nacimiento <span className="text-[var(--c-danger)]">*</span>
                   </label>
                   <input
                     type="date"
@@ -671,7 +671,7 @@ export default function NewPatientWizard({
                 </div>
                 <div>
                   <label className={labelClass}>Sexo biológico</label>
-                  <div className="flex rounded-xl bg-[#070a0e] border border-[#1e2d3d] p-1 gap-1">
+                  <div className="flex rounded-xl bg-[var(--c-bg)] border border-[var(--c-border)] p-1 gap-1">
                     {['Femenino', 'Masculino', 'Otro'].map(g => (
                       <button
                         key={g}
@@ -679,8 +679,8 @@ export default function NewPatientWizard({
                         onClick={() => updateField('gender', g)}
                         className={`flex-1 py-2 px-1 text-xs font-semibold rounded-lg transition cursor-pointer text-center whitespace-nowrap ${
                           formData.gender === g
-                            ? 'bg-[#00e5a0]/20 text-[#00e5a0] font-bold border border-[#00e5a0]/40 shadow-sm'
-                            : 'text-[#7a95aa] hover:text-[#dde6ef]'
+                            ? 'bg-[color-mix(in_srgb,var(--c-primary)_18%,var(--c-card))] text-[var(--c-primary)] font-bold border border-[var(--c-primary)] shadow-sm'
+                            : 'text-[var(--c-text-2)] hover:text-[var(--c-text)]'
                         }`}
                       >
                         {g}
@@ -715,18 +715,18 @@ export default function NewPatientWizard({
             </div>
 
             {/* MÓDULO 2: CANALES DE CONTACTO DIRECTO */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl flex flex-col justify-between">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm flex flex-col justify-between">
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
+                <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
                   <div className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-[#38bdf8]/15 text-[#38bdf8] flex items-center justify-center font-bold text-sm">
+                    <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-accent)_15%,transparent)] text-[var(--c-accent)] flex items-center justify-center font-bold text-sm">
                       📞
                     </span>
                     <div>
-                      <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                      <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                         Canales de Contacto
                       </h2>
-                      <p className="text-[11px] text-[#7a95aa]">Comunicación y recordatorios de citas</p>
+                      <p className="text-[11px] text-[var(--c-text-2)]">Comunicación y recordatorios de citas</p>
                     </div>
                   </div>
                   {whatsappUrl && (
@@ -734,7 +734,7 @@ export default function NewPatientWizard({
                       href={whatsappUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[11px] text-[#25D366] font-semibold hover:underline flex items-center gap-1"
+                      className="text-[11px] text-[#16a34a] dark:text-[#25D366] font-semibold hover:underline flex items-center gap-1"
                     >
                       <span>💬 Probar WhatsApp</span>
                     </a>
@@ -744,7 +744,7 @@ export default function NewPatientWizard({
                 {/* Teléfono Celular (WhatsApp) */}
                 <div>
                   <label className={labelClass}>
-                    Celular principal (WhatsApp) <span className="text-[#f43f5e]">*</span>
+                    Celular principal (WhatsApp) <span className="text-[var(--c-danger)]">*</span>
                   </label>
                   <input
                     type="tel"
@@ -753,7 +753,7 @@ export default function NewPatientWizard({
                     placeholder="Ej. 998 123 4567"
                     className={inpClass}
                   />
-                  <p className="text-[10px] text-[#7a95aa] mt-1">
+                  <p className="text-[10px] text-[var(--c-text-3)] mt-1">
                     Se usará para enviar confirmaciones automáticas e interactuar con el Agente IA.
                   </p>
                 </div>
@@ -795,7 +795,7 @@ export default function NewPatientWizard({
                 </div>
               </div>
 
-              <div className="pt-2 text-[11px] text-[#7a95aa] flex items-center gap-1.5 border-t border-[#1e2d3d]/60">
+              <div className="pt-2 text-[11px] text-[var(--c-text-3)] flex items-center gap-1.5 border-t border-[var(--c-border)]">
                 <span>💡</span>
                 <span>Los campos con (*) son indispensables para aperturar el expediente clínico.</span>
               </div>
@@ -809,17 +809,17 @@ export default function NewPatientWizard({
         {currentStep === 2 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
             {/* MÓDULO 3: SEGURO DE GASTOS MÉDICOS MAYORES (MÉXICO) */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
-              <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm">
+              <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-8 h-8 rounded-xl bg-[#00e5a0]/15 text-[#00e5a0] flex items-center justify-center font-bold text-sm">
+                  <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] flex items-center justify-center font-bold text-sm">
                     🛡️
                   </span>
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                    <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                       Seguro de Gastos Médicos (SGMM)
                     </h2>
-                    <p className="text-[11px] text-[#7a95aa]">Aseguradora y cobertura de la consulta</p>
+                    <p className="text-[11px] text-[var(--c-text-2)]">Aseguradora y cobertura de la consulta</p>
                   </div>
                 </div>
               </div>
@@ -833,8 +833,8 @@ export default function NewPatientWizard({
                     onClick={() => updateField('seguro_tiene', true)}
                     className={`p-3 rounded-2xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-2 ${
                       formData.seguro_tiene
-                        ? 'bg-[#00e5a0]/20 border-[#00e5a0] text-[#00e5a0] shadow-md ring-1 ring-[#00e5a0]'
-                        : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                        ? 'bg-[color-mix(in_srgb,var(--c-primary)_18%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-primary)] shadow-sm ring-1 ring-[var(--c-primary)]'
+                        : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)]'
                     }`}
                   >
                     <span>✓ Sí, cuenta con seguro</span>
@@ -844,8 +844,8 @@ export default function NewPatientWizard({
                     onClick={() => updateField('seguro_tiene', false)}
                     className={`p-3 rounded-2xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-2 ${
                       !formData.seguro_tiene
-                        ? 'bg-[#38bdf8]/20 border-[#38bdf8] text-[#38bdf8] shadow-md ring-1 ring-[#38bdf8]'
-                        : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                        ? 'bg-[color-mix(in_srgb,var(--c-accent)_18%,var(--c-card))] border-[var(--c-accent)] text-[var(--c-accent)] shadow-sm ring-1 ring-[var(--c-accent)]'
+                        : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)]'
                     }`}
                   >
                     <span>Particular (Sin seguro)</span>
@@ -854,17 +854,19 @@ export default function NewPatientWizard({
               </div>
 
               {formData.seguro_tiene ? (
-                <div className="space-y-3.5 pt-2 border-t border-[#1e2d3d]/60 animate-in fade-in">
+                <div className="space-y-3.5 pt-2 border-t border-[var(--c-border)] animate-in fade-in">
                   {/* Nombre de la Aseguradora */}
                   <div>
                     <label className={labelClass}>Aseguradora en México</label>
                     <select
                       value={formData.seguro_aseguradora}
                       onChange={e => updateField('seguro_aseguradora', e.target.value)}
-                      className={inpClass}
+                      className={`${inpClass} cursor-pointer`}
                     >
                       {ASEGURADORAS_MEXICO.map(aseg => (
-                        <option key={aseg} value={aseg}>{aseg}</option>
+                        <option key={aseg} value={aseg} className="bg-[var(--c-card)] text-[var(--c-text)]">
+                          {aseg}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -912,8 +914,8 @@ export default function NewPatientWizard({
                             onClick={() => updateField('seguro_usara_hoy', opt.id)}
                             className={`p-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer text-center ${
                               active
-                                ? 'bg-[#00e5a0]/20 border-[#00e5a0] text-[#00e5a0] font-bold'
-                                : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                                ? 'bg-[color-mix(in_srgb,var(--c-primary)_15%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-primary)] font-bold shadow-sm'
+                                : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)]'
                             }`}
                           >
                             {opt.label}
@@ -924,11 +926,11 @@ export default function NewPatientWizard({
                   </div>
                 </div>
               ) : (
-                <div className="p-4 rounded-2xl bg-[#111820]/60 border border-dashed border-[#1e2d3d] text-center space-y-1">
-                  <p className="text-xs text-[#7a95aa]">
+                <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-dashed border-[var(--c-border)] text-center space-y-1">
+                  <p className="text-xs font-medium text-[var(--c-text-2)]">
                     Atención médica privada por cuenta propia.
                   </p>
-                  <p className="text-[11px] text-[#4b6377]">
+                  <p className="text-[11px] text-[var(--c-text-3)]">
                     Se cobrará directamente al paciente. Puede registrar su aseguradora en cualquier visita futura.
                   </p>
                 </div>
@@ -936,16 +938,16 @@ export default function NewPatientWizard({
             </div>
 
             {/* MÓDULO 4: CONTACTO DE EMERGENCIA */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
-              <div className="flex items-center gap-2.5 border-b border-[#1e2d3d]/80 pb-3">
-                <span className="w-8 h-8 rounded-xl bg-[#f43f5e]/15 text-[#f43f5e] flex items-center justify-center font-bold text-sm">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm">
+              <div className="flex items-center gap-2.5 border-b border-[var(--c-border)] pb-3">
+                <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-danger)_15%,transparent)] text-[var(--c-danger)] flex items-center justify-center font-bold text-sm">
                   🚨
                 </span>
                 <div>
-                  <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                  <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                     Contacto de Emergencia
                   </h2>
-                  <p className="text-[11px] text-[#7a95aa]">Familiar o persona responsable</p>
+                  <p className="text-[11px] text-[var(--c-text-2)]">Familiar o persona responsable</p>
                 </div>
               </div>
 
@@ -973,8 +975,8 @@ export default function NewPatientWizard({
                         onClick={() => updateField('emergency_relationship', p)}
                         className={`py-2.5 px-2 rounded-xl text-xs font-semibold border transition cursor-pointer text-center leading-tight min-h-[42px] flex items-center justify-center ${
                           active
-                            ? 'bg-[#f43f5e]/20 border-[#f43f5e] text-[#f43f5e] font-bold shadow-sm'
-                            : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
+                            ? 'bg-[color-mix(in_srgb,var(--c-danger)_15%,var(--c-card))] border-[var(--c-danger)] text-[var(--c-danger)] font-bold shadow-sm'
+                            : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)]'
                         }`}
                       >
                         {p}
@@ -1017,17 +1019,17 @@ export default function NewPatientWizard({
         {currentStep === 3 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
             {/* MÓDULO 5: ¿CÓMO SE ENTERÓ DEL DOCTOR? (MULTISELECCIÓN) */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
-              <div className="border-b border-[#1e2d3d]/80 pb-3">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm">
+              <div className="border-b border-[var(--c-border)] pb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-8 h-8 rounded-xl bg-[#a78bfa]/15 text-[#a78bfa] flex items-center justify-center font-bold text-sm">
+                  <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] flex items-center justify-center font-bold text-sm">
                     1️⃣
                   </span>
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                    <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                       ¿Cómo se enteró del Doctor / Consultorio?
                     </h2>
-                    <p className="text-[11px] text-[#7a95aa]">Selecciona todas las opciones que apliquen</p>
+                    <p className="text-[11px] text-[var(--c-text-2)]">Selecciona todas las opciones que apliquen</p>
                   </div>
                 </div>
               </div>
@@ -1043,14 +1045,17 @@ export default function NewPatientWizard({
                       onClick={() => toggleArrayItem('marketing_fuentes', item.label)}
                       className={`p-3 rounded-2xl text-left border text-xs font-semibold transition cursor-pointer flex items-center justify-between min-h-[46px] ${
                         checked
-                          ? 'bg-[#a78bfa]/20 border-[#a78bfa] text-[#dde6ef] shadow-sm'
-                          : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] hover:border-[#4b6377]'
+                          ? 'bg-[color-mix(in_srgb,var(--c-primary)_12%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-text)] shadow-sm'
+                          : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:border-[var(--c-border-2)]'
                       }`}
                     >
                       <span className="leading-snug pr-2">{item.label}</span>
-                      <span className={`w-4 h-4 rounded-md border flex items-center justify-center text-[10px] shrink-0 ${
-                        checked ? 'bg-[#a78bfa] border-[#a78bfa] text-white font-bold' : 'border-[#4b6377]'
-                      }`}>
+                      <span
+                        style={checked ? { background: 'var(--c-primary)', color: 'var(--c-primary-fg)' } : {}}
+                        className={`w-4 h-4 rounded-md border flex items-center justify-center text-[10px] shrink-0 ${
+                          checked ? 'border-[var(--c-primary)] font-bold' : 'border-[var(--c-border-2)]'
+                        }`}
+                      >
                         {checked ? '✓' : ''}
                       </span>
                     </button>
@@ -1059,7 +1064,7 @@ export default function NewPatientWizard({
               </div>
 
               {/* Nombre de la persona o médico que recomendó */}
-              <div className="pt-2 border-t border-[#1e2d3d]/60">
+              <div className="pt-2 border-t border-[var(--c-border)]">
                 <label className={labelClass}>
                   Nombre de la persona, médico o recomendación (si aplica)
                 </label>
@@ -1074,18 +1079,18 @@ export default function NewPatientWizard({
             </div>
 
             {/* MÓDULO 6: CANALES DIGITALES VISITADOS (MULTISELECCIÓN) */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl flex flex-col justify-between">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm flex flex-col justify-between">
               <div className="space-y-4">
-                <div className="border-b border-[#1e2d3d]/80 pb-3">
+                <div className="border-b border-[var(--c-border)] pb-3">
                   <div className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-[#38bdf8]/15 text-[#38bdf8] flex items-center justify-center font-bold text-sm">
+                    <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-accent)_15%,transparent)] text-[var(--c-accent)] flex items-center justify-center font-bold text-sm">
                       2️⃣
                     </span>
                     <div>
-                      <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                      <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                         Canales Digitales Consultados
                       </h2>
-                      <p className="text-[11px] text-[#7a95aa]">
+                      <p className="text-[11px] text-[var(--c-text-2)]">
                         ¿Qué perfiles o canales ha visitado para llegar con el Doctor?
                       </p>
                     </div>
@@ -1103,17 +1108,20 @@ export default function NewPatientWizard({
                         onClick={() => toggleArrayItem('marketing_canales', item.label)}
                         className={`p-3 rounded-2xl text-left border text-xs font-semibold transition cursor-pointer flex items-center justify-between min-h-[48px] ${
                           checked
-                            ? 'bg-[#38bdf8]/20 border-[#38bdf8] text-[#dde6ef] shadow-sm'
-                            : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef] hover:border-[#4b6377]'
+                            ? 'bg-[color-mix(in_srgb,var(--c-primary)_12%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-text)] shadow-sm'
+                            : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:border-[var(--c-border-2)]'
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0 pr-1">
                           <span className="text-sm shrink-0">{item.icon}</span>
                           <span className="leading-tight text-xs font-semibold">{item.label}</span>
                         </div>
-                        <span className={`w-4 h-4 rounded-md border flex items-center justify-center text-[10px] shrink-0 ${
-                          checked ? 'bg-[#38bdf8] border-[#38bdf8] text-[#051b14] font-bold' : 'border-[#4b6377]'
-                        }`}>
+                        <span
+                          style={checked ? { background: 'var(--c-primary)', color: 'var(--c-primary-fg)' } : {}}
+                          className={`w-4 h-4 rounded-md border flex items-center justify-center text-[10px] shrink-0 ${
+                            checked ? 'border-[var(--c-primary)] font-bold' : 'border-[var(--c-border-2)]'
+                          }`}
+                        >
                           {checked ? '✓' : ''}
                         </span>
                       </button>
@@ -1122,7 +1130,7 @@ export default function NewPatientWizard({
                 </div>
               </div>
 
-              <div className="pt-3 text-[11px] text-[#7a95aa] flex items-center gap-2 border-t border-[#1e2d3d]/60">
+              <div className="pt-3 text-[11px] text-[var(--c-text-3)] flex items-center gap-2 border-t border-[var(--c-border)]">
                 <span>📈</span>
                 <span>Permite atribuir con exactitud el ROI de cada red social y canal publicitario.</span>
               </div>
@@ -1136,27 +1144,27 @@ export default function NewPatientWizard({
         {currentStep === 4 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
             {/* MÓDULO 7: FACTURACIÓN FISCAL (CFDI) */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl">
-              <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm">
+              <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-8 h-8 rounded-xl bg-[#f59e0b]/15 text-[#f59e0b] flex items-center justify-center font-bold text-sm">
+                  <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-warn)_15%,transparent)] text-[var(--c-warn)] flex items-center justify-center font-bold text-sm">
                     🧾
                   </span>
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                    <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                       Facturación Fiscal (CFDI)
                     </h2>
-                    <p className="text-[11px] text-[#7a95aa]">Emisión de comprobante fiscal digital</p>
+                    <p className="text-[11px] text-[var(--c-text-2)]">Emisión de comprobante fiscal digital</p>
                   </div>
                 </div>
 
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <span className="text-xs font-semibold text-[#dde6ef]">¿Requiere factura?</span>
+                  <span className="text-xs font-semibold text-[var(--c-text)]">¿Requiere factura?</span>
                   <input
                     type="checkbox"
                     checked={formData.factura_requiere}
                     onChange={e => updateField('factura_requiere', e.target.checked)}
-                    className="w-4 h-4 accent-[#f59e0b] cursor-pointer"
+                    className="w-4 h-4 accent-[var(--c-primary)] cursor-pointer"
                   />
                 </label>
               </div>
@@ -1205,10 +1213,12 @@ export default function NewPatientWizard({
                       <select
                         value={formData.factura_regimen}
                         onChange={e => updateField('factura_regimen', e.target.value)}
-                        className={inpClass}
+                        className={`${inpClass} cursor-pointer`}
                       >
                         {REGIMENES_SAT.map(r => (
-                          <option key={r.code} value={r.code}>{r.label}</option>
+                          <option key={r.code} value={r.code} className="bg-[var(--c-card)] text-[var(--c-text)]">
+                            {r.label}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -1217,10 +1227,12 @@ export default function NewPatientWizard({
                       <select
                         value={formData.factura_uso_cfdi}
                         onChange={e => updateField('factura_uso_cfdi', e.target.value)}
-                        className={inpClass}
+                        className={`${inpClass} cursor-pointer`}
                       >
                         {USOS_CFDI.map(u => (
-                          <option key={u.code} value={u.code}>{u.label}</option>
+                          <option key={u.code} value={u.code} className="bg-[var(--c-card)] text-[var(--c-text)]">
+                            {u.label}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -1238,40 +1250,40 @@ export default function NewPatientWizard({
                   </div>
                 </div>
               ) : (
-                <div className="p-6 rounded-2xl bg-[#111820]/60 border border-dashed border-[#1e2d3d] text-center space-y-2">
-                  <p className="text-xs text-[#7a95aa]">
+                <div className="p-6 rounded-2xl bg-[var(--c-subtle)] border border-dashed border-[var(--c-border)] text-center space-y-2">
+                  <p className="text-xs font-semibold text-[var(--c-text-2)]">
                     El paciente no requiere factura en este momento.
                   </p>
-                  <p className="text-[11px] text-[#4b6377]">
-                    Se registrarán las notas de cobro al público en general. Podrá agregarse su RFC en cualquier momento posterior.
+                  <p className="text-[11px] text-[var(--c-text-3)]">
+                    Se registrarán las notas de cobro al público en general. Podrá agregarse un RFC en cualquier momento posterior.
                   </p>
                 </div>
               )}
             </div>
 
             {/* MÓDULO 8: PASE DIRECTO A SALA DE ESPERA */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#0d1520] border border-[#1e2d3d] space-y-4 shadow-xl flex flex-col justify-between">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--c-card)] border border-[var(--c-border)] space-y-4 shadow-sm flex flex-col justify-between">
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-[#1e2d3d]/80 pb-3">
+                <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
                   <div className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-[#00e5a0]/15 text-[#00e5a0] flex items-center justify-center font-bold text-sm">
+                    <span className="w-8 h-8 rounded-xl bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] flex items-center justify-center font-bold text-sm">
                       🩺
                     </span>
                     <div>
-                      <h2 className="text-sm sm:text-base font-bold text-[#dde6ef]">
+                      <h2 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
                         Pase a Sala de Espera
                       </h2>
-                      <p className="text-[11px] text-[#7a95aa]">Apertura de turno de atención inmediata</p>
+                      <p className="text-[11px] text-[var(--c-text-2)]">Apertura de turno de atención inmediata</p>
                     </div>
                   </div>
 
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <span className="text-xs font-semibold text-[#00e5a0]">¿Pasa a sala ahora?</span>
+                    <span className="text-xs font-semibold text-[var(--c-primary)]">¿Pasa a sala ahora?</span>
                     <input
                       type="checkbox"
                       checked={formData.enviar_a_sala}
                       onChange={e => updateField('enviar_a_sala', e.target.checked)}
-                      className="w-4 h-4 accent-[#00e5a0] cursor-pointer"
+                      className="w-4 h-4 accent-[var(--c-primary)] cursor-pointer"
                     />
                   </label>
                 </div>
@@ -1284,10 +1296,12 @@ export default function NewPatientWizard({
                         <select
                           value={formData.doctor_id}
                           onChange={e => updateField('doctor_id', e.target.value)}
-                          className={inpClass}
+                          className={`${inpClass} cursor-pointer`}
                         >
                           {doctors.map(d => (
-                            <option key={d.id} value={d.id}>{d.display_name}</option>
+                            <option key={d.id} value={d.id} className="bg-[var(--c-card)] text-[var(--c-text)]">
+                              {d.display_name}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -1296,10 +1310,12 @@ export default function NewPatientWizard({
                         <select
                           value={formData.location_id}
                           onChange={e => updateField('location_id', e.target.value)}
-                          className={inpClass}
+                          className={`${inpClass} cursor-pointer`}
                         >
                           {locations.map(l => (
-                            <option key={l.id} value={l.id}>{l.name}</option>
+                            <option key={l.id} value={l.id} className="bg-[var(--c-card)] text-[var(--c-text)]">
+                              {l.name}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -1317,41 +1333,44 @@ export default function NewPatientWizard({
 
                       {/* Cuadrícula estricta de motivos rápidos */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {MOTIVOS_PRIMERA_VEZ.map(mot => (
-                          <button
-                            key={mot}
-                            type="button"
-                            onClick={() => updateField('motivo_visita', mot)}
-                            className={`p-2.5 rounded-xl text-xs font-medium border transition cursor-pointer text-center leading-snug min-h-[44px] flex items-center justify-center ${
-                              formData.motivo_visita === mot
-                                ? 'bg-[#00e5a0]/15 border-[#00e5a0] text-[#00e5a0] font-bold'
-                                : 'bg-[#070a0e] border-[#1e2d3d] text-[#7a95aa] hover:text-[#dde6ef]'
-                            }`}
-                          >
-                            {mot}
-                          </button>
-                        ))}
+                        {MOTIVOS_PRIMERA_VEZ.map(mot => {
+                          const isSelected = formData.motivo_visita === mot;
+                          return (
+                            <button
+                              key={mot}
+                              type="button"
+                              onClick={() => updateField('motivo_visita', mot)}
+                              className={`p-2.5 rounded-xl text-xs font-medium border transition cursor-pointer text-center leading-snug min-h-[44px] flex items-center justify-center ${
+                                isSelected
+                                  ? 'bg-[color-mix(in_srgb,var(--c-primary)_12%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-primary)] font-bold shadow-sm'
+                                  : 'bg-[var(--c-bg)] border-[var(--c-border)] text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)]'
+                              }`}
+                            >
+                              {mot}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
-                    <div className="p-3 rounded-2xl bg-[#00e5a0]/10 border border-[#00e5a0]/30 text-xs text-[#00e5a0] flex items-center gap-2">
-                      <span>✓</span>
-                      <span>El paciente aparecerá inmediatamente en la cola activa de la Sala de Espera.</span>
+                    <div className="p-3 rounded-2xl bg-[color-mix(in_srgb,var(--c-success)_10%,transparent)] border border-[color-mix(in_srgb,var(--c-success)_30%,transparent)] text-xs text-[var(--c-success)] flex items-center gap-2">
+                      <span className="font-bold">✓</span>
+                      <span className="font-medium">El paciente aparecerá inmediatamente en la cola activa de la Sala de Espera.</span>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6 rounded-2xl bg-[#111820]/60 border border-dashed border-[#1e2d3d] text-center space-y-2">
-                    <p className="text-xs text-[#7a95aa]">
+                  <div className="p-6 rounded-2xl bg-[var(--c-subtle)] border border-dashed border-[var(--c-border)] text-center space-y-2">
+                    <p className="text-xs font-semibold text-[var(--c-text-2)]">
                       Solo se creará el expediente del paciente sin abrir turno de atención hoy.
                     </p>
-                    <p className="text-[11px] text-[#4b6377]">
+                    <p className="text-[11px] text-[var(--c-text-3)]">
                       Podrás agendarle una cita posterior en el calendario o registrar su visita cuando llegue.
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="pt-2 text-[11px] text-[#7a95aa] flex items-center gap-1.5 border-t border-[#1e2d3d]/60">
+              <div className="pt-2 text-[11px] text-[var(--c-text-3)] flex items-center gap-1.5 border-t border-[var(--c-border)]">
                 <span>🔒</span>
                 <span>Datos resguardados con encriptación y aislamiento multi-tenant por clínica.</span>
               </div>
@@ -1360,12 +1379,12 @@ export default function NewPatientWizard({
         )}
       </main>
 
-      {/* ── 3. BARRA INFERIOR FIJA: BOTONES PERFECTAMENTE CENTRADOS Y EMPAREJADOS ── */}
-      <footer className="fixed bottom-0 left-0 md:left-[232px] right-0 z-30 bg-[#0d1520]/95 backdrop-blur-md border-t border-[#1e2d3d] px-4 sm:px-8 py-3.5">
+      {/* ── 3. BARRA INFERIOR FIJA: BOTONES PERFECTAMENTE CENTRADOS Y EMPAREJADOS (COMPATIBLE CON LIGHT Y DARK MODE) ── */}
+      <footer className="fixed bottom-0 left-0 md:left-[232px] right-0 z-30 bg-[var(--c-card)]/95 backdrop-blur-md border-t border-[var(--c-border)] px-4 sm:px-8 py-3.5 shadow-lg">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
           {/* LADO IZQUIERDO (flex-1): Auto-guardado en tiempo real */}
-          <div className="flex-1 hidden sm:flex items-center gap-2 text-xs font-mono text-[#00e5a0]">
-            <span className="w-2 h-2 rounded-full bg-[#00e5a0] animate-pulse shrink-0" />
+          <div className="flex-1 hidden sm:flex items-center gap-2 text-xs font-mono text-[var(--c-success)]">
+            <span className="w-2 h-2 rounded-full bg-[var(--c-success)] animate-pulse shrink-0" />
             <span className="truncate">{lastSavedTime || 'Borrador guardado automáticamente'}</span>
           </div>
 
@@ -1375,7 +1394,7 @@ export default function NewPatientWizard({
             <button
               type="button"
               onClick={handleBack}
-              className="px-5 sm:px-6 py-2.5 rounded-xl text-xs font-semibold text-[#7a95aa] hover:text-[#dde6ef] hover:bg-[#162231] transition cursor-pointer flex items-center justify-center gap-2 border border-[#1e2d3d] flex-1 sm:flex-none"
+              className="px-5 sm:px-6 py-2.5 rounded-xl text-xs font-semibold text-[var(--c-text-2)] hover:text-[var(--c-text)] bg-[var(--c-card)] hover:bg-[var(--c-subtle)] transition cursor-pointer flex items-center justify-center gap-2 border border-[var(--c-border)] flex-1 sm:flex-none shadow-sm"
             >
               <Icon name="back" size={16} />
               <span>{currentStep === 1 ? 'Cancelar' : 'Anterior'}</span>
@@ -1386,7 +1405,8 @@ export default function NewPatientWizard({
               <button
                 type="button"
                 onClick={handleNext}
-                className="px-6 sm:px-8 py-2.5 rounded-xl text-xs font-bold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition cursor-pointer shadow-md flex items-center justify-center gap-2 flex-1 sm:flex-none"
+                style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                className="px-6 sm:px-8 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-md flex items-center justify-center gap-2 flex-1 sm:flex-none hover:opacity-90"
               >
                 <span>Siguiente Paso</span>
                 <span className="rotate-180 inline-block"><Icon name="back" size={16} /></span>
@@ -1396,7 +1416,8 @@ export default function NewPatientWizard({
                 type="button"
                 disabled={saving}
                 onClick={handleFinalSubmit}
-                className="px-6 sm:px-8 py-2.5 rounded-xl text-xs font-bold bg-[#00e5a0] text-[#051b14] hover:bg-[#00c98c] transition cursor-pointer shadow-lg flex items-center justify-center gap-2 flex-1 sm:flex-none"
+                style={{ background: 'var(--c-primary)', color: 'var(--c-primary-fg)' }}
+                className="px-6 sm:px-8 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-lg flex items-center justify-center gap-2 flex-1 sm:flex-none hover:opacity-90 disabled:opacity-50"
               >
                 {saving ? (
                   <span>Guardando...</span>
@@ -1411,7 +1432,7 @@ export default function NewPatientWizard({
           </div>
 
           {/* LADO DERECHO (flex-1): Contador de progreso para balance simétrico exacto */}
-          <div className="flex-1 hidden sm:flex justify-end items-center gap-2 text-xs text-[#7a95aa] font-mono">
+          <div className="flex-1 hidden sm:flex justify-end items-center gap-2 text-xs text-[var(--c-text-2)] font-mono">
             <span>Paso {currentStep} de 4 ({currentStep * 25}%)</span>
           </div>
         </div>
