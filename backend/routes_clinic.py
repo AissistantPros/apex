@@ -481,14 +481,16 @@ def _nombre_pacientes(did: str) -> dict:
     return {p["id"]: p.get("full_name") for p in (r.data or [])}
 
 @router.get("/sales")
-def list_sales(estado: Optional[str] = None, limit: int = 150,
-                     authorization: Optional[str] = Header(None)):
+def list_sales(estado: Optional[str] = None, patient_id: Optional[str] = None, limit: int = 150,
+               authorization: Optional[str] = Header(None)):
     actor = get_actor(authorization)
     did = actor["doctor_id"]
     q = supabase.table("sales").select("*").eq("doctor_id", did)\
         .order("created_at", desc=True).limit(limit)
     if estado:
         q = q.eq("estado", estado)
+    if patient_id:
+        q = q.eq("patient_id", patient_id)
     if actor.get("role") == "receptionist":
         # Recepcionista solo ve sus cobros / ingresos dados de alta o cobrados por ella
         q = q.or_(f"created_by.eq.{actor['user_id']},charged_by.eq.{actor['user_id']}")

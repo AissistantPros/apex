@@ -471,6 +471,8 @@ async def upload_patient_file(
     notes: str = Form(""),
     taken_at: str = Form(""),
     visit_id: str = Form(""),
+    zona: str = Form(""),                     # zona / región anatómica / ángulo
+    procedimiento: str = Form(""),            # procedimiento o tratamiento asociado
     authorization: Optional[str] = Header(None),
 ):
     """Sube un estudio, resultado de laboratorio o fotografía clínica (ej. Antes / Después)
@@ -492,7 +494,8 @@ async def upload_patient_file(
     if not raw_bytes:
         raise HTTPException(400, "El archivo está vacío")
     if len(raw_bytes) > imagenes.MAX_BYTES_ENTRADA:
-        raise HTTPException(400, "El archivo supera el límite de 12 MB")
+        mb = imagenes.MAX_BYTES_ENTRADA // (1024 * 1024)
+        raise HTTPException(400, f"El archivo supera el límite de {mb} MB")
 
     fname = file.filename or "archivo"
     ctype = (file.content_type or "").lower()
@@ -528,6 +531,8 @@ async def upload_patient_file(
         "filename": fname,
         "category": category if category in ("laboratorio", "estudio", "foto_clinica", "documento") else "estudio",
         "stage": stage if stage in ("antes", "despues", "seguimiento", "general") else "general",
+        "zona": (zona or "").strip(),
+        "procedimiento": (procedimiento or "").strip(),
         "notes": (notes or "").strip(),
         "taken_at": (taken_at or "").strip() or now_iso[:10],
         "visit_id": (visit_id or "").strip() or None,
@@ -725,6 +730,75 @@ Responde en español con formato estructurado usando estas secciones exactas:
         "daily_used": daily_used,
         "daily_limit": daily_limit,
         "daily_remaining": max(0, daily_limit - daily_used),
+    }
+
+
+@router.get("/{patient_id}/financials")
+async def get_patient_financials(patient_id: str, authorization: Optional[str] = Header(None)):
+    """Resumen de gasto acumulado, cobros liquidados y pendientes del paciente."""
+    from auth import get_actor
+    from access import require
+    from db import supabase
+    from routes_clinic import SALE_META_DEFAULTS, _unpack_row_meta
+
+    actor = get_actor(authorization)
+    require(actor, "doctor", "nurse", "receptionist")
+    p = get_patient(patient_id)
+    if not p or not patient_belongs(actor, p):
+        raise HTTPException(404, "Paciente no encontrado")
+
+    did = actor["doctor_id"]
+    ventas = supabase.table("sales").select("*")\
+        .eq("doctor_id", did)\
+        .eq("patient_id", patient_id)\
+        .order("created_at", desc=True)\
+        .execute().data or []
+
+    out_sales = []
+    total_cobrado = 0.0
+    total_pendiente = 0.0
+    por_categoria = {
+        "consulta": 0.0,
+        "procedimiento": 0.0,
+        "cirugia": 0.0,
+        "estudio": 0.0,
+        "farmacia": 0.0,
+        "otros": 0.0,
+    }
+
+    for v in ventas:
+        u = _unpack_row_meta(v, SALE_META_DEFAULTS)
+        estado = u.get("estado")
+        total = float(u.get("total") or 0.0)
+        tipo = (u.get("tipo_ingreso") or "consulta").lower()
+
+        cat_key = "otros"
+        if "consult" in tipo:
+            cat_key = "consulta"
+        elif "procedim" in tipo:
+            cat_key = "procedimiento"
+        elif "cirug" in tipo or "quirof" in tipo:
+            cat_key = "cirugia"
+        elif "estud" in tipo or "lab" in tipo:
+            cat_key = "estudio"
+        elif "farm" in tipo or "medic" in tipo or "insum" in tipo:
+            cat_key = "farmacia"
+
+        if estado == "cobrado":
+            total_cobrado += total
+            por_categoria[cat_key] += total
+        elif estado in ("pendiente", "en_tramite"):
+            total_pendiente += total
+
+        out_sales.append(u)
+
+    return {
+        "patient_id": patient_id,
+        "total_cobrado": round(total_cobrado, 2),
+        "total_pendiente": round(total_pendiente, 2),
+        "total_movimientos": len(out_sales),
+        "por_categoria": {k: round(v, 2) for k, v in por_categoria.items()},
+        "sales": out_sales,
     }
 
 

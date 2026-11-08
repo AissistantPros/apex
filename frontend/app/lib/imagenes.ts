@@ -7,7 +7,7 @@ export type ImgKind = 'photo' | 'logo' | 'logo_dark';
 export interface ResultadoSubida { url: string; kind: ImgKind; bytes: number; ancho: number; alto: number }
 
 const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-export { MAX_ENTRADA, kb, dataUrlABlob } from '@/app/lib/imgutil';
+export { MAX_ENTRADA, kb, dataUrlABlob, comprimirImagenWebp } from '@/app/lib/imgutil';
 import { MAX_ENTRADA } from '@/app/lib/imgutil';
 
 /** Que la barra de navegación y demás pantallas vuelvan a leer la marca del consultorio. */

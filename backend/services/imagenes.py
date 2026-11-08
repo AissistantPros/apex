@@ -19,14 +19,14 @@ from typing import Optional
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 BUCKET = "apex-branding"
-MAX_BYTES_ENTRADA = 12 * 1024 * 1024          # lo que se acepta de entrada (fotos de celular)
+MAX_BYTES_ENTRADA = 35 * 1024 * 1024          # lo que se acepta de entrada (fotos pesadas de cámara/celular)
 Image.MAX_IMAGE_PIXELS = 50_000_000           # corta imágenes-bomba (descompresión enorme)
 
 PERFILES = {
     "photo":         {"max": (256, 256),   "cuadrada": True,  "calidad": 82, "alfa": False, "sin_perdida": False, "dir": "perfil"},
     "logo":          {"max": (640, 240),   "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
     "logo_dark":     {"max": (640, 240),   "cuadrada": False, "calidad": 90, "alfa": True,  "sin_perdida": True,  "dir": "clinica"},
-    "patient_photo": {"max": (1400, 1400), "cuadrada": False, "calidad": 85, "alfa": False, "sin_perdida": False, "dir": "expediente"},
+    "patient_photo": {"max": (1920, 1920), "cuadrada": False, "calidad": 82, "alfa": False, "sin_perdida": False, "dir": "expediente", "max_bytes": 1024 * 1024},
     "staff_photo":   {"max": (800, 800),   "cuadrada": True,  "calidad": 82, "alfa": False, "sin_perdida": False, "dir": "staff", "max_bytes": 80 * 1024},
 }
 LOGOS = ("logo", "logo_dark")
@@ -44,7 +44,8 @@ def procesar(data: bytes, kind: str) -> tuple[bytes, tuple[int, int]]:
     if not data:
         raise ImagenInvalida("El archivo está vacío.")
     if len(data) > MAX_BYTES_ENTRADA:
-        raise ImagenInvalida("La imagen pesa más de 12 MB. Elige una más ligera.")
+        mb = MAX_BYTES_ENTRADA // (1024 * 1024)
+        raise ImagenInvalida(f"La imagen pesa más de {mb} MB. Elige una más ligera.")
     try:
         im = Image.open(io.BytesIO(data))
         im.load()

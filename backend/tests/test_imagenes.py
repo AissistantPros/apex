@@ -113,7 +113,8 @@ class TestProcesar(unittest.TestCase):
     def test_rechaza_archivos_enormes_y_tipo_invalido(self):
         with self.assertRaises(imagenes.ImagenInvalida) as cm:
             imagenes.procesar(b"0" * (imagenes.MAX_BYTES_ENTRADA + 1), "photo")
-        self.assertIn("12 MB", str(cm.exception))
+        mb = imagenes.MAX_BYTES_ENTRADA // (1024 * 1024)
+        self.assertIn(f"{mb} MB", str(cm.exception))
         with self.assertRaises(imagenes.ImagenInvalida):
             imagenes.procesar(png(50, 50), "documento")
 
