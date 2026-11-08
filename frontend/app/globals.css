@@ -185,6 +185,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 99px; }
 
+/* Utilidad para ocultar barras de scroll sin impedir el desplazamiento */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* Contenedor de página */
 .page-content { width: 100%; max-width: min(1200px, 92%); margin-left: auto; margin-right: auto; }
 

@@ -13,10 +13,7 @@ const BACKEND = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8
 
 type TabKey =
   | 'visitas'
-  | 'clinica'
-  | 'medicamentos'
-  | 'familia'
-  | 'privada'
+  | 'historia'
   | 'archivos'
   | 'contacto'
   | 'notas'
@@ -77,9 +74,11 @@ export default function PatientPage() {
     const r = getRole();
     setRole(r);
     // Asignar tab inicial según rol si no viene query param
-    const qTab = searchParams?.get('tab') as TabKey;
-    if (qTab) {
-      setActiveTab(qTab);
+    const qTab = searchParams?.get('tab') as string;
+    if (qTab === 'clinica' || qTab === 'medicamentos' || qTab === 'familia' || qTab === 'privada') {
+      setActiveTab('historia');
+    } else if (qTab && ['visitas', 'historia', 'archivos', 'contacto', 'notas', 'gestion'].includes(qTab)) {
+      setActiveTab(qTab as TabKey);
     } else if (r === 'receptionist') {
       setActiveTab('contacto');
     } else {
@@ -349,16 +348,13 @@ export default function PatientPage() {
     patient.allergies_environmental ? `Amb: ${patient.allergies_environmental}` : null,
   ].filter(Boolean);
 
-  // Definición de pestañas por rol
+  // Definición de pestañas por rol (compactas, sin scroll horizontal)
   const TABS_CONFIG: { key: TabKey; label: string; icon: string; count?: number; roleHide?: string[] }[] = [
-    { key: 'visitas', label: 'Consultas & Visitas', icon: '🩺', count: visits.length, roleHide: ['receptionist'] },
-    { key: 'clinica', label: 'Antecedentes & Alergias', icon: '⚠️', roleHide: ['receptionist'] },
-    { key: 'medicamentos', label: 'Medicamentos & Hábitos', icon: '💊', roleHide: ['receptionist'] },
-    { key: 'familia', label: 'Heredofamiliares', icon: '🧬', roleHide: ['receptionist'] },
-    { key: 'privada', label: 'Historia Privada', icon: '🔒', roleHide: ['receptionist', 'nurse'] },
+    { key: 'visitas', label: 'Consultas', icon: '🩺', count: visits.length, roleHide: ['receptionist'] },
+    { key: 'historia', label: 'Historia Clínica', icon: '📋', roleHide: ['receptionist'] },
     { key: 'archivos', label: 'Estudios & Fotos', icon: '📁', count: patientFiles.length, roleHide: ['receptionist'] },
-    { key: 'contacto', label: 'Datos & Contacto', icon: '👤', roleHide: ['nurse'] },
-    { key: 'notas', label: 'Notas del Equipo', icon: '💬', count: patientNotes.length },
+    { key: 'contacto', label: 'Contacto & Fiscal', icon: '👤', roleHide: ['nurse'] },
+    { key: 'notas', label: 'Notas', icon: '💬', count: patientNotes.length },
     { key: 'gestion', label: 'Gestión', icon: '⚙️' },
   ];
 
@@ -589,9 +585,9 @@ export default function PatientPage() {
           </div>
         )}
 
-        {/* ── BARRA DE PESTAÑAS (TABS RESPONSIVAS Y FLUIDAS) ── */}
-        <div className="border-b border-[var(--c-border)] overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-          <div className="flex items-center gap-1 sm:gap-2 min-w-max pb-px">
+        {/* ── BARRA DE PESTAÑAS (ZERO SCROLLBAR HORIZONTAL, ADAPTABLE) ── */}
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-1.5 shadow-xs">
+          <nav aria-label="Secciones del expediente" className="flex flex-wrap items-center gap-1.5">
             {visibleTabs.map(t => {
               const isActive = activeTab === t.key;
               return (
@@ -599,20 +595,20 @@ export default function PatientPage() {
                   key={t.key}
                   type="button"
                   onClick={() => setActiveTab(t.key)}
-                  className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer border ${
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer border ${
                     isActive
-                      ? 'bg-[color-mix(in_srgb,var(--c-primary)_14%,var(--c-card))] border-[var(--c-primary)] text-[var(--c-primary)] shadow-sm'
+                      ? 'bg-[var(--c-subtle)] border-[var(--c-primary)] text-[var(--c-primary)] shadow-xs'
                       : 'bg-transparent border-transparent text-[var(--c-text-2)] hover:text-[var(--c-text)] hover:bg-[var(--c-subtle)]'
                   }`}
                 >
-                  <span>{t.icon}</span>
-                  <span>{t.label}</span>
+                  <span className="text-base leading-none">{t.icon}</span>
+                  <span className="whitespace-nowrap">{t.label}</span>
                   {t.count !== undefined && (
                     <span
-                      className={`text-[11px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full ${
                         isActive
                           ? 'bg-[var(--c-primary)] text-[var(--c-primary-fg)]'
-                          : 'bg-[var(--c-subtle)] text-[var(--c-text-3)]'
+                          : 'bg-[var(--c-subtle-2)] text-[var(--c-text-3)]'
                       }`}
                     >
                       {t.count}
@@ -621,7 +617,7 @@ export default function PatientPage() {
                 </button>
               );
             })}
-          </div>
+          </nav>
         </div>
 
         {/* ════════════════════════════════════════════════════════════════════════
@@ -676,12 +672,43 @@ export default function PatientPage() {
         )}
 
         {/* ════════════════════════════════════════════════════════════════════════
-            PESTAÑA 2: ANTECEDENTES & ALERGIAS
+            PESTAÑA 2: HISTORIA CLÍNICA INTEGRAL
            ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'clinica' && (
+        {activeTab === 'historia' && (
           <div className="space-y-6 animate-in fade-in">
+            {/* Accesos rápidos a secciones clínicas */}
+            <div className="flex flex-wrap items-center gap-2 p-3 bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl shadow-xs">
+              <span className="text-[11px] font-mono uppercase font-bold text-[var(--c-text-3)] mr-1">Ir a:</span>
+              <a
+                href="#sec-alergias"
+                className="px-3 py-1 rounded-lg bg-[var(--c-subtle)] hover:bg-[var(--c-hover)] text-[var(--c-text)] text-xs font-semibold border border-[var(--c-border)] transition"
+              >
+                ⚠️ Alergias & Patologías
+              </a>
+              <a
+                href="#sec-medicamentos"
+                className="px-3 py-1 rounded-lg bg-[var(--c-subtle)] hover:bg-[var(--c-hover)] text-[var(--c-text)] text-xs font-semibold border border-[var(--c-border)] transition"
+              >
+                💊 Medicamentos & Hábitos
+              </a>
+              <a
+                href="#sec-familia"
+                className="px-3 py-1 rounded-lg bg-[var(--c-subtle)] hover:bg-[var(--c-hover)] text-[var(--c-text)] text-xs font-semibold border border-[var(--c-border)] transition"
+              >
+                🧬 Heredofamiliares
+              </a>
+              {role === 'doctor' && (
+                <a
+                  href="#sec-privada"
+                  className="px-3 py-1 rounded-lg bg-[color-mix(in_srgb,var(--c-primary)_12%,var(--c-card))] hover:opacity-90 text-[var(--c-primary)] text-xs font-bold border border-[color-mix(in_srgb,var(--c-primary)_35%,transparent)] transition"
+                >
+                  🔒 Confidencial
+                </a>
+              )}
+            </div>
+
             {/* 1. Alergias Críticas */}
-            <div className="bg-[var(--c-card)] border border-[color-mix(in_srgb,var(--c-danger)_25%,var(--c-border))] rounded-3xl p-6 shadow-sm space-y-4">
+            <div id="sec-alergias" className="scroll-mt-24 bg-[var(--c-card)] border border-[color-mix(in_srgb,var(--c-danger)_25%,var(--c-border))] rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 border-b border-[var(--c-border)] pb-3">
                 <span className="text-lg">⚠️</span>
                 <h3 className="text-sm font-bold text-[var(--c-danger)] uppercase tracking-wider">
@@ -736,16 +763,9 @@ export default function PatientPage() {
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {/* ════════════════════════════════════════════════════════════════════════
-            PESTAÑA 3: MEDICAMENTOS & HÁBITOS
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'medicamentos' && (
-          <div className="space-y-6 animate-in fade-in">
-            {/* Medicamentos Actuales */}
-            <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-3xl p-6 shadow-sm space-y-4">
+            {/* 3. Medicamentos Actuales */}
+            <div id="sec-medicamentos" className="scroll-mt-24 bg-[var(--c-card)] border border-[var(--c-border)] rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">💊</span>
@@ -799,7 +819,7 @@ export default function PatientPage() {
               )}
             </div>
 
-            {/* Hábitos de Vida */}
+            {/* 4. Hábitos de Vida */}
             <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 border-b border-[var(--c-border)] pb-3">
                 <span className="text-lg">🌿</span>
@@ -835,15 +855,9 @@ export default function PatientPage() {
                 )}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* ════════════════════════════════════════════════════════════════════════
-            PESTAÑA 4: HEREDOFAMILIARES
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'familia' && (
-          <div className="space-y-6 animate-in fade-in">
-            <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-3xl p-6 shadow-sm space-y-4">
+            {/* 5. Carga Genética y Heredofamiliares */}
+            <div id="sec-familia" className="scroll-mt-24 bg-[var(--c-card)] border border-[var(--c-border)] rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 border-b border-[var(--c-border)] pb-3">
                 <span className="text-lg">🧬</span>
                 <h3 className="text-sm font-bold text-[var(--c-text)] uppercase tracking-wider">
@@ -933,107 +947,103 @@ export default function PatientPage() {
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {/* ════════════════════════════════════════════════════════════════════════
-            PESTAÑA 5: HISTORIA CLÍNICA PRIVADA (SOLO MÉDICO)
-           ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'privada' && role === 'doctor' && (
-          <div className="space-y-6 animate-in fade-in">
-            <div className="bg-[var(--c-card)] border border-[color-mix(in_srgb,var(--c-violet)_35%,transparent)] rounded-3xl p-6 shadow-sm space-y-6">
-              <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🔒</span>
-                  <h3 className="text-sm font-bold text-[var(--c-violet)] uppercase tracking-wider">
-                    Historia Clínica Confidencial
-                  </h3>
-                </div>
-                <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--c-violet)_15%,transparent)] text-[var(--c-violet)] border border-[color-mix(in_srgb,var(--c-violet)_30%,transparent)]">
-                  Exclusivo Médico Titular
-                </span>
-              </div>
-
-              {/* Identidad */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InfoCard label="Sexo biológico de nacimiento" value={patient.sexo_biologico || patient.sex} />
-                <InfoCard label="Género con el que se identifica" value={patient.genero_identidad} />
-              </div>
-
-              {/* Reproductiva Femenina */}
-              {(patient.sexo_biologico === 'Femenino' || patient.sex === 'Femenino') && (
-                <div className="space-y-3 pt-3 border-t border-[var(--c-border)]">
-                  <p className="text-xs font-mono text-[#ec4899] font-bold uppercase tracking-wider">
-                    🌸 Historia Gineco-obstétrica
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    <InfoCard label="Menarca (edad)" value={patient.menarca_age} />
-                    <InfoCard label="Ciclos menstruales" value={patient.ciclos_regulares} />
-                    <InfoCard label="Embarazos (G)" value={patient.pregnancies} />
-                    <InfoCard label="Partos / Cesáreas (P)" value={patient.births} />
-                    <InfoCard label="Abortos (A)" value={patient.miscarriages} />
-                    <InfoCard label="Menopausia" value={patient.menopausal_tipo} />
-                    <InfoCard label="Edad de menopausia" value={patient.menopausal_age} />
-                    <InfoCard label="Anticonceptivo actual" value={patient.contraceptive} />
-                    <InfoCard label="Último Papanicolaou" value={patient.pap_ultimo} />
-                    <InfoCard label="Última mastografía" value={patient.masto_ultima} />
-                    <InfoCard label="Última colposcopía" value={patient.colpo_ultima} />
+            {/* 6. Historia Confidencial (Solo Médico) */}
+            {role === 'doctor' && (
+              <div id="sec-privada" className="scroll-mt-24 bg-[var(--c-card)] border border-[color-mix(in_srgb,var(--c-primary)_35%,transparent)] rounded-3xl p-6 shadow-sm space-y-6">
+                <div className="flex items-center justify-between border-b border-[var(--c-border)] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🔒</span>
+                    <h3 className="text-sm font-bold text-[var(--c-primary)] uppercase tracking-wider">
+                      Historia Clínica Confidencial
+                    </h3>
                   </div>
+                  <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--c-primary)_15%,transparent)] text-[var(--c-primary)] border border-[color-mix(in_srgb,var(--c-primary)_30%,transparent)]">
+                    Exclusivo Médico Titular
+                  </span>
                 </div>
-              )}
 
-              {/* Reproductiva Masculina */}
-              {(patient.sexo_biologico === 'Masculino' || patient.sex === 'Masculino') && (
-                <div className="space-y-3 pt-3 border-t border-[var(--c-border)]">
-                  <p className="text-xs font-mono text-[var(--c-primary)] font-bold uppercase tracking-wider">
-                    ⚡ Historia Urológica & Andrológica
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <InfoCard label="Disfunción eréctil" value={patient.erectile_dysfunction} />
-                    <InfoCard label="Uso de testosterona" value={patient.testosterone_use} />
-                    <InfoCard label="Detalle testosterona" value={patient.testosterone_detalle} />
-                    <InfoCard label="Número de hijos" value={patient.children} />
-                    <InfoCard label="Último PSA (año)" value={patient.psa_ultimo} />
-                    <InfoCard label="Resultado PSA (ng/mL)" value={patient.psa_valor} />
-                  </div>
-                </div>
-              )}
-
-              {/* Salud Sexual y Mental */}
-              <div className="space-y-4 pt-3 border-t border-[var(--c-border)]">
+                {/* Identidad */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] space-y-1">
-                    <p className="text-[11px] font-mono text-[var(--c-text-3)] uppercase font-semibold">Salud Sexual</p>
-                    <p className="text-xs sm:text-sm text-[var(--c-text)]">
-                      Libido basal: <strong>{patient.libido_basal ? `${patient.libido_basal}/10` : 'No especificado'}</strong>
-                    </p>
-                    {patient.salud_sexual_notas && (
-                      <p className="text-xs text-[var(--c-text-2)] pt-1">{patient.salud_sexual_notas}</p>
-                    )}
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] space-y-1">
-                    <p className="text-[11px] font-mono text-[var(--c-text-3)] uppercase font-semibold">Salud Mental</p>
-                    <p className="text-xs sm:text-sm text-[var(--c-text)]">
-                      Diagnósticos: <strong>{patient.dx_psiquiatrico || 'Sin diagnóstico reportado'}</strong>
-                    </p>
-                    {patient.med_psiquiatrica && (
-                      <p className="text-xs text-[var(--c-text-2)]">Fármacos: {patient.med_psiquiatrica}</p>
-                    )}
-                    {patient.trauma_relevante && (
-                      <p className="text-xs text-[var(--c-text-2)]">Traumas: {patient.trauma_relevante}</p>
-                    )}
-                  </div>
+                  <InfoCard label="Sexo biológico de nacimiento" value={patient.sexo_biologico || patient.sex} />
+                  <InfoCard label="Género con el que se identifica" value={patient.genero_identidad} />
                 </div>
 
-                {patient.sust_recreativas && (
-                  <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] space-y-1">
-                    <p className="text-[11px] font-mono text-[var(--c-text-3)] uppercase font-semibold">Sustancias Recreativas</p>
-                    <p className="text-xs sm:text-sm text-[var(--c-text)]">{patient.sust_recreativas}</p>
+                {/* Reproductiva Femenina */}
+                {(patient.sexo_biologico === 'Femenino' || patient.sex === 'Femenino') && (
+                  <div className="space-y-3 pt-3 border-t border-[var(--c-border)]">
+                    <p className="text-xs font-mono text-[#ec4899] font-bold uppercase tracking-wider">
+                      🌸 Historia Gineco-obstétrica
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      <InfoCard label="Menarca (edad)" value={patient.menarca_age} />
+                      <InfoCard label="Ciclos menstruales" value={patient.ciclos_regulares} />
+                      <InfoCard label="Embarazos (G)" value={patient.pregnancies} />
+                      <InfoCard label="Partos / Cesáreas (P)" value={patient.births} />
+                      <InfoCard label="Abortos (A)" value={patient.miscarriages} />
+                      <InfoCard label="Menopausia" value={patient.menopausal_tipo} />
+                      <InfoCard label="Edad de menopausia" value={patient.menopausal_age} />
+                      <InfoCard label="Anticonceptivo actual" value={patient.contraceptive} />
+                      <InfoCard label="Último Papanicolaou" value={patient.pap_ultimo} />
+                      <InfoCard label="Última mastografía" value={patient.masto_ultima} />
+                      <InfoCard label="Última colposcopía" value={patient.colpo_ultima} />
+                    </div>
                   </div>
                 )}
+
+                {/* Reproductiva Masculina */}
+                {(patient.sexo_biologico === 'Masculino' || patient.sex === 'Masculino') && (
+                  <div className="space-y-3 pt-3 border-t border-[var(--c-border)]">
+                    <p className="text-xs font-mono text-[var(--c-primary)] font-bold uppercase tracking-wider">
+                      ⚡ Historia Urológica & Andrológica
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                      <InfoCard label="Disfunción eréctil" value={patient.erectile_dysfunction} />
+                      <InfoCard label="Uso de testosterona" value={patient.testosterone_use} />
+                      <InfoCard label="Detalle testosterona" value={patient.testosterone_detalle} />
+                      <InfoCard label="Número de hijos" value={patient.children} />
+                      <InfoCard label="Último PSA (año)" value={patient.psa_ultimo} />
+                      <InfoCard label="Resultado PSA (ng/mL)" value={patient.psa_valor} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Salud Sexual y Mental */}
+                <div className="space-y-4 pt-3 border-t border-[var(--c-border)]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] space-y-1">
+                      <p className="text-[11px] font-mono text-[var(--c-text-3)] uppercase font-semibold">Salud Sexual</p>
+                      <p className="text-xs sm:text-sm text-[var(--c-text)]">
+                        Libido basal: <strong>{patient.libido_basal ? `${patient.libido_basal}/10` : 'No especificado'}</strong>
+                      </p>
+                      {patient.salud_sexual_notas && (
+                        <p className="text-xs text-[var(--c-text-2)] pt-1">{patient.salud_sexual_notas}</p>
+                      )}
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] space-y-1">
+                      <p className="text-[11px] font-mono text-[var(--c-text-3)] uppercase font-semibold">Salud Mental</p>
+                      <p className="text-xs sm:text-sm text-[var(--c-text)]">
+                        Diagnósticos: <strong>{patient.dx_psiquiatrico || 'Sin diagnóstico reportado'}</strong>
+                      </p>
+                      {patient.med_psiquiatrica && (
+                        <p className="text-xs text-[var(--c-text-2)]">Fármacos: {patient.med_psiquiatrica}</p>
+                      )}
+                      {patient.trauma_relevante && (
+                        <p className="text-xs text-[var(--c-text-2)]">Traumas: {patient.trauma_relevante}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {patient.sust_recreativas && (
+                    <div className="p-4 rounded-2xl bg-[var(--c-subtle)] border border-[var(--c-border)] space-y-1">
+                      <p className="text-[11px] font-mono text-[var(--c-text-3)] uppercase font-semibold">Sustancias Recreativas</p>
+                      <p className="text-xs sm:text-sm text-[var(--c-text)]">{patient.sust_recreativas}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
