@@ -141,7 +141,68 @@ async def my_block(block: str, authorization: Optional[str] = Header(None)):
         .eq("clinic_id", clinic).eq("block", block).limit(1).execute().data
     if r and r[0].get("questions"):
         return {"block": block, "questions": r[0]["questions"], "specialty": r[0].get("specialty"), "source": "clinic"}
-    # Fallback: preset general
-    p = supabase.table("question_presets").select("questions")\
-        .eq("specialty", "general").eq("block", block).limit(1).execute().data
-    return {"block": block, "questions": (p[0]["questions"] if p else []), "specialty": "general", "source": "preset"}
+
+    # Determinar especialidad clínica para el fallback (por defecto cardiología para Dr. Alarcón)
+    spec = "cardiologia"
+    try:
+        doc_id = actor.get("doctor_id") or clinic
+        if doc_id:
+            d_row = supabase.table("doctors").select("specialty").eq("id", doc_id).limit(1).execute().data
+            if d_row and d_row[0].get("specialty"):
+                s_name = d_row[0]["specialty"].lower()
+                if "cardio" in s_name:
+                    spec = "cardiologia"
+                elif "endocrino" in s_name:
+                    spec = "endocrinologia"
+                elif "estet" in s_name:
+                    spec = "estetica"
+    except Exception:
+        pass
+
+    # Fallback: preset de la especialidad
+    p = supabase.table("question_presets").select("questions, specialty")\
+        .eq("specialty", spec).eq("block", block).limit(1).execute().data
+    if not p or not p[0].get("questions"):
+        p = supabase.table("question_presets").select("questions, specialty")\
+            .eq("specialty", "general").eq("block", block).limit(1).execute().data
+
+    return {"block": block, "questions": (p[0]["questions"] if p else []), "specialty": spec, "source": "preset"}
+
+
+@router.put("/mine/{block}")
+async def set_my_block(block: str, body: BlockIn, authorization: Optional[str] = Header(None)):
+    """Permite al médico autenticado guardar y personalizar las preguntas de su clínica."""
+    actor = get_actor(authorization)
+    clinic = actor.get("clinic_id") or actor.get("doctor_id")
+    if not clinic:
+        raise HTTPException(401, "No autenticado")
+    if block not in BLOCKS:
+        raise HTTPException(400, "Bloque inválido")
+    questions = _norm_questions(body.questions)
+    from datetime import datetime, timezone
+    supabase.table("clinic_questionnaires").upsert({
+        "clinic_id": clinic, "block": block, "specialty": body.specialty,
+        "questions": questions, "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, on_conflict="clinic_id,block").execute()
+    return {"ok": True, "block": block, "count": len(questions), "questions": questions}
+
+
+@router.post("/mine/apply-preset")
+async def apply_preset_mine(body: ApplyPresetIn, authorization: Optional[str] = Header(None)):
+    """Aplica un preset de especialidad (ej. cardiologia) a la clínica activa."""
+    actor = get_actor(authorization)
+    clinic = actor.get("clinic_id") or actor.get("doctor_id")
+    if not clinic:
+        raise HTTPException(401, "No autenticado")
+    rows = supabase.table("question_presets").select("block, questions")\
+        .eq("specialty", body.specialty).execute().data or []
+    if not rows:
+        raise HTTPException(404, "Especialidad no encontrada")
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    for r in rows:
+        supabase.table("clinic_questionnaires").upsert({
+            "clinic_id": clinic, "block": r["block"], "specialty": body.specialty,
+            "questions": _norm_questions(r.get("questions")), "updated_at": now,
+        }, on_conflict="clinic_id,block").execute()
+    return {"ok": True, "applied": [r["block"] for r in rows]}

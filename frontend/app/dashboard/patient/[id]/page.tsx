@@ -792,6 +792,9 @@ export default function PatientPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <InfoCard label="Enfermedades crónicas" value={patient.chronic_diseases} />
+                {patient.personal_history_notes && (
+                  <InfoCard label="Cardiopatía / Procedimientos Previos" value={patient.personal_history_notes} />
+                )}
                 <InfoCard label="Cirugías previas" value={patient.surgeries} />
                 <InfoCard label="Hospitalizaciones" value={patient.hospitalizations} />
                 <InfoCard label="Fracturas" value={patient.fractures} />
@@ -1153,15 +1156,12 @@ export default function PatientPage() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--c-border)] pb-3">
                       <div>
                         <h3 className="text-sm sm:text-base font-bold text-[var(--c-text)]">
-                          📸 Captura & Control Fotográfico del Paciente
+                          📸 Registro Fotográfico del Paciente
                         </h3>
                         <p className="text-xs text-[var(--c-text-2)] mt-0.5">
-                          Para medicina estética, dermatología y seguimiento evolutivo. Admite fotos pesadas de cámara o celular y las comprime a WebP (&lt; 1 MB) automáticamente.
+                          Control visual de evolución, procedimientos clínicos y comparativas antes/después.
                         </p>
                       </div>
-                      <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-[color-mix(in_srgb,var(--c-success)_15%,transparent)] text-[var(--c-success)] border border-[color-mix(in_srgb,var(--c-success)_30%,transparent)] self-start">
-                        Compresión WebP Activa
-                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

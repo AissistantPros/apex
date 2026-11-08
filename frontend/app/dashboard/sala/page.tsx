@@ -18,6 +18,7 @@ import { useEntitlements } from '@/app/lib/useEntitlements';
 import { mix } from '@/app/lib/ui';
 import Icon from '@/app/components/Icon';
 import CheckInModal from '@/app/components/CheckInModal';
+import TriajeModal from '@/app/components/TriajeModal';
 
 const B = () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -79,6 +80,13 @@ export default function SalaPage() {
   const [briefLoading, setBriefLoading] = useState(false);
   const [doctorStatus, setDoctorStatus] = useState<'disponible' | 'en_consulta' | 'receso'>('disponible');
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
+  const [triajeModalOpen, setTriajeModalOpen] = useState(false);
+  const [triajePatient, setTriajePatient] = useState<any | null>(null);
+
+  const abrirTriaje = (p: any) => {
+    setTriajePatient(p);
+    setTriajeModalOpen(true);
+  };
 
   // Pizarra de notas rápidas de sala (persistida en localStorage)
   const [notasPizarra, setNotasPizarra] = useState<string>(() => {
@@ -404,6 +412,15 @@ export default function SalaPage() {
                     <span>Atender consulta ahora</span>
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => abrirTriaje(primerPaciente)}
+                    className="py-2.5 px-3.5 rounded-xl text-xs font-bold text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/30 hover:bg-[#38bdf8]/20 transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>📋</span>
+                    <span>Signos / Triaje</span>
+                  </button>
+
                   {isDoctor && (
                     <button
                       type="button"
@@ -484,6 +501,16 @@ export default function SalaPage() {
                           <span className="text-[10px] font-mono px-2 py-0.5 rounded-full" style={{ color: st.color, background: mix(st.color, 12) }}>
                             {st.label}
                           </span>
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              abrirTriaje(p);
+                            }}
+                            className="px-2.5 py-1 rounded-xl text-xs font-bold text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/30 hover:bg-[#38bdf8]/20 transition cursor-pointer"
+                          >
+                            Triaje
+                          </button>
                           <button
                             type="button"
                             onClick={e => {
@@ -718,6 +745,14 @@ export default function SalaPage() {
                       <span>🩺 Iniciar consulta</span>
                     </button>
 
+                    <button
+                      type="button"
+                      onClick={() => abrirTriaje(activoPreview)}
+                      className="w-full py-2 rounded-xl text-xs font-bold text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/30 hover:bg-[#38bdf8]/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span>📋 Capturar Signos / Triaje</span>
+                    </button>
+
                     <div className="grid grid-cols-2 gap-2">
                       {isDoctor && (
                         <button
@@ -829,6 +864,20 @@ export default function SalaPage() {
         onOpenNewPatient={(prefillName) => {
           setCheckInModalOpen(false);
           router.push(`/dashboard/new-patient?name=${encodeURIComponent(prefillName || '')}`);
+        }}
+      />
+
+      {/* Modal de Triaje y Signos Vitales (NOM-004) */}
+      <TriajeModal
+        isOpen={triajeModalOpen}
+        onClose={() => {
+          setTriajeModalOpen(false);
+          setTriajePatient(null);
+        }}
+        patient={triajePatient}
+        onSuccess={(m) => {
+          flash(m);
+          load();
         }}
       />
     </div>
