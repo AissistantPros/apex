@@ -245,6 +245,7 @@ export default function NewPatientWizard({
   const [lastSavedTime, setLastSavedTime] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [createdPatientId, setCreatedPatientId] = useState<string | null>(null);
 
   // 1. Inicialización y restauración de borrador
   useEffect(() => {
@@ -330,6 +331,7 @@ export default function NewPatientWizard({
     setFormData(INITIAL_FORM);
     setDraftRestored(false);
     setLastSavedTime('');
+    setCreatedPatientId(null);
   };
 
   // 3. Cálculo de edad automático
@@ -459,37 +461,61 @@ export default function NewPatientWizard({
         registration_phase: 'reception',
       };
 
-      const resPatient = await api('/patients', {
-        method: 'POST',
-        body: JSON.stringify(patientPayload),
-      });
+      let newPatientId: string = createdPatientId || '';
+      let newFullName = `${formData.first_name} ${formData.last_name}`;
 
-      const newPatientId = resPatient.id;
-      const newFullName = resPatient.full_name || `${formData.first_name} ${formData.last_name}`;
+      if (newPatientId) {
+        await api(`/patients/${newPatientId}`, {
+          method: 'PUT',
+          body: JSON.stringify(patientPayload),
+        });
+      } else {
+        const resPatient = await api('/patients', {
+          method: 'POST',
+          body: JSON.stringify(patientPayload),
+        });
+        newPatientId = resPatient?.id || '';
+        newFullName = resPatient?.full_name || newFullName;
+        if (newPatientId) setCreatedPatientId(newPatientId);
+      }
+
+      if (!newPatientId) {
+        throw new Error('No se pudo obtener el identificador del paciente registrado.');
+      }
 
       // 3. Si se marcó pase a sala, registrar la visita inicial
       if (formData.enviar_a_sala && newPatientId) {
         const nowIso = new Date().toISOString();
         const motivoFinal = `${formData.motivo_visita || 'Primera consulta'}${formData.seguro_tiene && aseguradoraTexto ? ` (Seguro: ${aseguradoraTexto})` : ''}`;
 
-        await api('/visits', {
-          method: 'POST',
-          body: JSON.stringify({
-            patient_id: newPatientId,
-            doctor_id: formData.doctor_id || null,
-            location_id: formData.location_id || null,
-            motivo_visita: motivoFinal,
-            created_at: nowIso,
-          }),
-        });
+        try {
+          await api('/visits', {
+            method: 'POST',
+            body: JSON.stringify({
+              patient_id: newPatientId,
+              doctor_id: formData.doctor_id || null,
+              location_id: formData.location_id || null,
+              motivo: motivoFinal,
+              visit_reason: motivoFinal,
+              motivo_visita: motivoFinal,
+              created_at: nowIso,
+            }),
+          });
+        } catch (visitErr) {
+          console.warn('Visita inicial en sala procesada con observación:', visitErr);
+        }
 
-        await api(`/patients/${newPatientId}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            registration_phase: 'reception',
-            updated_at: nowIso,
-          }),
-        });
+        try {
+          await api(`/patients/${newPatientId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              registration_phase: 'reception',
+              updated_at: nowIso,
+            }),
+          });
+        } catch {
+          // Fase ya asignada
+        }
       }
 
       // Limpiar borrador

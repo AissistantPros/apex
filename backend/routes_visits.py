@@ -35,23 +35,78 @@ NUMERIC_VISIT_FIELDS = {
     # sitting_hours ya NO es numérico: se captura por rangos con botones ("6–8 h").
 }
 
+# Columnas reales soportadas en la tabla 'visits' de Supabase
+KNOWN_VISIT_COLUMNS = {
+    'abdomen_findings', 'actividad_frecuencia', 'actividad_intensidad', 'actividad_si',
+    'actividad_tipo', 'actividades', 'activity_frequency', 'activity_intensity',
+    'activity_type', 'animo_otro', 'animo_tags', 'animo_val', 'anxiety_panic',
+    'apnea_duration', 'apnea_frequency', 'apnea_observed', 'apnea_pattern',
+    'apnea_triggers', 'balance_seconds', 'bedtime', 'bowel_movements_per_day',
+    'bristol_scale', 'brittle_nails', 'can_relax', 'circ_abdominal', 'circ_biceps',
+    'circ_cadera', 'circ_cintura', 'circ_cuello', 'circ_hip', 'circ_muneca',
+    'circ_neck', 'circ_waist', 'circ_wrist', 'cognitive_symptoms', 'cooking_oil',
+    'created_at', 'daytime_nap', 'daytime_sleepiness', 'digestion', 'digestion_blood',
+    'digestion_onset', 'digestion_otro', 'digestion_pattern', 'digestion_tags',
+    'digestion_val', 'discomfort_intensity', 'doctor_id', 'doze_off', 'dx_presuntivo',
+    'dynamic_answers', 'ecg_done', 'ecg_interpretation', 'ecg_realizado',
+    'energia_despertar', 'energia_noche', 'energia_tarde', 'energy_evening',
+    'energy_morning', 'energy_noon', 'equilibrio_seg', 'exploracion_abdomen',
+    'exploracion_boca', 'exploracion_extremidades', 'exploracion_general',
+    'exploracion_notas', 'exploracion_ojos', 'exploracion_piel', 'exploracion_tiroides',
+    'eye_findings', 'fc', 'field_notes', 'first_time', 'food_cravings',
+    'fuerza_mano_der', 'fuerza_mano_izq', 'general_inspection', 'glucosa',
+    'glucosa_ayuno', 'glucose', 'glucose_fasting_hours', 'grip_left', 'grip_right',
+    'hair_loss', 'heart_rate', 'height', 'id', 'imaging_findings', 'imaging_type',
+    'imc', 'inbody_agua', 'inbody_fat_pct', 'inbody_grasa', 'inbody_muscle_kg',
+    'inbody_musculo', 'inbody_visceral', 'inbody_water_pct', 'labs_extracted',
+    'labs_files', 'labs_notas', 'labs_notes', 'labs_pdf_url', 'libido',
+    'libido_tendencia', 'libido_visita', 'location_id', 'marcha_4m', 'meals_per_day',
+    'medication_adherence', 'medication_changes', 'metas', 'minicog_clock',
+    'minicog_done', 'minicog_notes', 'minicog_words', 'mood', 'morning_symptoms',
+    'motivo', 'motivo_intensidad', 'mouth_findings', 'neuro_findings',
+    'night_awakenings', 'nurse_id', 'nursing_notes', 'nutrition', 'orina_color_manana',
+    'orina_color_tarde', 'other_findings', 'pa_brazo_mayor', 'pa_der_diastolica',
+    'pa_der_sistolica', 'pa_dominant_arm', 'pa_izq_diastolica', 'pa_izq_sistolica',
+    'pain_intensity', 'pain_location', 'pain_today', 'pains', 'patient_goals',
+    'patient_id', 'peso', 'plastic_in_microwave', 'probiotics_use', 'racing_mind',
+    'recent_antibiotics', 'recent_chemical_exposure', 'recent_tattoo_amalgam',
+    'reception_id', 'reception_notes', 'screen_eating', 'self_skin_issues',
+    'sentarse_levantarse', 'sit_stand_30s', 'sitting_hours', 'skin_findings',
+    'sleep_hours', 'sleep_quality', 'snoring', 'snoring_frequency', 'snoring_intensity',
+    'spo2', 'status', 'stress_coping', 'stress_level', 'sueno_calidad',
+    'sueno_horas', 'symptom_since', 'symptoms', 'talla', 'temperatura', 'temperature',
+    'thyroid_findings', 'ultraprocessed_frequency', 'updated_at', 'urine_color',
+    'urine_color_afternoon', 'visit_reason', 'visit_type', 'vo2max', 'wake_time',
+    'wakes_rested', 'walk_4m_seconds', 'water_intake_liters', 'water_source',
+    'weight', 'work_activity_level', 'work_notes', 'work_setting'
+}
+
 def clean_visit_data(data: dict) -> dict:
-    """Convierte strings vacíos a None en campos numéricos y normaliza alias de columnas."""
-    # Alias: el frontend puede enviar nombres en español; la DB usa inglés
+    """Convierte strings vacíos a None en campos numéricos, normaliza alias y filtra columnas contra el esquema."""
+    # Alias: el frontend puede enviar nombres en español; la DB usa inglés u otros nombres
     ALIASES = {
-        "talla":     "height",
-        "peso":      "weight",
-        "fc":        "heart_rate",
-        "temperatura": "temperature",
-        "glucosa":   "glucose",
+        "talla":         "height",
+        "peso":          "weight",
+        "fc":            "heart_rate",
+        "temperatura":   "temperature",
+        "glucosa":       "glucose",
+        "motivo_visita": "motivo",
     }
     # Normalizar alias antes de limpiar
     normalized = {}
     for k, v in data.items():
         normalized[ALIASES.get(k, k)] = v
 
+    # Asegurar sincronía entre motivo (ES) y visit_reason (EN)
+    if "motivo" in normalized and not normalized.get("visit_reason"):
+        normalized["visit_reason"] = normalized["motivo"]
+    elif "visit_reason" in normalized and not normalized.get("motivo"):
+        normalized["motivo"] = normalized["visit_reason"]
+
     cleaned = {}
     for k, v in normalized.items():
+        if k not in KNOWN_VISIT_COLUMNS:
+            continue
         if k in NUMERIC_VISIT_FIELDS:
             if v == "" or v is None:
                 cleaned[k] = None
